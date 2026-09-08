@@ -1,0 +1,168 @@
+<h2>I-Sentinel — Enrollment</h2>
+<p class="subtitle">Kelola karyawan: data + enrollment wajah + shift. Detail panel menampilkan proses capture wajah dari kamera gate.</p>
+
+<style>
+  :root { --border:#393939; --layer:#262626; --ink:#f4f4f4; --ink-mut:#8d8d8d; --ink-sec:#c6c6c6; --primary:#4589ff; --success:#42be65; --warn:#f1c21b; --error:#fa4d56; }
+  .shell-demo { background:#161616; color:#f4f4f4; font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif; border:1px solid #393939; }
+  .cs-page-title { font-size:22px; font-weight:300; }
+  .en-toolbar { display:flex; align-items:center; gap:8px; padding:14px 16px; }
+  .en-search { background:#262626; border:1px solid #393939; color:#8d8d8d; font-size:12px; padding:7px 10px; width:200px; }
+  .en-filter { background:#262626; border:1px solid #393939; color:#c6c6c6; font-size:12px; padding:7px 10px; }
+  .en-btn { font-size:13px; padding:7px 14px; border:1px solid #4589ff; color:#4589ff; background:none; }
+  .en-btn.primary { background:#4589ff; color:#fff; border:none; }
+  .en-body { display:flex; border-top:1px solid #393939; }
+  .en-list { flex:1.2; border-right:1px solid #393939; min-width:0; }
+  .en-tr { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; border-bottom:1px solid #2d2d2d; font-size:13px; align-items:center; }
+  .en-tr.head { background:#262626; font-size:11px; color:#8d8d8d; letter-spacing:.32px; }
+  .en-td { padding:10px 14px; }
+  .en-name { display:flex; align-items:center; gap:10px; }
+  .en-ava { width:28px; height:28px; background:#333; color:#c6c6c6; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; flex-shrink:0; position:relative; }
+  .en-ava .face-dot { position:absolute; right:-2px; bottom:-2px; width:9px; height:9px; border-radius:9999px; border:2px solid #161616; }
+  .fd-ok { background:#42be65; } .fd-none { background:#6f6f6f; }
+  .en-code { font-size:11px; color:#8d8d8d; font-family:'IBM Plex Mono',monospace; }
+  .en-status { font-size:11px; padding:2px 8px; border:1px solid; display:inline-block; }
+  .en-row.sel { background:#262626; border-left:3px solid #4589ff; padding-left:1px; }
+  .en-detail { flex:1; padding:16px; min-width:0; }
+  .en-detail-h { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .en-detail-h .nm { font-size:16px; font-weight:600; }
+  .en-detail-h .cd { font-size:12px; color:#8d8d8d; font-family:'IBM Plex Mono',monospace; }
+  .en-cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .en-card { background:#262626; border:1px solid #393939; padding:14px; }
+  .en-card h4 { font-size:12px; color:#8d8d8d; letter-spacing:.32px; font-weight:400; margin:0 0 10px; }
+  .en-face-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .en-face { aspect-ratio:3/4; background:#0d1117; border:1px solid #393939; position:relative; display:flex; align-items:center; justify-content:center; }
+  .en-face svg { opacity:.5; }
+  .en-face .src { position:absolute; bottom:0; left:0; right:0; font-size:9px; color:#8d8d8d; text-align:center; padding:2px; background:rgba(0,0,0,.6); }
+  .en-face .add { border-style:dashed; color:#8d8d8d; font-size:20px; cursor:pointer; }
+  .en-shift-row { display:flex; align-items:center; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px solid #2d2d2d; }
+  .en-shift-row:last-child { border-bottom:none; }
+  .en-shift-row .t { font-family:'IBM Plex Mono',monospace; color:#c6c6c6; }
+  .en-toggle { display:flex; align-items:center; justify-content:space-between; margin-top:12px; font-size:13px; }
+  .en-switch { width:36px; height:18px; background:#393939; position:relative; border-radius:0; }
+  .en-switch::after { content:''; position:absolute; left:2px; top:2px; width:14px; height:14px; background:#8d8d8d; }
+  .en-switch.on { background:#4589ff; } .en-switch.on::after { left:auto; right:2px; background:#fff; }
+  .en-capture { background:#0d1117; border:1px solid #393939; aspect-ratio:16/10; position:relative; margin-top:12px; }
+  .en-capture .guide { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:52px; height:66px; border:1.5px dashed #4589ff; border-radius:9999px 9999px 6px 6px; }
+  .en-capture .cap-lbl { position:absolute; bottom:8px; left:0; right:0; text-align:center; font-size:11px; color:#8d8d8d; }
+  .en-capture .quality { position:absolute; top:8px; left:8px; font-size:10px; font-family:'IBM Plex Mono',monospace; color:#42be65; background:rgba(0,0,0,.6); padding:2px 6px; }
+  .en-actions { display:flex; gap:8px; margin-top:14px; }
+  .en-danger { border-color:#fa4d56; color:#fa4d56; margin-left:auto; }
+  .en-note { font-size:12px; color:#8d8d8d; margin-top:12px; }
+  .en-steps { display:flex; gap:4px; margin:10px 0; }
+  .en-step { flex:1; height:4px; background:#393939; }
+  .en-step.done { background:#42be65; } .en-step.cur { background:#4589ff; }
+  .en-steps-lbl { display:flex; justify-content:space-between; font-size:10px; color:#8d8d8d; }
+</style>
+
+<div class="shell-demo">
+  <div style="padding:16px 16px 0; display:flex; align-items:center">
+    <div class="cs-page-title">Enrollment</div>
+    <div style="margin-left:auto"><button class="en-btn primary">+ Karyawan</button></div>
+  </div>
+
+  <div class="en-toolbar">
+    <div class="en-search">Cari nama / NIK…</div>
+    <div class="en-filter">Semua shift ▾</div>
+    <div class="en-filter">Wajah: semua ▾</div>
+  </div>
+
+  <div class="en-body">
+    <div class="en-list">
+      <div class="en-tr head"><div class="en-td">KARYAWAN</div><div class="en-td">NIK</div><div class="en-td">SHIFT</div><div class="en-td">WAJAH</div></div>
+      <div class="en-tr sel">
+        <div class="en-td"><div class="en-name"><div class="en-ava">BS<div class="face-dot fd-ok"></div></div>Budi Santoso</div></div>
+        <div class="en-td en-code">EMP-0012</div><div class="en-td">Shift 1</div>
+        <div class="en-td"><span class="en-status" style="color:#42be65;border-color:#42be65">3 Foto</span></div>
+      </div>
+      <div class="en-tr">
+        <div class="en-td"><div class="en-name"><div class="en-ava">RW<div class="face-dot fd-ok"></div></div>Rian Wijaya</div></div>
+        <div class="en-td en-code">EMP-0031</div><div class="en-td">Shift 1</div>
+        <div class="en-td"><span class="en-status" style="color:#42be65;border-color:#42be65">2 Foto</span></div>
+      </div>
+      <div class="en-tr">
+        <div class="en-td"><div class="en-name"><div class="en-ava">SD<div class="face-dot fd-none"></div></div>Sari Dewi</div></div>
+        <div class="en-td en-code">EMP-0044</div><div class="en-td">Shift 2</div>
+        <div class="en-td"><span class="en-status" style="color:#f1c21b;border-color:#f1c21b">BELUM</span></div>
+      </div>
+      <div class="en-tr">
+        <div class="en-td"><div class="en-name"><div class="en-ava">AH<div class="face-dot fd-none"></div></div>Agus Hartono</div></div>
+        <div class="en-td en-code">EMP-0019</div><div class="en-td">Shift 3</div>
+        <div class="en-td"><span class="en-status" style="color:#f1c21b;border-color:#f1c21b">BELUM</span></div>
+      </div>
+    </div>
+
+    <div class="en-detail">
+      <div class="en-detail-h">
+        <div class="en-ava" style="width:40px;height:40px;font-size:13px">BS</div>
+        <div><div class="nm">Budi Santoso</div><div class="cd">EMP-0012 · Aktif · Shift 1</div></div>
+      </div>
+
+      <div class="en-steps">
+        <div class="en-step done"></div><div class="en-step done"></div><div class="en-step cur"></div><div class="en-step"></div>
+      </div>
+      <div class="en-steps-lbl"><span>Data ✓</span><span>Wajah ✓</span><span>Verifikasi</span><span>Selesai</span></div>
+
+      <div class="en-cards">
+        <div class="en-card">
+          <h4>WAJAH TERDAFTAR (3/5)</h4>
+          <div class="en-face-grid">
+            <div class="en-face">
+              <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#8d8d8d" stroke-width="1.1"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4"/></svg>
+              <div class="src">CAM-01 · 97%</div>
+            </div>
+            <div class="en-face">
+              <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#8d8d8d" stroke-width="1.1"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4"/></svg>
+              <div class="src">Upload · 95%</div>
+            </div>
+            <div class="en-face">
+              <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#8d8d8d" stroke-width="1.1"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4"/></svg>
+              <div class="src">CAM-02 · 93%</div>
+            </div>
+            <div class="en-face add">+</div>
+          </div>
+          <div class="en-toggle">Snapshot gate absensi <div class="en-switch on"></div></div>
+        </div>
+        <div class="en-card">
+          <h4>CAPTURE BARU — CAM-01</h4>
+          <div class="en-capture">
+            <div class="quality">Q 0.91 · depan</div>
+            <div class="guide"></div>
+            <div class="cap-lbl">hadapkan wajah ke kamera · 1/5</div>
+          </div>
+          <button class="en-btn primary" style="width:100%;margin-top:10px">Ambil best-shot</button>
+          <button class="en-btn" style="width:100%;margin-top:6px">Upload foto</button>
+        </div>
+      </div>
+
+      <div class="en-card" style="margin-top:12px">
+        <h4>SHIFT</h4>
+        <div class="en-shift-row"><span>Shift 1 — Sen–Jum</span><span class="t">07:00 – 16:00 · toleransi 15 mnt</span></div>
+        <div class="en-shift-row"><span>Sabtu</span><span class="t" style="color:#8d8d8d">tidak masuk</span></div>
+      </div>
+
+      <div class="en-actions">
+        <button class="en-btn primary">Simpan</button>
+        <button class="en-btn">Nonaktifkan</button>
+        <button class="en-btn en-danger">Hapus data biometrik</button>
+      </div>
+      <div class="en-note">Hapus biometrik = menghapus semua embedding + foto wajah (PDP-ready). Riwayat absensi tetap tersimpan.</div>
+    </div>
+  </div>
+</div>
+
+<div class="mock-note">Capture via kamera gate dengan indikator kualitas + pose · maksimal 5 foto/karyawan · dot hijau di avatar = sudah punya wajah · wizard 4 langkah untuk karyawan baru.</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>Aturan enrollment yang pas?</h3>
+  <div class="options">
+    <div class="option" data-choice="en-min3" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content"><h3>Minimum 3 foto sebelum aktif absen</h3><p>Lebih akurat (variasi pose/pencahayaan). Maksimal 5. Wajah <b>belum lengkap</b> tidak dipakai matching.</p></div>
+    </div>
+    <div class="option" data-choice="en-min1" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content"><h3>1 foto sudah cukup</h3><p>Lebih cepat onboarding, akurasi sedikit lebih rendah. Tambahan foto opsional kapan saja.</p></div>
+    </div>
+  </div>
+  <p class="mock-note">Klik pilihan + konfirmasi di terminal.</p>
+</div>

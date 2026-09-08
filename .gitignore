@@ -1,0 +1,7 @@
+.superpowers/
+.cooper/
+temp/
+__pycache__/
+node_modules/
+*.pyc
+.env

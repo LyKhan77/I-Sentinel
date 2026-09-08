@@ -1,0 +1,190 @@
+<h2>I-Sentinel — Events &amp; Alerts</h2>
+<p class="subtitle">Layout master-detail: daftar event kiri, detail + playback kanan. Ini mockup A; opsi layout lain di bawah.</p>
+
+<style>
+  :root { --canvas:#161616; --layer:#262626; --border:#393939; --ink:#f4f4f4; --ink-sec:#c6c6c6; --ink-mut:#8d8d8d; --primary:#4589ff; --success:#42be65; --warn:#f1c21b; --error:#fa4d56; }
+  .shell-demo { background:#161616; color:#f4f4f4; font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif; border:1px solid #393939; }
+  .cs-header { height:48px; border-bottom:1px solid #393939; display:flex; align-items:center; padding:0 16px; gap:12px; }
+  .cs-logo { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; }
+  .cs-logo-mark { width:22px; height:22px; background:#4589ff; color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+  .cs-page-title { font-size:22px; font-weight:300; }
+  .ev-toolbar { display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid #393939; flex-wrap:wrap; }
+  .ev-filter { background:#262626; border:1px solid #393939; color:#c6c6c6; font-size:12px; padding:6px 10px; min-width:110px; display:flex; justify-content:space-between; gap:8px; }
+  .ev-search { background:#262626; border:1px solid #393939; color:#8d8d8d; font-size:12px; padding:6px 10px; flex:1; min-width:120px; }
+  .ev-count { margin-left:auto; font-size:12px; color:#8d8d8d; }
+  .ev-body { display:flex; min-height:520px; }
+  .ev-list { width:46%; border-right:1px solid #393939; flex-shrink:0; }
+  .ev-row { display:flex; gap:12px; padding:12px 16px; border-bottom:1px solid #2d2d2d; cursor:pointer; align-items:flex-start; }
+  .ev-row:hover { background:#1c1c1c; }
+  .ev-row.sel { background:#262626; border-left:3px solid #4589ff; padding-left:13px; }
+  .ev-sev { width:8px; height:8px; margin-top:5px; flex-shrink:0; }
+  .ev-sev.critical { background:#fa4d56; } .ev-sev.warning { background:#f1c21b; } .ev-sev.info { background:#4589ff; }
+  .ev-main { flex:1; min-width:0; }
+  .ev-title { font-size:14px; font-weight:600; }
+  .ev-sub { font-size:12px; color:#8d8d8d; margin-top:2px; }
+  .ev-tags { display:flex; gap:6px; margin-top:6px; }
+  .ev-tag { font-size:10px; letter-spacing:.32px; padding:1px 6px; border:1px solid #393939; color:#c6c6c6; }
+  .ev-tag.tg { border-color:#42be65; color:#42be65; }
+  .ev-time { font-size:12px; color:#8d8d8d; font-family:'IBM Plex Mono',monospace; text-align:right; white-space:nowrap; }
+  .ev-thumb { width:64px; height:36px; background:#0d1117; border:1px solid #393939; flex-shrink:0; position:relative; }
+  .ev-thumb::after { content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:0; height:0; border-left:7px solid #8d8d8d; border-top:5px solid transparent; border-bottom:5px solid transparent; }
+  .ev-detail { flex:1; padding:16px; min-width:0; }
+  .ev-detail-title { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .ev-player { background:#000; aspect-ratio:16/9; position:relative; border:1px solid #393939; }
+  .ev-player .scene { position:absolute; inset:0; background:linear-gradient(135deg,#0b0f14,#141c26); }
+  .ev-player .poly { position:absolute; inset:0; }
+  .ev-player .bbox { position:absolute; border:1.5px solid #4589ff; }
+  .ev-player .bbox .lbl { position:absolute; top:-14px; left:-1.5px; font-size:9px; color:#4589ff; background:#161616; padding:0 3px; font-family:'IBM Plex Mono',monospace; }
+  .ev-ctrl { display:flex; align-items:center; gap:10px; padding:8px 10px; background:#262626; border:1px solid #393939; border-top:none; font-size:12px; color:#c6c6c6; }
+  .ev-scrub { flex:1; height:4px; background:#393939; position:relative; }
+  .ev-scrub::before { content:''; position:absolute; left:0; top:0; bottom:0; width:38%; background:#4589ff; }
+  .ev-scrub::after { content:''; position:absolute; left:38%; top:-3px; width:10px; height:10px; background:#f4f4f4; }
+  .ev-meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#393939; border:1px solid #393939; margin-top:14px; }
+  .ev-meta { background:#262626; padding:10px 12px; }
+  .ev-meta .k { font-size:11px; color:#8d8d8d; letter-spacing:.32px; }
+  .ev-meta .v { font-size:13px; margin-top:3px; }
+  .ev-actions { display:flex; gap:8px; margin-top:14px; }
+  .ev-btn { font-size:13px; padding:8px 14px; border:1px solid #4589ff; color:#4589ff; background:none; }
+  .ev-btn.primary { background:#4589ff; color:#fff; border:none; }
+  .ev-btn.ghost { border-color:#393939; color:#c6c6c6; }
+  .ev-tabstrip { display:flex; border-bottom:1px solid #393939; margin-bottom:14px; }
+  .ev-tab { font-size:13px; padding:8px 14px; color:#8d8d8d; border-bottom:2px solid transparent; }
+  .ev-tab.on { color:#f4f4f4; border-bottom:2px solid #4589ff; font-weight:600; }
+  .mock-note { font-size:12px; color:#8d8d8d; margin-top:12px; }
+</style>
+
+<div class="shell-demo">
+  <div class="cs-header">
+    <div class="cs-logo"><div class="cs-logo-mark">IS</div> I-Sentinel</div>
+  </div>
+
+  <div style="padding:16px 16px 0"><div class="cs-page-title">Events &amp; Alerts</div></div>
+
+  <div class="ev-toolbar">
+    <div class="ev-filter">Semua tipe <span>▾</span></div>
+    <div class="ev-filter">Semua kamera <span>▾</span></div>
+    <div class="ev-filter">7 hari <span>▾</span></div>
+    <div class="ev-filter">Semua severity <span>▾</span></div>
+    <div class="ev-search">Cari…</div>
+    <div class="ev-count">1.248 event</div>
+  </div>
+
+  <div class="ev-body">
+    <div class="ev-list">
+      <div class="ev-row sel">
+        <div class="ev-sev critical"></div>
+        <div class="ev-main">
+          <div class="ev-title">Intrusi — Zona Gudang B</div>
+          <div class="ev-sub">CAM-07 · Lantai Produksi</div>
+          <div class="ev-tags"><span class="ev-tag">INTRUSION</span><span class="ev-tag">ZONE</span><span class="ev-tag tg">TELEGRAM TERKIRIM</span></div>
+        </div>
+        <div>
+          <div class="ev-time">08:31:22<br>15 Jan</div>
+          <div class="ev-thumb" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-sev warning"></div>
+        <div class="ev-main">
+          <div class="ev-title">Loitering — Area Parkir</div>
+          <div class="ev-sub">CAM-12 · 1 orang · 4m 30s</div>
+          <div class="ev-tags"><span class="ev-tag">LOITERING</span><span class="ev-tag tg">TELEGRAM TERKIRIM</span></div>
+        </div>
+        <div>
+          <div class="ev-time">08:22:04<br>15 Jan</div>
+          <div class="ev-thumb" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-sev info"></div>
+        <div class="ev-main">
+          <div class="ev-title">Absensi — Budi Santoso (entry)</div>
+          <div class="ev-sub">CAM-01 · Gerbang Masuk · tepat waktu</div>
+          <div class="ev-tags"><span class="ev-tag">ATTENDANCE</span><span class="ev-tag">ENTRY</span><span class="ev-tag" style="border-color:#42be65;color:#42be65">ONTIME</span></div>
+        </div>
+        <div>
+          <div class="ev-time">07:58:41<br>15 Jan</div>
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-sev warning"></div>
+        <div class="ev-main">
+          <div class="ev-title">Berlari — Koridor Kantor</div>
+          <div class="ev-sub">CAM-06 · 3.2 m/s</div>
+          <div class="ev-tags"><span class="ev-tag">RUNNING</span><span class="ev-tag">RATE-LIMITED</span></div>
+        </div>
+        <div>
+          <div class="ev-time">07:41:10<br>15 Jan</div>
+          <div class="ev-thumb" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-sev info"></div>
+        <div class="ev-main">
+          <div class="ev-title">Kamera offline — CAM-05</div>
+          <div class="ev-sub">Gudang B · koneksi RTSP terputus</div>
+          <div class="ev-tags"><span class="ev-tag">SYSTEM</span></div>
+        </div>
+        <div>
+          <div class="ev-time">07:12:55<br>15 Jan</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ev-detail">
+      <div class="ev-tabstrip">
+        <div class="ev-tab on">Detail Event</div>
+        <div class="ev-tab">Snapshot</div>
+        <div class="ev-tab">Riwayat zona</div>
+      </div>
+      <div class="ev-player">
+        <div class="scene"></div>
+        <svg class="poly" viewBox="0 0 320 180" preserveAspectRatio="none"><polygon points="20,170 110,40 310,60 250,170" fill="rgba(69,137,255,.10)" stroke="#4589ff" stroke-width="1" stroke-dasharray="5 3"/></svg>
+        <div class="bbox" style="left:44%;top:42%;width:9%;height:34%"><span class="lbl">P-12 98%</span></div>
+        <div class="bbox" style="left:58%;top:47%;width:7%;height:28%;border-color:#fa4d56"><span class="lbl" style="color:#fa4d56">P-13 95%</span></div>
+      </div>
+      <div class="ev-ctrl">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="#f4f4f4"><path d="M4.5 3v10l8-5z"/></svg>
+        <span style="font-family:'IBM Plex Mono',monospace">00:12 / 00:38</span>
+        <div class="ev-scrub"></div>
+        <span>clip 1080p · 38 dtk (pre 8s / post 30s)</span>
+      </div>
+
+      <div class="ev-meta-grid">
+        <div class="ev-meta"><div class="k">WAKTU EVENT</div><div class="v">15 Jan 2025 · 08:31:22</div></div>
+        <div class="ev-meta"><div class="k">KAMERA / ZONA</div><div class="v">CAM-07 · Zona Gudang B</div></div>
+        <div class="ev-meta"><div class="k">TIPE</div><div class="v">Intrusi (restricted zone)</div></div>
+        <div class="ev-meta"><div class="k">TRACK</div><div class="v">P-13 · masuk polygon 08:31:19</div></div>
+        <div class="ev-meta"><div class="k">TELEGRAM</div><div class="v" style="color:#42be65">Terkirim 08:31:24 · chat: Security</div></div>
+        <div class="ev-meta"><div class="k">SEVERITY</div><div class="v" style="color:#fa4d56">CRITICAL</div></div>
+      </div>
+
+      <div class="ev-actions">
+        <button class="ev-btn primary">Buka live kamera</button>
+        <button class="ev-btn">Unduh clip</button>
+        <button class="ev-btn ghost">Tandai false positive</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mock-note">BBox biru = track person · merah = pelaku event · dash polygon = zona · scrubber dengan pre/post buffer · tab "Riwayat zona" = event lain di zona sama.</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>Layout halaman events yang pas?</h3>
+  <div class="options">
+    <div class="option" data-choice="ev-master-detail" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content"><h3>Master-detail (yang ditampilkan)</h3><p>Daftar kiri, detail kanan tanpa pindah halaman. Efisien untuk triase cepat banyak event.</p></div>
+    </div>
+    <div class="option" data-choice="ev-fullpage" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content"><h3>Tabel penuh + halaman detail</h3><p>Tabel Carbon full-width; klik membuka halaman detail terpisah. Lebih sederhana, lebih klik.</p></div>
+    </div>
+    <div class="option" data-choice="ev-cards" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content"><h3>Card grid dengan preview</h3><p>Event sebagai kartu thumbnail besar (ganti galeri). Bagus untuk media, boros ruang untuk triase.</p></div>
+    </div>
+  </div>
+  <p class="mock-note">Klik pilihan di browser + konfirmasi di terminal. Masukan bebas juga boleh (misal: kolom tambahan di daftar).</p>
+</div>

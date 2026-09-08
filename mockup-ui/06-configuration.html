@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>I-Sentinel — Configuration v3 (Interactive)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #f4f4f4; font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; padding: 20px; }
+  .page-head { max-width: 1200px; margin: 0 auto 14px; }
+  .page-head h2 { font-size: 20px; font-weight: 300; }
+  .page-head p { font-size: 12px; color: #8d8d8d; margin-top: 4px; }
+  .app { max-width: 1200px; margin: 0 auto; background: #161616; border: 1px solid #393939; }
+  .tabstrip { display: flex; border-bottom: 1px solid #393939; padding: 0 16px; flex-wrap: wrap; }
+  .tab { font-size: 13px; padding: 12px 16px; color: #8d8d8d; border-bottom: 2px solid transparent; cursor: pointer; user-select: none; }
+  .tab:hover { color: #c6c6c6; }
+  .tab.on { color: #f4f4f4; border-bottom-color: #4589ff; font-weight: 600; }
+  .panel { display: none; padding: 16px; }
+  .panel.on { display: block; }
+  .btn { font-size: 13px; padding: 8px 16px; border: 1px solid #4589ff; color: #4589ff; background: none; cursor: pointer; }
+  .btn:hover { background: rgba(69,137,255,.12); }
+  .btn.primary { background: #4589ff; color: #fff; border: none; }
+  .btn.sm { font-size: 11px; padding: 4px 10px; }
+  .btn.danger { border-color: #fa4d56; color: #fa4d56; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.ghost { border-color: #393939; color: #c6c6c6; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .hint { font-size: 11px; color: #8d8d8d; margin-top: 4px; }
+  label.f { display: block; font-size: 11px; color: #8d8d8d; letter-spacing: .32px; margin: 12px 0 4px; }
+  input.f, select.f { width: 100%; background: #262626; border: 1px solid #393939; border-bottom: 1px solid #6f6f6f; color: #f4f4f4; font-size: 13px; padding: 8px 10px; outline: none; font-family: inherit; }
+  input.f:focus, select.f:focus { border-bottom: 2px solid #4589ff; }
+  .switch { width: 36px; height: 18px; background: #393939; position: relative; cursor: pointer; flex-shrink: 0; }
+  .switch::after { content: ''; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; background: #8d8d8d; transition: left .1s; }
+  .switch.on { background: #4589ff; }
+  .switch.on::after { left: 20px; background: #fff; }
+  .cam-list { border: 1px solid #393939; }
+  .cam-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #2d2d2d; font-size: 13px; flex-wrap: wrap; }
+  .cam-row:last-child { border-bottom: none; }
+  .cam-row:hover { background: #1c1c1c; }
+  .cam-nm { font-weight: 600; min-width: 170px; }
+  .cam-loc { color: #8d8d8d; min-width: 110px; font-size: 12px; }
+  .stream { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; padding: 3px 8px; border: 1px solid #393939; color: #c6c6c6; }
+  .stream .ok { color: #42be65; } .stream .fail { color: #fa4d56; } .stream .probe { color: #f1c21b; }
+  .stream.probing { border-style: dashed; }
+  .node-tag { font-size: 11px; color: #8d8d8d; border: 1px solid #393939; padding: 3px 8px; }
+  .cam-actions { margin-left: auto; display: flex; gap: 6px; }
+  .cam-row.off .cam-nm, .cam-row.off .cam-loc, .cam-row.off .stream { opacity: .45; }
+  .live-dot { display: inline-block; width: 8px; height: 8px; background: #42be65; margin-right: 6px; }
+  .live-dot.off { background: #fa4d56; }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .overlay.on { display: flex; }
+  .modal { background: #262626; border: 1px solid #393939; width: 520px; max-width: 94vw; max-height: 90vh; overflow: auto; }
+  .modal-h { padding: 14px 18px; font-size: 15px; font-weight: 600; border-bottom: 1px solid #393939; display: flex; justify-content: space-between; align-items: center; }
+  .modal-b { padding: 6px 18px 18px; }
+  .modal-f { padding: 12px 18px; border-top: 1px solid #393939; display: flex; justify-content: flex-end; gap: 8px; }
+  .x { cursor: pointer; color: #8d8d8d; font-size: 16px; line-height: 1; }
+  .probe-box { border: 1px dashed #393939; padding: 12px; margin-top: 14px; font-size: 12px; min-height: 84px; }
+  .probe-line { padding: 3px 0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8d8d8d; }
+  .probe-line.found { color: #42be65; } .probe-line.wait { color: #f1c21b; }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: #262626; border: 1px solid #393939; border-left: 3px solid #42be65; padding: 10px 16px; font-size: 13px; display: none; z-index: 60; }
+  .toast.on { display: block; }
+  .toast.err { border-left-color: #fa4d56; }
+  .zone-layout { display: flex; gap: 0; }
+  .zone-left { flex: 1.4; min-width: 0; }
+  .zone-right { flex: 1; border-left: 1px solid #393939; padding-left: 16px; }
+  .cam-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .cam-picker select { width: 240px; }
+  .frame { background: #0d1117; aspect-ratio: 16/9; position: relative; border: 1px solid #393939; user-select: none; cursor: crosshair; }
+  .frame.editing-done { cursor: default; }
+  .frame svg.scene, .frame svg.polys { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .handle { position: absolute; width: 12px; height: 12px; background: #161616; border: 2px solid #4589ff; transform: translate(-50%, -50%); cursor: move; z-index: 5; }
+  .handle:hover { background: #4589ff; }
+  .vtx { position: absolute; width: 8px; height: 8px; background: #4589ff; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; }
+  .start-handle { position: absolute; width: 18px; height: 18px; border: 2.5px solid #42be65; background: rgba(66,190,101,.15); transform: translate(-50%, -50%); z-index: 6; cursor: pointer; animation: pulse 1.2s infinite; }
+  .start-handle::after { content: ''; position: absolute; inset: 5px; background: #42be65; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(66,190,101,.45); } 50% { box-shadow: 0 0 0 7px rgba(66,190,101,0); } }
+  .z-label { position: absolute; font-size: 10px; padding: 1px 6px; background: rgba(22,22,22,.9); border: 1px solid; z-index: 4; cursor: pointer; white-space: nowrap; }
+  .z-label.sel { outline: 1px solid #f4f4f4; }
+  .draw-banner { position: absolute; top: 8px; left: 8px; right: 8px; background: rgba(69,137,255,.15); border: 1px solid #4589ff; color: #c6c6c6; font-size: 12px; padding: 6px 10px; z-index: 8; display: flex; align-items: center; gap: 10px; }
+  .draw-banner .cnt { font-family: 'IBM Plex Mono', monospace; color: #4589ff; font-weight: 600; }
+  .draw-banner .cls { color: #42be65; }
+  .zone-list { margin-top: 12px; border-top: 1px solid #393939; }
+  .zone-item { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 8px 4px; border-bottom: 1px solid #2d2d2d; cursor: pointer; }
+  .zone-item:hover { background: #1c1c1c; }
+  .zone-item.sel { background: #262626; }
+  .sw { width: 10px; height: 10px; flex-shrink: 0; }
+  .badge { font-size: 10px; letter-spacing: .32px; padding: 1px 7px; border: 1px solid #393939; color: #c6c6c6; }
+  .badge.green { border-color: #42be65; color: #42be65; }
+  .badge.red { border-color: #fa4d56; color: #fa4d56; }
+  .switchrow { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 8px 0; border-bottom: 1px solid #2d2d2d; }
+  .prop-empty { color: #8d8d8d; font-size: 12px; padding: 20px 0; text-align: center; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t th { text-align: left; font-size: 11px; color: #8d8d8d; letter-spacing: .32px; font-weight: 400; background: #262626; padding: 10px 12px; border-bottom: 1px solid #393939; }
+  table.t td { padding: 10px 12px; border-bottom: 1px solid #2d2d2d; vertical-align: middle; }
+  table.t tr:hover td { background: #1c1c1c; }
+  select.mini { width: auto; background: #262626; border: 1px solid #393939; color: #f4f4f4; font-size: 12px; padding: 5px 8px; }
+  .gate-err { color: #fa4d56; font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  .kv { font-size: 12px; color: #8d8d8d; }
+  .chat-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #393939; margin-top: 6px; font-size: 13px; }
+  .log-box { background: #0d0d0d; border: 1px solid #393939; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8d8d8d; padding: 10px; margin-top: 10px; min-height: 60px; }
+  .log-box .ok { color: #42be65; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  .det-global { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #393939; border: 1px solid #393939; margin-bottom: 16px; }
+  .det-tile { background: #262626; padding: 12px 14px; }
+  .det-tile .k { font-size: 11px; color: #8d8d8d; letter-spacing: .32px; }
+  .det-tile .v { font-size: 18px; font-weight: 300; margin-top: 4px; }
+  .chip { display: inline-block; font-size: 10px; padding: 2px 7px; border: 1px solid #393939; color: #8d8d8d; margin-right: 4px; cursor: pointer; }
+  .chip.on { border-color: #42be65; color: #42be65; }
+  .disk-bar { height: 14px; background: #262626; border: 1px solid #393939; position: relative; margin: 6px 0 2px; }
+  .disk-bar > div { position: absolute; left: 0; top: 0; bottom: 0; }
+  footer.q { max-width: 1200px; margin: 18px auto 0; font-size: 12px; color: #8d8d8d; }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h2>I-Sentinel — Configuration v3</h2>
+    <p>Perubahan: zona ditutup dengan <b>klik titik awal</b> (ring hijau berdenyut, aktif setelah ≥3 titik) — end-point tersambung ke start-point.</p>
+  </div>
+
+  <div class="app">
+    <div class="tabstrip" id="tabs">
+      <div class="tab on" data-tab="kamera">Kamera</div>
+      <div class="tab" data-tab="zona">Zona</div>
+      <div class="tab" data-tab="gate">Gate Absensi</div>
+      <div class="tab" data-tab="deteksi">Deteksi &amp; Model</div>
+      <div class="tab" data-tab="notif">Notifikasi</div>
+      <div class="tab" data-tab="retensi">Retensi &amp; Storage</div>
+      <div class="tab" data-tab="user">User</div>
+    </div>
+
+    <div class="panel on" id="panel-kamera">
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn primary" onclick="openCamWizard()">+ Tambah kamera</button>
+        <button class="btn" onclick="probeAll()">Probe ulang semua</button>
+        <span class="kv" style="margin-left:auto"><span class="live-dot"></span>4 online · <span class="live-dot off"></span>1 offline</span>
+      </div>
+      <div class="cam-list" id="camList"></div>
+      <p class="hint" style="margin-top:10px">Tambah kamera: IP + credential → probe otomatis main &amp; sub (ONVIF + path umum) → pilih node → simpan.</p>
+    </div>
+
+    <div class="panel" id="panel-zona">
+      <div class="zone-layout">
+        <div class="zone-left">
+          <div class="cam-picker">
+            <label class="f" style="margin:0">KAMERA</label>
+            <select class="f" id="zoneCam" onchange="onZoneCamChange()"></select>
+            <button class="btn sm" id="btnAddZone" onclick="startDrawing()">+ Gambar zona</button>
+          </div>
+          <div class="frame" id="zoneFrame">
+            <svg class="scene" viewBox="0 0 320 180" preserveAspectRatio="none">
+              <rect width="320" height="180" fill="#0d1117"/>
+              <rect x="30" y="18" width="70" height="55" fill="none" stroke="#2a3441"/>
+              <rect x="225" y="115" width="72" height="48" fill="none" stroke="#2a3441"/>
+              <path d="M0 150 L320 130 L320 180 L0 180 Z" fill="#131b24"/>
+            </svg>
+            <svg class="polys" viewBox="0 0 320 180" preserveAspectRatio="none" id="polySvg"></svg>
+          </div>
+          <p class="hint">Klik frame = taruh titik (min 3) · setelah ≥3 titik, <b style="color:#42be65">ring hijau</b> muncul di titik awal — klik ring itu untuk menutup polygon · mode edit: drag handle, double-click tambah titik, klik kanan handle hapus titik (min 3).</p>
+          <div class="zone-list" id="zoneList"></div>
+        </div>
+        <div class="zone-right" id="zoneProps"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-gate">
+      <div class="row" style="margin-bottom:14px"><button class="btn primary" onclick="addGate()">+ Pasangkan gate</button></div>
+      <table class="t">
+        <thead><tr><th>KAMERA</th><th>ARAH</th><th>SNAPSHOT EVIDENCE</th><th>STATUS</th><th></th></tr></thead>
+        <tbody id="gateBody"></tbody>
+      </table>
+      <div class="gate-err" id="gateErr"></div>
+      <p class="hint">Validasi: satu kamera satu arah · zona absensi digambar di tab Zona pada kamera gate.</p>
+    </div>
+
+    <div class="panel" id="panel-deteksi">
+      <div style="font-weight:600;margin-bottom:10px">Global (berlaku semua kamera kecuali dioverride)</div>
+      <div class="det-global">
+        <div class="det-tile"><div class="k">MODEL DETEKSI</div><div class="v">YOLO11s</div><div class="kv mono">TensorRT FP16 · 640px</div></div>
+        <div class="det-tile"><div class="k">INFERENSI DEFAULT</div><div class="v">5 FPS</div><div class="kv">per kamera</div></div>
+        <div class="det-tile"><div class="k">CONFIDENCE</div><div class="v">0.40</div><div class="kv">person threshold</div></div>
+        <div class="det-tile"><div class="k">TRACKER</div><div class="v">ByteTrack</div><div class="kv">buffer 30 frame</div></div>
+      </div>
+      <table class="t">
+        <thead><tr><th>KAMERA</th><th>AI FPS</th><th>CONFIDENCE</th><th>ANALYZER AKTIF</th><th></th></tr></thead>
+        <tbody id="detBody"></tbody>
+      </table>
+      <p class="hint">Kamera tanpa override memakai global · semua analyzer mati = kamera hanya live view (hemat GPU).</p>
+    </div>
+
+    <div class="panel" id="panel-notif">
+      <div class="two-col">
+        <div>
+          <label class="f">TELEGRAM BOT TOKEN</label>
+          <div class="row">
+            <input class="f mono" id="tgToken" type="password" value="123456:ABC-DEF_••••••••">
+            <button class="btn sm" onclick="toggleToken()">lihat</button>
+          </div>
+          <p class="hint">Token dari environment variable service — tidak pernah masuk database.</p>
+          <label class="f">RATE-LIMIT DEFAULT</label>
+          <div class="row"><input class="f" type="number" value="5" style="width:90px"><span class="kv">menit per kamera+zona+tipe</span></div>
+          <label class="f">RETRY</label>
+          <div class="row"><input class="f" type="number" value="3" style="width:90px"><span class="kv">percobaan ulang bila Telegram gagal</span></div>
+        </div>
+        <div>
+          <label class="f">CHAT TARGET</label>
+          <div id="chatList"></div>
+          <div class="row" style="margin-top:8px">
+            <input class="f" id="chatName" placeholder="nama (mis. Security Shift 1)" style="flex:1">
+            <input class="f mono" id="chatId" placeholder="-100xxxx / @channel" style="width:150px">
+            <button class="btn sm" onclick="addChat()">Tambah</button>
+          </div>
+          <button class="btn" style="margin-top:14px" onclick="testTelegram()">Kirim pesan uji</button>
+          <div class="log-box" id="tgLog">menunggu aksi…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-retensi">
+      <div class="two-col">
+        <div>
+          <label class="f">PATH CLIPS (MAINSTREAM)</label><input class="f mono" value="/data/isentinel/clips">
+          <label class="f">PATH SNAPSHOT</label><input class="f mono" value="/data/isentinel/snapshots">
+          <label class="f">PATH FACES (ENROLLMENT)</label><input class="f mono" value="/data/isentinel/faces">
+        </div>
+        <div>
+          <label class="f">RETENSI EVENT (CLIP + SNAPSHOT)</label>
+          <div class="row"><input class="f" type="number" value="30" style="width:90px"><span class="kv">hari</span></div>
+          <label class="f">AUTO-CLEANUP</label>
+          <div class="row"><input class="f" value="harian · 03:00" readonly style="width:170px"><span class="kv">file kadaluarsa dihapus</span></div>
+          <label class="f">ESTIMASI PEMAKAIAN</label>
+          <div class="disk-bar">
+            <div style="width:18%;background:#4589ff"></div>
+            <div style="left:18%;width:4%;background:#8d8d8d"></div>
+          </div>
+          <div class="kv" style="margin-top:6px">clips 168 GB · snapshot+faces 38 GB · dari 931 GB NVMe</div>
+        </div>
+      </div>
+      <div style="margin-top:14px"><button class="btn primary" onclick="toast('Konfigurasi storage tersimpan')">Simpan</button></div>
+    </div>
+
+    <div class="panel" id="panel-user">
+      <div class="row" style="margin-bottom:14px"><button class="btn primary" onclick="openUserModal()">+ Tambah user</button></div>
+      <table class="t">
+        <thead><tr><th>USERNAME</th><th>ROLE</th><th>DIBUAT</th><th></th></tr></thead>
+        <tbody id="userBody"></tbody>
+      </table>
+      <p class="hint">admin = semua konfigurasi + enrollment + koreksi · viewer = read-only.</p>
+    </div>
+  </div>
+
+  <div class="overlay" id="camWizard">
+    <div class="modal">
+      <div class="modal-h">Tambah kamera <span class="x" onclick="closeModal('camWizard')">✕</span></div>
+      <div class="modal-b">
+        <label class="f">NAMA KAMERA</label><input class="f" id="wName" placeholder="CAM-06 · Kantor Lobi">
+        <label class="f">LOKASI</label><input class="f" id="wLoc" placeholder="Gedung Kantor Lt.1">
+        <div class="two-col">
+          <div><label class="f">IP / HOST</label><input class="f mono" id="wIp" value="192.168.1.108"></div>
+          <div><label class="f">NODE</label><select class="f" id="wNode"><option>server</option><option>edge-01</option><option>edge-02</option></select></div>
+        </div>
+        <div class="two-col">
+          <div><label class="f">USERNAME</label><input class="f mono" id="wUser" value="admin"></div>
+          <div><label class="f">PASSWORD</label><input class="f mono" type="password" id="wPass" value="••••••••"></div>
+        </div>
+        <div class="probe-box" id="probeBox"><span class="kv">Isi form, lalu klik "Probe stream".</span></div>
+      </div>
+      <div class="modal-f">
+        <button class="btn ghost" onclick="closeModal('camWizard')">Batal</button>
+        <button class="btn" id="probeBtn" onclick="runProbe()">Probe stream</button>
+        <button class="btn primary" id="saveCamBtn" onclick="saveCam()" disabled>Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="userModal">
+    <div class="modal" style="width:420px">
+      <div class="modal-h">Tambah user <span class="x" onclick="closeModal('userModal')">✕</span></div>
+      <div class="modal-b">
+        <label class="f">USERNAME</label><input class="f" id="uName" placeholder="mis. operator1">
+        <label class="f">ROLE</label><select class="f" id="uRole"><option value="viewer">viewer — read-only</option><option value="admin">admin — akses penuh</option></select>
+        <label class="f">PASSWORD AWAL</label><input class="f mono" type="password" value="••••••••">
+      </div>
+      <div class="modal-f">
+        <button class="btn ghost" onclick="closeModal('userModal')">Batal</button>
+        <button class="btn primary" onclick="saveUser()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+var $ = function(id){ return document.getElementById(id); };
+function toast(msg, isErr){
+  var t = $('toast'); t.textContent = msg;
+  t.className = 'toast on' + (isErr ? ' err' : '');
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.className = 'toast' + (isErr ? ' err' : ''); }, 2600);
+}
+function log(kind, msg){
+  var box = $('tgLog');
+  if (!box._first) { box.innerHTML = ''; box._first = true; }
+  var d = document.createElement('div'); d.className = kind; d.textContent = msg; box.appendChild(d);
+}
+function send(choice){ try { if (window.brainstorm) brainstorm.send({ type:'choice', choice: choice }); } catch(e){} }
+
+document.querySelectorAll('.tab').forEach(function(t){
+  t.addEventListener('click', function(){
+    document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('on'); });
+    document.querySelectorAll('.panel').forEach(function(x){ x.classList.remove('on'); });
+    t.classList.add('on'); $('panel-' + t.dataset.tab).classList.add('on');
+    send('tab:' + t.dataset.tab);
+  });
+});
+
+/* ===== KAMERA ===== */
+var cams = [
+  { id:1, name:'CAM-01 · Gerbang Masuk', loc:'Main gate', main:'2560×1440 · 25fps · h264', sub:'640×360 · 15fps · h264', node:'server', on:true },
+  { id:2, name:'CAM-02 · Gerbang Keluar', loc:'Main gate', main:'1920×1080 · 25fps · h264', sub:'640×360 · 15fps · h264', node:'server', on:true },
+  { id:3, name:'CAM-03 · Lantai Produksi A', loc:'Produksi', main:'2560×1440 · 20fps · h264', sub:'704×480 · 12fps · h264', node:'edge-01', on:true },
+  { id:4, name:'CAM-04 · Area Parkir', loc:'Outdoor', main:'1920×1080 · 25fps · h264', sub:'640×360 · 15fps · h264', node:'edge-01', on:true },
+  { id:5, name:'CAM-05 · Gudang B', loc:'Gudang', main:null, mainErr:'timeout', sub:'640×360 · 15fps · h264', node:'edge-02', on:true }
+];
+function renderCams(){
+  $('camList').innerHTML = cams.map(function(c){
+    var streams = c.on
+      ? '<div class="stream">' + (c.main ? '<span class="ok">●</span> MAIN ' + c.main : '<span class="fail">●</span> MAIN gagal · ' + c.mainErr) + '</div>' +
+        '<div class="stream"><span class="ok">●</span> SUB ' + c.sub + '</div>'
+      : '<div class="stream"><span class="fail">●</span> NONAKTIF</div>';
+    return '<div class="cam-row' + (c.on ? '' : ' off') + '" data-id="' + c.id + '">' +
+      '<div><div class="cam-nm"><span class="live-dot' + (c.on && c.main ? '' : ' off') + '"></span>' + c.name + '</div><div class="cam-loc">' + c.loc + '</div></div>' +
+      streams + '<div class="node-tag">node: ' + c.node + '</div>' +
+      '<div class="cam-actions"><button class="btn sm" onclick="probeOne(' + c.id + ')">Probe</button>' +
+      '<button class="btn sm" onclick="toast(\'Form edit kamera (dalam implementasi)\')">Edit</button>' +
+      '<button class="btn sm danger" onclick="toggleCam(' + c.id + ')">' + (c.on ? 'Nonaktif' : 'Aktifkan') + '</button></div></div>';
+  }).join('');
+}
+function toggleCam(id){ var c = cams.find(function(x){ return x.id === id; }); c.on = !c.on; renderCams(); toast(c.name + (c.on ? ' diaktifkan' : ' dinonaktifkan')); }
+function probeOne(id){
+  document.querySelectorAll('.cam-row[data-id="' + id + '"] .stream').forEach(function(s){ s.classList.add('probing'); s.innerHTML = '<span class="probe">●</span> probing…'; });
+  setTimeout(function(){ renderCams(); toast('Probe selesai'); }, 1400);
+}
+function probeAll(){
+  document.querySelectorAll('#camList .stream').forEach(function(s){ s.classList.add('probing'); s.innerHTML = '<span class="probe">●</span> probing…'; });
+  setTimeout(function(){ renderCams(); toast('Semua kamera di-probe ulang'); }, 1600);
+}
+function openCamWizard(){ $('camWizard').classList.add('on'); }
+function closeModal(id){ $(id).classList.remove('on'); }
+function runProbe(){
+  var box = $('probeBox'), ip = $('wIp').value || '192.168.1.x';
+  $('saveCamBtn').disabled = true; $('probeBtn').disabled = true;
+  box.innerHTML = '<div class="probe-line wait">menghubungi ' + ip + ' …</div>';
+  [ { d:500, cls:'', txt:'ONVIF GetProfiles …' },
+    { d:1100, cls:'found', txt:'profile MAIN: H.264 2560×1440 @25 (…/Streaming/Channels/101)' },
+    { d:1700, cls:'found', txt:'profile SUB: H.264 640×360 @15 (…/Streaming/Channels/102)' },
+    { d:2300, cls:'found', txt:'RTSP reachable · latency 4 ms' }
+  ].forEach(function(s){
+    setTimeout(function(){
+      var d = document.createElement('div'); d.className = 'probe-line ' + s.cls; d.textContent = s.txt; box.appendChild(d);
+      if (s.d === 2300) { $('saveCamBtn').disabled = false; $('probeBtn').disabled = false; }
+    }, s.d);
+  });
+}
+function saveCam(){
+  var id = Math.max.apply(null, cams.map(function(c){ return c.id; })) + 1;
+  cams.push({ id:id, name: $('wName').value || ('CAM-NEW · ' + $('wLoc').value), loc: $('wLoc').value || '—',
+    main:'2560×1440 · 25fps · h264', sub:'640×360 · 15fps · h264', node: $('wNode').value, on:true });
+  renderCams(); closeModal('camWizard'); toast('Kamera tersimpan');
+}
+
+/* ===== ZONA v3 — click-to-draw, tutup dengan klik titik awal ===== */
+var TYPE_COLOR = { intrusion:'#fa4d56', loitering:'#f1c21b', absensi:'#4589ff', free:'#42be65' };
+var zones = [
+  { id:1, cam:3, name:'Zona Terlarang Mesin', type:'intrusion', severity:'critical', pts:[[30,160],[90,40],[250,60],[210,160]], rate:5, sched:'24/7', snapshot:true, tg:true, active:true },
+  { id:2, cam:3, name:'Area Mesin', type:'loitering', severity:'warning', pts:[[240,20],[310,30],[300,90],[250,80]], rate:10, sched:'Jam kerja', snapshot:false, tg:true, active:true },
+  { id:3, cam:1, name:'Gate Entry', type:'absensi', severity:'info', pts:[[100,60],[220,60],[220,160],[100,160]], rate:0, sched:'24/7', snapshot:true, tg:false, active:true },
+  { id:4, cam:2, name:'Gate Exit', type:'absensi', severity:'info', pts:[[100,60],[220,60],[220,160],[100,160]], rate:0, sched:'24/7', snapshot:true, tg:false, active:false }
+];
+var selZone = null, selCam = 3;
+var drawing = null;        // { pts: [] }
+var hoverClose = false;    // kursor dekat titik awal & bisa tutup
+
+function zoneCamOptions(){
+  $('zoneCam').innerHTML = cams.filter(function(c){ return c.on; }).map(function(c){
+    return '<option value="' + c.id + '"' + (c.id === selCam ? ' selected' : '') + '>' + c.name + '</option>';
+  }).join('');
+  selCam = parseInt($('zoneCam').value, 10);
+}
+function onZoneCamChange(){ cancelDrawing(); selCam = parseInt($('zoneCam').value, 10); selZone = null; renderZones(); }
+function camZones(){ return zones.filter(function(z){ return z.cam === selCam; }); }
+function zoneById(id){ return zones.find(function(z){ return z.id === id; }); }
+function rgb(hex, a){ var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n>>16) + ',' + ((n>>8)&255) + ',' + (n&255) + ',' + a + ')'; }
+function frameXY(e){
+  var r = $('zoneFrame').getBoundingClientRect();
+  return [ Math.min(320, Math.max(0, Math.round((e.clientX - r.left) / r.width * 320))),
+           Math.min(180, Math.max(0, Math.round((e.clientY - r.top) / r.height * 180))) ];
+}
+function nearStart(p){
+  if (!drawing || drawing.pts.length < 3) return false;
+  var s = drawing.pts[0], dx = p[0] - s[0], dy = p[1] - s[1];
+  return (dx*dx + dy*dy) <= 64; /* radius ~8 unit frame */
+}
+function startDrawing(){
+  if (drawing) return;
+  drawing = { pts: [] }; selZone = null; hoverClose = false;
+  $('btnAddZone').disabled = true;
+  renderZones(); send('zone:draw-start');
+  toast('Klik di frame untuk menaruh titik (min 3) — tutup dengan klik ring hijau di titik awal');
+}
+function finishDrawing(){
+  if (!drawing || drawing.pts.length < 3) { toast('Minimal 3 titik', true); return; }
+  var z = { id: Date.now(), cam: selCam, name:'Zona baru', type:'intrusion', severity:'warning',
+    pts: drawing.pts.slice(), rate:5, sched:'24/7', snapshot:true, tg:true, active:true };
+  zones.push(z); drawing = null; hoverClose = false; selZone = z.id;
+  $('btnAddZone').disabled = false;
+  renderZones(); send('zone:draw-finish');
+  toast('Polygon tertutup — atur properti di panel kanan, lalu Simpan');
+}
+function cancelDrawing(){
+  if (!drawing) return;
+  drawing = null; hoverClose = false; $('btnAddZone').disabled = false; renderZones();
+}
+$('zoneFrame').addEventListener('click', function(e){
+  if (!drawing) return;
+  var p = frameXY(e);
+  if (nearStart(p)) { finishDrawing(); return; }   /* end-point → start-point */
+  drawing.pts.push(p); hoverClose = false; renderZones();
+});
+$('zoneFrame').addEventListener('mousemove', function(e){
+  if (!drawing) return;
+  var p = frameXY(e);
+  var isClose = nearStart(p);
+  if (isClose !== hoverClose) { hoverClose = isClose; renderZones(); }
+  var prev = document.getElementById('drawPreview');
+  if (prev) prev.remove();
+  var svg = $('polySvg');
+  var all = drawing.pts.concat([p]);
+  if (isClose) {
+    var pts = all.map(function(q){ return q[0] + ',' + q[1]; }).join(' ');
+    svg.insertAdjacentHTML('beforeend',
+      '<polygon id="drawPreview" points="' + pts + '" fill="rgba(66,190,101,.14)" stroke="#42be65" stroke-width="1.4"/>');
+  } else {
+    var pts2 = all.map(function(q){ return q[0] + ',' + q[1]; }).join(' ');
+    svg.insertAdjacentHTML('beforeend',
+      '<polyline id="drawPreview" points="' + pts2 + '" fill="none" stroke="#4589ff" stroke-width="1.2" stroke-dasharray="4 3" opacity=".8"/>');
+  }
+});
+$('zoneFrame').addEventListener('mouseleave', function(){ hoverClose = false; var p = document.getElementById('drawPreview'); if (p) p.remove(); });
+
+function renderZones(){
+  zoneCamOptions();
+  var svg = $('polySvg');
+  Array.prototype.slice.call(svg.children).forEach(function(ch){ if (ch.id !== 'drawPreview') ch.remove(); });
+  document.querySelectorAll('#zoneFrame .handle, #zoneFrame .z-label, #zoneFrame .vtx, #zoneFrame .draw-banner, #zoneFrame .start-handle').forEach(function(e){ e.remove(); });
+  var frame = $('zoneFrame');
+  frame.className = 'frame' + (drawing ? '' : ' editing-done');
+
+  if (drawing) {
+    var b = document.createElement('div'); b.className = 'draw-banner';
+    var n = drawing.pts.length, ok = n >= 3;
+    b.innerHTML = '<span>MODE GAMBAR — titik: <span class="cnt">' + n + '</span>' + (ok ? '' : ' / min 3') +
+      (ok ? ' · <span class="cls">tutup: klik ring hijau di titik awal</span>' : '') +
+      '</span><span style="margin-left:auto"></span><button class="btn sm ghost" onclick="cancelDrawing()">Batal</button>';
+    frame.appendChild(b);
+    drawing.pts.forEach(function(p){
+      var v = document.createElement('div'); v.className = 'vtx';
+      v.style.left = (p[0]/320*100) + '%'; v.style.top = (p[1]/180*100) + '%';
+      frame.appendChild(v);
+    });
+    if (ok) {
+      var s = drawing.pts[0];
+      var sh = document.createElement('div');
+      sh.className = 'start-handle';
+      sh.style.left = (s[0]/320*100) + '%'; sh.style.top = (s[1]/180*100) + '%';
+      sh.addEventListener('click', function(ev){ ev.stopPropagation(); finishDrawing(); });
+      frame.appendChild(sh);
+    }
+  }
+
+  camZones().forEach(function(z){
+    var c = TYPE_COLOR[z.type] || '#8d8d8d';
+    var pts = z.pts.map(function(p){ return p[0] + ',' + p[1]; }).join(' ');
+    svg.insertAdjacentHTML('beforeend',
+      '<polygon data-z="' + z.id + '" points="' + pts + '" fill="' + rgb(c, z.id === selZone ? .22 : .10) + '" stroke="' + c + '" stroke-width="' + (z.id === selZone ? 2 : 1.2) + '"' + (z.active ? '' : ' stroke-dasharray="4 3" opacity=".5"') + ' style="cursor:pointer"/>');
+  });
+
+  camZones().forEach(function(z){
+    var c = TYPE_COLOR[z.type] || '#8d8d8d';
+    if (z.id === selZone && !drawing) {
+      z.pts.forEach(function(p, i){
+        (function(p, i){
+          var h = document.createElement('div');
+          h.className = 'handle'; h.style.left = (p[0]/320*100) + '%'; h.style.top = (p[1]/180*100) + '%';
+          h.addEventListener('pointerdown', function(ev){ startDrag(ev, z, i); });
+          h.addEventListener('contextmenu', function(ev){ ev.preventDefault(); if (z.pts.length > 3) { z.pts.splice(i, 1); renderZones(); } else { toast('Minimal 3 titik', true); } });
+        })(p, i);
+        frame.appendChild(h);
+      });
+    }
+    var lb = document.createElement('div');
+    lb.className = 'z-label' + (z.id === selZone ? ' sel' : '');
+    lb.style.borderColor = c; lb.style.color = c;
+    lb.style.left = (z.pts[0][0]/320*100) + '%';
+    lb.style.top = (Math.max.apply(null, z.pts.map(function(p){ return p[1]; }))/180*100) + '%';
+    lb.textContent = z.name + ' · ' + z.type + (z.type === 'loitering' ? ' ' + z.rate + 's' : '');
+    lb.addEventListener('click', function(){ if (!drawing) { selZone = z.id; renderZones(); } });
+    frame.appendChild(lb);
+  });
+
+  svg.querySelectorAll('polygon').forEach(function(pg){
+    pg.addEventListener('click', function(){ if (!drawing) { selZone = parseInt(pg.dataset.z, 10); renderZones(); } });
+  });
+
+  $('zoneList').innerHTML = camZones().map(function(z){
+    var c = TYPE_COLOR[z.type];
+    return '<div class="zone-item' + (z.id === selZone ? ' sel' : '') + '" onclick="selectZone(' + z.id + ')">' +
+      '<div class="sw" style="background:' + c + '"></div>' + z.name +
+      '<span class="badge">' + z.type.toUpperCase() + '</span>' +
+      '<span class="badge ' + (z.active ? 'green' : '') + '">' + (z.active ? 'AKTIF' : 'NONAKTIF') + '</span></div>';
+  }).join('') || '<div class="kv" style="padding:10px 4px">Belum ada zona — klik "+ Gambar zona".</div>';
+  renderZoneProps();
+}
+function selectZone(id){ if (drawing) return; selZone = id; renderZones(); }
+function startDrag(ev, z, idx){
+  ev.preventDefault();
+  var frame = $('zoneFrame');
+  function move(e){ z.pts[idx] = frameXY(e); renderZones(); }
+  function up(){ window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+}
+function renderZoneProps(){
+  var host = $('zoneProps'), z = zoneById(selZone);
+  if (drawing || !z || z.cam !== selCam) {
+    host.innerHTML = '<div class="prop-empty">' + (drawing ? 'Tutup polygon (klik ring hijau) untuk mengedit properti' : 'Pilih atau gambar zona') + '</div>'; return;
+  }
+  host.innerHTML =
+    '<div style="font-weight:600;margin-bottom:6px">Properti zona</div>' +
+    '<label class="f">NAMA</label><input class="f" id="pName" value="' + z.name.replace(/"/g,'&quot;') + '">' +
+    '<div class="two-col"><div><label class="f">TIPE</label><select class="f" id="pType">' +
+      Object.keys(TYPE_COLOR).map(function(t){ return '<option value="' + t + '"' + (z.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') +
+    '</select></div><div><label class="f">SEVERITY</label><select class="f" id="pSev">' +
+      ['critical','warning','info'].map(function(s){ return '<option' + (z.severity === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
+    '</select></div></div>' +
+    '<label class="f">JADWAL AKTIF</label><select class="f" id="pSched">' +
+      ['24/7','Jam kerja (07:00–17:00)','Malam (17:00–07:00)'].map(function(s){ return '<option' + (z.sched === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
+    '</select>' +
+    '<label class="f">' + (z.type === 'loitering' ? 'DURASI LOITERING (DETIK)' : 'RATE-LIMIT ALERT (MENIT)') + '</label>' +
+    '<input class="f" id="pRate" type="number" value="' + z.rate + '">' +
+    '<div style="margin-top:10px">' +
+      '<div class="switchrow">Snapshot evidence<div class="switch' + (z.snapshot ? ' on' : '') + '" onclick="this.classList.toggle(\'on\');zoneById(selZone).snapshot=this.classList.contains(\'on\')"></div></div>' +
+      '<div class="switchrow">Kirim Telegram<div class="switch' + (z.tg ? ' on' : '') + '" onclick="this.classList.toggle(\'on\');zoneById(selZone).tg=this.classList.contains(\'on\')"></div></div>' +
+      '<div class="switchrow">Zona aktif<div class="switch' + (z.active ? ' on' : '') + '" onclick="this.classList.toggle(\'on\')"></div></div>' +
+    '</div>' +
+    '<div class="row" style="margin-top:14px"><button class="btn primary" onclick="saveZone()">Simpan zona</button>' +
+    '<button class="btn danger" onclick="delZone()">Hapus</button></div>';
+}
+function saveZone(){
+  var z = zoneById(selZone); if (!z) return;
+  z.name = $('pName').value || z.name; z.type = $('pType').value; z.severity = $('pSev').value;
+  z.sched = $('pSched').value; z.rate = parseInt($('pRate').value, 10) || 0;
+  renderZones(); send('zone:save'); toast('Zona tersimpan — config di-push ke vision node');
+}
+function delZone(){ zones = zones.filter(function(x){ return x.id !== selZone; }); selZone = null; renderZones(); toast('Zona dihapus'); }
+
+/* ===== GATE ===== */
+var gates = [ { id:1, cam:1, dir:'entry', snapshot:true, on:true }, { id:2, cam:2, dir:'exit', snapshot:true, on:true } ];
+function renderGates(){
+  $('gateBody').innerHTML = gates.map(function(g){
+    var c = cams.find(function(x){ return x.id === g.cam; });
+    var other = gates.find(function(x){ return x.id !== g.id && x.cam === g.cam && x.on; });
+    var warn = (other && other.dir !== g.dir) ? ' <span class="badge red">KONFLIK</span>' : '';
+    return '<tr><td>' + (c ? c.name : '?') + '</td>' +
+      '<td><select class="mini" onchange="gateById(' + g.id + ').dir=this.value;renderGates()">' +
+        '<option value="entry"' + (g.dir === 'entry' ? ' selected' : '') + '>Entry</option>' +
+        '<option value="exit"' + (g.dir === 'exit' ? ' selected' : '') + '>Exit</option></select>' + warn + '</td>' +
+      '<td><div class="switch' + (g.snapshot ? ' on' : '') + '" onclick="this.classList.toggle(\'on\');gateById(' + g.id + ').snapshot=this.classList.contains(\'on\')"></div></td>' +
+      '<td><div class="switch' + (g.on ? ' on' : '') + '" onclick="this.classList.toggle(\'on\');gateById(' + g.id + ').on=this.classList.contains(\'on\');renderGates()"></div></td>' +
+      '<td style="text-align:right"><button class="btn sm danger" onclick="delGate(' + g.id + ')">Lepas</button></td></tr>';
+  }).join('');
+  var conflict = gates.some(function(g){ return g.on && gates.some(function(o){ return o.id !== g.id && o.cam === g.cam && o.on && o.dir !== g.dir; }); });
+  $('gateErr').textContent = conflict ? 'Validasi: satu kamera hanya boleh satu arah.' : '';
+}
+function gateById(id){ return gates.find(function(g){ return g.id === id; }); }
+function addGate(){
+  var used = gates.map(function(g){ return g.cam; });
+  var free = cams.find(function(c){ return used.indexOf(c.id) < 0 && c.on; });
+  if (!free) { toast('Tidak ada kamera bebas', true); return; }
+  gates.push({ id: Date.now(), cam: free.id, dir:'entry', snapshot:true, on:true });
+  renderGates();
+}
+function delGate(id){ gates = gates.filter(function(g){ return g.id !== id; }); renderGates(); }
+
+/* ===== DETEKSI ===== */
+var detRows = [
+  { cam:3, fps:5, conf:0.40, chips:{ intrusion:true, loitering:true, running:true } },
+  { cam:1, fps:8, conf:0.45, chips:{ intrusion:false, loitering:false, running:false } },
+  { cam:5, fps:0, conf:0,    chips:{ intrusion:false, loitering:false, running:false } }
+];
+function renderDet(){
+  $('detBody').innerHTML = detRows.map(function(r, i){
+    var c = cams.find(function(x){ return x.id === r.cam; });
+    return '<tr><td>' + (c ? c.name : '?') + (r.fps === 0 ? ' <span class="badge">TANPA AI</span>' : '') + '</td>' +
+      '<td><input class="f" type="number" value="' + r.fps + '" style="width:70px" onchange="detRows[' + i + '].fps=parseInt(this.value,10)||0;renderDet()"></td>' +
+      '<td><input class="f" type="number" step="0.05" value="' + r.conf + '" style="width:80px" onchange="detRows[' + i + '].conf=parseFloat(this.value)||0;renderDet()"></td>' +
+      '<td>' + Object.keys(r.chips).map(function(k){
+        return '<span class="chip' + (r.chips[k] ? ' on' : '') + '" onclick="detRows[' + i + '].chips[\'' + k + '\']=!detRows[' + i + '].chips[\'' + k + '\'];renderDet()">' + k + '</span>';
+      }).join('') + '</td>' +
+      '<td style="text-align:right"><button class="btn sm" onclick="toast(\'Override tersimpan\')">Simpan</button></td></tr>';
+  }).join('');
+}
+
+/* ===== NOTIF ===== */
+var chats = [
+  { name:'Security — semua shift', id:'-100120255xxxxx', on:true },
+  { name:'HR — absensi harian', id:'@hr_absensi', on:true }
+];
+function renderChats(){
+  $('chatList').innerHTML = chats.map(function(c, i){
+    return '<div class="chat-item"><div class="switch' + (c.on ? ' on' : '') + '" onclick="chats[' + i + '].on=!chats[' + i + '].on;renderChats()"></div>' +
+      '<div style="flex:1"><b>' + c.name + '</b><div class="kv mono">' + c.id + '</div></div>' +
+      '<button class="btn sm danger" onclick="chats.splice(' + i + ',1);renderChats()">Hapus</button></div>';
+  }).join('');
+}
+function addChat(){
+  var n = $('chatName').value.trim(), i = $('chatId').value.trim();
+  if (!n || !i) { toast('Isi nama dan chat id', true); return; }
+  chats.push({ name:n, id:i, on:true }); $('chatName').value = ''; $('chatId').value = '';
+  renderChats(); toast('Chat target ditambahkan');
+}
+function toggleToken(){
+  var t = $('tgToken');
+  t.type = t.type === 'password' ? 'text' : 'password';
+  t.value = t.type === 'text' ? '123456:ABC-DEF1234gh-Ikl_const' : '123456:ABC-DEF_••••••••';
+}
+function testTelegram(){
+  log('', '→ POST api.telegram.org/bot••••/sendMessage …');
+  setTimeout(function(){ log('ok', '✓ 200 OK — pesan uji terkirim (simulasi)'); }, 900);
+}
+
+/* ===== USER ===== */
+var users = [
+  { name:'admin', role:'admin', created:'2025-01-02' },
+  { name:'security1', role:'viewer', created:'2025-01-05' }
+];
+function renderUsers(){
+  $('userBody').innerHTML = users.map(function(u, i){
+    return '<tr><td><b>' + u.name + '</b></td>' +
+      '<td><span class="badge ' + (u.role === 'admin' ? 'red' : '') + '">' + u.role.toUpperCase() + '</span></td>' +
+      '<td class="kv">' + u.created + '</td>' +
+      '<td style="text-align:right">' + (u.name === 'admin' ? '<span class="kv">akun utama</span>' : '<button class="btn sm danger" onclick="users.splice(' + i + ',1);renderUsers()">Hapus</button>') + '</td></tr>';
+  }).join('');
+}
+function openUserModal(){ $('userModal').classList.add('on'); }
+function saveUser(){
+  var n = $('uName').value.trim(); if (!n) { toast('Isi username', true); return; }
+  users.push({ name:n, role:$('uRole').value, created:'2025-01-15' });
+  renderUsers(); closeModal('userModal'); toast('User dibuat');
+}
+
+renderCams(); zoneCamOptions(); renderZones(); renderGates(); renderDet(); renderChats(); renderUsers();
+</script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<h2>I-Sentinel — Attendance</h2>
+<p class="subtitle">Rekap absensi harian + status telat. Mockup utama: tab harian dengan tabel karyawan. Pertanyaan tampilan lain di bawah.</p>
+
+<style>
+  :root { --border:#393939; --layer:#262626; --ink:#f4f4f4; --ink-mut:#8d8d8d; --ink-sec:#c6c6c6; --primary:#4589ff; --success:#42be65; --warn:#f1c21b; --error:#fa4d56; }
+  .shell-demo { background:#161616; color:#f4f4f4; font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif; border:1px solid #393939; }
+  .cs-page-title { font-size:22px; font-weight:300; }
+  .at-toolbar { display:flex; align-items:center; gap:8px; padding:14px 16px; flex-wrap:wrap; }
+  .at-tabstrip { display:flex; border-bottom:1px solid #393939; padding:0 16px; }
+  .at-tab { font-size:13px; padding:10px 16px; color:#8d8d8d; border-bottom:2px solid transparent; }
+  .at-tab.on { color:#f4f4f4; border-bottom:2px solid #4589ff; font-weight:600; }
+  .at-date { background:#262626; border:1px solid #393939; color:#c6c6c6; font-size:13px; padding:7px 12px; display:flex; gap:10px; align-items:center; }
+  .at-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:#393939; border:1px solid #393939; margin:0 16px; }
+  .at-tile { background:#262626; padding:14px 16px; }
+  .at-tile .k { font-size:11px; color:#8d8d8d; letter-spacing:.32px; }
+  .at-tile .v { font-size:26px; font-weight:300; margin-top:4px; }
+  .at-tile .s { font-size:12px; margin-top:4px; }
+  .at-table { margin:14px 16px 0; border:1px solid #393939; }
+  .at-tr { display:grid; grid-template-columns:2fr 1fr 1fr 1fr .9fr 1.1fr; border-bottom:1px solid #2d2d2d; font-size:13px; align-items:center; }
+  .at-tr.head { background:#262626; font-size:11px; color:#8d8d8d; letter-spacing:.32px; border-bottom:1px solid #393939; }
+  .at-tr:not(.head):hover { background:#1c1c1c; cursor:pointer; }
+  .at-td { padding:10px 14px; min-width:0; }
+  .at-name { display:flex; align-items:center; gap:10px; }
+  .at-ava { width:28px; height:28px; background:#333; color:#c6c6c6; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; flex-shrink:0; }
+  .at-code { font-size:11px; color:#8d8d8d; font-family:'IBM Plex Mono',monospace; }
+  .at-status { font-size:11px; padding:2px 8px; border:1px solid; display:inline-block; }
+  .st-ontime { color:#42be65; border-color:#42be65; }
+  .st-late { color:#f1c21b; border-color:#f1c21b; }
+  .st-absent { color:#fa4d56; border-color:#fa4d56; }
+  .st-progress { color:#8d8d8d; border-color:#393939; }
+  .at-actions { display:flex; gap:8px; margin-left:auto; }
+  .at-btn { font-size:13px; padding:7px 14px; border:1px solid #4589ff; color:#4589ff; background:none; }
+  .at-btn.primary { background:#4589ff; color:#fff; border:none; }
+  .at-detail { margin:14px 16px 0; border:1px solid #393939; background:#1c1c1c; }
+  .at-detail-h { font-size:13px; font-weight:600; padding:12px 16px; border-bottom:1px solid #393939; display:flex; align-items:center; gap:10px; }
+  .at-tl { display:flex; gap:0; padding:16px; align-items:center; }
+  .at-tl .seg { height:10px; }
+  .at-tl .lbls { display:flex; justify-content:space-between; font-size:11px; color:#8d8d8d; padding:0 16px 14px; font-family:'IBM Plex Mono',monospace; }
+  .at-note { font-size:12px; color:#8d8d8d; margin:12px 16px 0; }
+  .mock-note { font-size:12px; color:#8d8d8d; margin-top:12px; }
+</style>
+
+<div class="shell-demo">
+  <div style="padding:16px 16px 0"><div class="cs-page-title">Attendance</div></div>
+
+  <div class="at-tabstrip">
+    <div class="at-tab on">Harian</div>
+    <div class="at-tab">Rentang tanggal</div>
+    <div class="at-tab">Per karyawan</div>
+    <div class="at-actions" style="padding:6px 0">
+      <button class="at-btn">Import CSV</button>
+      <button class="at-btn">Export Excel</button>
+    </div>
+  </div>
+
+  <div class="at-toolbar">
+    <div class="at-date">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8d8d8d" stroke-width="1.2"><rect x="2" y="3" width="12" height="11"/><path d="M2 6.5h12M5 1.5v3M11 1.5v3"/></svg>
+      Rabu, 15 Jan 2025 <span style="color:#8d8d8d">▾</span>
+    </div>
+    <div class="at-date" style="color:#8d8d8d">Semua shift ▾</div>
+  </div>
+
+  <div class="at-summary">
+    <div class="at-tile"><div class="k">HADIR</div><div class="v">64</div><div class="s" style="color:#42be65">58 tepat waktu · 6 telat</div></div>
+    <div class="at-tile"><div class="k">MASIH DI DALAM</div><div class="v">41</div><div class="s" style="color:#8d8d8d">belum exit</div></div>
+    <div class="at-tile"><div class="k">BELUM CHECK-IN</div><div class="v">18</div><div class="s" style="color:#f1c21b">dari 82 terdaftar</div></div>
+    <div class="at-tile"><div class="k">TELAT TERBESAR</div><div class="v">47 mnt</div><div class="s" style="color:#8d8d8d">R. Wijaya · Shift 1</div></div>
+  </div>
+
+  <div class="at-table">
+    <div class="at-tr head">
+      <div class="at-td">KARYAWAN</div><div class="at-td">SHIFT</div><div class="at-td">ENTRY</div><div class="at-td">EXIT</div><div class="at-td">DURASI</div><div class="at-td">STATUS</div>
+    </div>
+    <div class="at-tr">
+      <div class="at-td"><div class="at-name"><div class="at-ava">BS</div><div>Budi Santoso<br><span class="at-code">EMP-0012</span></div></div></div>
+      <div class="at-td">Shift 1 · 07:00</div>
+      <div class="at-td" style="font-family:'IBM Plex Mono',monospace">07:58:41</div>
+      <div class="at-td" style="font-family:'IBM Plex Mono',monospace;color:#8d8d8d">—</div>
+      <div class="at-td" style="color:#8d8d8d">berjalan…</div>
+      <div class="at-td"><span class="at-status st-ontime">TEPAT WAKTU</span></div>
+    </div>
+    <div class="at-tr">
+      <div class="at-td"><div class="at-name"><div class="at-ava">RW</div><div>Rian Wijaya<br><span class="at-code">EMP-0031</span></div></div></div>
+      <div class="at-td">Shift 1 · 07:00</div>
+      <div class="at-td" style="font-family:'IBM Plex Mono',monospace">07:47:02</div>
+      <div class="at-td" style="font-family:'IBM Plex Mono',monospace">12:04:55</div>
+      <div class="at-td">4j 17m</div>
+      <div class="at-td"><span class="at-status st-late">TELAT 47 MNT</span></div>
+    </div>
+    <div class="at-tr">
+      <div class="at-td"><div class="at-name"><div class="at-va at-ava">SD</div><div>Sari Dewi<br><span class="at-code">EMP-0044</span></div></div></div>
+      <div class="at-td">Shift 2 · 15:00</div>
+      <div class="at-td" style="color:#8d8d8d">belum</div>
+      <div class="at-td" style="color:#8d8d8d">—</div>
+      <div class="at-td" style="color:#8d8d8d">—</div>
+      <div class="at-td"><span class="at-status st-progress">MENUNGGU</span></div>
+    </div>
+    <div class="at-tr">
+      <div class="at-td"><div class="at-name"><div class="at-ava">AH</div><div>Agus Hartono<br><span class="at-code">EMP-0019</span></div></div></div>
+      <div class="at-td">Shift 1 · 07:00</div>
+      <div class="at-td" style="color:#8d8d8d">tidak terdeteksi</div>
+      <div class="at-td" style="color:#8d8d8d">—</div>
+      <div class="at-td" style="color:#8d8d8d">—</div>
+      <div class="at-td"><span class="at-status st-absent">TIDAK HADIR</span></div>
+    </div>
+  </div>
+
+  <div class="at-detail">
+    <div class="at-detail-h">Rian Wijaya — 15 Jan 2025 <span class="at-status st-late">TELAT 47 MNT</span></div>
+    <div class="at-tl">
+      <div class="seg" style="flex:0 0 31%;background:#2d3138" title="sebelum jadwal"></div>
+      <div class="seg" style="flex:0 0 3%;background:#f1c21b" title="toleransi"></div>
+      <div class="seg" style="flex:0 0 36%;background:#42be65" title="hadir"></div>
+      <div class="seg" style="flex:0 0 30%;background:#2d3138" title="setelah exit"></div>
+    </div>
+    <div class="lbls"><span>00:00</span><span>07:00 jadwal</span><span>07:47 entry · CAM-01</span><span>12:04 exit · CAM-02</span><span>24:00</span></div>
+    <div class="at-note" style="padding:0 16px 14px">Entry dari face event (match 97%) · exit dari face event · klik baris tabel untuk buka panel ini + snapshot gate.</div>
+  </div>
+</div>
+
+<div class="mock-note">Timeline bawah = posisi entry/exit vs jadwal shift (kuning = toleransi telat) · "masih di dalam" = sudah entry belum exit · TIDAK HADIR = tidak ada event sampai akhir jam kerja.</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>Cara hitung durasi & status "belum exit"?</h3>
+  <div class="options">
+    <div class="option" data-choice="at-exit-required" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content"><h3>Durasi hanya jika ada exit</h3><p>Belum exit → durasi "berjalan…", tidak dihitung. Rekap akurat, tapi kalau orang lupa lewat gate exit, datanya menggantung.</p></div>
+    </div>
+    <div class="option" data-choice="at-exit-auto" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content"><h3>Auto-close di akhir shift</h3><p>Belum exit sampai akhir shift + toleransi → durasi dihitung sampai akhir shift, ditandai "exit diasumsikan". Tidak ada data menggantung.</p></div>
+    </div>
+    <div class="option" data-choice="at-exit-both" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content"><h3>B + admin bisa koreksi manual</h3><p>Auto-close seperti B, plus admin bisa edit entry/exit manual dengan catatan (jejak audit sederhana).</p></div>
+    </div>
+  </div>
+  <p class="mock-note">Klik pilihan + konfirmasi di terminal.</p>
+</div>
