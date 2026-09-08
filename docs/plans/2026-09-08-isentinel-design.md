@@ -128,7 +128,8 @@ Editor UI: klik-titik minimal 3, tutup polygon dengan klik titik awal
 ## 5. Absensi
 
 - Trigger: tracked person masuk zona bertipe `absensi` di kamera gate + wajah
-  dikenali (match ≥ threshold) → attendance_event (entry/exit sesuai arah gate).
+  dikenali (cosine match ≥ 0.40, default InsightFace, tunable per gate) →
+  attendance_event (entry/exit sesuai arah gate).
 - Satu kamera gate = satu arah (validasi DB + UI, mockup menampilkan KONFLIK).
 - Rekap harian (attendance_days): first_entry, last_exit, durasi, status:
   - ontime / late (≥ shift.tolerance_min) / waiting (belum exit, masih dalam
