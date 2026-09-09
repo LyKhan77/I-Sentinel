@@ -1,0 +1,5 @@
+api: { listen: ":1984" }
+rtsp: { listen: ":8554" }
+log: { level: info }
+# streams ditambahkan per kamera:
+#   cam_1: rtsp://user:pass@192.168.1.108/Streaming/Channels/101

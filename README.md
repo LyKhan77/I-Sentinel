@@ -42,6 +42,36 @@ isentinel/
 └── README.md
 ```
 
-## Run Dev
+## Run (dev lokal)
 
-Cara run dev diisi di Task 10 (Fase 0).
+Backend:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+```
+
+Frontend (dev server dengan proxy ke API):  
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Run (server dev)
+
+```bash
+ssh gspe-ai3
+cd /opt/isentinel && git pull
+./deploy/bootstrap.sh
+# isi /opt/isentinel/.env (DATABASE_URL postgres, JWT_SECRET, ADMIN_PASSWORD, CAM_USERNAME/PASSWORD)
+sudo systemctl start isentinel-api
+curl -s localhost:8000/api/v1/health
+```
+
+`bootstrap.sh` membuat venv, install `backend[dev]`, `alembic upgrade head`, menyalin unit systemd ke `/etc/systemd/system/`, lalu daemon-reload + enable (tidak start).
