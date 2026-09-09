@@ -37,3 +37,24 @@ def test_delete_last_admin_blocked(client):
     h = {"Authorization": f"Bearer {tok}"}
     me = client.get("/api/v1/auth/me", headers=h).json()
     assert client.delete(f"/api/v1/users/{me['id']}", headers=h).status_code == 409
+
+def _admin_headers(client):
+    tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
+    return {"Authorization": f"Bearer {tok}"}
+
+def test_patch_password_too_long_rejected(client):
+    h = _admin_headers(client)
+    r = client.post("/api/v1/users", json={"username": "v1", "password": "pw12345", "role": "viewer"}, headers=h)
+    uid = r.json()["id"]
+    r = client.patch(f"/api/v1/users/{uid}", json={"password": "x" * 73}, headers=h)
+    assert r.status_code == 422
+
+def test_patch_role_invalid_rejected(client):
+    h = _admin_headers(client)
+    r = client.post("/api/v1/users", json={"username": "v2", "password": "pw12345", "role": "viewer"}, headers=h)
+    uid = r.json()["id"]
+    assert client.patch(f"/api/v1/users/{uid}", json={"role": "superuser"}, headers=h).status_code == 422
+
+def test_create_user_invalid_role_rejected(client):
+    h = _admin_headers(client)
+    assert client.post("/api/v1/users", json={"username": "v3", "password": "pw12345", "role": "root"}, headers=h).status_code == 422

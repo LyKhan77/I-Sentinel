@@ -25,11 +25,17 @@ def update_user(user_id: int, body: dict, admin: User = Depends(require_admin), 
     user = db.get(User, user_id)
     if not user: raise HTTPException(404, "user not found")
     if "role" in body:
+        if body["role"] not in ("admin", "viewer"):
+            raise HTTPException(422, "role must be 'admin' or 'viewer'")
         if user.role == "admin" and body["role"] != "admin" and _admin_count(db) == 1:
             raise HTTPException(409, "cannot demote last admin")
         user.role = body["role"]
     if "locale" in body: user.locale = body["locale"]
-    if "password" in body: user.password_hash = hash_password(body["password"])
+    if "password" in body:
+        pw = body["password"]
+        if not pw or len(pw.encode()) > 72:
+            raise HTTPException(422, "password must not be empty and max 72 bytes (bcrypt limit)")
+        user.password_hash = hash_password(pw)
     db.commit(); db.refresh(user)
     return user
 

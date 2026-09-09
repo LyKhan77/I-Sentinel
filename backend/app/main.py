@@ -35,12 +35,13 @@ def _bootstrap(db) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # honor dependency_overrides so tests (SQLite) bootstrap against the test DB
-    gen = app.dependency_overrides.get(get_db, get_db)
-    db = next(gen()) if hasattr(gen(), "__next__") else gen()
+    gen = app.dependency_overrides.get(get_db, get_db)()
+    db = next(gen) if hasattr(gen, "__next__") else gen
     try:
         _bootstrap(db)
     finally:
         db.close()
+        if hasattr(gen, "__next__"): gen.close()
     yield
 
 

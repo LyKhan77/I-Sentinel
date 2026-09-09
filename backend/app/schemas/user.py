@@ -29,3 +29,9 @@ class UserIn(BaseModel):
         if not v: raise ValueError("password must not be empty")
         if len(v.encode()) > 72: raise ValueError("password too long (max 72 bytes, bcrypt limit)")
         return v
+
+    @field_validator("role")
+    @classmethod
+    def role_valid(cls, v: str) -> str:
+        if v not in ("admin", "viewer"): raise ValueError("role must be 'admin' or 'viewer'")
+        return v

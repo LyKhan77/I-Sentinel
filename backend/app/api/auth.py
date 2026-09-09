@@ -16,7 +16,7 @@ def _login(user: User, response: Response) -> dict:
     return {"token": token, "user": UserOut.model_validate(user)}
 
 @router.post("/login")
-def login(body: LoginIn, db: Session = Depends(get_db), response: Response = None):
+def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter_by(username=body.username).first()
     # bcrypt raises on >72-byte passwords; 401 (not 422) here — client sent wrong creds
     if not user or len(body.password.encode()) > 72 or not verify_password(body.password, user.password_hash):
