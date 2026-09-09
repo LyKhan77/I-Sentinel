@@ -18,6 +18,7 @@ const SEGMENT_TO_KEY: Record<string, 'nav.dashboard' | 'nav.live' | 'nav.events'
   attendance: 'nav.attendance',
   enrollment: 'nav.enrollment',
   configuration: 'nav.configuration',
+  config: 'nav.configuration',
 }
 
 function Placeholder() {

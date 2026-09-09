@@ -76,6 +76,9 @@ export default function CameraWizard({ onClose, onSaved }: Props) {
         node_id: nodeId === '' ? null : nodeId,
         rtsp_main: probe?.main_path ?? null,
         rtsp_sub: probe?.sub_path ?? null,
+        probe_main: probe?.main ?? null,
+        probe_sub: probe?.sub ?? null,
+        status: probe?.main || probe?.sub ? 'online' : 'offline',
       })
       onSaved()
     } catch (e) {

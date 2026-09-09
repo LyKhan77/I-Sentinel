@@ -16,10 +16,8 @@ export async function apiFetch(path: string, opts: RequestInit = {}): Promise<Re
 }
 
 export async function login(username: string, password: string): Promise<Me> {
-  const res = await fetch(`${BASE}/auth/login`, {
+  const res = await apiFetch('/auth/login', {
     method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   })
   if (!res.ok) throw new Error(res.status === 401 ? 'invalid' : `login failed: ${res.status}`)
@@ -35,6 +33,5 @@ export async function getMe(): Promise<Me | null> {
 }
 
 export async function logout(): Promise<void> {
-  // ponytail: backend belum punya endpoint logout — cookie dihapus sisi klien; tambah server-side revoke saat ada
-  document.cookie = 'isentinel_token=; Max-Age=0; path=/'
+  await apiFetch('/auth/logout', { method: 'POST' })
 }

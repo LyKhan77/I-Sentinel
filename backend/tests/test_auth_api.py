@@ -10,6 +10,7 @@ def client(db, monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "admin_username", "admin")
     monkeypatch.setattr(settings, "admin_password", "boot123")
+    monkeypatch.setattr(settings, "cookie_secure", True)  # httpx tidak replay cookie secure → uji 401 tanpa token valid
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as c:  # context manager memicu startup/bootstrap
         yield c
@@ -37,6 +38,14 @@ def test_delete_last_admin_blocked(client):
     h = {"Authorization": f"Bearer {tok}"}
     me = client.get("/api/v1/auth/me", headers=h).json()
     assert client.delete(f"/api/v1/users/{me['id']}", headers=h).status_code == 409
+
+def test_logout_clears_cookie(client):
+    tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
+    r = client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200 and r.json() == {}
+    assert "isentinel_token=" in r.headers.get("set-cookie", "")
+    assert "Max-Age=0" in r.headers.get("set-cookie", "") or "expires=Thu, 01 Jan 1970" in r.headers.get("set-cookie", "")
+    assert client.get("/api/v1/auth/me").status_code == 401
 
 def _admin_headers(client):
     tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]

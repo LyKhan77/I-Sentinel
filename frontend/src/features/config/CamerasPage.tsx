@@ -77,7 +77,7 @@ export default function CamerasPage() {
   const reprobe = async (cam: Camera) => {
     setProbingId(cam.id)
     try {
-      await probeCamera(cam.host)
+      await probeCamera(cam.host, cam.id)
       await refresh()
     } catch {
       setError(t('cameras.probeError'))

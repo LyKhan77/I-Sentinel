@@ -34,6 +34,8 @@ def _bootstrap(db) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.jwt_secret == "CHANGE_ME" or len(settings.jwt_secret) < 32:
+        logger.warning("JWT secret default/short — set JWT_SECRET in production")
     # honor dependency_overrides so tests (SQLite) bootstrap against the test DB
     gen = app.dependency_overrides.get(get_db, get_db)()
     db = next(gen) if hasattr(gen, "__next__") else gen

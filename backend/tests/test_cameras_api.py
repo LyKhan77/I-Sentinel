@@ -9,6 +9,7 @@ def client(db, monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "admin_username", "admin")
     monkeypatch.setattr(settings, "admin_password", "boot123")
+    monkeypatch.setattr(settings, "cookie_secure", True)  # httpx tidak replay cookie secure → uji 401 tanpa token valid
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as c:  # context manager memicu startup/bootstrap
         yield c
@@ -59,3 +60,33 @@ def test_nodes_list_seeded(client):
     assert r.status_code == 200
     names = [(n["name"], n["type"], n["status"]) for n in r.json()]
     assert ("server", "server", "unknown") in names
+
+def test_probe_persists_result_with_camera_id(client, monkeypatch):
+    from unittest.mock import patch
+    h = _admin_headers(client)
+    cam = client.post("/api/v1/cameras", json={"name": "cam1", "host": "1.2.3.4"}, headers=h).json()
+    fake = {"main": {"res": "2560x1440", "fps": 25.0, "codec": "h264"}, "sub": None,
+            "main_path": "rtsp://x/main", "sub_path": None}
+    with patch("app.api.probe.probe_camera", return_value=fake):
+        r = client.post("/api/v1/cameras/probe", json={"host": "1.2.3.4", "camera_id": cam["id"]}, headers=h)
+    assert r.status_code == 200 and r.json() == fake
+    listed = [c for c in client.get("/api/v1/cameras", headers=h).json() if c["id"] == cam["id"]][0]
+    assert listed["probe_main"] == fake["main"] and listed["probe_sub"] is None
+    assert listed["status"] == "online"
+
+    fake_off = {"main": None, "sub": None, "main_path": None, "sub_path": None}
+    with patch("app.api.probe.probe_camera", return_value=fake_off):
+        client.post("/api/v1/cameras/probe", json={"host": "1.2.3.4", "camera_id": cam["id"]}, headers=h)
+    listed = [c for c in client.get("/api/v1/cameras", headers=h).json() if c["id"] == cam["id"]][0]
+    assert listed["status"] == "offline"
+
+def test_probe_without_camera_id_does_not_persist(client, monkeypatch):
+    from unittest.mock import patch
+    h = _admin_headers(client)
+    client.post("/api/v1/cameras", json={"name": "cam1", "host": "1.2.3.4"}, headers=h)
+    fake = {"main": {"res": "640x360", "fps": 15.0, "codec": "h264"}, "sub": None,
+            "main_path": "rtsp://x/main", "sub_path": None}
+    with patch("app.api.probe.probe_camera", return_value=fake):
+        assert client.post("/api/v1/cameras/probe", json={"host": "1.2.3.4"}, headers=h).status_code == 200
+    listed = client.get("/api/v1/cameras", headers=h).json()[0]
+    assert listed["probe_main"] is None and listed["status"] == "unknown"

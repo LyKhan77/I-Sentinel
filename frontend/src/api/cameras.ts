@@ -32,6 +32,9 @@ export type CameraPayload = {
   rtsp_main?: string | null
   rtsp_sub?: string | null
   node_id?: number | null
+  probe_main?: ProbeStream | null
+  probe_sub?: ProbeStream | null
+  status?: string
 }
 
 async function expectOk(res: Response, what: string) {
@@ -60,8 +63,11 @@ export async function deleteCamera(id: number): Promise<void> {
   if (!res.ok) throw new Error(`delete camera failed: ${res.status}`)
 }
 
-export async function probeCamera(host: string): Promise<ProbeResult> {
-  const res = await apiFetch('/cameras/probe', { method: 'POST', body: JSON.stringify({ host }) })
+export async function probeCamera(host: string, cameraId?: number): Promise<ProbeResult> {
+  const res = await apiFetch('/cameras/probe', {
+    method: 'POST',
+    body: JSON.stringify(cameraId != null ? { host, camera_id: cameraId } : { host }),
+  })
   return expectOk(res, 'probe')
 }
 

@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://isentinel:isentinel@localhost/isentinel"
     jwt_secret: str = "CHANGE_ME"
+    cookie_secure: bool = False  # true di belakang reverse proxy HTTPS; false agar LAN HTTP bisa login
     jwt_algorithm: str = "HS256"
     access_token_expire_min: int = 480
     node_api_key: str = "CHANGE_ME"
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
     retention_days: int = 30
     admin_username: str = "admin"
     admin_password: str = ""   # wajib diisi di .env server; bootstrap gagal jelas bila kosong
+    # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

@@ -47,7 +47,7 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
     items: [
       { to: '/attendance', key: 'nav.attendance', icon: <UserAvatar size={16} /> },
       { to: '/enrollment', key: 'nav.enrollment', icon: <ScanAlt size={16} /> },
-      { to: '/configuration', key: 'nav.configuration', icon: <Settings size={16} />, adminOnly: true },
+      { to: '/config/cameras', key: 'nav.configuration', icon: <Settings size={16} />, adminOnly: true },
     ],
   },
 ]

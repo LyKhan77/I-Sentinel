@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.security import verify_password, create_access_token
 from app.api.deps import COOKIE, get_current_user
@@ -12,7 +13,7 @@ def _login(user: User, response: Response) -> dict:
     token = create_access_token(user.id, user.role)
     # secure=True: browser only sends over HTTPS; also keeps httpx test client from
     # auto-replaying the cookie on unauthenticated requests
-    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", secure=True)
+    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure)
     return {"token": token, "user": UserOut.model_validate(user)}
 
 @router.post("/login")
@@ -22,6 +23,11 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     if not user or len(body.password.encode()) > 72 or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "invalid credentials")
     return _login(user, response)
+
+@router.post("/logout")
+def logout(response: Response, user: User = Depends(get_current_user)):
+    response.delete_cookie(COOKIE)
+    return {}
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):

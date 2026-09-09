@@ -28,3 +28,6 @@ class CameraIn(BaseModel):
     rtsp_main: str | None = None
     rtsp_sub: str | None = None
     node_id: int | None = None
+    probe_main: dict | None = None
+    probe_sub: dict | None = None
+    status: str | None = None
