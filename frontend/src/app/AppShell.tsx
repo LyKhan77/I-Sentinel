@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Header,
   HeaderContainer,
@@ -54,6 +54,7 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
 
 export default function AppShell() {
   const { t, locale, setLocale } = useT()
+  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
   const [me, setMe] = useState<Me | null>(null)
   const location = useLocation()
@@ -95,7 +96,13 @@ export default function AppShell() {
               >
                 {locale === 'id' ? 'ID' : 'EN'}
               </Button>
-              <HeaderGlobalAction aria-label={t('login.logout')} onClick={() => void logout()}>
+              <HeaderGlobalAction
+                aria-label={t('login.logout')}
+                onClick={async () => {
+                  await logout()
+                  navigate('/login')
+                }}
+              >
                 <ChevronDown size={20} />
               </HeaderGlobalAction>
             </HeaderGlobalBar>

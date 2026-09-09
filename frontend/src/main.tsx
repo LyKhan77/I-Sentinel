@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, Navigate, Outlet, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } from 'react-router-dom'
 import '@carbon/react/index.scss'
 import './app/theme.scss'
 import AppShell from './app/AppShell'
@@ -9,8 +9,20 @@ import { I18nProvider, useT } from './app/i18n'
 import { getMe } from './api/client'
 import type { Me } from './api/client'
 
-function Placeholder({ titleKey }: { titleKey: 'nav.dashboard' }) {
+// ponytail: segmen pertama path → label nav; route placeholder nyata ditambah saat fiturnya ada
+const SEGMENT_TO_KEY: Record<string, 'nav.dashboard' | 'nav.live' | 'nav.events' | 'nav.attendance' | 'nav.enrollment' | 'nav.configuration'> = {
+  dashboard: 'nav.dashboard',
+  live: 'nav.live',
+  events: 'nav.events',
+  attendance: 'nav.attendance',
+  enrollment: 'nav.enrollment',
+  configuration: 'nav.configuration',
+}
+
+function Placeholder() {
   const { t } = useT()
+  const segment = useLocation().pathname.split('/').filter(Boolean)[0]
+  const titleKey = (segment && SEGMENT_TO_KEY[segment]) || 'nav.dashboard'
   return <h1 style={{ padding: 32, fontWeight: 300 }}>{t(titleKey)}</h1>
 }
 
@@ -43,8 +55,8 @@ const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
-          { path: 'dashboard', element: <Placeholder titleKey="nav.dashboard" /> },
-          { path: '*', element: <Placeholder titleKey="nav.dashboard" /> },
+          { path: 'dashboard', element: <Placeholder /> },
+          { path: '*', element: <Placeholder /> },
         ],
       },
     ],
