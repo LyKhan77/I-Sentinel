@@ -12,7 +12,7 @@ echo "==> Install backend[dev]"
 pip install -e "backend[dev]"
 
 echo "==> Migrasi database"
-alembic upgrade head
+( cd backend && alembic upgrade head )
 
 echo "==> Salin unit systemd"
 cp deploy/systemd/*.service /etc/systemd/system/
