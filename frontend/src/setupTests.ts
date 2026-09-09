@@ -13,6 +13,15 @@ window.matchMedia = window.matchMedia || ((query: string) => ({
   dispatchEvent: () => false,
 }))
 
+// jsdom tidak punya ResizeObserver; Carbon DataTable/Modal memakainya
+window.ResizeObserver =
+  window.ResizeObserver ||
+  (class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver)
+
 // stub fetch: /auth/me → admin; test login tidak submit, jadi tidak menyentuh fetch
 vi.stubGlobal(
   'fetch',

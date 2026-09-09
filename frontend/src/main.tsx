@@ -5,6 +5,7 @@ import '@carbon/react/index.scss'
 import './app/theme.scss'
 import AppShell from './app/AppShell'
 import LoginPage from './features/auth/LoginPage'
+import CamerasPage from './features/config/CamerasPage'
 import { I18nProvider, useT } from './app/i18n'
 import { getMe } from './api/client'
 import type { Me } from './api/client'
@@ -56,6 +57,7 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard', element: <Placeholder /> },
+          { path: 'config/cameras', element: <CamerasPage /> },
           { path: '*', element: <Placeholder /> },
         ],
       },
