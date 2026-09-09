@@ -48,6 +48,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="I-Sentinel API", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(users_router)
+from app.api.nodes import router as nodes_router
+from app.api.cameras import router as cameras_router
+app.include_router(nodes_router)
+app.include_router(cameras_router)
 
 
 @app.get("/api/v1/health")
