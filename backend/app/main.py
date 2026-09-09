@@ -50,8 +50,10 @@ app.include_router(auth_router)
 app.include_router(users_router)
 from app.api.nodes import router as nodes_router
 from app.api.cameras import router as cameras_router
+from app.api.probe import router as probe_router
 app.include_router(nodes_router)
 app.include_router(cameras_router)
+app.include_router(probe_router)
 
 
 @app.get("/api/v1/health")
