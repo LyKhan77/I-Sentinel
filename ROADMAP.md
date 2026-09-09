@@ -8,7 +8,7 @@
 
 | Fase | Nama | Status | Selesai | Bukti utama | Commit |
 |---|---|---|---|---|---|
-| 0 | Skeleton (auth, kamera+probe, UI shell) | [~] berjalan | — | — | — |
+| 0 | Skeleton (auth, kamera+probe, UI shell) | [~] code done — bring-up server pending | 2026-09-08 | 28 pytest + 5 vitest + build hijau; 15 commit `feat/fase-0-skeleton` | 4d7bd05..8b7ebf4 |
 | 1 | Vision inti (deteksi+tracking, live view) | [ ] | — | — | — |
 | 2 | Zona + events + clips + web inbox | [ ] | — | — | — |
 | 3 | Loitering + running + Telegram + rate-limit | [ ] | — | — | — |
@@ -27,9 +27,18 @@ Plan: `docs/plans/01-fase-0-skeleton.md`
 - [ ] `vitest run` + `npm run build` hijau
 - [ ] Bring-up di gspe-ai3: `/api/v1/health` ok, login dari browser sukses, alembic idempotent
 
-**Bukti:** (diisi saat selesai — output command, angka, tanggal)
+**Bukti (code, 2026-09-08):**
+- [x] Login + bootstrap admin jalan — `pytest backend/tests -q` → **28 passed** (auth 8, probe 4, cameras 7, models 2, config 1, security 3 + turunannya)
+- [x] Wizard kamera + probe MAIN/SUB → tersimpan + persist hasil probe — vitest **5 passed** + `npm run build` hijau
+- [x] Final review internal: 5 temuan (logout endpoint, persist probe, nav route, cookie_secure, jwt guard) — diperbaiki commit `8b7ebf4`, re-review ALL ADDRESSED
+- [ ] Bring-up gspe-ai3: `git pull` → `bootstrap.sh` → `/api/v1/health` ok, login browser, probe kamera nyata, alembic idempotent — **menunggu akses SSH/kredensial dari user**
 
-**Catatan keputusan/temuan fase ini:** —
+**Catatan keputusan/temuan fase ini:**
+- bcrypt 5.x dipakai langsung (passlib 1.7.4 rusak dgn bcrypt 5) — hash $2b$ standar, interchangeable
+- Kredensial kamera tidak di DB: DB simpan path RTSP saja, user/pass dari env saat runtime
+- `COOKIE_SECURE` default false (LAN HTTP); set true di belakang reverse proxy HTTPS
+- SDD ruling: duplikat nama kamera divalidasi API-level (409), bukan constraint DB (fase 0)
+- Known gap tercatat: probe tanpa ONVIF fallback (path vendor umum saja) — evaluasi ulang di Fase 1 dengan kamera nyata
 
 ---
 
