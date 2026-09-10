@@ -46,6 +46,15 @@ def test_ingest_created_then_duplicate(client):
     r2 = client.post("/internal/nodes/1/events", json=body, headers=_ingest_headers())
     assert r2.status_code == 200 and r2.json()["status"] == "duplicate"
 
+def test_ingest_dedup_key_collision_returns_existing_id(client):
+    dedup = "node1-cam1-2024"
+    r1 = client.post("/internal/nodes/1/events", json=_payload(dedup_key=dedup), headers=_ingest_headers())
+    assert r1.status_code == 200 and r1.json()["status"] == "created"
+    id_a = r1.json()["id"]
+    r2 = client.post("/internal/nodes/1/events", json=_payload(dedup_key=dedup), headers=_ingest_headers())
+    assert r2.status_code == 200 and r2.json()["status"] == "duplicate"
+    assert r2.json()["id"] == id_a
+
 def test_ingest_validates_uuid(client):
     r = client.post("/internal/nodes/1/events", json=_payload(event_id="not-a-uuid"), headers=_ingest_headers())
     assert r.status_code == 422

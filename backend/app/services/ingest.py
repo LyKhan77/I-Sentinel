@@ -26,4 +26,8 @@ def ingest_event(db, data: dict) -> tuple[str, Event | None]:
     except IntegrityError:
         db.rollback()
         existing = db.query(Event).filter(Event.event_id == ev.event_id).first()
+        if existing is None:
+            existing = db.query(Event).filter(Event.dedup_key == ev.dedup_key).first()
+        if existing is None:
+            raise
         return "duplicate", existing
