@@ -1,4 +1,5 @@
-from datetime import datetime, date, time
+import logging
+from datetime import datetime, date, time, timezone
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import func
 from app.core.db import get_db
@@ -6,12 +7,14 @@ from app.api.deps import get_current_user
 from app.core.security import decode_token
 from app.core.config import settings
 from app.models.event import Event
-from app.models.node import Node
+from app.models.node import Node, mark_stale_nodes
 from app.schemas.event import EventIn, EventOut
 from app.services.ingest import ingest_event, ALLOWED_TYPES, ALLOWED_SEVERITY
 from app.ws.hub import hub
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 @router.post("/internal/nodes/{node_id}/events")
 async def ingest(node_id: int, body: EventIn, authorization: str = Header(""), db=Depends(get_db)):
@@ -31,6 +34,25 @@ async def ingest(node_id: int, body: EventIn, authorization: str = Header(""), d
             db.commit()
         await hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json"))
     return {"status": status, "id": ev.id}
+
+@router.post("/internal/nodes/{node_id}/heartbeat")
+async def heartbeat(node_id: int, authorization: str = Header(""), db=Depends(get_db)):
+    if authorization != f"Bearer {settings.node_api_key}":
+        raise HTTPException(401, "invalid node api key")
+    node = db.get(Node, node_id)
+    if not node:
+        raise HTTPException(404, "node not found")
+    node.status = "online"
+    node.last_seen = datetime.now(timezone.utc)
+    db.commit()
+    logger.debug("heartbeat from node %s", node_id)  # body ignored: dashboard only needs status+last_seen
+    return {"status": "ok", "node_id": node_id, "seen": True}
+
+@router.post("/internal/maintenance/mark-stale")
+def mark_stale(authorization: str = Header(""), db=Depends(get_db)):
+    if authorization != f"Bearer {settings.node_api_key}":
+        raise HTTPException(401, "invalid node api key")
+    return {"status": "ok", "marked": mark_stale_nodes(db)}
 
 @router.get("/api/v1/events", response_model=list[EventOut])
 def list_events(
