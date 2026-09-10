@@ -12,6 +12,7 @@ dependencies = [
   "passlib[bcrypt]>=1.7",
   "pydantic-settings>=2.4",
   "python-multipart>=0.0.9",
+  "paho-mqtt>=2.1",
 ]
 
 [project.optional-dependencies]
