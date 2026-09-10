@@ -2,11 +2,14 @@
 name = "isentinel-vision"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["numpy>=1.26", "paho-mqtt>=2.1"]
+dependencies = ["numpy>=1.26", "paho-mqtt>=2.1", "opencv-python-headless>=4.9"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 gpu = ["ultralytics>=8.3", "onnxruntime-gpu>=1.19"]
+
+[tool.setuptools]
+packages = ["vision", "vision.pipeline"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
