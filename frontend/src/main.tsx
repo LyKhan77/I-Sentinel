@@ -6,6 +6,9 @@ import './app/theme.scss'
 import AppShell from './app/AppShell'
 import LoginPage from './features/auth/LoginPage'
 import CamerasPage from './features/config/CamerasPage'
+import DashboardPage from './features/dashboard/DashboardPage'
+import LiveViewPage from './features/live/LiveViewPage'
+import EventsPage from './features/events/EventsPage'
 import { I18nProvider, useT } from './app/i18n'
 import { getMe } from './api/client'
 import type { Me } from './api/client'
@@ -57,7 +60,9 @@ const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
-          { path: 'dashboard', element: <Placeholder /> },
+          { path: 'dashboard', element: <DashboardPage /> },
+          { path: 'live', element: <LiveViewPage /> },
+          { path: 'events', element: <EventsPage /> },
           { path: 'config/cameras', element: <CamerasPage /> },
           { path: '*', element: <Placeholder /> },
         ],
