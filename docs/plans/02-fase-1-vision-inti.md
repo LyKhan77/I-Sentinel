@@ -13,7 +13,7 @@
 1. **go2rtc integration** — backend menulis config stream per kamera (sub+main) dari DB; API `/cameras/{id}/live` → URL WebRTC/MSE untuk frontend.
 2. **vision-node runtime** (`vision/`):
    - `pipeline/source.py` — ambil frame dari go2rtc RTSP (sub), decode, frame-skip ke AI fps per kamera.
-   - `pipeline/detector.py` — YOLO11s (Ultralytics, TensorRT FP16 export) person-only.
+   - `pipeline/detector.py` — **YOLO26s (Ultralytics) person-only, TensorRT FP16, head one-to-one `nms=False`** (NMS-free end-to-end, latensi deterministik; lihat spec §2.7). Benchmark task membandingkan 26n/26s e2e-vs-default @ 640/960px sebelum final.
    - `pipeline/tracker.py` — ByteTrack; tracks: id, bbox, centroid, umur, kecepatan.
    - `transport/mqtt.py` + `transport/queue.py` — publish event QoS1 + disk queue store-and-forward; heartbeat 10 s; LWT.
    - `node.py` — multi-kamera per proses (thread per kamera, model share).

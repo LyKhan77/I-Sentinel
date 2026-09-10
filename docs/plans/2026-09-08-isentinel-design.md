@@ -65,6 +65,16 @@ Keputusan kunci:
    emit); setiap fitur visi = satu analyzer (kelas dengan interface: frame+tracks
    masuk, event keluar). Analyzer baru (fall, PPE) = tambah modul + daftar di
    registry; core tidak diubah. Registry sederhana, tanpa plugin loader eksotis.
+7. **Detektor = YOLO26s (Ultralytics, AGPL-3.0), TensorRT FP16, head one-to-one
+   `nms=False`** (end-to-end NMS-free, output fixed (N, 300, 6)): akurasi +1.6 mAP
+   atas YOLO11s pada params sama, latensi deterministik saat scene padat orang
+   (penting untuk capacity 30+ kamera), export TensorRT tanpa plugin NMS, head
+   ramping tanpa DFL (lebih hemat di Jetson). Dual-head default (dengan NMS)
+   dipakai hanya jika benchmark e2e menunjukkan kekurangan recall person kecil.
+   Pemilihan final tetap divalidasi benchmark task di Fase 1 (26n vs 26s, e2e vs
+   default, 640 vs 960px) pada kamera nyata; detektor config-driven sehingga
+   ganti model murah. Alternatif Apache-2.0 (YOLOX/RT-DETR/RF-DETR) hanya
+   dievaluasi bila produk nanti dijual (lisensi AGPL tidak cocok untuk resale).
 
 ### Skala & performa
 - Server 4090: 30–40 substream × 5 FPS ≈ 150–200 inferensi/s — YOLO11s TensorRT

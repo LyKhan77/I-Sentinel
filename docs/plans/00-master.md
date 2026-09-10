@@ -9,7 +9,7 @@
 clip/snapshot, alert Telegram, UI Carbon dark) untuk 30+ kamera, server GPU + edge Jetson.
 
 **Architecture:** Lihat spec `docs/plans/2026-09-08-isentinel-design.md` §2 — go2rtc
-gerbang RTSP tunggal; vision-node (custom Python: YOLO11s TensorRT FP16 + ByteTrack +
+gerbang RTSP tunggal; vision-node (custom Python: YOLO26s TensorRT FP16 nms=False + ByteTrack +
 analyzer modular); event via MQTT QoS1 (Mosquitto); FastAPI + PostgreSQL + disk media;
 React + TS + @carbon/react (Gray-100 dark, bilingual, tanpa emoji).
 
@@ -157,8 +157,8 @@ RETENTION_DAYS=30
 
 | File | Isi | Status |
 |---|---|---|
-| `01-fase-0-skeleton.md` | Monorepo + backend skeleton + auth + kamera CRUD/probe + frontend shell/login/kamera + deploy configs | **PLAN DETAIL SIAP** |
-| `02-fase-1-vision-inti.md` | Pipeline deteksi+tracking, MQTT event, live view, dashboard tile | brief |
+| `01-fase-0-skeleton.md` | Monorepo + backend skeleton + auth + kamera CRUD/probe + frontend shell/login/kamera + deploy configs | **DONE — merged main a8a08b3** |
+| `02-fase-1-vision-inti.md` | Pipeline deteksi+tracking (YOLO26s nms=False), MQTT event, live view, dashboard tile | **PLAN DETAIL SIAP** |
 | `03-fase-2-zona-events.md` | Zona + editor polygon, intrusion, clips/snapshots, web inbox | brief |
 | `04-fase-3-analyzers-alerting.md` | Loitering, running, Telegram + rate-limit | brief |
 | `05-fase-4-absensi.md` | Enrollment, face match, gate entry/exit, shift/telat, export/import | brief |
