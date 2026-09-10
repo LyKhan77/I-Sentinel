@@ -60,3 +60,6 @@ app.include_router(probe_router)
 
 @app.get("/api/v1/health")
 def health(): return {"status": "ok"}
+from app.api.events import router as events_router
+from app.models import event as _e  # noqa: F401 — register table
+app.include_router(events_router)
