@@ -92,8 +92,8 @@ def test_sync_camera_names(monkeypatch):
     calls.clear()
     go2rtc.sync_camera(cam, delete=True)
     assert all(m == "DELETE" for m, _ in calls)
-    assert any("name=cam_7" in u and "name=cam_7_main" not in u for _, u in calls)
-    assert any("name=cam_7_main" in u for _, u in calls)
+    assert any("src=cam_7" in u and "src=cam_7_main" not in u for _, u in calls)
+    assert any("src=cam_7_main" in u for _, u in calls)
 
 def test_live_endpoint_shape_and_404(client, monkeypatch):
     h = _admin_headers(client)

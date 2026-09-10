@@ -27,7 +27,7 @@ def add_stream(name: str, src: str) -> bool:
 def remove_stream(name: str) -> bool:
     try:
         with _client() as c:
-            r = c.delete("/api/streams", params={"name": name})
+            r = c.delete("/api/streams", params={"src": name})
         if r.is_success:
             return True
         logger.warning("go2rtc remove_stream %s -> HTTP %s", name, r.status_code)
