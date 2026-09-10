@@ -6,6 +6,10 @@ from app.api.deps import get_current_user, require_admin
 from app.models.camera import Camera
 from app.models.node import Node
 from app.schemas.camera import CameraOut, CameraIn
+from app.services.go2rtc import sync_camera, remove_stream
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"])
 
@@ -35,6 +39,9 @@ def create_camera(body: CameraIn, admin=Depends(require_admin), db: Session = De
         raise HTTPException(409, "camera name already exists on this node")
     cam = Camera(**body.model_dump())
     db.add(cam); db.commit(); db.refresh(cam)
+    if cam.enabled:
+        try: sync_camera(cam)
+        except Exception: logger.warning("go2rtc sync after create failed", exc_info=True)
     return cam
 
 @router.get("", response_model=list[CameraOut])
@@ -59,6 +66,10 @@ def update_camera(camera_id: int, body: CameraPatch, admin=Depends(require_admin
     for k, v in data.items():
         setattr(cam, k, v)
     db.commit(); db.refresh(cam)
+    try:
+        if cam.enabled: sync_camera(cam)
+        else: sync_camera(cam, delete=True)
+    except Exception: logger.warning("go2rtc sync after update failed", exc_info=True)
     return cam
 
 @router.delete("/{camera_id}")
@@ -66,4 +77,7 @@ def delete_camera(camera_id: int, admin=Depends(require_admin), db: Session = De
     cam = db.get(Camera, camera_id)
     if not cam: raise HTTPException(404, "camera not found")
     db.delete(cam); db.commit()
+    try:
+        remove_stream(f"cam_{camera_id}"); remove_stream(f"cam_{camera_id}_main")
+    except Exception: logger.warning("go2rtc sync after delete failed", exc_info=True)
     return {"ok": True}
