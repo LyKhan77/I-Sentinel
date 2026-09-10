@@ -50,6 +50,13 @@ def probe_url(url, timeout=6.0):
     return {"res": f"{s['width']}x{s['height']}", "fps": fps, "codec": s["codec_name"]}
 
 
+def _path_only(url):
+    """Strip scheme://userinfo@host — return path (and query) only (zero-secret)."""
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    return parts.path + (f"?{parts.query}" if parts.query else "")
+
+
 def probe_camera(host):
     """Try main candidates then sub candidates until first hit each."""
     cands = build_rtsp_candidates(host)
@@ -58,11 +65,11 @@ def probe_camera(host):
     for url in cands["main"]:
         main = probe_url(url)
         if main:
-            main_path = url
+            main_path = _path_only(url)
             break
     for url in cands["sub"]:
         sub = probe_url(url)
         if sub:
-            sub_path = url
+            sub_path = _path_only(url)
             break
     return {"main": main, "sub": sub, "main_path": main_path, "sub_path": sub_path}

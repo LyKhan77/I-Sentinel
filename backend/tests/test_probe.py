@@ -28,3 +28,23 @@ def test_probe_camera_stops_at_first_hit():
                          {"res": "640x360", "fps": 15.0, "codec": "h264"}]
         r = probe_camera("1.2.3.4")
     assert r["main"]["res"] == "2560x1440" and r["sub"]["res"] == "640x360"
+
+def test_probe_camera_paths_credential_free():
+    with patch("app.services.probe.probe_url") as p:
+        p.side_effect = [{"res": "2560x1440", "fps": 25.0, "codec": "h264"}] * 10
+        r = probe_camera("1.2.3.4")
+    assert r["main_path"] == "/Streaming/Channels/101"
+    assert r["sub_path"] == "/Streaming/Channels/102"
+    for path in (r["main_path"], r["sub_path"]):
+        assert "@" not in path and "://" not in path
+
+
+def test_probe_camera_path_dahua_keeps_query():
+    with patch("app.services.probe.build_rtsp_candidates") as bc, patch("app.services.probe.probe_url") as p:
+        cands = build_rtsp_candidates("1.2.3.4")
+        cands["main"] = ["rtsp://admin:secret@1.2.3.4/cam/realmonitor?channel=1&subtype=0"]
+        cands["sub"] = cands["main"]
+        bc.return_value = cands
+        p.return_value = {"res": "1x1", "fps": 1.0, "codec": "h264"}
+        r = probe_camera("1.2.3.4")
+    assert r["main_path"] == "/cam/realmonitor?channel=1&subtype=0"
