@@ -9,7 +9,10 @@ dev = ["pytest>=8"]
 gpu = ["ultralytics>=8.3", "onnxruntime-gpu>=1.19"]
 
 [tool.setuptools]
-packages = ["vision", "vision.pipeline"]
+packages = ["vision", "vision.pipeline", "vision.transport"]
+
+[project.scripts]
+isentinel-vision = "vision.node:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
