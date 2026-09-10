@@ -1,0 +1,12 @@
+[Unit]
+Description=I-Sentinel Recorder (stub — diisi fase berikutnya)
+After=network.target
+
+[Service]
+User=isentinel
+# ponytail: stub Fase 0 — ganti ExecStart saat recorder diimplementasikan
+ExecStart=/bin/sleep infinity
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[project]
+name = "isentinel-vision"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "paho-mqtt>=2.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+gpu = ["ultralytics>=8.3", "onnxruntime-gpu>=1.19"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["gpu: requires CUDA/RTSP (run on dev server)"]

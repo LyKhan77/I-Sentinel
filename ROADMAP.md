@@ -8,7 +8,7 @@
 
 | Fase | Nama | Status | Selesai | Bukti utama | Commit |
 |---|---|---|---|---|---|
-| 0 | Skeleton (auth, kamera+probe, UI shell) | [~] berjalan | — | — | — |
+| 0 | Skeleton (auth, kamera+probe, UI shell) | [x] selesai | 2026-09-09 | 30 pytest + 5 vitest + build hijau; probe kamera nyata CAM-TEST online; health/login/alembic-idempotent terverifikasi di server; 17 commit `feat/fase-0-skeleton` | 4d7bd05..cbcec9b |
 | 1 | Vision inti (deteksi+tracking, live view) | [ ] | — | — | — |
 | 2 | Zona + events + clips + web inbox | [ ] | — | — | — |
 | 3 | Loitering + running + Telegram + rate-limit | [ ] | — | — | — |
@@ -27,9 +27,20 @@ Plan: `docs/plans/01-fase-0-skeleton.md`
 - [ ] `vitest run` + `npm run build` hijau
 - [ ] Bring-up di gspe-ai3: `/api/v1/health` ok, login dari browser sukses, alembic idempotent
 
-**Bukti:** (diisi saat selesai — output command, angka, tanggal)
+**Bukti (server gspe-ai3, 2026-09-09):**
+- [x] Login + bootstrap admin jalan — `pytest backend/tests -q` → **30 passed** (di Windows & server)
+- [x] Tambah kamera via wizard → probe menemukan MAIN & SUB → tersimpan & tampil — kamera nyata 192.168.0.64: MAIN 1920×1080·25fps·h264, SUB 640×480·25fps·h264; kamera `CAM-TEST · Dev` status online di DB
+- [x] `health` → `{"status":"ok"}` (systemd `isentinel-api` port 8000 + `isentinel-web` port 5173, proxy OK)
+- [x] Login browser + API OK; `/auth/me` tanpa auth = 401
+- [x] `alembic upgrade head` idempotent (2×)
+- [x] Zero-secret diverifikasi: probe mengembalikan path tanpa kredensial (fix `cbcec9b`, 2 test baru); kredensial kamera hanya di `.env` server (chmod 600)
 
-**Catatan keputusan/temuan fase ini:** —
+**Catatan keputusan/temuan fase ini:**
+- bcrypt 5.x dipakai langsung (passlib 1.7.4 rusak dgn bcrypt 5) — hash $2b$ standar, interchangeable
+- Kredensial kamera tidak di DB: DB simpan path RTSP saja, user/pass dari env saat runtime
+- `COOKIE_SECURE` default false (LAN HTTP); set true di belakang reverse proxy HTTPS
+- SDD ruling: duplikat nama kamera divalidasi API-level (409), bukan constraint DB (fase 0)
+- Known gap tercatat: probe tanpa ONVIF fallback (path vendor umum saja) — evaluasi ulang di Fase 1 dengan kamera nyata
 
 ---
 
