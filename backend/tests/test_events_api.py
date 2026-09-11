@@ -114,3 +114,14 @@ def test_ws_receives_ingest_broadcast(client):
         client.post("/internal/nodes/1/events", json=_payload(), headers=_ingest_headers())
         msg = ws.receive_json()
         assert msg["type"] == "intrusion" and msg["event_id"]
+
+def test_ingest_node_by_name(db, monkeypatch):
+    from app.services.ingest import ingest_event
+    from app.models.node import Node
+    db.add(Node(name="srv-test", type="server")); db.commit()
+    status, ev = ingest_event(db, {
+        "event_id": "7d8a4a1e-1f2b-4c3d-8e9f-001122334455",
+        "type": "person_detect", "node_id": "srv-test",
+        "ts_event": "2026-09-11T09:00:00+07:00",
+    })
+    assert status == "created" and ev.node_id is not None and ev.node.name == "srv-test"

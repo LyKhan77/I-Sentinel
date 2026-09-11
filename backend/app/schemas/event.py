@@ -5,7 +5,7 @@ import uuid
 class EventIn(BaseModel):
     event_id: str
     type: str
-    node_id: int | None = None
+    node_id: str | int | None = None  # node NAME (str, dari vision contract) atau int id
     camera_id: int | None = None
     zone_id: int | None = None
     severity: str = "info"
