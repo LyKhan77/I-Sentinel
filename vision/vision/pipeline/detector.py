@@ -35,7 +35,7 @@ class PersonDetector:
             ) from e
         self._model = YOLO(self.model_path)
 
-    def detect(self, frame: np.ndarray) -> list[Detection]:
+    def detect(self, frame: np.ndarray, ts: float = 0.0) -> list[Detection]:
         if self._model is None:
             self._load()
         results = self._model.predict(
