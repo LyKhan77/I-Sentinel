@@ -24,7 +24,7 @@ class MqttTransport:
         if cfg.mqtt_username:
             self._client.username_pw_set(cfg.mqtt_username, cfg.mqtt_password or None)
         self._client.will_set(
-            f"isentinel/nodes/{cfg.node_id}/lwt", '{"status":"offline"}', retained=True, qos=1
+            f"isentinel/nodes/{cfg.node_id}/lwt", '{"status":"offline"}', qos=1, retain=True
         )
         self._client.on_connect = self._on_connect
         host, _, port = cfg.mqtt_url.rpartition(":")

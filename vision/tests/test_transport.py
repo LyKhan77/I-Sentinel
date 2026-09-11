@@ -26,8 +26,8 @@ class FakeClient:
     def username_pw_set(self, u, p=None):
         self.user = (u, p)
 
-    def will_set(self, topic, payload, retained=False, qos=0):
-        self.will = (topic, payload, retained, qos)
+    def will_set(self, topic, payload, retain=False, qos=0):
+        self.will = (topic, payload, retain, qos)
 
     def connect(self, host, port):
         self.host_port = (host, port)
