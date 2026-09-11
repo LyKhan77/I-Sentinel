@@ -7,6 +7,13 @@ ALLOWED_TYPES = {"intrusion", "loitering", "running", "attendance", "person_dete
 ALLOWED_SEVERITY = {"critical", "warning", "info"}
 
 def ingest_event(db, data: dict) -> tuple[str, Event | None]:
+    # ts_event ISO string → datetime (vision kirim ISO; SQLite butuh objek datetime)
+    ts = data.get("ts_event")
+    if isinstance(ts, str):
+        try:
+            data["ts_event"] = datetime.fromisoformat(ts)
+        except ValueError:
+            data["ts_event"] = None
     # Kontrak vision: node_id = nama node (str). Resolve ke id FK; unknown → None.
     node_id = data.get("node_id")
     if isinstance(node_id, str) and not node_id.isdigit():
