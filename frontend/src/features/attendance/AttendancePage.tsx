@@ -222,7 +222,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #393939', marginBottom: 14 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid #393939', marginBottom: 14 }}>
         <TabButton active={tab === 'daily'} label={t('at.tab.daily')} onClick={() => setTab('daily')} testId="tab-daily" />
         <TabButton active={tab === 'range'} label={t('at.tab.range')} onClick={() => setTab('range')} testId="tab-range" />
         <TabButton active={tab === 'employee'} label={t('at.tab.employee')} onClick={() => setTab('employee')} testId="tab-employee" />

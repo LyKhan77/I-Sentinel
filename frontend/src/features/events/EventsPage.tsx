@@ -146,8 +146,9 @@ export default function EventsPage() {
         />
       )}
 
-      <div style={{ display: 'flex', gap: 12, maxWidth: 720, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <Dropdown
+          className="events-filter"
           id="filter-type"
           titleText={t('events.col.type')}
           label={t('events.filterAll')}
@@ -156,6 +157,7 @@ export default function EventsPage() {
           onChange={({ selectedItem }) => setTypeFilter(selectedItem)}
         />
         <Dropdown
+          className="events-filter"
           id="filter-camera"
           titleText={t('events.col.camera')}
           label={t('events.filterAll')}
@@ -164,6 +166,7 @@ export default function EventsPage() {
           onChange={({ selectedItem }) => setCamFilter(selectedItem)}
         />
         <Dropdown
+          className="events-filter"
           id="filter-severity"
           titleText={t('events.col.severity')}
           label={t('events.filterAll')}
@@ -222,7 +225,7 @@ export default function EventsPage() {
           {/* kanan: detail panel */}
           {selected && (
             <div data-testid="event-detail" style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: 0, padding: 16 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <h2 style={{ fontWeight: 400, margin: 0, flex: 1 }}>
                   {selected.type} · {camName(selected)}
                 </h2>

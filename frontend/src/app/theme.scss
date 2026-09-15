@@ -386,6 +386,14 @@ html {
   margin: 0;
 }
 
+/* Filter /events: 3 dropdown yang wrap di layar sempit, bukan mendorong
+   halaman melebar (172px overflow di 390px sebelum ini). */
+.events-filter {
+  flex: 1 1 200px;
+  min-inline-size: 0;
+  max-inline-size: 240px;
+}
+
 /* Desain disetujui memakai sudut 0px; Carbon membulatkan tag & notifikasi. */
 .cds--tag,
 .cds--inline-notification,
