@@ -177,6 +177,19 @@ def test_import_skips_unknown_employee(client, db):
     assert r.json() == {"updated": 0, "created": 0, "skipped": 1}
 
 
+def test_import_skips_malformed_time_keeps_row(client, db):
+    e, _ = _fixture_employee(db)
+    csv_text = (f"employee_code,name,date,shift,first_entry,last_exit,duration_min,status,late_minutes,override_note\n"
+                f"E1,Budi,{DAY.isoformat()},Pagi,bogus,16:05:00,,,\n")
+    r = client.post("/api/v1/attendance/import",
+                    files={"file": ("in.csv", csv_text.encode(), "text/csv")}, headers=_headers(client))
+    assert r.json() == {"updated": 0, "created": 0, "skipped": 1}
+    row = db.query(AttendanceDay).filter_by(employee_id=e.id, date=DAY).one()
+    assert row.first_entry.strftime("%H:%M") == "07:10"
+    assert row.last_exit.strftime("%H:%M") == "16:05"
+    assert row.status == "ontime" and row.duration_min == 535
+
+
 def test_import_requires_admin(client, db):
     _fixture_employee(db)
     r = client.post("/api/v1/attendance/import", files={"file": ("in.csv", b"x", "text/csv")})
@@ -205,6 +218,18 @@ def test_patch_note_only_ok(client, db):
     r = client.patch(f"/api/v1/attendance/{day_id}", json={"override_note": "cuti"}, headers=_headers(client))
     assert r.status_code == 200
     assert r.json()["override_note"] == "cuti"
+
+
+def test_patch_time_recomputes_duration(client, db):
+    e, _ = _fixture_employee(db)
+    day_id = db.query(AttendanceDay).filter_by(employee_id=e.id).one().id
+    r = client.patch(f"/api/v1/attendance/{day_id}",
+                     json={"first_entry": "2025-01-06T07:00:00", "override_note": "manual"},
+                     headers=_headers(client))
+    assert r.status_code == 200
+    assert r.json()["first_entry"] == "07:00:00"
+    assert r.json()["duration_min"] == 545
+    assert r.json()["late_minutes"] == 0
 
 
 def test_patch_404(client, db):

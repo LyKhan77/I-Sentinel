@@ -44,14 +44,17 @@ def _hhmmss(dt) -> str:
 
 
 def _parse_time(day: date, raw: str | None):
-    """Combine tanggal + 'HH:MM[:SS]' lokal. None/kosong/invalid → None."""
+    """Combine tanggal + 'HH:MM[:SS]' lokal. None/kosong → None; invalid → ValueError."""
     if raw is None or not raw.strip():
         return None
-    try:
-        t = time.fromisoformat(raw.strip())
-    except ValueError:
-        return None
+    t = time.fromisoformat(raw.strip())
     return datetime.combine(day, t, tzinfo=LOCAL_TZ)
+
+
+def _csv_safe(value):
+    """Prefix apostrof kalau cell mulai =,+,-,@ (formula injection)."""
+    s = value if isinstance(value, str) else ("" if value is None else str(value))
+    return f"'{s}" if s[:1] in ("=", "+", "-", "@") else s
 
 
 def _row_dict(day: AttendanceDay, emp: Employee) -> dict:
@@ -112,12 +115,12 @@ def export_csv(
     w.writerow(CSV_COLUMNS)
     for day, emp in _query_days(db, None, from_, to, None):
         w.writerow([
-            emp.employee_code, emp.name, day.date.isoformat(), emp.shift_name or "",
+            emp.employee_code, _csv_safe(emp.name), day.date.isoformat(), emp.shift_name or "",
             _hhmmss(day.first_entry), _hhmmss(day.last_exit),
             day.duration_min if day.duration_min is not None else "",
             day.status,
             day.late_minutes if day.late_minutes is not None else "",
-            day.override_note or "",
+            _csv_safe(day.override_note or ""),
         ])
     return StreamingResponse(
         iter([buf.getvalue()]),
@@ -148,8 +151,13 @@ def import_csv(
             skipped += 1
             continue
 
-        first_entry = _parse_time(day, rec.get("first_entry"))
-        last_exit = _parse_time(day, rec.get("last_exit"))
+        try:
+            first_entry = _parse_time(day, rec.get("first_entry"))
+            last_exit = _parse_time(day, rec.get("last_exit"))
+        except ValueError:
+            # non-kosong tapi tak terparse: jangan sentuh DB, jangan timpa row valid
+            skipped += 1
+            continue
         status, late, duration = attendance.compute_status(emp.shift, first_entry, last_exit)
 
         row = db.query(AttendanceDay).filter_by(employee_id=emp.id, date=day).first()
@@ -190,9 +198,17 @@ def patch_day(
         row.override_note = note
     for k, v in changes.items():
         setattr(row, k, v)
+    emp = db.get(Employee, row.employee_id)
+    if "first_entry" in changes or "last_exit" in changes:
+        # waktu override berubah → duration_min / late_minutes jangan stale (status tetap manual)
+        _, late, duration = attendance.compute_status(
+            emp.shift if emp else None,
+            attendance._local(row.first_entry), attendance._local(row.last_exit),
+        )
+        row.late_minutes = late
+        row.duration_min = duration
     db.commit()
     db.refresh(row)
-    emp = db.get(Employee, row.employee_id)
     return _row_dict(row, emp)
 
 
