@@ -13,6 +13,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"])
 
+
+def _config_push(db: Session, camera_id: int, node_name: str | None = None) -> None:
+    try:
+        from app.services.config_push import publish_node_config
+        if node_name is None:
+            from app.services.config_push import publish_node_config_for_camera
+            publish_node_config_for_camera(db, camera_id)
+        else:
+            publish_node_config(None, db, node_name)
+    except Exception:
+        logger.warning("config push after camera mutation failed", exc_info=True)
+
 class CameraPatch(BaseModel):
     name: str | None = None
     location: str | None = None
@@ -42,6 +54,7 @@ def create_camera(body: CameraIn, admin=Depends(require_admin), db: Session = De
     if cam.enabled:
         try: sync_camera(cam)
         except Exception: logger.warning("go2rtc sync after create failed", exc_info=True)
+    _config_push(db, cam.id)
     return cam
 
 @router.get("", response_model=list[CameraOut])
@@ -70,14 +83,17 @@ def update_camera(camera_id: int, body: CameraPatch, admin=Depends(require_admin
         if cam.enabled: sync_camera(cam)
         else: sync_camera(cam, delete=True)
     except Exception: logger.warning("go2rtc sync after update failed", exc_info=True)
+    _config_push(db, cam.id)
     return cam
 
 @router.delete("/{camera_id}")
 def delete_camera(camera_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     cam = db.get(Camera, camera_id)
     if not cam: raise HTTPException(404, "camera not found")
+    node_name = db.get(Node, cam.node_id).name if cam.node_id else None
     db.delete(cam); db.commit()
     try:
         remove_stream(f"cam_{camera_id}"); remove_stream(f"cam_{camera_id}_main")
     except Exception: logger.warning("go2rtc sync after delete failed", exc_info=True)
+    if node_name: _config_push(db, camera_id, node_name)
     return {"ok": True}

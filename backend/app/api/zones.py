@@ -4,6 +4,9 @@ from app.core.db import get_db
 from app.api.deps import get_current_user, require_admin
 from app.models.zone import Zone
 from app.schemas.zone import ZoneIn, ZonePatch, ZoneOut
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/zones", tags=["zones"])
 
@@ -12,8 +15,8 @@ def _config_push(db: Session, camera_id: int) -> None:
     try:
         from app.services.config_push import publish_node_config_for_camera
         publish_node_config_for_camera(db, camera_id)
-    except ImportError:
-        pass  # ponytail: stub until Task 3 wires config_push
+    except Exception:
+        logger.warning("config push after zone mutation failed", exc_info=True)
 
 
 @router.get("", response_model=list[ZoneOut])

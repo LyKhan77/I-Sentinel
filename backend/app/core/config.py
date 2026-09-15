@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     mqtt_username: str = ""
     mqtt_password: str = ""
     go2rtc_url: str = "http://localhost:1984"
+    # detector defaults pushed to vision nodes via MQTT config (per-camera override later)
+    detector_model: str = "yolo26s.engine"
+    detector_nms: bool = False
+    detector_conf: float = 0.4
+    detector_imgsz: int = 640
     retention_days: int = 30
     admin_username: str = "admin"
     admin_password: str = ""   # wajib diisi di .env server; bootstrap gagal jelas bila kosong
