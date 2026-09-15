@@ -106,7 +106,28 @@ Zona digambar di UI → vision-node eksekusi intrusion → event dengan clip mai
 - **Media API** auth + traversal guard + range request (video seek)
 - **Web inbox** master-detail dengan player clip + snapshot + unduh
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.3.0...HEAD
+## [0.4.0] — 2026-09-15 · Fase 3: Loitering, Running, Alerting Foundation
+
+Analyzer loitering + running (kalibrasi per kamera), alerting foundation: alert model, rate-limit, Telegram graceful-fail. Integrasi chatID menyusul (low priority).
+
+### Commits (ringkas)
+
+- `d0b6f16`/`18fae0f` feat: loitering analyzer (dwell per zone) + zone filter fix
+- `9918933`/`8c6b163` feat: running analyzer (calibrated m/s) + anisotropic fix
+- `dd9a72b` feat: alert model + zone analyzer params + camera calibration
+- `cd353c9` feat: alerting service (rate-limit, telegram foundation)
+- `2e05633`/`a69ad96` feat: alerts api + inbox badge + telegram status chip
+
+### Highlights
+
+- **LoiteringAnalyzer**: dwell akumulatif per track di polygon, reset saat keluar/hilang, gap >10s reset
+- **RunningAnalyzer**: m/s via meters_per_pixel per kamera (xy anisotropik benar), EMA, cooldown 5s, skip tanpa kalibrasi
+- **Alerting**: severity gate, toggle per zona, rate-limit window (camera:zone:type), retry 3×, status sent|failed|rate_limited|not_configured
+- **Telegram**: sendMessage foundation, token env-only, tanpa token/chat → not_configured tanpa network call
+- **UI**: badge status alert di event detail, chip status Telegram di inbox header
+
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/LyKhan77/I-Sentinel/commits/v0.1.0
