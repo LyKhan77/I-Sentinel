@@ -6,7 +6,7 @@ import numpy as np
 
 from vision.analyzers.face_gate import FaceGateAnalyzer, crop_upper_body
 from vision.config import CameraCfg, NodeSettings
-from vision.node import CameraWorker, VisionNode
+from vision.node import CameraWorker, VisionNode, main_stream_name
 from vision.pipeline.detector import Detection, MockDetector
 from vision.pipeline.source import FrameSource
 
@@ -42,9 +42,15 @@ class FakeRecorder:
         self.uploaded = []
         self.enqueued = []
         self.pushed = []
+        self.fetched = []
+        self.main_jpeg = None  # bytes returned by fetch_frame; None = stream down
 
     def push_jpeg(self, ts, jpeg):
         self.pushed.append(jpeg)
+
+    def fetch_frame(self, stream_name):
+        self.fetched.append(stream_name)
+        return self.main_jpeg
 
     def upload_bytes(self, data, kind, content_type="image/jpeg"):
         self.uploaded.append((kind, content_type, data))
@@ -71,8 +77,8 @@ def frame():
     return np.zeros((480, 640, 3), dtype=np.uint8)
 
 
-def run_worker(analyzers, detector, frames, recorder):
-    cfg = CameraCfg(camera_id=1, source_url="test://1", ai_fps=5.0)
+def run_worker(analyzers, detector, frames, recorder, source_url="test://1"):
+    cfg = CameraCfg(camera_id=1, source_url=source_url, ai_fps=5.0)
     t = FakeTransport()
     w = CameraWorker(cfg, lambda cid: detector, t, threading.Event(), "test-node",
                      analyzers=analyzers, recorder=recorder)
@@ -173,6 +179,57 @@ def test_worker_survives_upload_oserror():
     assert len(t.events) == 3
     assert all("crop_path" not in ev["payload"] for ev in t.events)
     assert not w.is_alive()
+
+
+# --- main-stream crop (face resolution) ---
+
+CAM4 = "rtsp://localhost:8554/cam_4"
+
+
+def test_main_stream_name_derivation():
+    assert main_stream_name(CAM4) == "cam_4_main"
+    assert main_stream_name("rtsp://localhost:8554/cam_12/") == "cam_12_main"
+    assert main_stream_name("test://1") is None
+    assert main_stream_name("") is None
+
+
+def test_worker_uploads_crop_from_main_stream():
+    import cv2
+    full = np.full((1080, 1920, 3), 180, dtype=np.uint8)  # full-res main snapshot
+    ok, enc = cv2.imencode(".jpg", full)
+    assert ok
+    rec = FakeRecorder()
+    rec.main_jpeg = enc.tobytes()
+    det = MockDetector([[Detection(bbox=(0.2, 0.1, 0.4, 0.9), conf=0.9)]] * 2)
+    _, t = run_worker([FaceGateAnalyzer(zone())], det, [frame()] * 2, rec, source_url=CAM4)
+    assert rec.fetched == ["cam_4_main"]  # main stream was requested
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["crop_path"] == "crops/x.jpg"
+    kind, ctype, data = rec.uploaded[0]
+    assert (kind, ctype) == ("crop", "image/jpeg")
+    # crop came from the 1920px main frame, not the 640px substream: bigger bytes
+    substream_crop = crop_upper_body(frame(), [0.2, 0.1, 0.4, 0.9])
+    main_crop = crop_upper_body(full, [0.2, 0.1, 0.4, 0.9])
+    assert main_crop.shape[1] > substream_crop.shape[1]
+    assert len(data) > 0
+
+
+def test_worker_falls_back_to_substream_when_main_down():
+    rec = FakeRecorder()  # main_jpeg stays None -> fetch_frame reports no frame
+    det = MockDetector([[Detection(bbox=(0.2, 0.1, 0.4, 0.9), conf=0.9)]] * 2)
+    _, t = run_worker([FaceGateAnalyzer(zone())], det, [frame()] * 2, rec, source_url=CAM4)
+    assert rec.fetched == ["cam_4_main"]  # tried main first
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["crop_path"] == "crops/x.jpg"  # substream crop still uploaded
+    assert rec.uploaded and rec.uploaded[0][0] == "crop"
+
+
+def test_worker_skips_fetch_for_non_cam_url():
+    rec = FakeRecorder()
+    det = MockDetector([[Detection(bbox=(0.2, 0.1, 0.4, 0.9), conf=0.9)]] * 2)
+    _, t = run_worker([FaceGateAnalyzer(zone())], det, [frame()] * 2, rec)  # test://1
+    assert rec.fetched == []
+    assert t.events[0]["payload"]["crop_path"] == "crops/x.jpg"
 
 
 # --- crop math ---

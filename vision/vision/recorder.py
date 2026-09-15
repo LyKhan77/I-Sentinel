@@ -67,6 +67,22 @@ class Recorder:
         if ok:
             self.ring.push(ts, enc.tobytes())
 
+    def fetch_frame(self, stream_name: str) -> bytes | None:
+        """Single jpeg snapshot from go2rtc (main stream): raw bytes or None.
+
+        Used to crop attendance faces at full resolution instead of the
+        low-res substream the detector runs on.
+        """
+        url = f"{self.cfg.go2rtc_url}/api/frame.jpeg?src={stream_name}"
+        try:
+            with urlopen(url, timeout=5) as resp:
+                data = resp.read()
+        except Exception as e:
+            log.warning("recorder cam%s: frame fetch %s failed: %s",
+                        self.camera_id, stream_name, e)
+            return None
+        return data or None
+
     def enqueue(self, event: dict, track_bbox_norm=None) -> None:
         try:
             self._q.put_nowait((event, track_bbox_norm))

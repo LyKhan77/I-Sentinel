@@ -41,6 +41,7 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - fix: ws guard drops alert frames by kind
 - feat: attendance + enrollment + gates UI (AttendancePage tabs/summary/override, EnrollmentPage face gallery+shifts, GatesPage absensi zones + conflict; api/attendance.ts + api/employees.ts)
 - fix: api client keeps FormData content-type (multipart CSV import + face upload)
+- feat: gate crop from mainstream frame (face resolution) — `Recorder.fetch_frame` fetches `/api/frame.jpeg?src=cam_N_main`, `CameraWorker._attach_crop` crops attendance face from the full-res main stream with substream fallback
 
 ## [0.1.0] — 2026-09-10 · Fase 0: Skeleton
 

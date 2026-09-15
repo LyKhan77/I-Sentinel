@@ -34,6 +34,16 @@ def _iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
 
+def main_stream_name(source_url: str) -> str | None:
+    """go2rtc main stream name for a cam_* substream URL.
+
+    "rtsp://host:8554/cam_4" -> "cam_4_main" (full-res sibling stream).
+    None when the last path segment is not a cam_* stream.
+    """
+    seg = (source_url or "").rstrip("/").rsplit("/", 1)[-1]
+    return f"{seg}_main" if seg.startswith("cam_") else None
+
+
 def _make_event(camera_id: int, track, ts: float) -> dict:
     return {
         "event_id": str(uuid.uuid4()),
@@ -149,34 +159,66 @@ class CameraWorker(threading.Thread):
     def _attach_crop(self, partial: dict, frame) -> None:
         """Crop upper body for needs_crop partials and upload it inline.
 
-        Blocking upload (<= retries*60s) is acceptable: absensi gates are
-        low-frequency. Missing recorder/frame/cv2/crop or upload failure leaves
-        the event without crop_path (graceful).
+        Prefers the go2rtc MAIN stream snapshot (full resolution -> face is
+        recognisable); falls back to the local substream frame when the main
+        stream is unavailable. Blocking upload (<= retries*60s) is acceptable:
+        absensi gates are low-frequency. Missing recorder/frame/cv2/crop or
+        upload failure leaves the event without crop_path (graceful).
         """
         payload = partial.get("payload") or {}
         if not payload.pop("needs_crop", False):
             return
-        if self.recorder is None or frame.data is None:
+        if self.recorder is None:
+            return
+        jpeg = self._mainstream_crop(payload["bbox_norm"])
+        if jpeg is None and frame.data is not None:
+            jpeg = self._frame_crop(frame.data, payload["bbox_norm"])
+        if jpeg is None:
             return
         try:
-            import cv2
-            crop = crop_upper_body(frame.data, payload["bbox_norm"])
-            if crop is None:
-                return
-            ok, enc = cv2.imencode(".jpg", crop)
-        except Exception:
-            log.exception("camera %s: crop encode failed", self.camera_cfg.camera_id)
-            return
-        if not ok:
-            return
-        try:
-            path = self.recorder.upload_bytes(enc.tobytes(), "crop")
+            path = self.recorder.upload_bytes(jpeg, "crop")
         except Exception:
             log.warning("camera %s: crop upload failed", self.camera_cfg.camera_id,
                         exc_info=True)
             return
         if path:
             payload["crop_path"] = path
+
+    def _mainstream_crop(self, bbox_norm) -> bytes | None:
+        """Crop from the full-res main stream; None on any failure (caller falls back)."""
+        name = main_stream_name(self.camera_cfg.source_url)
+        if name is None:
+            return None
+        try:
+            jpeg = self.recorder.fetch_frame(name)
+            if not jpeg:
+                return None
+            import cv2
+            import numpy as np
+            arr = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if arr is None:
+                return None
+            return self._encode_crop(arr, bbox_norm)
+        except Exception:
+            log.warning("camera %s: mainstream crop failed, using substream",
+                        self.camera_cfg.camera_id, exc_info=True)
+            return None
+
+    def _frame_crop(self, data, bbox_norm) -> bytes | None:
+        try:
+            return self._encode_crop(data, bbox_norm)
+        except Exception:
+            log.exception("camera %s: crop encode failed", self.camera_cfg.camera_id)
+            return None
+
+    @staticmethod
+    def _encode_crop(frame_data, bbox_norm) -> bytes | None:
+        import cv2
+        crop = crop_upper_body(frame_data, bbox_norm)
+        if crop is None:
+            return None
+        ok, enc = cv2.imencode(".jpg", crop)
+        return enc.tobytes() if ok else None
 
     def stop(self):
         if self.source is not None:
