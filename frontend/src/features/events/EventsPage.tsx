@@ -61,8 +61,9 @@ export default function EventsPage() {
 
   // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
   useLiveEvents((raw) => {
-    const e = raw as EventOut
-    if (typeof e?.id !== 'number') return // buang frame non-event (mis. broadcast alert)
+    const e = raw as EventOut & { kind?: string }
+    if (e?.kind === 'alert') return // buang broadcast alert — eksplisit by kind
+    if (typeof e?.id !== 'number') return // buang frame non-event lain
     setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, 200)))
   })
 
