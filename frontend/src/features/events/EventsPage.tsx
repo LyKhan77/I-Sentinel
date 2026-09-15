@@ -181,7 +181,7 @@ export default function EventsPage() {
       ) : filtered.length === 0 ? (
         <p style={{ color: '#8d8d8d' }}>{t('events.empty')}</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(0, 2fr)', gap: 16 }}>
+        <div className="events-split">
           {/* kiri: daftar event */}
           <ul data-testid="event-list" style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 640, overflowY: 'auto' }}>
             {filtered.map((e) => (

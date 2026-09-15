@@ -394,6 +394,26 @@ html {
   max-inline-size: 240px;
 }
 
+/* Master-detail /events (mockup 03). Di bawah 900px ditumpuk satu kolom:
+   kolom 2 yang menyusut ke ~30px tidak terpakai, dan isinya (thumbnail 72px,
+   <video>) punya min-width:auto sehingga track ikut melebar dan halaman jadi
+   bisa di-scroll ke samping (terukur 31px di 390px). */
+.events-split {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
+  gap: 16px;
+
+  > * {
+    min-inline-size: 0;
+  }
+}
+
+@media (max-width: 899px) {
+  .events-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Tabel Carbon di viewport sempit: `.cds--data-table-content` sudah punya
    overflow-x:auto, tapi overflow tabel tetap tembus ke halaman (terukur 23px
    di /config/gates 390px, halaman bisa di-scroll ke samping). Scroller di level
