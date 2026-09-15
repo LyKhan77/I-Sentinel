@@ -39,6 +39,8 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - feat: alerting service (rate-limit, telegram foundation)
 - feat: alerts api + inbox badge + telegram status chip
 - fix: ws guard drops alert frames by kind
+- feat: attendance + enrollment + gates UI (AttendancePage tabs/summary/override, EnrollmentPage face gallery+shifts, GatesPage absensi zones + conflict; api/attendance.ts + api/employees.ts)
+- fix: api client keeps FormData content-type (multipart CSV import + face upload)
 
 ## [0.1.0] — 2026-09-10 · Fase 0: Skeleton
 

@@ -59,6 +59,7 @@ def _csv_safe(value):
 
 def _row_dict(day: AttendanceDay, emp: Employee) -> dict:
     return {
+        "id": day.id,
         "employee_id": day.employee_id,
         "employee_code": emp.employee_code if emp else None,
         "name": emp.name if emp else None,

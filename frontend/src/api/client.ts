@@ -4,10 +4,12 @@ export type Me = { id: number; username: string; role: 'admin' | 'viewer'; local
 
 export async function apiFetch(path: string, opts: RequestInit = {}): Promise<Response> {
   const { headers, ...rest } = opts
+  // ponytail: FormData → biarkan browser set boundary sendiri; jangan paksa application/json
+  const isForm = typeof FormData !== 'undefined' && rest.body instanceof FormData
   const res = await fetch(`${BASE}${path}`, {
     ...rest,
     credentials: 'include',
-    headers: rest.body ? { 'Content-Type': 'application/json', ...headers } : headers,
+    headers: rest.body && !isForm ? { 'Content-Type': 'application/json', ...headers } : headers,
   })
   if (res.status === 401 && window.location.pathname !== '/login') {
     window.location.assign('/login')
