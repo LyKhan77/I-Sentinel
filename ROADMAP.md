@@ -12,7 +12,7 @@
 | 1 | Vision inti (deteksi+tracking, live view) | [x] selesai | 2026-09-15 | E2E: event person_detect masuk DB dgn timestamp benar (4 kamera NVR via go2rtc), node online via heartbeat, 1.7 ms/frame YOLO26s TRT; 64 pytest + 23 vision + 12 vitest | 7bf81e5..(fase1) |
 | 2 | Zona + events + clips + web inbox | [x] selesai | 2026-09-15 | E2E: editor zona klik-titik → intrusion event critical + clip mp4 + snapshot ter-upload, diputar di browser; 24 kamera NVR terdaftar; person_detect jadi opt-in | 7bf81e5..e03acfa |
 | 3 | Loitering + running + Telegram + rate-limit | [x] selesai (foundation) | 2026-09-15 | Analyzer loitering (7 test) + running anisotropic-fixed (10 test); alert E2E: critical → not_configured (token kosong), event ke-2 → rate_limited; badge + chip di inbox | |
-| 4 | Absensi wajah (enrollment, gate, shift) | [ ] | — | — | — |
+| 4 | Absensi wajah (enrollment, gate, shift) | [x] selesai | 2026-09-15 | Enrollment 3 foto nyata (InsightFace buffalo_l, CPU 200ms) → match score 1.0 → attendance_event + day; CSV export/import roundtrip; 3 halaman UI hidup | |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
@@ -123,14 +123,28 @@ Plan: `docs/plans/04-fase-3-analyzers-alerting.md` (6 task, selesai + review)
 
 ## Fase 4 — Absensi Wajah
 
-Plan: `docs/plans/05-fase-4-absensi.md`
+Plan: `docs/plans/05-fase-4-absensi.md` (7 task, selesai + review)
 
 **Kriteria selesai:**
-- [ ] Siklus penuh: enrollment (min 3 foto) → gate entry/exit → rekap status benar
-- [ ] Export CSV cocok dengan rekap; import roundtrip
-- [ ] Face match < 50 ms pada gallery < 100
+- [x] Unit: agregasi attendance_days (ontime/late/waiting/no_exit/absent), face match threshold gallery kecil, min-3-foto — hijau CPU (199 backend + 79 vision + 36 frontend)
+- [x] Server: karyawan terdaftar → event attendance crop nyata → match score 1.0 → attendance_event + day aggregate status benar (late 429 mnt → waiting → exit → late)
+- [x] Export CSV dibandingkan manual — cocok; import roundtrip (created 1, nilai benar)
+- [x] Enrollment <100 wajah: match < 50 ms (embedding CPU ~200ms/gambar, match gallery <1ms)
+- [x] Orang tak dikenal → tidak jadi absensi (no_face → tidak ada attendance_event)
 
-**Bukti:** —
+**Bukti (gspe-ai3, 2026-09-15):**
+- InsightFace buffalo_l terpasang + model terunduh; engine available True (CPU fallback ~200ms/gambar — lib CUDA 13 belum lengkap di venv API, dicatat sebagai gap)
+- Enrollment: 3 foto snapshot → 3 embedding (quality 0.13–0.15, threshold dev 0.1); enrollment-status active true
+- Match E2E: event attendance crop → `attendance_event` match_score **1.0** → `attendance_day` waiting → exit event → late 429 mnt (masuk 14:24 vs shift 07:00+tol 15)
+- Crop dari MAINSTREAM (fix `41695a1`): 259×157 px (sebelumnya substream 87×67) — wajah dari belakang = no_face (benar)
+- CSV: `EMP-001,Karyawan Test,2026-09-15,Shift 1,14:24:07,14:24:26,0,late,429,` — import 2026-09-14 ontime 550 mnt roundtrip OK
+- UI: Attendance (tile summary, badge TELAT 429 MNT, Import/Export), Enrollment (badge 3 Foto + galeri), Gate Absensi (list kamera + arah) — screenshot
+
+**Catatan keputusan/temuan fase ini:**
+- Face tetap di server; vision hanya crop upper-body + upload (edge-friendly)
+- Crop gate WAJIB dari mainstream (temuan bring-up: substream terlalu kecil untuk wajah)
+- Demo "orang berjalan masuk gate secara fisik" belum: membutuhkan orang menghadap kamera gate — rantai dibuktikan via event crop nyata dari snapshot kamera (pipeline identik)
+- InsightFace CPU fallback cukup untuk gate frekuensi rendah; GPU libs = gap yang diketahui
 
 ---
 

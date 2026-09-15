@@ -129,7 +129,30 @@ Analyzer loitering + running (kalibrasi per kamera), alerting foundation: alert 
 - **Telegram**: sendMessage foundation, token env-only, tanpa token/chat → not_configured tanpa network call
 - **UI**: badge status alert di event detail, chip status Telegram di inbox header
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.4.0...HEAD
+## [0.5.0] — 2026-09-15 · Fase 4: Absensi Wajah
+
+Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shift & status → export/import CSV. InsightFace buffalo_l di server, vision hanya crop.
+
+### Commits (ringkas)
+
+- `8acd420`/`c2aa341` feat+fix: attendance domain models (employee, shift, embedding, attendance) + FK guards + index parity
+- `acd68e3` feat: face service (insightface wrapper, gallery, cosine match)
+- `8892af4`/`092a6fb` feat+fix: face enrollment api (min 3 pose, pdp purge, gallery wiring) + upload cap
+- `f3dc67a`/`1f4b1ec` feat+fix: face gate analyzer (crop + upload) + visit semantics
+- `e2ef747`/`fe9dc99` feat+fix: attendance logic (match, aggregate, override, csv, close-days)
+- `79532e2`/`ded189e` feat+fix: attendance + enrollment + gates UI + admin gating
+- `41695a1` feat: gate crop from mainstream frame (face resolution)
+
+### Highlights
+
+- **Face pipeline server-side**: SCRFD+ArcFace, gallery <100 in-memory cosine, threshold knob; tanpa model → `not_configured` graceful
+- **Enrollment**: upload image min 3 pose, quality gate, max 5; hapus biometrik per karyawan (PDP)
+- **Attendance**: zona absensi + arah; agregasi harian ontime/late/waiting/no_exit/absent; close-days; override admin dengan catatan audit
+- **CSV**: export (tanpa biometrik, anti-injection) + import upsert idempotent
+- **Vision**: face_gate crop dari MAINSTREAM (resolusi wajah) + upload blob; error isolation
+
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.1.0...v0.2.0
