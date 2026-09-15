@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Maximize, VideoOff } from '@carbon/icons-react'
-import { InlineLoading, InlineNotification } from '@carbon/react'
+import { InlineLoading, InlineNotification, Dropdown } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
 
 const SNAPSHOT_REFRESH_MS = 2000
+const COLS_KEY = 'isentinel_live_cols'
+const COL_OPTIONS = [3, 2, 4] as const // urutan mockup 02: default dulu
+
+type Cols = (typeof COL_OPTIONS)[number]
+
+function initialCols(): Cols {
+  const v = Number(localStorage.getItem(COLS_KEY))
+  return (COL_OPTIONS as readonly number[]).includes(v) ? (v as Cols) : 3
+}
 
 // Snapshot auto-refresh (cache-busting) = deliverable Fase 1.
 // TODO(Task 9): WebRTC go2rtc — getLive() sudah expose streams/webrtc/mse/hls,
@@ -32,7 +41,6 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
       style={{
         position: 'relative',
         background: '#000',
-        border: '1px solid #393939',
         aspectRatio: '16/9',
         display: 'flex',
         alignItems: 'center',
@@ -127,6 +135,8 @@ export default function LiveViewPage() {
   const [focusId, setFocusId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
+  const [cols, setCols] = useState<Cols>(initialCols)
+  const [loc, setLoc] = useState<{ label: string } | null>(null)
   const focusRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
@@ -171,7 +181,15 @@ export default function LiveViewPage() {
   }, [focusId])
 
   const focused = focusId != null ? cams.find((c) => c.id === focusId) : null
-  const others = focusId != null ? cams.filter((c) => c.id !== focusId) : cams
+  // lokasi kamera unik; null = semua
+  const locOptions = [...new Set(cams.map((c) => c.location).filter((l): l is string => !!l))].map((l) => ({ label: l }))
+  const shown = loc ? cams.filter((c) => c.location === loc.label) : cams
+  const others = focusId != null ? shown.filter((c) => c.id !== focusId) : shown
+
+  const pickCols = (n: Cols) => {
+    localStorage.setItem(COLS_KEY, String(n))
+    setCols(n)
+  }
 
   if (loading) return <div className="app-page"><InlineLoading description={t('common.loading')} /></div>
 
@@ -181,6 +199,32 @@ export default function LiveViewPage() {
         <div>
           <h1 className="app-page__title">{t('nav.live')}</h1>
           <p className="app-page__sub">{t('live.sub')}</p>
+        </div>
+        <div className="lv-chips">
+          {COL_OPTIONS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              data-testid={`live-cols-${n}`}
+              aria-pressed={cols === n}
+              className={cols === n ? 'lv-chip lv-chip--sel' : 'lv-chip'}
+              onClick={() => pickCols(n)}
+            >
+              {t('live.cols').replace('{n}', String(n))}
+            </button>
+          ))}
+          <div style={{ width: 200 }}>
+            <Dropdown
+              id="live-location"
+              titleText={t('live.location')}
+              hideLabel
+              size="sm"
+              label={t('live.allLocations')}
+              items={locOptions}
+              selectedItem={loc}
+              onChange={({ selectedItem }) => setLoc(selectedItem ?? null)}
+            />
+          </div>
         </div>
       </div>
       {loadFailed && (
@@ -206,7 +250,7 @@ export default function LiveViewPage() {
               <CameraSnapshot cam={focused} live={lives[focused.id] ?? null} big />
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+          <div className="lv-grid" style={{ '--lv-cols': cols } as React.CSSProperties}>
             {others.map((cam) => (
               <div key={cam.id} onClick={() => setFocusId(cam.id)} title={t('live.clickFocus')}>
                 <CameraSnapshot cam={cam} live={lives[cam.id] ?? null} />

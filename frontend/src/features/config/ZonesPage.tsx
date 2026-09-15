@@ -15,7 +15,7 @@ import { Delete, Save } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { createZone, deleteZone, listZones, updateZone, type Zone, type ZoneType as ZT } from '../../api/zones'
-import ZoneEditor from '../../components/ZoneEditor'
+import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] // 1=Senin .. 7=Minggu (backend VALID_DAYS)
 const DAY_LABEL: Record<number, TKey> = {
@@ -131,16 +131,42 @@ export default function ZonesPage() {
       ) : !cam ? (
         <p style={{ color: '#8d8d8d' }}>{t('cameras.empty')}</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: 24 }}>
-          <ZoneEditor
-            cameraId={cam.id}
-            initialZones={zones}
-            onChange={setZones}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(280px, 1fr)' }}>
+          <div style={{ minWidth: 0, paddingRight: 16 }}>
+            <ZoneEditor
+              cameraId={cam.id}
+              initialZones={zones}
+              onChange={setZones}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
 
-          <div>
+            {/* daftar zona (mockup 06) — klik = pilih, sama seperti klik polygon */}
+            <div className="zone-list" data-testid="zone-list">
+              {zones.length === 0 ? (
+                <p className="zone-list__empty">{t('zones.listEmpty')}</p>
+              ) : (
+                zones.map((z) => (
+                  <button
+                    key={z.id}
+                    type="button"
+                    data-testid={`zone-item-${z.id}`}
+                    className={z.id === selectedId ? 'zone-item zone-item--sel' : 'zone-item'}
+                    onClick={() => setSelectedId(z.id)}
+                  >
+                    <span className="zone-item__sw" style={{ background: ZONE_COLOR[z.type] }} />
+                    <span className="zone-item__name">{z.name}</span>
+                    <span className="zone-badge">{t(`zones.type.${z.type}` as TKey).toUpperCase()}</span>
+                    <span className={z.active ? 'zone-badge zone-badge--green' : 'zone-badge'}>
+                      {z.active ? t('zones.active') : t('zones.inactive')}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div style={{ borderLeft: '1px solid #393939', paddingLeft: 16, minWidth: 0 }}>
             {selected ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <TextInput

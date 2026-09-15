@@ -270,6 +270,119 @@ html {
   margin: 4px 0 24px;
 }
 
+/* Live view: chip pilih jumlah kolom + filter lokasi (mockup 02). */
+.lv-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--lv-cols, 3), minmax(0, 1fr));
+  gap: 1px;
+  background: var(--cds-border-subtle);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+/* Jumlah kolom pilihan user tidak masuk akal di layar sempit — dipaksa turun. */
+@media (max-width: 1055px) {
+  .lv-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 671px) {
+  .lv-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.lv-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lv-chip {
+  font-size: 12px;
+  border: 1px solid var(--cds-border-subtle);
+  background: none;
+  color: var(--cds-text-secondary);
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &--sel {
+    border-color: var(--cds-border-interactive);
+    color: var(--cds-border-interactive);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
+}
+
+/* Daftar zona di bawah editor (mockup 06). */
+.zone-list {
+  margin-block-start: 12px;
+  border-block-start: 1px solid var(--cds-border-subtle);
+}
+
+.zone-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  inline-size: 100%;
+  font-size: 12px;
+  text-align: start;
+  padding: 8px 4px;
+  border: 0;
+  border-block-end: 1px solid #2d2d2d;
+  background: none;
+  color: var(--cds-text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: #1c1c1c;
+  }
+
+  &--sel {
+    background: var(--cds-layer);
+  }
+
+  &__name {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__sw {
+    inline-size: 10px;
+    block-size: 10px;
+    flex: 0 0 10px;
+  }
+}
+
+.zone-badge {
+  font-size: 10px;
+  letter-spacing: 0.32px;
+  padding: 1px 7px;
+  border: 1px solid var(--cds-border-subtle);
+  color: var(--cds-text-secondary);
+  white-space: nowrap;
+
+  &--green {
+    border-color: #42be65;
+    color: #42be65;
+  }
+}
+
+.zone-list__empty {
+  padding: 10px 4px;
+  color: var(--cds-text-helper);
+  font-size: 12px;
+  margin: 0;
+}
+
 /* Desain disetujui memakai sudut 0px; Carbon membulatkan tag & notifikasi. */
 .cds--tag,
 .cds--inline-notification,
