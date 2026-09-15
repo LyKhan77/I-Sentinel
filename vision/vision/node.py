@@ -169,7 +169,12 @@ class CameraWorker(threading.Thread):
             return
         if not ok:
             return
-        path = self.recorder.upload_bytes(enc.tobytes(), "crop")
+        try:
+            path = self.recorder.upload_bytes(enc.tobytes(), "crop")
+        except Exception:
+            log.warning("camera %s: crop upload failed", self.camera_cfg.camera_id,
+                        exc_info=True)
+            return
         if path:
             payload["crop_path"] = path
 

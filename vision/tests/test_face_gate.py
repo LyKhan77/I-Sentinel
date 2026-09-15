@@ -112,12 +112,18 @@ def test_direction_none_or_invalid_inert():
         1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []
 
 
-def test_cooldown_blocks_fast_reentry():
+def test_cooldown_suppressed_reentry_stays_suppressed_while_inside():
     az = FaceGateAnalyzer(zone())
-    az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480)
-    az.on_frame(1001.0, one_track(1, (1.5, 0.5)), 640, 480)  # out
-    assert az.on_frame(1002.0, one_track(1, (0.5, 0.5)), 640, 480) == []  # < 10s
-    assert len(az.on_frame(1011.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+    assert len(az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+    # leaves polygon
+    assert az.on_frame(1001.0, one_track(1, (1.5, 0.5)), 640, 480) == []
+    # re-enters inside cooldown -> suppressed
+    assert az.on_frame(1002.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    # stays inside well past cooldown -> no delayed duplicate
+    assert az.on_frame(1035.0, one_track(1, (0.55, 0.5)), 640, 480) == []
+    # leaves, waits > cooldown, re-enters -> emits
+    assert az.on_frame(1040.0, one_track(1, (1.5, 0.5)), 640, 480) == []
+    assert len(az.on_frame(1055.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
 
 
 # --- worker crop + upload ---
@@ -141,6 +147,32 @@ def test_worker_without_recorder_emits_no_crop_path():
     assert len(t.events) == 1
     assert "crop_path" not in t.events[0]["payload"]
     assert "needs_crop" not in t.events[0]["payload"]
+
+
+class FailingRecorder(FakeRecorder):
+    """upload_bytes raises OSError (disk full / makedirs failure)."""
+
+    def upload_bytes(self, data, kind, content_type="image/jpeg"):
+        raise OSError("disk full")
+
+
+class AlwaysCrop:
+    """Emits a needs_crop partial on every frame (keeps the worker busy)."""
+
+    def on_frame(self, ts, tracks, fw, fh):
+        return [{"zone_id": 1, "type": "attendance", "severity": "info",
+                 "payload": {"track_id": 1, "bbox_norm": [0.2, 0.1, 0.4, 0.9],
+                             "needs_crop": True}}]
+
+
+def test_worker_survives_upload_oserror():
+    rec = FailingRecorder()
+    det = MockDetector([[Detection(bbox=(0.2, 0.1, 0.4, 0.9), conf=0.9)]] * 3)
+    w, t = run_worker([AlwaysCrop()], det, [frame()] * 3, rec)
+    # worker alive: every frame produced an event, none carried a crop_path
+    assert len(t.events) == 3
+    assert all("crop_path" not in ev["payload"] for ev in t.events)
+    assert not w.is_alive()
 
 
 # --- crop math ---

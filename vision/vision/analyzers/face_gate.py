@@ -44,7 +44,7 @@ class FaceGateAnalyzer(Analyzer):
         self.zone_id = zone["id"]
         self.direction = zone.get("direction")
         self.polygon = [tuple(p) for p in zone["polygon"]]
-        self._inside: set[int] = set()            # ids already emitted this visit
+        self._inside: set[int] = set()            # ids currently inside (from prev frame)
         self._last_emit: dict[int, float] = {}    # id -> last emit ts (cooldown)
 
     def on_frame(self, ts: float, tracks: list, frame_w: int, frame_h: int) -> list[dict]:
@@ -61,7 +61,6 @@ class FaceGateAnalyzer(Analyzer):
             if ts - self._last_emit.get(tr.id, float("-inf")) < COOLDOWN_S:
                 continue
             self._last_emit[tr.id] = ts
-            self._inside.add(tr.id)
             events.append({
                 "zone_id": self.zone_id,
                 "type": "attendance",
@@ -73,6 +72,12 @@ class FaceGateAnalyzer(Analyzer):
                     "needs_crop": True,
                 },
             })
-        # leaving the polygon or being lost clears the visit so re-entry re-emits
-        self._inside &= present_inside
+        # visit is consumed whether or not an emit happened: a cooldown-suppressed
+        # re-entry stays inside and will not emit later; only a true outside->inside
+        # transition (not cooled down) re-emits.
+        self._inside = present_inside
+        keep_after = max(COOLDOWN_S * 6, 60.0)
+        for tid in [t for t, last in self._last_emit.items()
+                    if t not in present_inside and ts - last > keep_after]:
+            del self._last_emit[tid]
         return events
