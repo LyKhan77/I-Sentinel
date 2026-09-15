@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|
 | 0 | Skeleton (auth, kamera+probe, UI shell) | [x] selesai | 2026-09-09 | 30 pytest + 5 vitest + build hijau; probe kamera nyata CAM-TEST online; health/login/alembic-idempotent terverifikasi di server; 17 commit `feat/fase-0-skeleton` | 4d7bd05..cbcec9b |
 | 1 | Vision inti (deteksi+tracking, live view) | [x] selesai | 2026-09-15 | E2E: event person_detect masuk DB dgn timestamp benar (4 kamera NVR via go2rtc), node online via heartbeat, 1.7 ms/frame YOLO26s TRT; 64 pytest + 23 vision + 12 vitest | 7bf81e5..(fase1) |
-| 2 | Zona + events + clips + web inbox | [ ] | — | — | — |
+| 2 | Zona + events + clips + web inbox | [x] selesai | 2026-09-15 | E2E: editor zona klik-titik → intrusion event critical + clip mp4 + snapshot ter-upload, diputar di browser; 24 kamera NVR terdaftar; person_detect jadi opt-in | 7bf81e5..e03acfa |
 | 3 | Loitering + running + Telegram + rate-limit | [ ] | — | — | — |
 | 4 | Absensi wajah (enrollment, gate, shift) | [ ] | — | — | — |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
@@ -74,14 +74,26 @@ Plan: `docs/plans/02-fase-1-vision-inti.md` (9 task, semua selesai + review)
 
 ## Fase 2 — Zona, Events, Clips, Web Inbox
 
-Plan: `docs/plans/03-fase-2-zona-events.md`
+Plan: `docs/plans/03-fase-2-zona-events.md` (7 task, semua selesai + review)
 
 **Kriteria selesai:**
-- [ ] Zona digambar via UI (klik-titik min 3, tutup start-point) → push config ke node
-- [ ] Intrusi → event + clip mainstream + snapshot diputar di browser
-- [ ] Polygon normalisasi 0–1 ter-unit-test
+- [x] Zona digambar via UI (klik-titik min 3, tutup start-point) → push config ke node — editor polygon + validasi backend + push MQTT retained terbukti (config 24 kamera + zona terkirim ke vision-node)
+- [x] Intrusi → event + clip mainstream + snapshot diputar di browser — event `intrusion` critical (zone_id 1 "Zona Test Masuk" kam 5), clip mp4 27 dtk + snapshot jpeg ter-upload via blob API, video player tampil & play di inbox (bukti screenshot)
+- [x] Polygon normalisasi 0–1 ter-unit-test (11 test zones API + 8 test analyzer)
+- [x] `pytest backend vision -m "not gpu"` hijau (95 backend + 46 vision) + vitest 19 + build hijau
 
-**Bukti:** —
+**Bukti (gspe-ai3, 2026-09-15):**
+- Zona dibuat via API + config push retained terbukti (`isentinel/config/server` berisi 24 kamera + zona)
+- Intrusion events mengalir high-rate saat orang di zona; media upload: 11/46 intrusion 10 menit pertama punya clip+snapshot (sisanya drop-oldest queue recorder — klip 30 dtk/event, tercatat sebagai simplification)
+- Media serve: `GET /api/v1/media/clips/...` → 200 video/mp4 281KB (range request 206 terbukti); snapshot → 200 image/jpeg
+- Playwright: login → Events master-detail → intrusion detail dengan `<video>` player + snapshot tampil (screenshot di sesi)
+- person_detect flood (136/10mnt) → dijadikan opt-in (`VISION_EMIT_PERSON_DETECT`, default false); sesudahnya hanya intrusion yang tampil
+
+**Catatan keputusan/temuan fase ini:**
+- Bug integrasi ditemukan & diperbaiki saat bring-up: key zona `zone_id` vs `id` (config_push ↔ analyzer), `_config_q` dipakai sebelum init, model engine path relatif, blob endpoint bertipe int padahal vision kirim nama node
+- Recorder: snapshot dari ring JPEG (encode saat ada deteksi), clip via go2rtc `stream.mp4?duration=30` (post-only; pre-buffer via snapshot)
+- Recorder queue drop-oldest saat event flood — cukup v1; naikkan maxsize / streaming-to-disk bila perlu
+- Event flood person_detect diselesaikan via opt-in flag (zona = sinyal riil)
 
 ---
 

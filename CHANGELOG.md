@@ -74,6 +74,33 @@ Backend, frontend, dan infrastruktur dasar I-Sentinel: auth, kamera + probe RTSP
 - **Deploy**: systemd units (api/web), go2rtc + mosquitto configs, bootstrap script; zero-secret (kredensial kamera via env, path RTSP saja di DB).
 - **Keputusan model AI**: detektor YOLO26s TensorRT FP16 `nms=False` (spec §2.7); benchmark validasi di Fase 1.
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...HEAD
+## [0.3.0] — 2026-09-15 · Fase 2: Zona, Events, Clips, Web Inbox
+
+Zona digambar di UI → vision-node eksekusi intrusion → event dengan clip mainstream + snapshot diputar di web inbox. 24 kamera NVR terdaftar.
+
+### Commits (ringkas)
+
+- `2bdaf71` feat: zone model + api (polygon validation, schedule)
+- `88947ef` feat: mqtt config push (retained per node)
+- `e41b8d5`/`c3bda0d` feat: intrusion analyzer + config apply (hot reload)
+- `1fc3ed5`/`b20d138` feat: event recorder (clip via go2rtc mp4 + snapshot, blob upload)
+- `d4b50c1` feat: blob storage + media streaming api + media topic consumer
+- `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
+- `3ec0d3a`/`604afa8` feat: zone editor (click-to-draw polygon) + events master-detail inbox
+- `0f979a0`/`75b75aa`/`3973e00` fix: config push zone key id, _config_q order, detector model path resolution
+- `0a31dd8` fix: blob endpoint accepts node name (vision contract)
+- `e03acfa` feat: person_detect events opt-in (debug), zones are the real signal
+
+### Highlights
+
+- **Zona**: model + editor polygon (klik-titik min 3, tutup start-point, drag handle, koordinat norm 0–1) + validasi absensi/direction
+- **Config push MQTT retained** per node — hot-reload worker di vision tanpa restart
+- **Intrusion analyzer** (ray-casting, jadwal, re-entry) + registry analyzer untuk fitur berikutnya
+- **Recorder**: snapshot dari ring JPEG, clip mp4 via go2rtc, upload blob background + retry
+- **Media API** auth + traversal guard + range request (video seek)
+- **Web inbox** master-detail dengan player clip + snapshot + unduh
+
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/LyKhan77/I-Sentinel/commits/v0.1.0
