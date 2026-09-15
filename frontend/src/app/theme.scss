@@ -223,12 +223,15 @@ html {
 
 .app-page__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 12px;
   margin-block-end: 20px;
 
+  // basis 280px + wrap: aksi di kanan turun ke baris sendiri di layar sempit,
+  // bukan menimpa judul (terlihat di /live 390px sebelum perbaikan ini)
   > :first-child {
-    flex: 1;
+    flex: 1 1 280px;
     min-inline-size: 0;
   }
 }
