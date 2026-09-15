@@ -177,7 +177,9 @@ export default function AppShell() {
               <span className="app-sidenav-user__info">
                 <span className="app-sidenav-user__name">{me.username}</span>
                 <br />
-                <span className="app-sidenav-user__role">{me.role}</span>
+                <span className="app-sidenav-user__role">
+                  {me.role === 'admin' ? t('app.role.admin') : t('app.role.viewer')}
+                </span>
               </span>
             </li>
           )}

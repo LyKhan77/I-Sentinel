@@ -22,7 +22,7 @@ function TileStat({
   loading: boolean
 }) {
   return (
-    <Tile style={{ background: '#262626', border: '1px solid #393939' }}>
+    <Tile style={{ background: '#262626' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8d8d8d', fontSize: 12, letterSpacing: 0.32 }}>
         {icon}
         <span style={{ textTransform: 'uppercase' }}>{label}</span>
@@ -84,7 +84,7 @@ export default function DashboardPage() {
           <p className="app-page__sub">{t('dash.sub')}</p>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1, background: '#393939', border: '1px solid #393939' }}>
         <TileStat
           loading={loading}
           icon={<Camera size={16} />}
@@ -126,7 +126,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <h3 style={{ fontWeight: 400, margin: '24px 0 8px' }}>{t('dash.latestAlerts')}</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 600, margin: '32px 0 12px' }}>{t('dash.latestAlerts')}</h3>
       {loading ? (
         <SkeletonText width="100%" />
       ) : latest.length === 0 ? (
