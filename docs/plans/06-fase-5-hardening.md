@@ -575,7 +575,7 @@ def test_stats_shape(client, db, tmp_path, monkeypatch):
     monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
     monkeypatch.setattr(retention.settings, "retention_days", 30)
     h = client.get("/api/v1/cameras").status_code  # pastikan app jalan
-    r = client.get("/api/v1/storage/stats", headers=_admin_headers(client))
+    r = client.get("/api/v1/storage/stats", headers=admin_headers(client))
     assert r.status_code == 200
     body = r.json()
     assert body["retention_days"] == 30
@@ -590,7 +590,7 @@ def test_sweep_requires_admin(client, db, tmp_path, monkeypatch):
 
     monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
     assert client.post("/api/v1/storage/sweep").status_code == 401
-    viewer = _viewer_headers(client)
+    viewer = viewer_headers(client)
     assert client.post("/api/v1/storage/sweep", headers=viewer).status_code == 403
 
 
@@ -608,7 +608,7 @@ def test_sweep_records_last_run(client, db, tmp_path, monkeypatch):
     db.add(ev)
     db.commit()
 
-    r = client.post("/api/v1/storage/sweep?dry_run=true", headers=_admin_headers(client))
+    r = client.post("/api/v1/storage/sweep?dry_run=true", headers=admin_headers(client))
     assert r.status_code == 200
     assert r.json()["events_marked"] == 1
 
@@ -617,7 +617,7 @@ def test_sweep_records_last_run(client, db, tmp_path, monkeypatch):
     assert row.value["events_marked"] == 1
     assert "at" in row.value
 
-    stats = client.get("/api/v1/storage/stats", headers=_admin_headers(client)).json()
+    stats = client.get("/api/v1/storage/stats", headers=admin_headers(client)).json()
     assert stats["last_sweep"]["events_marked"] == 1
 ```
 
@@ -649,7 +649,7 @@ def viewer_headers(client):
     return {"Authorization": f"Bearer {tok}"}
 ```
 
-Di `test_storage_api.py`, ganti seluruh `admin_headers(client)` → `admin_headers(client)` dan
+Di `test_storage_api.py`, pakai nama tanpa garis bawah:
 `viewer_headers(client)` → `viewer_headers(client)` (tanpa garis bawah, sesuai nama di conftest).
 
 - [ ] **Step 2: Jalankan test, pastikan gagal**
