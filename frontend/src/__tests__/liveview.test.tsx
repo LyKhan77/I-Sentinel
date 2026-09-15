@@ -36,6 +36,29 @@ function renderPage() {
   )
 }
 
+beforeEach(() => localStorage.clear())
+
+test('jumlah kolom: default 3, pilihan persist, nilai ngawur di localStorage jatuh ke 3', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+
+  // nilai ngawur (bukan 2/3/4) → default 3, jangan sampai jadi 0 kolom
+  localStorage.setItem('isentinel_live_cols', '99')
+  const { unmount } = renderPage()
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  expect(screen.getByTestId('live-cols-3')).toHaveAttribute('aria-pressed', 'true')
+  expect(document.querySelector('.lv-grid')).toHaveStyle({ '--lv-cols': '3' })
+  unmount()
+
+  // pilih 2 → tersimpan
+  renderPage()
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('live-cols-2'))
+  expect(localStorage.getItem('isentinel_live_cols')).toBe('2')
+  expect(screen.getByTestId('live-cols-2')).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByTestId('live-cols-3')).toHaveAttribute('aria-pressed', 'false')
+  expect(document.querySelector('.lv-grid')).toHaveStyle({ '--lv-cols': '2' })
+})
+
 test('renders camera tiles with snapshot URLs from /live', async () => {
   vi.stubGlobal('fetch', stubFetch())
   renderPage()
