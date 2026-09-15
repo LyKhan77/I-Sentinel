@@ -37,6 +37,7 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - feat: running analyzer (calibrated m/s)
 - feat: alert model + zone analyzer params + camera calibration
 - feat: alerting service (rate-limit, telegram foundation)
+- feat: alerts api + inbox badge + telegram status chip
 
 ## [0.1.0] — 2026-09-10 · Fase 0: Skeleton
 
