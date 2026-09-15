@@ -222,10 +222,14 @@ export default function AttendancePage() {
         <TabButton active={tab === 'range'} label={t('at.tab.range')} onClick={() => setTab('range')} testId="tab-range" />
         <TabButton active={tab === 'employee'} label={t('at.tab.employee')} onClick={() => setTab('employee')} testId="tab-employee" />
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, padding: '6px 0' }}>
-          <input ref={fileRef} type="file" accept=".csv" data-testid="import-input" style={{ display: 'none' }} onChange={onImport} />
-          <Button kind="ghost" size="sm" onClick={() => fileRef.current?.click()}>
-            {t('at.import')}
-          </Button>
+          {isAdmin && (
+            <>
+              <input ref={fileRef} type="file" accept=".csv" data-testid="import-input" style={{ display: 'none' }} onChange={onImport} />
+              <Button kind="ghost" size="sm" data-testid="import-btn" onClick={() => fileRef.current?.click()}>
+                {t('at.import')}
+              </Button>
+            </>
+          )}
           <Button kind="ghost" size="sm" data-testid="export-btn" onClick={() => window.open(attendanceExportUrl(exportRange.from, exportRange.to), '_blank')}>
             {t('at.export')}
           </Button>
@@ -274,7 +278,7 @@ export default function AttendancePage() {
       </div>
 
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />}
-      {info && <InlineNotification kind="success" lowContrast title={t('common.save')} subtitle={info} onCloseButtonClick={() => setInfo(null)} />}
+      {info && <InlineNotification kind="success" lowContrast title={t('at.import.successTitle')} subtitle={info} onCloseButtonClick={() => setInfo(null)} />}
 
       {tab === 'daily' && (
         <div data-testid="at-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: '#393939', border: '1px solid #393939', marginBottom: 14 }}>

@@ -17,6 +17,7 @@ import {
   Toggle,
 } from '@carbon/react'
 import { useT, type TKey } from '../../app/i18n'
+import { getMe, type Me } from '../../api/client'
 import { listCameras, type Camera } from '../../api/cameras'
 import { createZone, listZones, updateZone, type Zone } from '../../api/zones'
 
@@ -34,8 +35,11 @@ export default function GatesPage() {
   const [zones, setZones] = useState<Zone[]>([])
   const [cams, setCams] = useState<Camera[]>([])
   const [newCamId, setNewCamId] = useState<number | null>(null)
+  const [me, setMe] = useState<Me | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const isAdmin = me?.role === 'admin'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -54,6 +58,7 @@ export default function GatesPage() {
   }, [t])
 
   useEffect(() => {
+    getMe().then(setMe).catch(() => setMe(null))
     load()
   }, [load])
 
@@ -105,13 +110,19 @@ export default function GatesPage() {
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 14 }}>
         <div style={{ width: 260 }}>
-          <Select id="gate-cam" labelText={t('gates.col.camera')} value={newCamId ?? ''} onChange={(e) => setNewCamId(e.target.value ? Number(e.target.value) : null)}>
+          <Select
+            id="gate-cam"
+            labelText={t('gates.col.camera')}
+            disabled={!isAdmin}
+            value={newCamId ?? ''}
+            onChange={(e) => setNewCamId(e.target.value ? Number(e.target.value) : null)}
+          >
             {cams.map((c) => (
               <SelectItem key={c.id} value={String(c.id)} text={c.name} />
             ))}
           </Select>
         </div>
-        <Button data-testid="gate-add" disabled={newCamId == null} onClick={addGate}>
+        <Button data-testid="gate-add" disabled={!isAdmin || newCamId == null} onClick={addGate}>
           {t('gates.add')}
         </Button>
       </div>
@@ -145,6 +156,7 @@ export default function GatesPage() {
                         id={`gate-dir-${z.id}`}
                         labelText=""
                         hideLabel
+                        disabled={!isAdmin}
                         value={z.direction ?? 'entry'}
                         onChange={(e) => patch(z, { direction: e.target.value as 'entry' | 'exit' })}
                       >
@@ -158,6 +170,7 @@ export default function GatesPage() {
                         labelText={t('gates.col.snapshot')}
                         hideLabel
                         size="sm"
+                        disabled={!isAdmin}
                         toggled={z.snapshot}
                         onToggle={(v) => patch(z, { snapshot: v })}
                       />
@@ -168,6 +181,7 @@ export default function GatesPage() {
                         labelText={t('gates.col.active')}
                         hideLabel
                         size="sm"
+                        disabled={!isAdmin}
                         toggled={z.active}
                         onToggle={(v) => patch(z, { active: v })}
                       />

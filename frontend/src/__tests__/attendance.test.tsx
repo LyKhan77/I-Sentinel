@@ -7,6 +7,7 @@ import AttendancePage from '../features/attendance/AttendancePage'
 import type { AttendanceRow } from '../api/attendance'
 
 const ME = { id: 1, username: 'admin', role: 'admin' }
+const VIEWER = { id: 2, username: 'viewer', role: 'viewer' }
 
 const ROWS: AttendanceRow[] = [
   { id: 11, employee_id: 1, employee_code: 'EMP-0012', name: 'Budi Santoso', date: '2025-01-15', first_entry: '07:58:41', last_exit: '16:10:00', duration_min: 491, status: 'ontime', late_minutes: 0, override_note: null, shift_name: 'Shift 1' },
@@ -19,12 +20,12 @@ type Call = { url: string; init?: RequestInit }
 
 const resp = (status: number, body: unknown) => ({ ok: status < 400, status, json: () => Promise.resolve(body) })
 
-function stubFetch() {
+function stubFetch(me = ME) {
   const calls: Call[] = []
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     calls.push({ url: u, init })
-    if (u.endsWith('/auth/me')) return resp(200, ME)
+    if (u.endsWith('/auth/me')) return resp(200, me)
     if (u.includes('/attendance/rekap.csv')) return resp(200, '')
     if (/\/attendance\/\d+$/.test(u) && init?.method === 'PATCH') return resp(200, ROWS[1])
     if (u.includes('/attendance')) return resp(200, ROWS)
@@ -66,6 +67,15 @@ test('daily summary tiles count statuses', async () => {
   expect(screen.getByTestId('tile-inside')).toHaveTextContent('1') // waiting
   expect(screen.getByTestId('tile-absent')).toHaveTextContent('1')
   expect(screen.getByTestId('tile-late-max')).toHaveTextContent('47 mnt')
+})
+
+test('viewer (non-admin) has no import button', async () => {
+  stubFetch(VIEWER)
+  renderPage()
+
+  await screen.findByText('Budi Santoso')
+  expect(screen.queryByTestId('import-btn')).not.toBeInTheDocument()
+  expect(screen.getByTestId('export-btn')).toBeInTheDocument()
 })
 
 test('override modal blocks submit without note, then PATCHes when filled', async () => {

@@ -6,6 +6,7 @@ import GatesPage from '../features/config/GatesPage'
 import type { Zone } from '../api/zones'
 
 const ME = { id: 1, username: 'admin', role: 'admin' }
+const VIEWER = { id: 2, username: 'viewer', role: 'viewer' }
 
 function gate(id: number, direction: 'entry' | 'exit'): Zone {
   return {
@@ -35,10 +36,10 @@ const CAMS = [
 
 const resp = (status: number, body: unknown) => ({ ok: status < 400, status, json: () => Promise.resolve(body) })
 
-function stubFetch(zones: Zone[]) {
+function stubFetch(zones: Zone[], me = ME) {
   const fetchMock = vi.fn(async (url: string) => {
     const u = String(url)
-    if (u.endsWith('/auth/me')) return resp(200, ME)
+    if (u.endsWith('/auth/me')) return resp(200, me)
     if (u.endsWith('/zones')) return resp(200, zones)
     if (u.endsWith('/cameras')) return resp(200, CAMS)
     return resp(404, null)
@@ -71,4 +72,23 @@ test('no conflict when directions agree', async () => {
 
   await screen.findByTestId('gate-row-1')
   expect(screen.queryByTestId('gate-conflict-msg')).not.toBeInTheDocument()
+})
+
+test('viewer (non-admin) sees disabled mutation controls', async () => {
+  stubFetch([gate(1, 'entry')], VIEWER)
+  renderPage()
+
+  await screen.findByTestId('gate-row-1')
+  expect(screen.getByTestId('gate-add')).toBeDisabled()
+  for (const combo of screen.getAllByRole('combobox')) expect(combo).toBeDisabled()
+  for (const toggle of screen.getAllByRole('switch')) expect(toggle).toBeDisabled()
+})
+
+test('admin can add a gate zone', async () => {
+  stubFetch([gate(1, 'entry')])
+  renderPage()
+
+  await screen.findByTestId('gate-row-1')
+  expect(screen.getByTestId('gate-add')).toBeEnabled()
+  expect(screen.getAllByRole('combobox')[1]).toBeEnabled()
 })
