@@ -117,7 +117,7 @@ def test_publish_fail_queues(transport):
     assert transport._client.published == []  # failed publish not kept
     assert transport._queue.size() == 1
     seq, ev = transport._queue.pop()
-    assert ev == {"event_id": "e1"}
+    assert ev == {"_topic": "isentinel/events", "data": {"event_id": "e1"}}
 
 
 def test_flush_on_reconnect_in_order(transport):

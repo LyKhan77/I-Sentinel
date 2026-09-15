@@ -12,6 +12,7 @@ from .queue import DiskQueue
 log = logging.getLogger(__name__)
 
 EVENTS_TOPIC = "isentinel/events"
+MEDIA_TOPIC = "isentinel/events/media"
 
 
 class MqttTransport:
@@ -51,20 +52,26 @@ class MqttTransport:
             item = self._queue.pop()
             if item is None:
                 return
-            seq, event = item
-            info = client.publish(EVENTS_TOPIC, json.dumps(event), qos=1)
+            seq, payload = item
+            info = client.publish(payload["_topic"], json.dumps(payload["data"]), qos=1)
             if info.rc != 0:
-                log.warning("queue flush stopped: publish rc=%s (event stays queued)", info.rc)
+                log.warning("queue flush stopped: publish rc=%s (payload stays queued)", info.rc)
                 return
             self._queue.remove(seq)
 
-    def publish_event(self, event: dict) -> None:
+    def _publish(self, topic: str, payload_dict: dict) -> None:
         if not self._client.is_connected():
-            self._queue.put(event)
+            self._queue.put({"_topic": topic, "data": payload_dict})
             return
-        info = self._client.publish(EVENTS_TOPIC, json.dumps(event), qos=1)
+        info = self._client.publish(topic, json.dumps(payload_dict), qos=1)
         if info.rc != 0:
-            self._queue.put(event)
+            self._queue.put({"_topic": topic, "data": payload_dict})
+
+    def publish_event(self, event: dict) -> None:
+        self._publish(EVENTS_TOPIC, event)
+
+    def publish_media(self, payload: dict) -> None:
+        self._publish(MEDIA_TOPIC, payload)
 
     def publish_heartbeat(self, hb: dict) -> None:
         self._client.publish(

@@ -27,6 +27,8 @@ class NodeSettings(BaseSettings):
     detector_conf: float = 0.4
     detector_imgsz: int = 640
     heartbeat_s: float = 10.0
+    go2rtc_url: str = "http://localhost:1984"
+    record_clip_s: int = 30
     log_level: str = "INFO"
     cameras_json: str = ""  # JSON: [{"camera_id": int, "source_url": str, "ai_fps": float}]
 

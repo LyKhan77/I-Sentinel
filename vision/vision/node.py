@@ -79,7 +79,7 @@ class _PartialTrack:
 
 class CameraWorker(threading.Thread):
     def __init__(self, camera_cfg, detector_factory, transport, stop_event, node_id,
-                 analyzers: list[Analyzer] | None = None):
+                 analyzers: list[Analyzer] | None = None, recorder=None):
         super().__init__(daemon=True, name=f"cam-{camera_cfg.camera_id}")
         self.camera_cfg = camera_cfg
         self.detector_factory = detector_factory
@@ -87,6 +87,7 @@ class CameraWorker(threading.Thread):
         self.stop_event = stop_event
         self.node_id = node_id
         self.analyzers = analyzers or []
+        self.recorder = recorder
         self.events: list[dict] = []  # test hook
         self.source = None
 
@@ -105,6 +106,17 @@ class CameraWorker(threading.Thread):
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if self.recorder is not None:
+                    if detections and frame.data is not None:
+                        try:
+                            import cv2
+                            ok, enc = cv2.imencode(".jpg", frame.data)
+                            if ok:
+                                self.recorder.push_jpeg(frame.ts, enc.tobytes())
+                        except ImportError:
+                            pass  # no cv2: ring stays empty, snapshots skipped
+                    elif detections:
+                        self.recorder.push_jpeg(frame.ts, b"")  # tests: no frame data
                 if frame.data is not None:
                     frame_h, frame_w = frame.data.shape[:2]
                 else:
@@ -116,11 +128,15 @@ class CameraWorker(threading.Thread):
                         ev["node_id"] = self.node_id
                         self.events.append(ev)
                         self.transport.publish_event(ev)
+                        if self.recorder is not None:
+                            self.recorder.enqueue(ev)
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
                         self.events.append(ev)
                         self.transport.publish_event(ev)
+                        if self.recorder is not None:
+                            self.recorder.enqueue(ev)
         except Exception:
             if not self.stop_event.is_set():
                 log.exception("camera %s worker died", cam_id)
