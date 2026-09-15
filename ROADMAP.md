@@ -16,6 +16,7 @@
 | 4b | **UI/UX polish** (9 halaman vs mockup, shell, tema) | [x] selesai | 2026-09-15 | 9/9 halaman proper vs mockup (screenshot `docs/evidence/ui-polish/`); 37 vitest + 201 pytest + 79 vision + vite build hijau | `6c6545f..0e0f5da` |
 | 4c | Penutup polish (kolom Live View, daftar zona) + bug live view LAN | [x] selesai | 2026-09-15 | `GO2RTC_PUBLIC_HOST`; snapshot klien LAN `http://localhost:1984` → `http://192.168.2.133:1984`; 3 test baru | `9ca496c..(v0.5.2)` |
 | 4d | Responsif: nol overflow horizontal di 390px | [x] selesai | 2026-09-15 | 9/9 halaman `overflow=0 scrollX=0` (sebelumnya /events 132px, /attendance 115px, /config/gates 23px) | `a0ab278..(v0.5.3)` |
+| 4e | Live view jalan dari klien LAN (proxy snapshot) | [x] selesai | 2026-09-15 | 24/25 tile render `640x360` same-origin; `/snapshot` 401 tanpa login, 200 image/jpeg dengan login | `7c89eb1..(v0.5.4)` |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
@@ -253,6 +254,33 @@ Audit 9 halaman di 390px. Empat halaman bisa di-scroll ke samping; semua dibetul
   `npx vitest run` **37 passed** · `npm run build` sukses · `npx oxlint` 0 error (17 warning,
   sama seperti sebelum pekerjaan UI — 16 di antaranya sudah ada di main)
 - Screenshot mobile + desktop: `docs/evidence/ui-polish/after/`
+
+---
+
+## Fase 4e — Live view jalan dari klien LAN
+
+Penutup rangkaian bug live view. Port go2rtc (1984) diblokir firewall server, jadi URL
+go2rtc apa pun yang dikirim ke browser tidak akan pernah bisa dijangkau klien.
+
+**Kriteria selesai:**
+- [x] Tile live view menampilkan frame kamera nyata dari klien LAN
+- [x] Tidak membuka port baru / tidak mengekspos API go2rtc yang tanpa autentikasi
+- [x] Test + build hijau
+
+**Bukti:**
+- Diukur dari klien (Windows): `192.168.2.133:5173/8000/1883` TERBUKA; `:1984` dan `:8554`
+  TIMEOUT (connect DROP). Di server `ss -lntp` → go2rtc bind `*:1984` ⇒ murni firewall
+- Sesudah proxy: 25 tile, gambar pertama `640x360 host=192.168.2.133:5173`, kecerahan rata-rata
+  **106** (bukan frame hitam); 1 kamera go2rtc 502 → tile jadi OFFLINE (`tileOffline=1`),
+  24 lainnya render
+- `curl` di server: `/api/v1/cameras/5/snapshot` tanpa login **401**, dengan login
+  **200 image/jpeg 44623 bytes**
+- `pytest backend/tests` **203 passed** · `pytest vision/tests` **79 passed, 2 skipped** ·
+  `npx vitest run` **37 passed** · `npm run build` sukses · `npx oxlint` 0 error
+
+**Catatan untuk WebRTC (Fase berikutnya):** `webrtc`/`mse`/`hls` masih URL go2rtc langsung.
+Kalau nanti video live (bukan snapshot) diaktifkan, 1984 harus dibuka ke LAN **atau** di-proxy
+sama seperti snapshot — jangan dibuka tanpa autentikasi, go2rtc tidak punya auth sendiri.
 
 ---
 

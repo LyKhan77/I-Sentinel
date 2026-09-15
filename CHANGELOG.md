@@ -29,6 +29,38 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - **Backend**: consumer MQTT (events/heartbeat/LWT), idempotent ingest, WS broadcast, go2rtc sync
 - **Frontend**: dashboard tile hidup, live view snapshot grid (fokus+fullscreen), events list realtime
 
+## [0.5.4] — 2026-09-15 · Live view benar-benar jalan dari klien LAN
+
+`7c89eb1` fix(backend): `GET /api/v1/cameras/{id}/snapshot` mem-proxy frame go2rtc lewat API.
+
+Urutan kejadiannya penting untuk dicatat:
+
+1. Sebelum sesi ini: `snapshot` = `http://localhost:1984/...` (host dari header `Host`
+   yang dihancurkan proxy Vite) → tiap tile gagal cepat, live view mati.
+2. `fd42e31` memperbaiki host ke `GO2RTC_PUBLIC_HOST` → malah LEBIH BURUK: tiap tile
+   menggantung 5 detik, karena port 1984 diblokir firewall server.
+3. Diukur dari klien: `5173`/`8000`/`1883` TERBUKA, `1984`/`8554` TIMEOUT (connect DROP).
+   `ss -lntp` menunjukkan go2rtc bind `*:1984` — jadi murni firewall.
+4. Diperbaiki dengan proxy, bukan dengan membuka port.
+
+Alasan memilih proxy: API go2rtc **tidak punya autentikasi**. Membuka 1984 ke LAN berarti
+siapa pun di jaringan bisa membaca semua stream kamera. Proxy memakai port 8000 yang sudah
+terbuka dan sudah di belakang `get_current_user`, jadi permukaan serangan tidak bertambah.
+
+- `snapshot` kini path same-origin `/api/v1/cameras/{id}/snapshot` (butuh login, 401 tanpa sesi,
+  502 bila go2rtc tak terjangkau — bukan 500)
+- `webrtc`/`mse`/`hls` tetap URL go2rtc langsung; WebRTC nanti butuh 1984 dibuka atau
+  di-proxy juga. `GO2RTC_PUBLIC_HOST` tetap dipakai untuk ketiga field itu.
+
+### Bukti
+
+- Di klien: 25 tile, gambar pertama `640x360 host=192.168.2.133:5173`, rata-rata kecerahan 106
+  (bukan frame hitam). Satu kamera go2rtc 502 → tile-nya otomatis jadi OFFLINE
+  (`tileOffline=1`), 24 lainnya render — degradasi rapi, bukan gagal total
+- `curl` di server: `/snapshot` tanpa login → **401**, dengan login → **200 image/jpeg 44623 bytes**
+- `pytest backend/tests` **203 passed** (+2) · `pytest vision/tests` **79 passed, 2 skipped** ·
+  `npx vitest run` **37 passed** · `npm run build` sukses
+
 ## [0.5.3] — 2026-09-15 · Responsif: nol overflow horizontal di 390px
 
 Audit 9 halaman di viewport 390px menemukan 4 halaman bisa di-scroll ke samping.
@@ -249,7 +281,8 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 - **CSV**: export (tanpa biometrik, anti-injection) + import upsert idempotent
 - **Vision**: face_gate crop dari MAINSTREAM (resolusi wajah) + upload blob; error isolation
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.0...v0.5.1
