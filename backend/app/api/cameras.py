@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.api.deps import get_current_user, require_admin
 from app.models.camera import Camera
+from app.models.attendance import AttendanceEvent
 from app.models.node import Node
 from app.schemas.camera import CameraOut, CameraIn, CameraPatch
 from app.services.go2rtc import sync_camera, remove_stream
@@ -80,6 +81,8 @@ def update_camera(camera_id: int, body: CameraPatch, admin=Depends(require_admin
 def delete_camera(camera_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     cam = db.get(Camera, camera_id)
     if not cam: raise HTTPException(404, "camera not found")
+    if db.query(AttendanceEvent).filter(AttendanceEvent.camera_id == camera_id).first():
+        raise HTTPException(409, "camera has attendance records; deactivate instead")
     node_name = db.get(Node, cam.node_id).name if cam.node_id else None
     db.delete(cam); db.commit()
     try:

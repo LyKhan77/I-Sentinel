@@ -67,6 +67,22 @@ class Recorder:
         if ok:
             self.ring.push(ts, enc.tobytes())
 
+    def fetch_frame(self, stream_name: str) -> bytes | None:
+        """Single jpeg snapshot from go2rtc (main stream): raw bytes or None.
+
+        Used to crop attendance faces at full resolution instead of the
+        low-res substream the detector runs on.
+        """
+        url = f"{self.cfg.go2rtc_url}/api/frame.jpeg?src={stream_name}"
+        try:
+            with urlopen(url, timeout=5) as resp:
+                data = resp.read()
+        except Exception as e:
+            log.warning("recorder cam%s: frame fetch %s failed: %s",
+                        self.camera_id, stream_name, e)
+            return None
+        return data or None
+
     def enqueue(self, event: dict, track_bbox_norm=None) -> None:
         try:
             self._q.put_nowait((event, track_bbox_norm))
@@ -146,6 +162,24 @@ class Recorder:
         with open(path, "wb") as f:
             f.write(data)
         return path
+
+    def upload_bytes(self, data: bytes, kind: str,
+                     content_type: str = "image/jpeg") -> str | None:
+        """Upload raw bytes via a temp file in outbox. Returns backend path or None."""
+        import os
+        import uuid
+        if not self.cfg.api_url or not self.cfg.api_key:
+            return None
+        tmp = os.path.join(self._outbox_dir(), f"{uuid.uuid4().hex}.tmp")
+        try:
+            with open(tmp, "wb") as f:
+                f.write(data)
+            return self._upload_one(tmp, kind, content_type)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
     def _upload_one(self, path: str, kind: str, content_type: str) -> str | None:
         """POST raw bytes to blob endpoint. Returns backend path or None on final failure."""

@@ -7,9 +7,12 @@ import AppShell from './app/AppShell'
 import LoginPage from './features/auth/LoginPage'
 import CamerasPage from './features/config/CamerasPage'
 import ZonesPage from './features/config/ZonesPage'
+import GatesPage from './features/config/GatesPage'
 import DashboardPage from './features/dashboard/DashboardPage'
 import LiveViewPage from './features/live/LiveViewPage'
 import EventsPage from './features/events/EventsPage'
+import AttendancePage from './features/attendance/AttendancePage'
+import EnrollmentPage from './features/enrollment/EnrollmentPage'
 import { I18nProvider, useT } from './app/i18n'
 import { getMe } from './api/client'
 import type { Me } from './api/client'
@@ -64,8 +67,11 @@ const router = createBrowserRouter([
           { path: 'dashboard', element: <DashboardPage /> },
           { path: 'live', element: <LiveViewPage /> },
           { path: 'events', element: <EventsPage /> },
+          { path: 'attendance', element: <AttendancePage /> },
+          { path: 'enrollment', element: <EnrollmentPage /> },
           { path: 'config/cameras', element: <CamerasPage /> },
           { path: 'config/zones', element: <ZonesPage /> },
+          { path: 'config/gates', element: <GatesPage /> },
           { path: '*', element: <Placeholder /> },
         ],
       },

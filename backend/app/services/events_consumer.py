@@ -11,7 +11,7 @@ import paho.mqtt.client as mqtt
 from app.core.config import settings
 from app.models import Event, Node
 from app.schemas.event import EventIn, EventOut
-from app.services import alerting
+from app.services import alerting, attendance
 from app.services.ingest import ingest_event
 from app.ws.hub import hub
 
@@ -46,6 +46,11 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 except Exception:
                     db.rollback()
                     logger.exception("alerting failed for event %s", ev.event_id)
+                try:
+                    attendance.handle_face_event(db, ev)
+                except Exception:
+                    db.rollback()
+                    logger.exception("attendance failed for event %s", ev.event_id)
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
         elif topic == MEDIA_TOPIC:
             event_id = data.get("event_id")

@@ -11,6 +11,9 @@ def client(db, monkeypatch):
     monkeypatch.setattr(settings, "admin_username", "admin")
     monkeypatch.setattr(settings, "admin_password", "boot123")
     monkeypatch.setattr(settings, "node_api_key", "test-node-key")
+    # _payload() hardcodes camera_id=1 — seed the parent row (FK enforced)
+    from app.models.camera import Camera
+    db.add(Camera(id=1, name="cam1", host="1.2.3.4")); db.commit()
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as c:
         yield c
