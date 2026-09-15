@@ -13,6 +13,7 @@
 | 2 | Zona + events + clips + web inbox | [x] selesai | 2026-09-15 | E2E: editor zona klik-titik → intrusion event critical + clip mp4 + snapshot ter-upload, diputar di browser; 24 kamera NVR terdaftar; person_detect jadi opt-in | 7bf81e5..e03acfa |
 | 3 | Loitering + running + Telegram + rate-limit | [x] selesai (foundation) | 2026-09-15 | Analyzer loitering (7 test) + running anisotropic-fixed (10 test); alert E2E: critical → not_configured (token kosong), event ke-2 → rate_limited; badge + chip di inbox | |
 | 4 | Absensi wajah (enrollment, gate, shift) | [x] selesai | 2026-09-15 | Enrollment 3 foto nyata (InsightFace buffalo_l, CPU 200ms) → match score 1.0 → attendance_event + day; CSV export/import roundtrip; 3 halaman UI hidup | |
+| 4b | **UI/UX polish** (9 halaman vs mockup, shell, tema) | [x] selesai | 2026-09-15 | 9/9 halaman proper vs mockup (screenshot `docs/evidence/ui-polish/`); 36 vitest + 199 pytest + 79 vision + vite build hijau | `6c6545f..(merge)` |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
@@ -145,6 +146,46 @@ Plan: `docs/plans/05-fase-4-absensi.md` (7 task, selesai + review)
 - Crop gate WAJIB dari mainstream (temuan bring-up: substream terlalu kecil untuk wajah)
 - Demo "orang berjalan masuk gate secara fisik" belum: membutuhkan orang menghadap kamera gate — rantai dibuktikan via event crop nyata dari snapshot kamera (pipeline identik)
 - InsightFace CPU fallback cukup untuk gate frekuensi rendah; GPU libs = gap yang diketahui
+
+---
+
+## Fase 4b — UI/UX Polish
+
+Bukan fase di master plan; sesi terpisah atas permintaan user: semua halaman sudah hidup
+tapi belum proper secara visual. Murni frontend, tanpa perubahan perilaku backend.
+
+**Kriteria selesai:**
+- [x] Semua 9 halaman (`/login`, `/dashboard`, `/live`, `/events`, `/attendance`, `/enrollment`,
+      `/config/cameras`, `/config/zones`, `/config/gates`) tampil proper vs mockup 01–06 — screenshot bukti
+- [x] Sidebar collapse mulus di semua halaman + state persist
+- [x] Tidak ada konten tertimpa sidebar
+- [x] Test + build hijau
+
+**Bukti (gspe-ai3, 2026-09-15):**
+- Screenshot sebelum: `docs/evidence/ui-polish/before/` (9 halaman, judul + filter tertimpa sidebar)
+- Screenshot sesudah: `docs/evidence/ui-polish/after/` (9 halaman desktop 1600×1000, rail 48px,
+  mobile 390/480/768px, locale EN) + `mockup/` (6 mockup disetujui sebagai pembanding)
+- Pengukuran DOM: `#main-content` margin-inline-start **48px** saat rail (sebelumnya **0** sepanjang waktu);
+  8 ikon nav center di 24px pada rail 48px; `<ul>` SideNavItems berisi `<li>` semua (sebelumnya `<div>`/`<h3>`)
+- Font: 0 error `Failed to decode downloaded font` di console (sebelumnya 4+ per halaman);
+  `getComputedStyle(h1).fontFamily` = `"IBM Plex Sans", …`
+- Tema: 327/327 token `var(--cds-*)` terdefinisi (sebelumnya 31 ditulis tangan, 70 punya fallback terang)
+- `npx vitest run` → **36 passed** · `npx oxlint` → 0 error (17 warning, baseline main 16)
+- `npm run build` → sukses, 5 file woff2 Plex Sans ter-bundle · `pytest backend/tests` → **199 passed** ·
+  `pytest vision/tests` → **79 passed, 2 skipped**
+
+**Catatan keputusan/temuan:**
+- `SideNavMenuItem` Carbon tidak punya prop `renderIcon` (hanya `SideNavLink`) — ikon nav tidak pernah
+  dirender dan prop-nya bocor ke DOM sejak Fase 0
+- Token g100 yang ditulis tangan di `theme.scss` bocor 70 token → aturan Carbon
+  `.cds--data-table .cds--select-input { background: var(--cds-field-02, #fff) }` membuat select "Arah"
+  di /config/gates berlatar putih dengan teks putih. Kini Carbon yang mengemit tokennya
+- Carbon mengemit `url('~@ibm/plex/…')` (sintaks webpack) yang tidak di-resolve Vite → Plex Sans tidak
+  pernah termuat sejak Fase 0, teks jatuh ke Helvetica
+- Belum dikerjakan (di luar scope polish, kandidat fase 5): pemilih jumlah kolom di Live View
+  (mockup 02 punya chip 2/3/4 kolom), daftar zona di /config/zones (mockup 06 punya list pohon per kamera)
+- `frontend/public/icons.svg` adalah sisa boilerplate starter (Bluesky/GitHub icon), tidak direferensikan
+  kode mana pun — dibiarkan, dihapus saja kalau mau bersih
 
 ---
 

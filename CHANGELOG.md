@@ -29,6 +29,31 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - **Backend**: consumer MQTT (events/heartbeat/LWT), idempotent ingest, WS broadcast, go2rtc sync
 - **Frontend**: dashboard tile hidup, live view snapshot grid (fokus+fullscreen), events list realtime
 
+## [0.5.1] — 2026-09-15 · UI/UX Polish
+
+Semua 9 halaman dibuat proper terhadap mockup 01–06. Murni frontend — tidak ada perubahan
+perilaku backend. Tiga bug fondasi yang sejak Fase 0 membuat tiap halaman salah tampil
+diperbaiki di akarnya (offset konten, token tema, pemuatan font).
+
+### Perbaikan
+
+- `6c6545f` fix(ui): konten tertimpa sidebar fixed di semua halaman; sidebar rail collapse 48px
+  (ikon saja, tanpa hover-expand, persist localStorage); markup `<ul>` valid; IBM Plex Sans akhirnya
+  termuat; layout halaman diseragamkan (`.app-page`)
+- `f9b4f9e` fix(ui): token g100 di-emit Carbon, bukan 31 token tulis-tangan — select "Arah" di
+  /config/gates tidak lagi berlatar putih dengan teks putih
+- `e2fe1d2` fix(ui): state no-signal untuk tile live view (ikon + OFFLINE + timestamp + badge
+  LIVE/OFFLINE) dan fallback snapshot editor zona (tidak ada lagi ikon gambar rusak)
+- `40b9548` fix(ui): brand header tidak lagi pecah dua baris di viewport < 480px
+- `b5df1c9` fix(ui): /events, /live, /dashboard menampilkan error saat request gagal, bukan empty
+  state yang menyesatkan; CamerasPage disamakan memakai `lowContrast`
+
+### Bukti
+
+- Screenshot sebelum/sesudah 9 halaman + rail/mobile/EN: `docs/evidence/ui-polish/`
+- `npx vitest run` 36 passed · `npm run build` sukses · `pytest backend/tests` 199 passed ·
+  `pytest vision/tests` 79 passed, 2 skipped · `npx oxlint` 0 error
+
 ## [Unreleased]
 
 - `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
@@ -151,7 +176,8 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 - **CSV**: export (tanpa biometrik, anti-injection) + import upsert idempotent
 - **Vision**: face_gate crop dari MAINSTREAM (resolusi wajah) + upload blob; error isolation
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...v0.3.0

@@ -14,3 +14,6 @@ backend/test.db
 
 # artefak sesi browser lokal
 .playwright-mcp/
+
+# artefak perintah Windows yang gagal (ping > nul) + sampah sesi
+nul
