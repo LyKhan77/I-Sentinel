@@ -1,8 +1,9 @@
 """Running analyzer: calibrated per-track speed (m/s) inside a zone polygon.
 
 Speed from analyzer-frame centroid deltas. `meters_per_pixel` is measured on the
-raw frame pixels, so normalized distance must first go back to pixels via
-frame_width: meters = |Δcentroid_norm| * frame_w * meters_per_pixel.
+raw frame pixels, so each normalized axis must first go back to pixels through
+its own frame dimension (x by frame_w, y by frame_h) before applying
+meters_per_pixel: meters = hypot(Δx_norm*frame_w, Δy_norm*frame_h) * mpp.
 """
 from __future__ import annotations
 
@@ -43,7 +44,9 @@ class RunningAnalyzer(Analyzer):
             dt = ts - prev[0]
             if dt <= 0:
                 continue
-            meters = math.dist(tr.centroid, prev[1]) * frame_w * self.mpp
+            dx = (tr.centroid[0] - prev[1][0]) * frame_w
+            dy = (tr.centroid[1] - prev[1][1]) * frame_h
+            meters = math.hypot(dx, dy) * self.mpp
             new_s = meters / dt
             prev_s = self._speed.get(tr.id)
             s = new_s if prev_s is None else (1 - EMA_ALPHA) * prev_s + EMA_ALPHA * new_s

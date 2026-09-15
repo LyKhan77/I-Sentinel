@@ -12,6 +12,7 @@ from vision.config import NodeSettings
 SQUARE = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
 
 FRAME_W = 640
+FRAME_H = 480
 MPP = 0.01
 
 
@@ -60,9 +61,19 @@ def test_fast_track_emits_with_speed():
     p = ev["payload"]
     assert p["zone_name"] == "Zona Lari"
     assert p["track_id"] == 1
-    assert 1.2 <= p["speed_mps"] <= 2.0
+    # 0.05*640*0.01/0.2 = 1.6 m/s exactly (EMA first sample = new_s)
+    assert abs(p["speed_mps"] - 1.6) <= 0.05
     assert p["confidence"] is None
     assert p["bbox_norm"] == [0.0, 0.0, 0.1, 0.1]
+
+
+def test_fast_vertical_track_scales_by_frame_height():
+    # y axis must scale by frame_h (480), not frame_w: 0.05*480*0.01/0.2 = 1.2 m/s
+    az = RunningAnalyzer(zone(speed_limit_mps=1.0), MPP)
+    assert az.on_frame(1000.0, one_track((0.4, 0.4)), FRAME_W, FRAME_H) == []
+    evs = az.on_frame(1000.2, one_track((0.4, 0.45)), FRAME_W, FRAME_H)
+    assert len(evs) == 1
+    assert abs(evs[0]["payload"]["speed_mps"] - 1.2) <= 0.05
 
 
 def test_cooldown_per_track():
