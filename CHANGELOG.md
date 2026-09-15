@@ -29,6 +29,40 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - **Backend**: consumer MQTT (events/heartbeat/LWT), idempotent ingest, WS broadcast, go2rtc sync
 - **Frontend**: dashboard tile hidup, live view snapshot grid (fokus+fullscreen), events list realtime
 
+## [0.5.3] — 2026-09-15 · Responsif: nol overflow horizontal di 390px
+
+Audit 9 halaman di viewport 390px menemukan 4 halaman bisa di-scroll ke samping.
+Semua diperbaiki; sekarang 9/9 `docOverflow=0`, termasuk `window.scrollX` setelah
+`scrollTo(500,0)` — bukan cuma angka `scrollWidth`.
+
+| Halaman | Sebelum | Sesudah | Penyebab |
+|---|---|---|---|
+| /events | 132px | **0** | 3 dropdown filter tidak wrap; `<dl>` detail memakai grid `auto 1fr` dengan UUID tanpa titik putus; grid master-detail menyusutkan panel detail ke ~30px tapi isinya (thumbnail 72px, `<video>`) punya `min-width:auto` |
+| /attendance | 115px | **0** | baris tab + tombol Import/Export tidak wrap |
+| /config/gates | 23px | **0** | overflow tabel tembus ke halaman walau `.cds--data-table-content` sudah `overflow-x:auto` |
+| /live | 0 (tapi chip menimpa judul) | **0** | `.app-page__head` flex tanpa wrap, anak pertama `flex:1` boleh menyusut sampai 0 |
+| 4 lainnya | 0 | 0 | — |
+
+### Perbaikan
+
+- `a0ab278` fix(ui): `.app-page__head` `flex-wrap` + basis 280px — aksi turun ke baris
+  sendiri di layar sempit, tidak menimpa judul. Kena /live, /events, /enrollment, /config/cameras
+- `f30dfa9` fix(ui): filter /events wrap (basis 200px / maks 240px) + baris tab /attendance wrap
+- `ce081ee` fix(ui): `overflow-wrap:anywhere` pada `<dl>` detail event — min-content kolom
+  `1fr` jadi satu karakter, tidak lagi selebar UUID
+- `15505a4` fix(ui): scroller di `.cds--data-table-container` — diverifikasi dengan uji
+  sembunyikan-elemen di browser (menyembunyikan container → overflow 0; menambah
+  `overflow:hidden` di wrapper dalam tetap 23)
+- `2e5abf4` fix(ui): `/events` ditumpuk satu kolom di bawah 900px; desktop tetap master-detail
+
+### Bukti
+
+- Pengukuran per halaman di 390px: `/dashboard /live /events /attendance /enrollment
+  /config/cameras /config/zones /config/gates` → semua `overflow=0 scrollX=0`
+- Screenshot mobile + desktop: `docs/evidence/ui-polish/after/`
+- `pytest backend/tests` **201 passed** · `pytest vision/tests` **79 passed, 2 skipped**
+- `npx vitest run` **37 passed** · `npm run build` sukses · `npx oxlint` 0 error
+
 ## [0.5.2] — 2026-09-15 · Penutup polish + bug live view LAN
 
 Menutup dua elemen mockup yang belum dikerjakan, plus satu bug nyata yang
@@ -215,7 +249,8 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 - **CSV**: export (tanpa biometrik, anti-injection) + import upsert idempotent
 - **Vision**: face_gate crop dari MAINSTREAM (resolusi wajah) + upload blob; error isolation
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.4.0...v0.5.0

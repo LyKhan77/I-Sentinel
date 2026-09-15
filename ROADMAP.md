@@ -15,6 +15,7 @@
 | 4 | Absensi wajah (enrollment, gate, shift) | [x] selesai | 2026-09-15 | Enrollment 3 foto nyata (InsightFace buffalo_l, CPU 200ms) → match score 1.0 → attendance_event + day; CSV export/import roundtrip; 3 halaman UI hidup | |
 | 4b | **UI/UX polish** (9 halaman vs mockup, shell, tema) | [x] selesai | 2026-09-15 | 9/9 halaman proper vs mockup (screenshot `docs/evidence/ui-polish/`); 37 vitest + 201 pytest + 79 vision + vite build hijau | `6c6545f..0e0f5da` |
 | 4c | Penutup polish (kolom Live View, daftar zona) + bug live view LAN | [x] selesai | 2026-09-15 | `GO2RTC_PUBLIC_HOST`; snapshot klien LAN `http://localhost:1984` → `http://192.168.2.133:1984`; 3 test baru | `9ca496c..(v0.5.2)` |
+| 4d | Responsif: nol overflow horizontal di 390px | [x] selesai | 2026-09-15 | 9/9 halaman `overflow=0 scrollX=0` (sebelumnya /events 132px, /attendance 115px, /config/gates 23px) | `a0ab278..(v0.5.3)` |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
@@ -222,6 +223,36 @@ Dua elemen mockup yang belum dibuat, plus satu bug nyata yang ditemukan saat ver
   `~/.isentinel/secrets/` (di luar pohon proyek). Tidak pernah masuk git history.
 - `.gitignore` hanya mengabaikan `.env` persis, sehingga `.env.bak.<ts>` bocor → tambah `.env.*`
   + negasi `!.env.example`
+
+---
+
+## Fase 4d — Responsif (nol overflow horizontal)
+
+Audit 9 halaman di 390px. Empat halaman bisa di-scroll ke samping; semua dibetulkan.
+
+**Kriteria selesai:**
+- [x] Tidak ada halaman yang bisa di-scroll horizontal di 390px
+- [x] Test + build hijau
+
+**Bukti (390×900, diukur di browser, `window.scrollTo(500,0)` → `scrollX`):**
+
+| Halaman | Sebelum | Sesudah |
+|---|---|---|
+| /events | 132px | 0 |
+| /attendance | 115px | 0 |
+| /config/gates | 23px | 0 |
+| /dashboard, /live, /enrollment, /config/cameras, /config/zones | 0 | 0 |
+
+- /live 390px sebelumnya judul + subjudul diperas jadi satu kata per baris dan chip
+  kolom menimpanya (`.app-page__head` tanpa `flex-wrap`); perbaikan berlaku juga untuk
+  /events, /enrollment, /config/cameras
+- Penyebab /config/gates ditemukan dengan uji sembunyikan-elemen: menyembunyikan
+  `.cds--data-table-container` → overflow 0, sementara `overflow:hidden` pada
+  `.cds--data-table-content` bawaan Carbon tetap 23 → scroller dipasang di level container
+- `pytest backend/tests` **201 passed** · `pytest vision/tests` **79 passed, 2 skipped** ·
+  `npx vitest run` **37 passed** · `npm run build` sukses · `npx oxlint` 0 error (17 warning,
+  sama seperti sebelum pekerjaan UI — 16 di antaranya sudah ada di main)
+- Screenshot mobile + desktop: `docs/evidence/ui-polish/after/`
 
 ---
 
