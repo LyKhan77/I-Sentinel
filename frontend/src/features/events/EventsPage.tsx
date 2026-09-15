@@ -13,9 +13,9 @@ function timeStr(ts: string): string {
 }
 
 function Thumb({ path, alt }: { path: string | null; alt: string }) {
-  if (!path) return <div style={{ width: 72, height: 40, background: 'var(--cds-layer)', flexShrink: 0, borderRadius: 3 }} />
+  if (!path) return <div style={{ width: 72, height: 40, background: 'var(--cds-layer)', flexShrink: 0, borderRadius: 0 }} />
   // eslint-disable-next-line jsx-a11y/alt-text -- alt via prop
-  return <img src={`/api/v1/media/${path}`} alt={alt} style={{ width: 72, height: 40, objectFit: 'cover', flexShrink: 0, borderRadius: 3 }} />
+  return <img src={`/api/v1/media/${path}`} alt={alt} style={{ width: 72, height: 40, objectFit: 'cover', flexShrink: 0, borderRadius: 0 }} />
 }
 
 export default function EventsPage() {
