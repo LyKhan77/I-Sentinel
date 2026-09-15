@@ -243,6 +243,36 @@ def test_person_detect_default_off_zones_still_emit(tmp_path):
     intrusion = [e for e in t.events if e["type"] == "intrusion"]
     assert len(intrusion) == 1 and intrusion[0]["zone_id"] == 7
 
+def test_two_zones_restricted_plus_loiter_build_both_analyzers(tmp_path):
+    # camera 62, two zones: restricted (person outside) + free w/ loiter_seconds
+    # (person inside). Both analyzers must be built and the loiter zone must
+    # reach the analyzer even though type != "restricted".
+    node, t = make_node({62: [[(0.6, 0.6, 0.8, 0.8)]] * 5})
+    node.apply_config({"cameras": [
+        {"camera_id": 62, "source_url": "test://62", "ai_fps": 5.0, "zones": [
+            {"id": 7, "name": "R", "type": "restricted", "severity": "warning",
+             "polygon": [[0.0, 0.0], [0.3, 0.0], [0.3, 0.3], [0.0, 0.3]],
+             "schedule": None},
+            {"id": 8, "name": "L", "type": "free", "severity": "info",
+             "polygon": [[0.5, 0.5], [1.0, 0.5], [1.0, 1.0], [0.5, 1.0]],
+             "loiter_seconds": 0.5},
+            # no "type" key: must not KeyError, still loiters
+            {"id": 9, "name": "T", "severity": "info",
+             "polygon": [[0.5, 0.5], [1.0, 0.5], [1.0, 1.0], [0.5, 1.0]],
+             "loiter_seconds": 0.5},
+        ]},
+    ]})
+    types = sorted(type(a).__name__ for a in node._workers[0].analyzers)
+    assert types == ["IntrusionAnalyzer", "LoiteringAnalyzer", "LoiteringAnalyzer"]
+    node.run()
+    loitering = [e for e in t.events if e["type"] == "loitering"]
+    assert {e["zone_id"] for e in loitering} == {8, 9}
+    assert all(e["camera_id"] == 62 and e["payload"]["dwell_s"] >= 0.5
+               for e in loitering)
+    # restricted zone polygon is empty of persons -> no intrusion
+    assert [e for e in t.events if e["type"] == "intrusion"] == []
+
+
 def test_detector_model_relative_resolved_to_env_dir(tmp_path, monkeypatch):
     from vision.node import VisionNode
     engine_dir = tmp_path / "models"

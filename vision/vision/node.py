@@ -173,7 +173,9 @@ class VisionNode:
             cam = CameraCfg(camera_id=c["camera_id"], source_url=c["source_url"],
                             ai_fps=c.get("ai_fps", 5.0),
                             zones=[z for z in c.get("zones", [])
-                                   if z.get("type") == "restricted" and z.get("active", True)])
+                                   if z.get("active", True)
+                                   and (z.get("type") == "restricted"
+                                        or z.get("loiter_seconds", 0) > 0)])
             cams.append(cam)
         return cams
 
@@ -182,7 +184,7 @@ class VisionNode:
         for z in cam.zones:
             # a zone can carry more than one analyzer: restricted zones get
             # intrusion, any zone with loiter_seconds > 0 also gets loitering
-            if z["type"] == "restricted":
+            if z.get("type") == "restricted":
                 out.append(ANALYZERS["intrusion"](z))
             if z.get("loiter_seconds", 0) > 0:
                 out.append(ANALYZERS["loitering"](z))
