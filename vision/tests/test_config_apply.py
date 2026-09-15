@@ -1,6 +1,7 @@
 """Config apply (hot reload) tests: transport subscribe + node worker rebuild."""
 import json
 import threading
+import time
 
 import numpy as np
 
@@ -163,6 +164,56 @@ def test_apply_config_camera_removal_stops_worker(tmp_path):
     node.run()
     assert not any(e["camera_id"] == 2 for e in t.events)
     assert {e["camera_id"] for e in t.events} == {5}
+
+
+def test_hot_reload_apply_config_while_running(tmp_path):
+    # node.run() in a thread; config pushed via _config_q so the run loop
+    # itself calls apply_config (the real hot-reload path).
+    node, t = make_node(
+        {1: [[(0.4, 0.4, 0.6, 0.6)]] * 4},
+        cfg=NodeSettings(node_id="server", cameras_json=json.dumps([
+            {"camera_id": 1, "source_url": "test://1", "ai_fps": 2.0},
+        ])),
+        det_scripts={1: [[(0.4, 0.4, 0.6, 0.6)]] * 4},
+    )
+    src2 = FrameSource.from_frames([frame()] * 3, fps=5.0)
+    det = lambda b: Detection(bbox=b, conf=0.9)
+    dets2 = MockDetector([[det((0.4, 0.4, 0.6, 0.6))], [det((0.4, 0.4, 0.6, 0.6))], []])
+    base_src, base_det = node.source_factory, node.detector_factory
+    node.source_factory = lambda cam: src2 if cam.camera_id == 2 else base_src(cam)
+    node.detector_factory = lambda cid: (dets2 if cid == 2 else base_det(cid))
+
+    runner = threading.Thread(target=node.run, daemon=True)
+    runner.start()
+    deadline = time.time() + 5
+    while time.time() < deadline and not t.events:
+        time.sleep(0.02)
+    assert t.events and all(e["camera_id"] == 1 for e in t.events)
+    cam1_count = len(t.events)
+
+    node._config_q.put({
+        "cameras": [
+            {"camera_id": 2, "source_url": "test://2", "ai_fps": 5.0,
+             "zones": [{"id": 9, "name": "Z2", "type": "restricted",
+                        "severity": "warning",
+                        "polygon": [[0, 0], [1, 0], [1, 1], [0, 1]],
+                        "schedule": None}]},
+        ],
+    })
+    deadline = time.time() + 5
+    intrusion = []
+    while time.time() < deadline:
+        intrusion = [e for e in t.events if e["type"] == "intrusion"]
+        if intrusion:
+            break
+        time.sleep(0.02)
+    assert len(intrusion) == 1
+    assert intrusion[0]["camera_id"] == 2 and intrusion[0]["zone_id"] == 9
+
+    # camera-1 worker stopped by reload: no new events from it
+    time.sleep(0.5)
+    assert len([e for e in t.events if e["camera_id"] == 1]) == cam1_count
+    runner.join(timeout=5)
 
 
 def test_no_config_backward_compat(tmp_path):

@@ -45,6 +45,8 @@ class IntrusionAnalyzer(Analyzer):
 
     def on_frame(self, ts: float, tracks: list, frame_w: int, frame_h: int) -> list[dict]:
         if not _schedule_active(self.schedule, ts):
+            # off-window: _inside frozen intentionally — a track still inside at
+            # window close does not re-emit when the next window opens
             return []
         events = []
         new_inside: set[int] = set()
