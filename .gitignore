@@ -7,6 +7,10 @@ node_modules/
 .env
 .env.*
 !.env.example
+# `vision.env` tidak cocok pola `.env` (nama file persis), jadi perlu baris sendiri.
+# Template-nya `deploy/vision.env.example`.
+*.env
+!*.env.example
 *.engine
 frontend/node_modules/
 dist/
