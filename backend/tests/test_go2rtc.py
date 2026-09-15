@@ -104,8 +104,20 @@ def test_live_endpoint_shape_and_404(client, monkeypatch):
     body = r.json()
     assert body["camera_id"] == cid
     assert body["streams"]["sub"] == f"cam_{cid}" and body["streams"]["main"] == f"cam_{cid}_main"
-    base = settings.go2rtc_url.rstrip("/")
+    # host = host dari request (TestClient → testserver), port go2rtc tetap 1984
+    base = "http://testserver:1984"
     assert body["webrtc"] == f"{base}/api/ws?src=cam_{cid}"
     assert body["mse"] == f"{base}/api/stream.mse?src=cam_{cid}"
     assert body["hls"] == f"{base}/api/stream.m3u8?src=cam_{cid}"
     assert body["snapshot"] == f"{base}/api/frame.jpeg?src=cam_{cid}"
+
+
+def test_live_endpoint_rewrites_host_to_request_host(client):
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "camz", "host": "10.0.0.9"}, headers=h).json()["id"]
+    # request dari LAN browser (192.168.2.50) → snapshot URL host diganti, port go2rtc tetap
+    r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "192.168.2.50:8000"})
+    assert r.status_code == 200
+    snap = r.json()["snapshot"]
+    assert snap.startswith("http://192.168.2.50:1984/api/frame.jpeg?src=")
+    assert r.json()["webrtc"].startswith("http://192.168.2.50:1984/api/ws?src=")
