@@ -35,6 +35,7 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - `3ec0d3a` feat: zone editor (click-to-draw polygon) + events master-detail inbox
 - feat: loitering analyzer (dwell per zone)
 - feat: running analyzer (calibrated m/s)
+- feat: alert model + zone analyzer params + camera calibration
 
 ## [0.1.0] — 2026-09-10 · Fase 0: Skeleton
 

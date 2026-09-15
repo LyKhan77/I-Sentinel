@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 VALID_TYPES = {"free", "restricted", "absensi"}
 VALID_DIRECTIONS = {"entry", "exit"}
@@ -42,6 +42,8 @@ class ZoneIn(BaseModel):
     schedule: dict | None = None
     severity: str = "warning"
     rate_limit_min: int = 5
+    loiter_seconds: int = Field(default=0, ge=0)
+    speed_limit_mps: float = Field(default=0, ge=0)
     snapshot: bool = True
     telegram: bool = False
     active: bool = True
@@ -79,6 +81,8 @@ class ZonePatch(BaseModel):
     schedule: dict | None = None
     severity: str | None = None
     rate_limit_min: int | None = None
+    loiter_seconds: int | None = Field(default=None, ge=0)
+    speed_limit_mps: float | None = Field(default=None, ge=0)
     snapshot: bool | None = None
     telegram: bool | None = None
     active: bool | None = None
@@ -111,6 +115,8 @@ class ZoneOut(BaseModel):
     schedule: dict | None
     severity: str
     rate_limit_min: int
+    loiter_seconds: int
+    speed_limit_mps: float
     snapshot: bool
     telegram: bool
     active: bool

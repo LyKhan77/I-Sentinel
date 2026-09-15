@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 
@@ -14,6 +14,8 @@ class Zone(Base):
     schedule: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), default="warning")
     rate_limit_min: Mapped[int] = mapped_column(Integer, default=5)
+    loiter_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = off
+    speed_limit_mps: Mapped[float] = mapped_column(Float, default=0)  # 0 = off
     snapshot: Mapped[bool] = mapped_column(Boolean, default=True)
     telegram: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
