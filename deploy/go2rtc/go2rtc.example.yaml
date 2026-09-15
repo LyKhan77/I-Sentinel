@@ -1,0 +1,11 @@
+# Template. Salin jadi `go2rtc.yaml` (gitignored) sebelum menjalankan go2rtc:
+#   cp deploy/go2rtc/go2rtc.example.yaml deploy/go2rtc/go2rtc.yaml
+#
+# Stream ditambahkan per kamera dan MENGANDUNG KREDENSIAL RTSP, jadi file hasil
+# salinan tidak boleh masuk git. Dulu nama file ini sama dengan template-nya dan
+# ter-track → `git add -A` di server akan meng-commit 25 kredensial kamera.
+#   cam_1:      rtsp://user:pass@192.168.1.108/Streaming/Channels/102
+#   cam_1_main: rtsp://user:pass@192.168.1.108/Streaming/Channels/101
+api: { listen: ":1984" }
+rtsp: { listen: ":8554" }
+log: { level: info }

@@ -32,7 +32,7 @@ isentinel/
 │   │   ├── components/
 │   │   └── api/              # REST client + WS
 ├── deploy/
-│   ├── go2rtc/go2rtc.yaml
+│   ├── go2rtc/go2rtc.example.yaml   # template; salin ke go2rtc.yaml (gitignored, isi kredensial RTSP)
 │   ├── mosquitto/mosquitto.conf
 │   ├── systemd/              # isentinel-api.service, isentinel-recorder.service,
 │   │                         #   vision-node.service, isentinel-retention.service

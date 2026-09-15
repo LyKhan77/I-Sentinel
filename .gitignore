@@ -19,3 +19,6 @@ backend/test.db
 
 # artefak perintah Windows yang gagal (ping > nul) + sampah sesi
 nul
+
+# config go2rtc hasil generate berisi kredensial RTSP kamera
+deploy/go2rtc/go2rtc.yaml

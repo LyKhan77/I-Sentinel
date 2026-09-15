@@ -631,7 +631,7 @@ test('login page validates empty submit', async () => {
 ### Task 10: Deploy configs + bring-up di server dev
 
 **Files:**
-- Create: `deploy/go2rtc/go2rtc.yaml`, `deploy/mosquitto/mosquitto.conf`, `deploy/systemd/isentinel-api.service`, `deploy/systemd/isentinel-recorder.service` (stub Fase 0), `deploy/bootstrap.sh`
+- Create: `deploy/go2rtc/go2rtc.example.yaml` (disalin ke `go2rtc.yaml` saat deploy — isi kredensial RTSP sehingga `go2rtc.yaml` gitignored), `deploy/mosquitto/mosquitto.conf`, `deploy/systemd/isentinel-api.service`, `deploy/systemd/isentinel-recorder.service` (stub Fase 0), `deploy/bootstrap.sh`
 - Modify: `README.md` (bagian Run: lokal + server)
 - Verifikasi: end-to-end Fase 0 di `gspe-ai3` (bukan unit test)
 
