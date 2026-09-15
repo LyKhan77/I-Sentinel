@@ -121,3 +121,29 @@ def test_live_endpoint_rewrites_host_to_request_host(client):
     snap = r.json()["snapshot"]
     assert snap.startswith("http://192.168.2.50:1984/api/frame.jpeg?src=")
     assert r.json()["webrtc"].startswith("http://192.168.2.50:1984/api/ws?src=")
+
+
+def test_live_endpoint_prefers_go2rtc_public_host_over_request_host(client, monkeypatch):
+    """Di belakang reverse proxy header Host hilang (proxy Vite dev mengirim
+    localhost:8000) → klien LAN dapat localhost:1984 dan live view mati.
+    GO2RTC_PUBLIC_HOST harus menang atas header Host."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "go2rtc_public_host", "192.168.2.133")
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "campub", "host": "10.0.0.9"}, headers=h).json()["id"]
+    r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "localhost:8000"})
+    assert r.status_code == 200
+    assert r.json()["snapshot"].startswith("http://192.168.2.133:1984/api/frame.jpeg?src=")
+    assert r.json()["webrtc"].startswith("http://192.168.2.133:1984/api/ws?src=")
+
+
+def test_live_endpoint_public_host_blank_falls_back_to_request(client, monkeypatch):
+    """Kosong = perilaku lama (host dari request) — tidak boleh berubah."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "go2rtc_public_host", "  ")
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "camfb", "host": "10.0.0.9"}, headers=h).json()["id"]
+    r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "10.1.2.3:8000"})
+    assert r.json()["snapshot"].startswith("http://10.1.2.3:1984/api/frame.jpeg?src=")

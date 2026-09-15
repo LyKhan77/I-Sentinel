@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     mqtt_username: str = ""
     mqtt_password: str = ""
     go2rtc_url: str = "http://localhost:1984"
+    # Host yang dipakai untuk URL go2rtc yang dikirim KE BROWSER (webrtc/mse/hls/snapshot).
+    # Kosong = pakai host dari header Host request. Header itu tidak bisa dipercaya
+    # begitu ada reverse proxy (proxy Vite dev menggantinya jadi localhost:8000),
+    # sehingga klien LAN menerima "localhost:1984" = koneksi ke mesin klien sendiri.
+    # Isi dengan IP/hostname server yang bisa dijangkau klien, mis. 192.168.2.133
+    go2rtc_public_host: str = ""
     # detector defaults pushed to vision nodes via MQTT config (per-camera override later)
     detector_model: str = "yolo26s.engine"
     detector_nms: bool = False
