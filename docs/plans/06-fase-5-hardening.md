@@ -621,16 +621,20 @@ def test_sweep_records_last_run(client, db, tmp_path, monkeypatch):
     assert stats["last_sweep"]["events_marked"] == 1
 ```
 
-Tambahkan dua helper di bagian atas file itu (pola sama dengan `test_go2rtc.py`; password admin
-fixture adalah `boot123`):
+Tambahkan dua helper ke **`backend/tests/conftest.py`** (bukan ke file test ini) supaya Task 3 dan
+Task 7 memakai definisi yang sama — jangan diduplikasi. `from tests.conftest import *` sudah ada
+di semua file test, jadi helper langsung tersedia. File test lama yang punya salinan lokal
+(`test_go2rtc.py`) tetap jalan karena definisi lokal men-shadow.
 
 ```python
-def _admin_headers(client):
+# backend/tests/conftest.py — tambahkan setelah import yang ada
+
+def admin_headers(client):
     tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
     return {"Authorization": f"Bearer {tok}"}
 
 
-def _viewer_headers(client):
+def viewer_headers(client):
     """Buat user viewer lewat API admin, lalu login sebagai dia.
 
     Lewat API (bukan langsung ke DB) supaya helper ini tidak perlu tahu soal
@@ -639,11 +643,14 @@ def _viewer_headers(client):
     client.post(
         "/api/v1/users",
         json={"username": "vw", "password": "pw12345", "role": "viewer"},
-        headers=_admin_headers(client),
+        headers=admin_headers(client),
     )
     tok = client.post("/api/v1/auth/login", json={"username": "vw", "password": "pw12345"}).json()["token"]
     return {"Authorization": f"Bearer {tok}"}
 ```
+
+Di `test_storage_api.py`, ganti seluruh `admin_headers(client)` → `admin_headers(client)` dan
+`viewer_headers(client)` → `viewer_headers(client)` (tanpa garis bawah, sesuai nama di conftest).
 
 - [ ] **Step 2: Jalankan test, pastikan gagal**
 
@@ -736,7 +743,8 @@ Expected: PASS 3 test.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/app/api/storage.py backend/app/main.py backend/app/core/config.py backend/tests/test_storage_api.py
+git add backend/app/api/storage.py backend/app/main.py backend/app/core/config.py \
+  backend/tests/conftest.py backend/tests/test_storage_api.py
 git commit -m "feat: storage stats + manual sweep API (admin-gated)"
 ```
 
@@ -1112,7 +1120,7 @@ Tambahkan ke `backend/tests/test_security.py`:
 ```python
 def test_attendance_override_requires_admin(client, db):
     """Override absensi mengubah data kehadiran — harus admin."""
-    viewer = _viewer_headers(client)  # helper yang sama seperti Task 3 Step 1
+    viewer = viewer_headers(client)  # helper dari conftest.py (Task 3 Step 1)
     r = client.patch("/api/v1/attendance/1", json={"status": "ontime", "note": "x"}, headers=viewer)
     assert r.status_code != 200
 
