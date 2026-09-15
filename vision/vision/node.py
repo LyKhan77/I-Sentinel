@@ -21,7 +21,8 @@ DEDUP_BUCKET_S = 10.0
 
 
 def _iso(ts: float) -> str:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    # ts monotonic → konversi ke wall-clock: offset = time.time() - time.monotonic()
+    return datetime.fromtimestamp(ts + (time.time() - time.monotonic()), tz=timezone.utc).isoformat()
 
 
 def _make_event(camera_id: int, track, ts: float) -> dict:
