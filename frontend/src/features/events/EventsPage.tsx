@@ -226,7 +226,7 @@ export default function EventsPage() {
           {selected && (
             <div data-testid="event-detail" style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: 0, padding: 16 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-                <h2 style={{ fontWeight: 400, margin: 0, flex: 1 }}>
+                <h2 style={{ fontWeight: 400, margin: 0, flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
                   {selected.type} · {camName(selected)}
                 </h2>
                 <Tag type={selected.severity === 'critical' ? 'red' : 'warm-gray'} size="sm">
@@ -264,7 +264,7 @@ export default function EventsPage() {
                 <img src={`/api/v1/media/${selected.snapshot_path}`} alt={t('events.snapshot')} style={{ width: '100%', maxHeight: 360, objectFit: 'contain', marginTop: 12 }} />
               )}
 
-              <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 16px', fontSize: 13, marginTop: 16 }}>
+              <dl style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '4px 16px', fontSize: 13, marginTop: 16, overflowWrap: 'anywhere' }}>
                 <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.type')}</dt>
                 <dd style={{ margin: 0 }}>{selected.type}</dd>
                 <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.camera')}</dt>
