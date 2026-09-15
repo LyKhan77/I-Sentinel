@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Dropdown, InlineLoading, Tag } from '@carbon/react'
 import { Download } from '@carbon/icons-react'
-import { useT } from '../../app/i18n'
+import { useT, type TKey } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
 import { listEvents, type EventOut } from '../../api/events'
+import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type TelegramStatus } from '../../api/alerts'
 import { useLiveEvents } from '../../api/useWs'
 
 const SEV_COLOR: Record<string, string> = { critical: '#fa4d56', warning: '#f1c21b' }
+const SEV_OPTIONS = ['critical', 'warning', 'info'].map((label) => ({ label }))
+
+const ALERT_BG: Record<AlertStatus, string> = {
+  sent: '#24a148',
+  rate_limited: '#f1c21b',
+  failed: '#fa4d56',
+  not_configured: '#8d8d8d',
+}
+const ALERT_KEY: Record<AlertStatus, TKey> = {
+  sent: 'events.alert.sent',
+  rate_limited: 'events.alert.rate_limited',
+  failed: 'events.alert.failed',
+  not_configured: 'events.alert.not_configured',
+}
 
 function timeStr(ts: string): string {
   return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
@@ -24,8 +39,12 @@ export default function EventsPage() {
   const [cams, setCams] = useState<{ id: number; name: string }[]>([])
   const [typeFilter, setTypeFilter] = useState<{ label: string } | null>(null)
   const [camFilter, setCamFilter] = useState<{ id: number; label: string } | null>(null)
+  const [sevFilter, setSevFilter] = useState<{ label: string } | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
+  const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
+  const [tg, setTg] = useState<TelegramStatus | null>(null)
 
   const refresh = useCallback(async () => {
     const list = await listEvents({ limit: 100 }).catch(() => [])
@@ -42,7 +61,9 @@ export default function EventsPage() {
 
   // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
   useLiveEvents((raw) => {
-    const e = raw as EventOut
+    const e = raw as EventOut & { kind?: string }
+    if (e?.kind === 'alert') return // buang broadcast alert — eksplisit by kind
+    if (typeof e?.id !== 'number') return // buang frame non-event lain
     setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, 200)))
   })
 
@@ -50,18 +71,63 @@ export default function EventsPage() {
   const camOptions = useMemo(() => cams.map((c) => ({ id: c.id, label: c.name })), [cams])
 
   const filtered = events.filter(
-    (e) => (!typeFilter || e.type === typeFilter.label) && (!camFilter || e.camera_id === camFilter.id),
+    (e) =>
+      (!typeFilter || e.type === typeFilter.label) &&
+      (!camFilter || e.camera_id === camFilter.id) &&
+      (!sevFilter || e.severity === sevFilter.label),
   )
 
   // pilihan ikut list ter-filter; default event pertama
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
   const camName = (e: EventOut) => cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`
 
+  // badge alert list: satu request by-events untuk 50 event pertama (hindari N+1)
+  useEffect(() => {
+    const ids = events.slice(0, 50).map((e) => e.event_id)
+    if (ids.length === 0) { setAlertMap({}); return }
+    alertsByEvents(ids).then(setAlertMap).catch(() => setAlertMap({}))
+  }, [events])
+
+  // event terpilih: dari map, fallback listAlerts bila di luar 50 teratas
+  useEffect(() => {
+    if (!selected) { setDetailAlert(null); return }
+    const fromMap = alertMap[selected.event_id]
+    if (fromMap) { setDetailAlert(fromMap); return }
+    let alive = true
+    listAlerts(selected.id)
+      .then((rows) => { if (alive) setDetailAlert(rows[0]?.status ?? null) })
+      .catch(() => { if (alive) setDetailAlert(null) })
+    return () => { alive = false }
+  }, [selected, alertMap])
+
+  useEffect(() => {
+    telegramStatus().then(setTg).catch(() => setTg(null))
+  }, [])
+
   return (
     <div style={{ padding: 32, maxWidth: 1200 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 16 }}>{t('nav.events')}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <h1 style={{ fontWeight: 300, margin: 0 }}>{t('nav.events')}</h1>
+        {tg && (
+          <span
+            data-testid="telegram-chip"
+            title={t('events.telegram.hint')}
+            style={{
+              fontSize: 12,
+              padding: '2px 8px',
+              borderRadius: 10,
+              color: '#fff',
+              background: tg.configured ? ALERT_BG.sent : ALERT_BG.not_configured,
+            }}
+          >
+            {tg.configured
+              ? `${t('events.telegram.ready')} \u00b7 ${tg.active_chats} ${t('events.telegram.chats')}`
+              : t('events.telegram.notConfigured')}
+          </span>
+        )}
+      </div>
 
-      <div style={{ display: 'flex', gap: 12, maxWidth: 480, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 12, maxWidth: 720, marginBottom: 16 }}>
         <Dropdown
           id="filter-type"
           titleText={t('events.col.type')}
@@ -77,6 +143,14 @@ export default function EventsPage() {
           items={camOptions}
           selectedItem={camFilter}
           onChange={({ selectedItem }) => setCamFilter(selectedItem)}
+        />
+        <Dropdown
+          id="filter-severity"
+          titleText={t('events.col.severity')}
+          label={t('events.filterAll')}
+          items={SEV_OPTIONS}
+          selectedItem={sevFilter}
+          onChange={({ selectedItem }) => setSevFilter(selectedItem)}
         />
       </div>
 
@@ -107,6 +181,13 @@ export default function EventsPage() {
                   title={e.severity}
                   style={{ width: 10, height: 10, borderRadius: '50%', background: SEV_COLOR[e.severity] ?? '#8d8d8d', flexShrink: 0 }}
                 />
+                {alertMap[e.event_id] === 'rate_limited' && (
+                  <span
+                    data-testid={`alert-dot-${e.id}`}
+                    title={t('events.alert.rate_limited')}
+                    style={{ width: 8, height: 8, borderRadius: '50%', background: ALERT_BG.rate_limited, flexShrink: 0 }}
+                  />
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <span>{e.type}</span>
@@ -129,6 +210,21 @@ export default function EventsPage() {
                 <Tag type={selected.severity === 'critical' ? 'red' : 'warm-gray'} size="sm">
                   {selected.severity}
                 </Tag>
+                {detailAlert && (
+                  <span
+                    data-testid="alert-badge"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: 2,
+                      background: ALERT_BG[detailAlert],
+                      color: detailAlert === 'rate_limited' ? '#161616' : '#fff',
+                    }}
+                  >
+                    {t(ALERT_KEY[detailAlert])}
+                  </span>
+                )}
               </div>
 
               {selected.clip_path ? (

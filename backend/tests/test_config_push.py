@@ -48,10 +48,12 @@ def test_build_node_config_server_includes_active_cam_and_zones_excludes_disable
     assert cam["camera_id"] == cam_on.id
     assert cam["source_url"] == f"rtsp://localhost:8554/cam_{cam_on.id}"
     assert isinstance(cam["ai_fps"], float)
+    assert cam["meters_per_pixel"] is None
     assert cam["zones"] == [{
         "id": z_on.id, "name": "z_on", "type": "restricted",
         "direction": None, "polygon": z_on.polygon, "schedule": None,
         "severity": "warning", "rate_limit_min": 5,
+        "loiter_seconds": 0, "speed_limit_mps": 0,
         "snapshot": True, "telegram": False,
     }]
 

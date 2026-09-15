@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 
@@ -16,6 +16,7 @@ class Camera(Base):
     probe_main: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     probe_sub: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(8), default="unknown")
+    meters_per_pixel: Mapped[float | None] = mapped_column(Float, nullable=True)  # null = belum dikalibrasi
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     node: Mapped["Node"] = relationship()

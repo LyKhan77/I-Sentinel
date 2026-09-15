@@ -77,3 +77,7 @@ from app.models import event as _e  # noqa: F401 — register table
 app.include_router(events_router)
 from app.api.zones import router as zones_router
 app.include_router(zones_router)
+from app.api.alerts import router as alerts_router
+from app.api.telegram import router as telegram_router
+app.include_router(alerts_router)
+app.include_router(telegram_router)

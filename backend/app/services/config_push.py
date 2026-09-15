@@ -38,6 +38,8 @@ def build_node_config(db: Session, node: Node) -> dict:
                 "schedule": z.schedule,
                 "severity": z.severity,
                 "rate_limit_min": z.rate_limit_min,
+                "loiter_seconds": z.loiter_seconds,
+                "speed_limit_mps": z.speed_limit_mps,
                 "snapshot": z.snapshot,
                 "telegram": z.telegram,
             }
@@ -57,6 +59,7 @@ def build_node_config(db: Session, node: Node) -> dict:
             "camera_id": cam.id,
             "source_url": source_url,
             "ai_fps": DEFAULT_FPS,
+            "meters_per_pixel": cam.meters_per_pixel,
         } | {"zones": zones})
     return {"node_id": node.name, "detector": detector, "cameras": cameras}
 

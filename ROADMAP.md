@@ -11,7 +11,7 @@
 | 0 | Skeleton (auth, kamera+probe, UI shell) | [x] selesai | 2026-09-09 | 30 pytest + 5 vitest + build hijau; probe kamera nyata CAM-TEST online; health/login/alembic-idempotent terverifikasi di server; 17 commit `feat/fase-0-skeleton` | 4d7bd05..cbcec9b |
 | 1 | Vision inti (deteksi+tracking, live view) | [x] selesai | 2026-09-15 | E2E: event person_detect masuk DB dgn timestamp benar (4 kamera NVR via go2rtc), node online via heartbeat, 1.7 ms/frame YOLO26s TRT; 64 pytest + 23 vision + 12 vitest | 7bf81e5..(fase1) |
 | 2 | Zona + events + clips + web inbox | [x] selesai | 2026-09-15 | E2E: editor zona klik-titik → intrusion event critical + clip mp4 + snapshot ter-upload, diputar di browser; 24 kamera NVR terdaftar; person_detect jadi opt-in | 7bf81e5..e03acfa |
-| 3 | Loitering + running + Telegram + rate-limit | [ ] | — | — | — |
+| 3 | Loitering + running + Telegram + rate-limit | [x] selesai (foundation) | 2026-09-15 | Analyzer loitering (7 test) + running anisotropic-fixed (10 test); alert E2E: critical → not_configured (token kosong), event ke-2 → rate_limited; badge + chip di inbox | |
 | 4 | Absensi wajah (enrollment, gate, shift) | [ ] | — | — | — |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
@@ -97,15 +97,27 @@ Plan: `docs/plans/03-fase-2-zona-events.md` (7 task, semua selesai + review)
 
 ---
 
-## Fase 3 — Loitering, Running, Alerting
+## Fase 3 — Loitering, Running, Alerting (foundation)
 
-Plan: `docs/plans/04-fase-3-analyzers-alerting.md`
+Plan: `docs/plans/04-fase-3-analyzers-alerting.md` (6 task, selesai + review)
 
 **Kriteria selesai:**
-- [ ] Demo 3 jenis event → Telegram terima snapshot; rate-limit terbukti
-- [ ] Loitering/running/rate-limit ter-unit-test (CPU)
+- [x] Unit: loitering timer (7 test), running threshold + anisotropi sumbu-y (10 test), rate-limit window — hijau CPU (64 vision + 122 backend)
+- [x] Server: alert path E2E — event critical via MQTT → Alert `not_configured` (token Telegram kosong, expected); event ke-2 dalam window → `rate_limited` (anti-spam terbukti); tanpa network call saat unconfigured
+- [x] Kalibrasi: cam5 `meters_per_pixel=0.01` via API → config push sampai ke vision-node (verified via MQTT retained)
+- [x] UI: badge RATE-LIMITED di detail event + chip "Telegram: belum dikonfigurasi" (screenshot)
 
-**Bukti:** —
+**Bukti (gspe-ai3, 2026-09-15):**
+- Alert rows: `intrusion | not_configured` lalu `intrusion | rate_limited` (query DB)
+- Playwright: badge + chip render di inbox
+- Migration 0004 jalan + service restart bersih
+- Demo fisik loitering/running (orang berdiam 15 dtk / berlari di zona): **menunggu partisipasi fisik** — analyzer ter-unit-test lengkap; event akan muncul sendiri saat ada orang (tidak perlu tindakan)
+
+**Catatan keputusan/temuan fase ini:**
+- Telegram = foundation saja (user ruling): token env + fungsi kirim + status DB; chatID CRUD + sendPhoto + delivery nyata = low priority, menyusul
+- Running analyzer butuh kalibrasi per kamera (`meters_per_pixel`); tanpa itu → analyzer dilewati + 1 log info (tidak menebak)
+- Bug anisotropi (y-delta diskala frame width) ditemukan reviewer & diperbaiki sebelum merge
+- Rate-limit menghitung semua status alert (termasuk not_configured) dalam window — sederhana, anti-spam konsisten
 
 ---
 

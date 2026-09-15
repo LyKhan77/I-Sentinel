@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from app.core.db import get_db
 from app.api.deps import get_current_user, require_admin
 from app.models.camera import Camera
 from app.models.node import Node
-from app.schemas.camera import CameraOut, CameraIn
+from app.schemas.camera import CameraOut, CameraIn, CameraPatch
 from app.services.go2rtc import sync_camera, remove_stream
 import logging
 
@@ -24,15 +23,6 @@ def _config_push(db: Session, camera_id: int, node_name: str | None = None) -> N
             publish_node_config(None, db, node_name)
     except Exception:
         logger.warning("config push after camera mutation failed", exc_info=True)
-
-class CameraPatch(BaseModel):
-    name: str | None = None
-    location: str | None = None
-    host: str | None = None
-    rtsp_main: str | None = None
-    rtsp_sub: str | None = None
-    node_id: int | None = None
-    enabled: bool | None = None
 
 def _check_node(db: Session, node_id: int | None) -> None:
     if node_id is not None and not db.query(Node).filter_by(id=node_id).first():
