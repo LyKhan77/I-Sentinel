@@ -21,8 +21,12 @@ DEDUP_BUCKET_S = 10.0
 
 
 def _iso(ts: float) -> str:
-    # ts monotonic → konversi ke wall-clock: offset = time.time() - time.monotonic()
-    return datetime.fromtimestamp(ts + (time.time() - time.monotonic()), tz=timezone.utc).isoformat()
+    # Terima timestamp WALL-CLOCK. Pipeline (source) memakai monotonic untuk pacing;
+    # konversi monotonic → wall clock dilakukan di sini bila nilai jelas monotonic
+    # (jauh di bawah epoch tahun ini). time.time() aman utk heartbeat.
+    if ts < 1_700_000_000:  # monotonic (detik sejak boot) → tambah offset epoch
+        ts += time.time() - time.monotonic()
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
 
 def _make_event(camera_id: int, track, ts: float) -> dict:
