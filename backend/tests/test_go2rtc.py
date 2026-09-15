@@ -109,18 +109,18 @@ def test_live_endpoint_shape_and_404(client, monkeypatch):
     assert body["webrtc"] == f"{base}/api/ws?src=cam_{cid}"
     assert body["mse"] == f"{base}/api/stream.mse?src=cam_{cid}"
     assert body["hls"] == f"{base}/api/stream.m3u8?src=cam_{cid}"
-    assert body["snapshot"] == f"{base}/api/frame.jpeg?src=cam_{cid}"
+    # snapshot bukan URL go2rtc: port 1984 tidak terjangkau dari LAN, jadi lewat proxy API
+    assert body["snapshot"] == f"/api/v1/cameras/{cid}/snapshot"
 
 
 def test_live_endpoint_rewrites_host_to_request_host(client):
     h = _admin_headers(client)
     cid = client.post("/api/v1/cameras", json={"name": "camz", "host": "10.0.0.9"}, headers=h).json()["id"]
-    # request dari LAN browser (192.168.2.50) → snapshot URL host diganti, port go2rtc tetap
+    # request dari LAN browser (192.168.2.50) → URL go2rtc host diganti, port go2rtc tetap
     r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "192.168.2.50:8000"})
     assert r.status_code == 200
-    snap = r.json()["snapshot"]
-    assert snap.startswith("http://192.168.2.50:1984/api/frame.jpeg?src=")
     assert r.json()["webrtc"].startswith("http://192.168.2.50:1984/api/ws?src=")
+    assert r.json()["mse"].startswith("http://192.168.2.50:1984/")
 
 
 def test_live_endpoint_prefers_go2rtc_public_host_over_request_host(client, monkeypatch):
@@ -134,7 +134,6 @@ def test_live_endpoint_prefers_go2rtc_public_host_over_request_host(client, monk
     cid = client.post("/api/v1/cameras", json={"name": "campub", "host": "10.0.0.9"}, headers=h).json()["id"]
     r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "localhost:8000"})
     assert r.status_code == 200
-    assert r.json()["snapshot"].startswith("http://192.168.2.133:1984/api/frame.jpeg?src=")
     assert r.json()["webrtc"].startswith("http://192.168.2.133:1984/api/ws?src=")
 
 
@@ -146,4 +145,50 @@ def test_live_endpoint_public_host_blank_falls_back_to_request(client, monkeypat
     h = _admin_headers(client)
     cid = client.post("/api/v1/cameras", json={"name": "camfb", "host": "10.0.0.9"}, headers=h).json()["id"]
     r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "10.1.2.3:8000"})
-    assert r.json()["snapshot"].startswith("http://10.1.2.3:1984/api/frame.jpeg?src=")
+    assert r.json()["webrtc"].startswith("http://10.1.2.3:1984/api/ws?src=")
+
+
+def test_snapshot_proxies_go2rtc_and_requires_auth(client, monkeypatch):
+    """Port go2rtc (1984) diblokir firewall server, jadi snapshot harus lewat API."""
+    import httpx
+    from app.api import live as live_mod
+
+    calls = []
+
+    class FakeResp:
+        status_code = 200
+        content = b"\xff\xd8fake-jpeg"
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append((url, params))
+        return FakeResp()
+
+    monkeypatch.setattr(live_mod.httpx, "get", fake_get)
+
+    # tanpa login → ditolak
+    assert client.get("/api/v1/cameras/1/snapshot").status_code == 401
+
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "camsnap", "host": "10.0.0.9"}, headers=h).json()["id"]
+    r = client.get(f"/api/v1/cameras/{cid}/snapshot", headers=h)
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/jpeg"
+    assert r.content == b"\xff\xd8fake-jpeg"
+    assert calls and calls[0][1] == {"src": f"cam_{cid}"}
+
+    # kamera tidak ada
+    assert client.get("/api/v1/cameras/99999/snapshot", headers=h).status_code == 404
+
+
+def test_snapshot_returns_502_when_go2rtc_unreachable(client, monkeypatch):
+    from app.api import live as live_mod
+
+    def boom(*a, **kw):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(live_mod.httpx, "get", boom)
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "camdown", "host": "10.0.0.9"}, headers=h).json()["id"]
+    r = client.get(f"/api/v1/cameras/{cid}/snapshot", headers=h)
+    assert r.status_code == 502
+    assert "go2rtc unreachable" in r.json()["detail"]

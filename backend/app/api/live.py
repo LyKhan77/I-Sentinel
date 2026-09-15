@@ -1,6 +1,7 @@
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -27,6 +28,36 @@ def _rewrite_host(url: str, host: str) -> str:
     return urlunsplit((parts.scheme, f"{host}:{parts.port}", parts.path, parts.query, ""))
 
 
+@router.get("/{camera_id}/snapshot")
+def camera_snapshot(camera_id: int, user=Depends(get_current_user), db=Depends(get_db)):
+    """Proxy frame JPEG go2rtc lewat API.
+
+    Klien LAN tidak bisa menjangkau port go2rtc (1984): firewall server hanya
+    membuka 8000/5173/1883, dan go2rtc tidak punya autentikasi sendiri. Karena
+    itu snapshot diambil dari sisi server dan diteruskan lewat port API yang
+    sudah terbuka DAN sudah di belakang `get_current_user`.
+
+    Efek samping yang tidak diinginkan: tanpa proxy ini URL `snapshot` yang
+    dikirim ke browser menunjuk ke host yang tak terjangkau, dan tiap tile
+    menunggu sampai timeout (5 detik per kamera).
+    """
+    cam = db.get(Camera, camera_id)
+    if not cam:
+        raise HTTPException(404, "camera not found")
+    url = f"{settings.go2rtc_url.rstrip('/')}/api/frame.jpeg"
+    try:
+        upstream = httpx.get(url, params={"src": f"cam_{cam.id}"}, timeout=5.0)
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"go2rtc unreachable: {type(exc).__name__}") from exc
+    if upstream.status_code != 200:
+        raise HTTPException(502, f"go2rtc returned {upstream.status_code}")
+    return Response(
+        content=upstream.content,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/{camera_id}/live")
 def live_urls(camera_id: int, request: Request, user=Depends(get_current_user), db=Depends(get_db)):
     cam = db.get(Camera, camera_id)
@@ -42,5 +73,6 @@ def live_urls(camera_id: int, request: Request, user=Depends(get_current_user), 
         "webrtc": _rewrite_host(f"{base}/api/ws?src={sub}", host),
         "mse": _rewrite_host(f"{base}/api/stream.mse?src={sub}", host),
         "hls": _rewrite_host(f"{base}/api/stream.m3u8?src={sub}", host),
-        "snapshot": _rewrite_host(f"{base}/api/frame.jpeg?src={sub}", host),
+        # same-origin + di belakang auth: satu-satunya bentuk yang jalan dari LAN
+        "snapshot": f"/api/v1/cameras/{cam.id}/snapshot",
     }
