@@ -6,6 +6,7 @@ import './app/theme.scss'
 import AppShell from './app/AppShell'
 import LoginPage from './features/auth/LoginPage'
 import CamerasPage from './features/config/CamerasPage'
+import ZonesPage from './features/config/ZonesPage'
 import DashboardPage from './features/dashboard/DashboardPage'
 import LiveViewPage from './features/live/LiveViewPage'
 import EventsPage from './features/events/EventsPage'
@@ -64,6 +65,7 @@ const router = createBrowserRouter([
           { path: 'live', element: <LiveViewPage /> },
           { path: 'events', element: <EventsPage /> },
           { path: 'config/cameras', element: <CamerasPage /> },
+          { path: 'config/zones', element: <ZonesPage /> },
           { path: '*', element: <Placeholder /> },
         ],
       },
