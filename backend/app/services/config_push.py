@@ -30,7 +30,7 @@ def build_node_config(db: Session, node: Node) -> dict:
     ):
         zones = [
             {
-                "zone_id": z.id,
+                "id": z.id,
                 "name": z.name,
                 "type": z.type,
                 "direction": z.direction,
