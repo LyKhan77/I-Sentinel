@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.db import Base, get_db, SessionLocal
 from app.core.security import hash_password
 from app.models import user as _u, node as _n, camera as _c, setting as _s  # noqa: F401 — register tables
+from app.services.events_consumer import EventConsumer
 from app.models.user import User
 from app.models.node import Node
 
@@ -44,7 +45,12 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
         if hasattr(gen, "__next__"): gen.close()
-    yield
+    consumer = EventConsumer()
+    consumer.start()
+    try:
+        yield
+    finally:
+        consumer.stop()
 
 
 app = FastAPI(title="I-Sentinel API", version="0.1.0", lifespan=lifespan)
@@ -55,8 +61,13 @@ from app.api.cameras import router as cameras_router
 from app.api.probe import router as probe_router
 app.include_router(nodes_router)
 app.include_router(cameras_router)
+from app.api.live import router as live_router
+app.include_router(live_router)
 app.include_router(probe_router)
 
 
 @app.get("/api/v1/health")
 def health(): return {"status": "ok"}
+from app.api.events import router as events_router
+from app.models import event as _e  # noqa: F401 — register table
+app.include_router(events_router)

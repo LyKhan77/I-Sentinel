@@ -1,6 +1,45 @@
-@use '@carbon/react/scss/themes';
-@use '@carbon/react/scss/theme' with ($theme: themes.$g100);
-
+/* Carbon g100 dark — override CSS custom properties.
+   Emit setelah index.scss sehingga menang atas default white theme.
+   Nilai digenerate dari @carbon/themes g100 (lihat ponytail note di bawah). */
 html {
   color-scheme: dark;
 }
+
+:root,
+.cds--white,
+.cds--g10,
+.cds--g90,
+.cds--g100 {
+  --cds-background: #161616;
+  --cds-layer: #262626;
+  --cds-layer-accent: #393939;
+  --cds-layer-selected: #393939;
+  --cds-layer-hover: #333333;
+  --cds-layer-selected-hover: #474747;
+  --cds-layer-active: #525252;
+  --cds-field: #262626;
+  --cds-field-hover: #333333;
+  --cds-border-subtle: #525252;
+  --cds-border-strong: #6f6f6f;
+  --cds-border-tile: #525252;
+  --cds-border-interactive: #4589ff;
+  --cds-text-primary: #f4f4f4;
+  --cds-text-secondary: #c6c6c6;
+  --cds-text-placeholder: rgba(244, 244, 244, 0.4);
+  --cds-text-helper: #a8a8a8;
+  --cds-text-on-color: #ffffff;
+  --cds-text-error: #ff8389;
+  --cds-icon-primary: #f4f4f4;
+  --cds-icon-secondary: #c6c6c6;
+  --cds-icon-interactive: #ffffff;
+  --cds-link-primary: #78a9ff;
+  --cds-link-primary-hover: #a6c8ff;
+  --cds-focus: #ffffff;
+  --cds-interactive: #4589ff;
+  --cds-highlight: #001d6c;
+  --cds-button-primary: #4589ff;
+  --cds-button-primary-hover: #4589ff;
+  --cds-background-hover: rgba(141, 141, 141, 0.16);
+  --cds-layer-background: #161616;
+}
+/* ponytail: token literal, bukan map-get sass — @carbon/react/scss/theme with() tidak menimpa karena index.scss ter-emit sesudahnya; ganti ke map-get kalau naik versi carbon dan urutan emit berubah */

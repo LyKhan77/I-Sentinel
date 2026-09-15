@@ -1,0 +1,13 @@
+[Unit]
+Description=I-Sentinel Vision Node
+After=network.target isentinel-api.service
+
+[Service]
+User=gspe-ai3
+WorkingDirectory=/home/gspe-ai3/project_cv/I-Sentinel
+EnvironmentFile=/home/gspe-ai3/project_cv/I-Sentinel/.env
+ExecStart=/home/gspe-ai3/isentinel-venv/bin/vision-node
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

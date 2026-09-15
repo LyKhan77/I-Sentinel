@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     cam_password: str = ""
     storage_root: str = "/data/isentinel"
     mqtt_url: str = "localhost:1883"
+    mqtt_username: str = ""
+    mqtt_password: str = ""
     go2rtc_url: str = "http://localhost:1984"
     retention_days: int = 30
     admin_username: str = "admin"

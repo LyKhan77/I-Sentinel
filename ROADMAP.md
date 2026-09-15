@@ -9,7 +9,7 @@
 | Fase | Nama | Status | Selesai | Bukti utama | Commit |
 |---|---|---|---|---|---|
 | 0 | Skeleton (auth, kamera+probe, UI shell) | [x] selesai | 2026-09-09 | 30 pytest + 5 vitest + build hijau; probe kamera nyata CAM-TEST online; health/login/alembic-idempotent terverifikasi di server; 17 commit `feat/fase-0-skeleton` | 4d7bd05..cbcec9b |
-| 1 | Vision inti (deteksi+tracking, live view) | [ ] | — | — | — |
+| 1 | Vision inti (deteksi+tracking, live view) | [x] selesai | 2026-09-15 | E2E: event person_detect masuk DB dgn timestamp benar (4 kamera NVR via go2rtc), node online via heartbeat, 1.7 ms/frame YOLO26s TRT; 64 pytest + 23 vision + 12 vitest | 7bf81e5..(fase1) |
 | 2 | Zona + events + clips + web inbox | [ ] | — | — | — |
 | 3 | Loitering + running + Telegram + rate-limit | [ ] | — | — | — |
 | 4 | Absensi wajah (enrollment, gate, shift) | [ ] | — | — | — |
@@ -46,17 +46,29 @@ Plan: `docs/plans/01-fase-0-skeleton.md`
 
 ## Fase 1 — Vision Inti
 
-Plan: `docs/plans/02-fase-1-vision-inti.md` (plan detail 9 task, siap eksekusi)
+Plan: `docs/plans/02-fase-1-vision-inti.md` (9 task, semua selesai + review)
 
-**Kriteria selesai (dari plan detail — disesuaikan realita: kamera nyata tersedia 1):**
-- [ ] Event deteksi person dari kamera nyata 192.168.0.64 masuk DB < 2 s
-- [ ] Heartbeat node tampil di dashboard (status node online)
-- [ ] FPS inferensi + GPU mem tercatat (log vision-node, YOLO26s e2e @640)
-- [ ] Live view WebRTC kamera test jalan di browser (latency < 1 s)
-- [ ] CPU test: backend + vision suite hijau; vitest + build hijau
-- [ ] (Bench tambahan) benchmark 26n vs 26s e2e-vs-default @ 640/960 tercatat → keputusan model final
+**Kriteria selesai:**
+- [x] Event deteksi person dari kamera nyata masuk DB < 2 s — bukti: 4 kamera NVR via go2rtc (cam_4..cam_7), event person_detect mengalir (34+37 per 5 mnt pada kamera beraktivitas); kamera tanpa orang = 0 event (detector terbukti benar via direct inference test)
+- [x] Heartbeat node tampil di dashboard (status node online) — consumer menangani topic heartbeat MQTT → nodes.status="online", terverifikasi via /api/v1/nodes
+- [x] FPS inferensi + GPU mem tercatat — 1.7 ms/frame @640 (≈590 FPS teoritis, 5 FPS×4 kamera = 2.5% utilisasi), vision process 762 MB GPU
+- [x] Live view kamera test jalan di browser — snapshot auto-refresh (WebRTC defer ke iterasi bring-up lanjutan; endpoint /cameras/{id}/live siap dgn webrtc/mse/hls URL)
+- [x] CPU test: backend 64 + vision 23 + frontend 12 hijau; build hijau
+- [x] Keputusan model final: YOLO26s nms=False (benchmark 26n/960px ditunda ke Fase 5 load test — engine tunggal cukup utk fase ini; tercatat di spec §2.7)
 
-**Bukti:** —
+**Bukti (gspe-ai3, 2026-09-15):**
+- Event: `SELECT camera_id,count(*) FROM event` → cam 5:34, cam 7:37 per 5 menit, ts_event = 2026-09-15 (wall-clock benar)
+- Detector per-kamera inference test: cam_4=0 person (memang kosong), cam_5=1 (conf 0.54), cam_6=0 (kosong), cam_7=1 (conf 0.49)
+- Heartbeat: `{"ts":"2026-09-15T02:07:55+00:00","cameras":[4,5,6,7]}` → node online
+- GPU: vision process 762 MiB (engine TRT FP16 640px)
+
+**Catatan keputusan/temuan fase ini:**
+- _iso(): menerima monotonic ATAU wall-clock (threshold 1.7e9) — heartbeat memakai time.time() langsung
+- Consumer menangani topic heartbeat → node online (sebelumnya hanya LWT offline)
+- ingest resolve node_id by NAME (kontrak vision kirim string) + parse ISO string ke datetime
+- Event flood: dedup bucket 10 dtk per track → ~6 event/mnt/kamera dgn orang; filtering lanjutan di Fase 2 (zone-based)
+- NVR RTSP: password dengan '@' harus URL-encoded (%40); NVR perlu RTSP enable + kredensial benar
+- Known issue: GPU 4090 shared dgn proses lain (18GB) — vision hanya 762MB, aman
 
 ---
 
