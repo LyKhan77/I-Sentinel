@@ -649,8 +649,8 @@ def viewer_headers(client):
     return {"Authorization": f"Bearer {tok}"}
 ```
 
-Di `test_storage_api.py`, pakai nama tanpa garis bawah:
-`viewer_headers(client)` → `viewer_headers(client)` (tanpa garis bawah, sesuai nama di conftest).
+Di `test_storage_api.py`, pakai nama tanpa garis bawah: `admin_headers(client)` dan
+`viewer_headers(client)` — persis seperti yang didefinisikan di `conftest.py`.
 
 - [ ] **Step 2: Jalankan test, pastikan gagal**
 
