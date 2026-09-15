@@ -17,7 +17,7 @@
 | 4c | Penutup polish (kolom Live View, daftar zona) + bug live view LAN | [x] selesai | 2026-09-15 | `GO2RTC_PUBLIC_HOST`; snapshot klien LAN `http://localhost:1984` → `http://192.168.2.133:1984`; 3 test baru | `9ca496c..(v0.5.2)` |
 | 4d | Responsif: nol overflow horizontal di 390px | [x] selesai | 2026-09-15 | 9/9 halaman `overflow=0 scrollX=0` (sebelumnya /events 132px, /attendance 115px, /config/gates 23px) | `a0ab278..(v0.5.3)` |
 | 4e | Live view jalan dari klien LAN (proxy snapshot) | [x] selesai | 2026-09-15 | 24/25 tile render `640x360` same-origin; `/snapshot` 401 tanpa login, 200 image/jpeg dengan login | `7c89eb1..(v0.5.4)` |
-| 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
+| 5 | Hardening (retensi, beban 30+ kamera, docs) | [~] plan detail siap | — | `docs/plans/06-fase-5-hardening.md` 12 task / 66 step (591a18e); prasyarat P1-P9 teraudit | |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
@@ -286,7 +286,31 @@ sama seperti snapshot — jangan dibuka tanpa autentikasi, go2rtc tidak punya au
 
 ## Fase 5 — Hardening
 
-Plan: `docs/plans/06-fase-5-hardening.md`
+Plan: `docs/plans/06-fase-5-hardening.md` (12 task, 66 step — dikembangkan dari brief 2026-09-15)
+
+**Status: plan siap, eksekusi belum mulai.** Dua keputusan user dibutuhkan lebih dulu
+(tertulis di bagian Prasyarat plan):
+
+- **D1** — GPU & durasi soak. GPU0 (RTX 4090) saat audit 23 644 / 24 564 MiB terpakai beban
+  lain; GPU1/GPU2 (RTX 5080 16 GB) lebih lega. Brief mengizinkan **2 jam + uji churn** sebagai
+  alternatif 24 jam. Butuh `VISION_DETECTOR_DEVICE=cuda:1` (field baru, Task 9).
+- **D2** — izin `sudo apt install -y ffmpeg` di `gspe-ai3` (sekarang hanya ada `ffprobe`).
+
+**Temuan audit yang membentuk plan (2026-09-15):**
+
+| # | Temuan | Konsekuensi |
+|---|---|---|
+| P1 | `ffmpeg` tidak terpasang | generator stream sintetis butuh pemasangan |
+| P2 | GPU0 hampir penuh | soak harus dipindah atau dijadwalkan |
+| P3 | `STORAGE_ROOT` = `/home/gspe-ai3/isentinel-data`, bukan default `/data/isentinel` | jangan hardcode path |
+| P4 | Media 298 MB / 1 673 file, semua dari hari ini; disk 85% | retensi belum urgent tapi perlu |
+| P5 | **Unit systemd di repo berbeda dari yang jalan** | dokumentasi akan menyesatkan kalau tidak direkonsiliasi (Task 12) |
+| P6 | sudo tanpa password terbatas (kecuali llamacpp) | restart lewat kill-cgroup; pemasangan unit baru butuh user |
+| P7 | Detektor tidak punya pilihan device | tidak bisa pin GPU untuk soak (Task 9) |
+| P8 | `/auth/login` tanpa rate-limit | celah brute-force (Task 6) |
+| P9 | Tidak ada CORS | **keputusan sadar** (same-origin) — dokumentasikan, jangan tambah |
+
+---
 
 **Kriteria selesai:**
 - [ ] Soak 24 jam 32 stream sintetis: GPU/RSS plateau, tanpa leak
