@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     retention_days: int = 30
     admin_username: str = "admin"
     admin_password: str = ""   # wajib diisi di .env server; bootstrap gagal jelas bila kosong
+    # face recognition (insightface buffalo_l): model diunduh scripts/download_face_models.py
+    face_model_dir: str = "~/.isentinel/faces_models"
+    face_match_threshold: float = 0.40
+    face_min_quality: float = 0.5
     # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)
 
     model_config = {"env_file": ".env", "extra": "ignore"}
