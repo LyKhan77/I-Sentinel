@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.api.deps import get_current_user, require_admin
-from app.models.attendance import AttendanceEvent
+from app.models.attendance import AttendanceEvent, AttendanceDay
 from app.models.employee import Employee
 from app.models.face_embedding import FaceEmbedding
 from app.models.shift import Shift
@@ -71,7 +71,8 @@ def update_employee(employee_id: int, body: EmployeePatch, admin=Depends(require
 def delete_employee(employee_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     emp = db.get(Employee, employee_id)
     if not emp: raise HTTPException(404, "employee not found")
-    if db.query(AttendanceEvent).filter(AttendanceEvent.employee_id == employee_id).first():
+    if (db.query(AttendanceEvent).filter(AttendanceEvent.employee_id == employee_id).first()
+            or db.query(AttendanceDay).filter(AttendanceDay.employee_id == employee_id).first()):
         raise HTTPException(409, "employee has attendance records; deactivate instead")
     db.query(FaceEmbedding).filter(FaceEmbedding.employee_id == employee_id).delete(synchronize_session=False)
     db.delete(emp); db.commit()

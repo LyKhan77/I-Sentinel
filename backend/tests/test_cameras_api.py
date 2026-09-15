@@ -54,6 +54,19 @@ def test_delete_camera_then_get_404(client):
     assert client.delete(f"/api/v1/cameras/{cid}", headers=h).status_code == 200
     assert client.get(f"/api/v1/cameras/{cid}", headers=h).status_code == 404
 
+def test_delete_camera_with_attendance_409(client, db):
+    import datetime as dt
+    from app.models.attendance import AttendanceEvent
+    from app.models.employee import Employee
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "cam1", "host": "1.2.3.4"}, headers=h).json()["id"]
+    emp = Employee(name="Budi", employee_code="E001")
+    db.add(emp); db.commit()
+    db.add(AttendanceEvent(employee_id=emp.id, camera_id=cid, direction="entry",
+                           ts_event=dt.datetime.now(dt.timezone.utc)))
+    db.commit()
+    assert client.delete(f"/api/v1/cameras/{cid}", headers=h).status_code == 409
+
 def test_nodes_list_seeded(client):
     h = _admin_headers(client)
     r = client.get("/api/v1/nodes", headers=h)

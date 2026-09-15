@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, date
-from sqlalchemy import String, Integer, Float, Date, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Integer, Float, Date, DateTime, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 
@@ -16,6 +16,8 @@ class AttendanceEvent(Base):
     snapshot_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     event_id: Mapped[str | None] = mapped_column(String(36), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (Index("ix_attendance_event_employee_ts", "employee_id", "ts_event"),)
 
 
 class AttendanceDay(Base):

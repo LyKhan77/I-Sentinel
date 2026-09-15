@@ -155,3 +155,54 @@ def test_delete_employee_clean_removes_faces_dir(client, tmp_path):
     assert client.delete(f"/api/v1/employees/{eid}", headers=h).status_code == 200
     assert not faces.exists()
     assert client.get(f"/api/v1/employees/{eid}", headers=h).status_code == 404
+
+
+def test_delete_employee_with_attendance_day_409(client, db):
+    from app.models.attendance import AttendanceDay
+    h = _admin_headers(client)
+    eid = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001"}, headers=h).json()["id"]
+    db.add(AttendanceDay(employee_id=eid, date=dt.date(2026, 1, 1)))
+    db.commit()
+    assert client.delete(f"/api/v1/employees/{eid}", headers=h).status_code == 409
+
+
+def test_delete_employee_removes_embedding_rows(client, db):
+    from app.models.face_embedding import FaceEmbedding
+    h = _admin_headers(client)
+    eid = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001"}, headers=h).json()["id"]
+    db.add(FaceEmbedding(employee_id=eid, vector=[0.1, 0.2]))
+    db.commit()
+    assert db.query(FaceEmbedding).filter_by(employee_id=eid).count() == 1
+
+    assert client.delete(f"/api/v1/employees/{eid}", headers=h).status_code == 200
+    assert db.query(FaceEmbedding).filter_by(employee_id=eid).count() == 0
+
+
+# --- (f) DB constraints -----------------------------------------------------
+
+def test_attendance_day_unique_employee_date(client, db):
+    from sqlalchemy.exc import IntegrityError
+    from app.models.attendance import AttendanceDay
+    h = _admin_headers(client)
+    eid = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001"}, headers=h).json()["id"]
+    d = dt.date(2026, 1, 1)
+    db.add(AttendanceDay(employee_id=eid, date=d)); db.commit()
+    db.add(AttendanceDay(employee_id=eid, date=d))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+
+
+def test_attendance_event_unique_event_id(client, db):
+    from sqlalchemy.exc import IntegrityError
+    from app.models.attendance import AttendanceEvent
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    eid = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001"}, headers=h).json()["id"]
+    now = dt.datetime.now(dt.timezone.utc)
+    db.add(AttendanceEvent(employee_id=eid, camera_id=cam["id"], direction="entry", ts_event=now, event_id="dup"))
+    db.commit()
+    db.add(AttendanceEvent(employee_id=eid, camera_id=cam["id"], direction="exit", ts_event=now, event_id="dup"))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()

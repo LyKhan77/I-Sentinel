@@ -19,6 +19,8 @@ def ingest_event(db, data: dict) -> tuple[str, Event | None]:
     if isinstance(node_id, str) and not node_id.isdigit():
         node = db.query(Node).filter(Node.name == node_id).first()
         node_id = node.id if node else None
+    if node_id is not None and not db.get(Node, node_id):
+        node_id = None
     ev = Event(
         event_id=data["event_id"],
         type=data["type"],
