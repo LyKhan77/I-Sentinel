@@ -43,7 +43,7 @@ BLOB_KINDS = {"clip": "mp4", "snapshot": "jpg", "crop": "jpg", "face": "jpg"}
 MAX_BLOB_SIZE = 200 * 1024 * 1024
 
 @router.post("/internal/nodes/{node_id}/blobs")
-async def upload_blob(node_id: int, kind: str, request: Request, authorization: str = Header("")):
+async def upload_blob(node_id: str, kind: str, request: Request, authorization: str = Header("")):
     if authorization != f"Bearer {settings.node_api_key}":
         raise HTTPException(401, "invalid node api key")
     if kind not in BLOB_KINDS:
