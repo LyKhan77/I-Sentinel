@@ -43,7 +43,7 @@ def script(frames_dets):
 def make_node(tmp_path, cameras_scripts, transport=None):
     """cameras_scripts: {camera_id: list-of-frame-detection-lists}"""
     frame = np.zeros((4, 4, 3), dtype=np.uint8)
-    cfg = NodeSettings(node_id="test-node", cameras_json=json.dumps([
+    cfg = NodeSettings(node_id="test-node", emit_person_detect=True, cameras_json=json.dumps([
         {"camera_id": cid, "source_url": f"test://{cid}", "ai_fps": 5.0}
         for cid in cameras_scripts
     ]))

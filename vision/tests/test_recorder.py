@@ -180,7 +180,7 @@ def test_worker_recorder_media_publish(tmp_path):
         det = MockDetector([[Detection(bbox=(0.1, 0.1, 0.3, 0.4), conf=0.9)]] * 3)
         stop = threading.Event()
         w = CameraWorker(CameraCfg(camera_id=1, source_url="test://1"), lambda cid: det,
-                         t, stop, "test-node", recorder=rec)
+                         t, stop, "test-node", recorder=rec, emit_person_detect=True)
         w.source = src
         w.start()
         w.join(timeout=10)

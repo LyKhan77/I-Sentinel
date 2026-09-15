@@ -79,7 +79,8 @@ class _PartialTrack:
 
 class CameraWorker(threading.Thread):
     def __init__(self, camera_cfg, detector_factory, transport, stop_event, node_id,
-                 analyzers: list[Analyzer] | None = None, recorder=None):
+                 analyzers: list[Analyzer] | None = None, recorder=None,
+                 emit_person_detect: bool = False):
         super().__init__(daemon=True, name=f"cam-{camera_cfg.camera_id}")
         self.camera_cfg = camera_cfg
         self.detector_factory = detector_factory
@@ -88,6 +89,7 @@ class CameraWorker(threading.Thread):
         self.node_id = node_id
         self.analyzers = analyzers or []
         self.recorder = recorder
+        self.emit_person_detect = emit_person_detect
         self.events: list[dict] = []  # test hook
         self.source = None
 
@@ -124,12 +126,13 @@ class CameraWorker(threading.Thread):
                 for tr in tracks:
                     if tr.id not in seen:
                         seen.add(tr.id)
-                        ev = _make_event(cam_id, tr, frame.ts)
-                        ev["node_id"] = self.node_id
-                        self.events.append(ev)
-                        self.transport.publish_event(ev)
-                        if self.recorder is not None:
-                            self.recorder.enqueue(ev)
+                        if self.emit_person_detect:
+                            ev = _make_event(cam_id, tr, frame.ts)
+                            ev["node_id"] = self.node_id
+                            self.events.append(ev)
+                            self.transport.publish_event(ev)
+                            if self.recorder is not None:
+                                self.recorder.enqueue(ev)
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
@@ -220,7 +223,8 @@ class VisionNode:
                 recorder = Recorder(cam.camera_id, self.cfg, self.transport)
             w = CameraWorker(cam, self.detector_factory, self.transport,
                              threading.Event(), self.cfg.node_id,
-                             analyzers=self._make_analyzers(cam), recorder=recorder)
+                             analyzers=self._make_analyzers(cam), recorder=recorder,
+                             emit_person_detect=self.cfg.emit_person_detect)
             w.source = self.source_factory(cam)
             w.start()
             self._workers.append(w)

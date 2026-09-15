@@ -66,7 +66,7 @@ def make_node(cameras_scripts, cfg=None, det_scripts=None):
     """cameras_scripts: {camera_id: frame-detection-lists}.
     det_scripts: detector scripts keyed by cid (defaults to cameras_scripts).
     Returns (node, transport)."""
-    cfg = cfg or NodeSettings(node_id="server", cameras_json=json.dumps([
+    cfg = cfg or NodeSettings(node_id="server", emit_person_detect=True, cameras_json=json.dumps([
         {"camera_id": cid, "source_url": f"test://{cid}", "ai_fps": 5.0}
         for cid in cameras_scripts
     ]))
@@ -171,7 +171,7 @@ def test_hot_reload_apply_config_while_running(tmp_path):
     # itself calls apply_config (the real hot-reload path).
     node, t = make_node(
         {1: [[(0.4, 0.4, 0.6, 0.6)]] * 4},
-        cfg=NodeSettings(node_id="server", cameras_json=json.dumps([
+        cfg=NodeSettings(node_id="server", emit_person_detect=True, cameras_json=json.dumps([
             {"camera_id": 1, "source_url": "test://1", "ai_fps": 2.0},
         ])),
         det_scripts={1: [[(0.4, 0.4, 0.6, 0.6)]] * 4},
@@ -221,6 +221,27 @@ def test_no_config_backward_compat(tmp_path):
     node.run()
     assert len(t.events) == 1
     assert t.events[0]["type"] == "person_detect"
+
+
+def test_person_detect_default_off_zones_still_emit(tmp_path):
+    # Fase 2: default emit_person_detect=False -> person_detect silenced,
+    # analyzer (intrusion) events stay unconditional.
+    node, t = make_node(
+        {3: [[(0.4, 0.4, 0.6, 0.6)]]},
+        cfg=NodeSettings(node_id="server", emit_person_detect=False, cameras_json=json.dumps([
+            {"camera_id": 3, "source_url": "test://3", "ai_fps": 5.0},
+        ])),
+    )
+    node.apply_config({"cameras": [
+        {"camera_id": 3, "source_url": "test://3", "ai_fps": 5.0,
+         "zones": [{"id": 7, "name": "Z", "type": "restricted", "severity": "warning",
+                    "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                    "schedule": None}]},
+    ]})
+    node.run()
+    assert [e for e in t.events if e["type"] == "person_detect"] == []
+    intrusion = [e for e in t.events if e["type"] == "intrusion"]
+    assert len(intrusion) == 1 and intrusion[0]["zone_id"] == 7
 
 def test_detector_model_relative_resolved_to_env_dir(tmp_path, monkeypatch):
     from vision.node import VisionNode
