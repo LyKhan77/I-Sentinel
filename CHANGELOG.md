@@ -31,6 +31,9 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 
 ## [Unreleased]
 
+- `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
+- `3ec0d3a` feat: zone editor (click-to-draw polygon) + events master-detail inbox
+
 ## [0.1.0] — 2026-09-10 · Fase 0: Skeleton
 
 Backend, frontend, dan infrastruktur dasar I-Sentinel: auth, kamera + probe RTSP, UI shell Carbon dark, deploy configs. Terverifikasi end-to-end di server dev (login → wizard probe kamera nyata → kamera online).
