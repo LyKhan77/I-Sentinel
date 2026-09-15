@@ -147,6 +147,24 @@ class Recorder:
             f.write(data)
         return path
 
+    def upload_bytes(self, data: bytes, kind: str,
+                     content_type: str = "image/jpeg") -> str | None:
+        """Upload raw bytes via a temp file in outbox. Returns backend path or None."""
+        import os
+        import uuid
+        if not self.cfg.api_url or not self.cfg.api_key:
+            return None
+        tmp = os.path.join(self._outbox_dir(), f"{uuid.uuid4().hex}.tmp")
+        try:
+            with open(tmp, "wb") as f:
+                f.write(data)
+            return self._upload_one(tmp, kind, content_type)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
     def _upload_one(self, path: str, kind: str, content_type: str) -> str | None:
         """POST raw bytes to blob endpoint. Returns backend path or None on final failure."""
         import os

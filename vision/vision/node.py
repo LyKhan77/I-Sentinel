@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
 from .analyzers.base import Analyzer
+from .analyzers.face_gate import crop_upper_body
 from .config import CameraCfg, NodeSettings
 from .pipeline.detector import PersonDetector
 from .pipeline.source import FrameSource
@@ -135,6 +136,7 @@ class CameraWorker(threading.Thread):
                                 self.recorder.enqueue(ev)
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
+                        self._attach_crop(partial, frame)
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
                         self.events.append(ev)
                         self.transport.publish_event(ev)
@@ -143,6 +145,33 @@ class CameraWorker(threading.Thread):
         except Exception:
             if not self.stop_event.is_set():
                 log.exception("camera %s worker died", cam_id)
+
+    def _attach_crop(self, partial: dict, frame) -> None:
+        """Crop upper body for needs_crop partials and upload it inline.
+
+        Blocking upload (<= retries*60s) is acceptable: absensi gates are
+        low-frequency. Missing recorder/frame/cv2/crop or upload failure leaves
+        the event without crop_path (graceful).
+        """
+        payload = partial.get("payload") or {}
+        if not payload.pop("needs_crop", False):
+            return
+        if self.recorder is None or frame.data is None:
+            return
+        try:
+            import cv2
+            crop = crop_upper_body(frame.data, payload["bbox_norm"])
+            if crop is None:
+                return
+            ok, enc = cv2.imencode(".jpg", crop)
+        except Exception:
+            log.exception("camera %s: crop encode failed", self.camera_cfg.camera_id)
+            return
+        if not ok:
+            return
+        path = self.recorder.upload_bytes(enc.tobytes(), "crop")
+        if path:
+            payload["crop_path"] = path
 
     def stop(self):
         if self.source is not None:
@@ -177,6 +206,7 @@ class VisionNode:
                             zones=[z for z in c.get("zones", [])
                                    if z.get("active", True)
                                    and (z.get("type") == "restricted"
+                                        or z.get("type") == "absensi"
                                         or z.get("loiter_seconds", 0) > 0
                                         or z.get("speed_limit_mps", 0) > 0)])
             cams.append(cam)
@@ -190,6 +220,8 @@ class VisionNode:
             # gets running (only when the camera has a calibration)
             if z.get("type") == "restricted":
                 out.append(ANALYZERS["intrusion"](z))
+            if z.get("type") == "absensi":
+                out.append(ANALYZERS["face_gate"](z))
             if z.get("loiter_seconds", 0) > 0:
                 out.append(ANALYZERS["loitering"](z))
             if z.get("speed_limit_mps", 0) > 0:
