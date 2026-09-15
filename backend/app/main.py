@@ -81,3 +81,7 @@ from app.api.alerts import router as alerts_router
 from app.api.telegram import router as telegram_router
 app.include_router(alerts_router)
 app.include_router(telegram_router)
+from app.api.employees import router as employees_router
+from app.api.shifts import router as shifts_router
+app.include_router(employees_router)
+app.include_router(shifts_router)
