@@ -136,7 +136,7 @@ export default function AppShell() {
                 </div>
               )}
               <HeaderSideNavItems>
-                {/* isi menu header (mobile) — kosong di Fase 0 */}
+                {/* isi menu header (mobile) — kosong sampai menu mobile diperlukan */}
               </HeaderSideNavItems>
             </SideNavItems>
           </SideNav>
