@@ -29,6 +29,37 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - **Backend**: consumer MQTT (events/heartbeat/LWT), idempotent ingest, WS broadcast, go2rtc sync
 - **Frontend**: dashboard tile hidup, live view snapshot grid (fokus+fullscreen), events list realtime
 
+## [0.5.5] — 2026-09-15 · Zero-secret: dua file config ter-track
+
+Ditemukan saat menjawab pertanyaan "apakah semua fitur berjalan?". Keduanya kelas yang sama
+dengan temuan `.git/config` sebelumnya: **file template dan file runtime memakai nama yang sama**.
+
+### Perbaikan
+
+- `c391359` fix(security): `deploy/go2rtc/go2rtc.yaml` ter-track padahal dipakai go2rtc
+  sebagai config runtime dan stream di dalamnya memuat kredensial RTSP kamera. Di server
+  file itu 51 URL `rtsp://` (25 kamera × main+sub) dengan mode **664 (world-readable)**,
+  dan karena ter-track, `git add -A` di server akan meng-commit semuanya.
+  → `go2rtc.yaml` jadi `go2rtc.example.yaml` (template, tetap tracked) + `.gitignore`
+  menambah `deploy/go2rtc/go2rtc.yaml`. Path runtime tidak berubah, unit systemd tidak disentuh.
+- `e9a764b` fix(security): `vision.env` tidak ter-ignore — pola `.env` (nama persis) dan
+  `.env.*` tidak menangkapnya. Tambah `*.env` + negasi `!*.env.example`.
+- `c4bd09d` fix(ui): kamera `enabled=false` tidak lagi tampil di Live View
+
+### Diverifikasi tidak bocor
+
+- `git log -S gspe123456` / `-S gspe-intercon` / `-S 'admin:gspe'` → **0 commit**
+- `git grep` kredensial di file ter-track → kosong
+- Yang berisi kredensial hanya working copy server, tidak pernah ter-commit
+- Setelah perbaikan: `git status` di server bersih, `git ls-files deploy/go2rtc/` hanya
+  menyisakan `go2rtc.example.yaml`, config runtime mode **640**
+
+### Catatan
+
+Kredensial kamera ikut tercecer ke transcript sesi ini saat diagnosis (isi `go2rtc.yaml`
+server ikut ter-dump oleh batch command). Kalau transcript ini tersimpan di tempat bersama,
+kredensial kamera di jaringan CCTV perlu dianggap perlu dirotasi.
+
 ## [0.5.4] — 2026-09-15 · Live view benar-benar jalan dari klien LAN
 
 `7c89eb1` fix(backend): `GET /api/v1/cameras/{id}/snapshot` mem-proxy frame go2rtc lewat API.
@@ -281,7 +312,8 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 - **CSV**: export (tanpa biometrik, anti-injection) + import upsert idempotent
 - **Vision**: face_gate crop dari MAINSTREAM (resolusi wajah) + upload blob; error isolation
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.1...v0.5.2
