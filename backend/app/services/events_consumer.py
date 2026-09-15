@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import threading
+from datetime import datetime, timezone
 import time
 import uuid
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 EVENTS_TOPIC = "isentinel/events"
 LWT_TOPIC = "isentinel/nodes/+/lwt"
+HEARTBEAT_TOPIC = "isentinel/nodes/+/heartbeat"
 
 
 def handle_message(db, topic: str, payload: bytes) -> None:
@@ -38,6 +40,15 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             status, ev = ingest_event(db, data)
             if status == "created" and ev is not None:
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
+        elif topic.startswith("isentinel/nodes/") and topic.endswith("/heartbeat"):
+            name = topic.split("/")[2]
+            node = db.query(Node).filter_by(name=name).first()
+            if node is None:
+                logger.warning("heartbeat for unknown node %r", name)
+                return
+            node.status = "online"
+            node.last_seen = datetime.now(timezone.utc)
+            db.commit()
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/lwt"):
             name = topic.split("/")[2]
             node = db.query(Node).filter_by(name=name).first()
@@ -95,7 +106,7 @@ class EventConsumer:
                 time.sleep(5)
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        client.subscribe([(EVENTS_TOPIC, 1), (LWT_TOPIC, 1)])
+        client.subscribe([(EVENTS_TOPIC, 1), (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)])
 
     def _on_message(self, client, userdata, msg):
         from app.core.db import SessionLocal  # local import: avoid engine at module import in tests
