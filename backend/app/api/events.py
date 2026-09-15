@@ -1,6 +1,10 @@
 import logging
+import os
+import uuid
 from datetime import datetime, date, time, timezone
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from pathlib import Path
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from sqlalchemy import func
 from app.core.db import get_db
 from app.api.deps import get_current_user
@@ -35,6 +39,27 @@ async def ingest(node_id: int, body: EventIn, authorization: str = Header(""), d
         await hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json"))
     return {"status": status, "id": ev.id}
 
+BLOB_KINDS = {"clip": "mp4", "snapshot": "jpg", "crop": "jpg", "face": "jpg"}
+MAX_BLOB_SIZE = 200 * 1024 * 1024
+
+@router.post("/internal/nodes/{node_id}/blobs")
+async def upload_blob(node_id: int, kind: str, request: Request, authorization: str = Header("")):
+    if authorization != f"Bearer {settings.node_api_key}":
+        raise HTTPException(401, "invalid node api key")
+    if kind not in BLOB_KINDS:
+        raise HTTPException(422, f"kind must be one of {sorted(BLOB_KINDS)}")
+    length = int(request.headers.get("content-length") or 0)
+    if length > MAX_BLOB_SIZE:
+        raise HTTPException(413, "blob too large")
+    rel = f"{kind}s/{datetime.now(timezone.utc):%Y/%m/%d}/{uuid.uuid4()}.{BLOB_KINDS[kind]}"
+    dest = Path(settings.storage_root) / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    body = await request.body()
+    if len(body) > MAX_BLOB_SIZE:
+        raise HTTPException(413, "blob too large")
+    dest.write_bytes(body)
+    return {"path": rel}
+
 @router.post("/internal/nodes/{node_id}/heartbeat")
 async def heartbeat(node_id: int, authorization: str = Header(""), db=Depends(get_db)):
     if authorization != f"Bearer {settings.node_api_key}":
@@ -53,6 +78,15 @@ def mark_stale(authorization: str = Header(""), db=Depends(get_db)):
     if authorization != f"Bearer {settings.node_api_key}":
         raise HTTPException(401, "invalid node api key")
     return {"status": "ok", "marked": mark_stale_nodes(db)}
+
+@router.get("/api/v1/media/{path:path}")
+def media(path: str, user=Depends(get_current_user)):
+    root = os.path.realpath(settings.storage_root)
+    full = os.path.realpath(os.path.join(root, path))
+    if not full.startswith(root + os.sep) or not os.path.isfile(full):
+        raise HTTPException(404, "media not found")
+    media_type = "video/mp4" if full.endswith(".mp4") else "image/jpeg"
+    return FileResponse(full, media_type=media_type)
 
 @router.get("/api/v1/events", response_model=list[EventOut])
 def list_events(
