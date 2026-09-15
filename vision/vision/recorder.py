@@ -29,6 +29,8 @@ class FrameRing:
         self._buf: list[tuple[float, bytes]] = []
 
     def push(self, ts: float, jpeg: bytes) -> None:
+        if not jpeg:
+            return
         self._buf.append((ts, jpeg))
         if len(self._buf) > self.max_frames:
             self._buf.pop(0)

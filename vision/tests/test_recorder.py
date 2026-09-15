@@ -69,6 +69,13 @@ def test_frame_ring_keeps_last_n():
     assert [ts for ts, _ in frames] == [2.0, 3.0, 4.0]
 
 
+def test_frame_ring_ignores_empty_push():
+    ring = FrameRing(max_frames=3)
+    ring.push(1.0, b"")
+    ring.push(2.0, b"jpeg")
+    assert ring.pre_clip() == [(2.0, b"jpeg")]
+
+
 def test_capture_go2rtc_fail_snapshot_still_saved(tmp_path, monkeypatch):
     import vision.recorder as rec_mod
 
