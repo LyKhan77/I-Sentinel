@@ -40,8 +40,12 @@ def get_zone(zone_id: int, user=Depends(get_current_user), db: Session = Depends
 def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
     zone = db.get(Zone, zone_id)
     if not zone: raise HTTPException(404, "zone not found")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True)
+    for k, v in changes.items():
         setattr(zone, k, v)
+    # absensi zone wajib direction — cek hasil gabungan patch + nilai lama
+    if zone.type == "absensi" and not zone.direction:
+        raise HTTPException(422, "direction (entry|exit) required for absensi zone")
     db.commit(); db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone

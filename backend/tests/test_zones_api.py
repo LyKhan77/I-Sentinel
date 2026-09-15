@@ -95,3 +95,10 @@ def test_create_zone_invalid_schedule_day_422(client):
     sched = {"days": [0, 1], "start": "08:00", "end": "17:00"}
     r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "schedule": sched}, headers=h)
     assert r.status_code == 422
+
+def test_patch_to_absensi_without_direction_rejected(client):
+    h = _admin_headers(client)
+    cam = client.post("/api/v1/cameras", headers=h, json={"name": "z-cam", "host": "1.2.3.4", "node_id": 1}).json()
+    z = client.post("/api/v1/zones", headers=h, json={"name": "z", "type": "restricted", "camera_id": cam["id"], "polygon": [[0,0],[1,0],[1,1]]}).json()
+    r = client.patch(f"/api/v1/zones/{z['id']}", headers=h, json={"type": "absensi"})
+    assert r.status_code == 422
