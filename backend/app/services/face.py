@@ -205,7 +205,7 @@ def match_crop(db, image_path: str) -> MatchResult:
 
 
 def enroll_embedding(db, employee_id: int, image_path: str) -> FaceEmbedding:
-    """Embed wajah pertama di image_path dan simpan row. ValueError bila tidak ada wajah / kualitas rendah.
+    """Embed wajah terbesar di image_path dan simpan row. ValueError bila tidak ada wajah / kualitas rendah.
 
     Tidak refresh gallery — caller yang tahu kapan (lihat refresh_gallery).
     """

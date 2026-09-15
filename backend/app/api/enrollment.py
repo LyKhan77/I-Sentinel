@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/v1/employees", tags=["enrollment"])
 
 MAX_PHOTOS = 5
 MIN_PHOTOS = 3
+MAX_FACE_UPLOAD = 10 * 1024 * 1024  # 10MB
 
 
 def _employee(db: Session, employee_id: int) -> Employee:
@@ -42,10 +43,14 @@ def upload_photo(
     if count >= MAX_PHOTOS:
         raise HTTPException(409, f"max {MAX_PHOTOS} photos")
 
+    data = file.file.read(MAX_FACE_UPLOAD + 1)
+    if len(data) > MAX_FACE_UPLOAD:
+        raise HTTPException(413, "face photo too large")
+
     rel = f"faces/{employee_id}/{uuid.uuid4()}.jpg"
     abs_path = Path(settings.storage_root) / rel
     abs_path.parent.mkdir(parents=True, exist_ok=True)
-    abs_path.write_bytes(file.file.read())
+    abs_path.write_bytes(data)
 
     try:
         row = face.enroll_embedding(db, employee_id, str(abs_path))
@@ -55,6 +60,9 @@ def upload_photo(
     except RuntimeError:  # engine tidak tersedia
         abs_path.unlink(missing_ok=True)
         raise HTTPException(422, "not_configured")
+    except Exception:
+        abs_path.unlink(missing_ok=True)
+        raise
 
     row.source_image_path = rel  # simpan path relatif (disajikan via /api/v1/media)
     db.commit()

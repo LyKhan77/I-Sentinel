@@ -119,6 +119,37 @@ def test_upload_bad_quality_422_cleans_file(client, db, monkeypatch, tmp_path):
     assert db.query(FaceEmbedding).count() == 0
 
 
+def test_upload_oversize_413_no_orphan(client, db, monkeypatch, tmp_path):
+    _patch_enroll(monkeypatch)
+    e = _employee(db)
+    h = _admin_headers(client)
+
+    big = b"x" * (10 * 1024 * 1024 + 1)
+    r = client.post(
+        f"/api/v1/employees/{e.id}/photos",
+        files={"file": ("big.jpg", big, "image/jpeg")},
+        headers=h,
+    )
+    assert r.status_code == 413
+    assert "too large" in r.json()["detail"]
+    assert db.query(FaceEmbedding).count() == 0
+    d = tmp_path / "faces" / str(e.id)
+    assert not d.exists() or not any(d.glob("*"))  # tidak ada orphan
+
+
+def test_upload_unexpected_error_cleans_file(client, db, monkeypatch, tmp_path):
+    def _boom(db_, employee_id, image_path):
+        raise KeyError("kaboom")
+    monkeypatch.setattr(face, "enroll_embedding", _boom)
+
+    e = _employee(db)
+    h = _admin_headers(client)
+    with pytest.raises(KeyError):
+        _upload(client, h, e.id)
+    d = tmp_path / "faces" / str(e.id)
+    assert not any(d.glob("*"))  # exception apa pun tetap bersihkan file
+
+
 def test_upload_engine_unavailable_422(client, db, monkeypatch):
     def _boom(db_, employee_id, image_path):
         raise RuntimeError("insightface tidak terpasang")
