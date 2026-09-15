@@ -180,10 +180,12 @@ class VisionNode:
     def _make_analyzers(self, cam: CameraCfg) -> list[Analyzer]:
         out = []
         for z in cam.zones:
-            # zone type is 'restricted'; analyzer registry keyed by event type
-            cls = ANALYZERS.get("intrusion" if z["type"] == "restricted" else z["type"])
-            if cls:
-                out.append(cls(z))
+            # a zone can carry more than one analyzer: restricted zones get
+            # intrusion, any zone with loiter_seconds > 0 also gets loitering
+            if z["type"] == "restricted":
+                out.append(ANALYZERS["intrusion"](z))
+            if z.get("loiter_seconds", 0) > 0:
+                out.append(ANALYZERS["loitering"](z))
         return out
 
     def apply_config(self, cfg_dict: dict) -> None:

@@ -33,6 +33,7 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 
 - `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
 - `3ec0d3a` feat: zone editor (click-to-draw polygon) + events master-detail inbox
+- feat: loitering analyzer (dwell per zone)
 
 ## [0.1.0] — 2026-09-10 · Fase 0: Skeleton
 
