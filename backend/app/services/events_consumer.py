@@ -11,6 +11,7 @@ import paho.mqtt.client as mqtt
 from app.core.config import settings
 from app.models import Event, Node
 from app.schemas.event import EventIn, EventOut
+from app.services import alerting
 from app.services.ingest import ingest_event
 from app.ws.hub import hub
 
@@ -40,6 +41,11 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             data["ts_event"] = event.ts_event
             status, ev = ingest_event(db, data)
             if status == "created" and ev is not None:
+                try:
+                    alerting.handle(db, ev)
+                except Exception:
+                    db.rollback()
+                    logger.exception("alerting failed for event %s", ev.event_id)
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
         elif topic == MEDIA_TOPIC:
             event_id = data.get("event_id")
