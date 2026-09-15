@@ -89,6 +89,8 @@ app.include_router(telegram_router)
 from app.api.employees import router as employees_router
 from app.api.shifts import router as shifts_router
 from app.api.enrollment import router as enrollment_router
+from app.api.attendance import router as attendance_router
 app.include_router(employees_router)
 app.include_router(shifts_router)
 app.include_router(enrollment_router)
+app.include_router(attendance_router)
