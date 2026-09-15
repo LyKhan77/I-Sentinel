@@ -11,6 +11,7 @@ class CameraCfg(BaseModel):
     camera_id: int
     source_url: str
     ai_fps: float = 5.0
+    zones: list = []  # restricted zones w/ schedule+polygon (from config apply)
 
 
 class NodeSettings(BaseSettings):
@@ -26,6 +27,9 @@ class NodeSettings(BaseSettings):
     detector_conf: float = 0.4
     detector_imgsz: int = 640
     heartbeat_s: float = 10.0
+    emit_person_detect: bool = False  # debug-only: zones are the real signal
+    go2rtc_url: str = "http://localhost:1984"
+    record_clip_s: int = 30
     log_level: str = "INFO"
     cameras_json: str = ""  # JSON: [{"camera_id": int, "source_url": str, "ai_fps": float}]
 

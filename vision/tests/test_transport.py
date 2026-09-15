@@ -29,6 +29,11 @@ class FakeClient:
     def will_set(self, topic, payload, retain=False, qos=0):
         self.will = (topic, payload, retain, qos)
 
+    def subscribe(self, topic, qos=0):
+        self.subscribed = getattr(self, "subscribed", [])
+        self.subscribed.append((topic, qos))
+        return FakeResult(0)
+
     def connect(self, host, port):
         self.host_port = (host, port)
 
@@ -112,7 +117,7 @@ def test_publish_fail_queues(transport):
     assert transport._client.published == []  # failed publish not kept
     assert transport._queue.size() == 1
     seq, ev = transport._queue.pop()
-    assert ev == {"event_id": "e1"}
+    assert ev == {"_topic": "isentinel/events", "data": {"event_id": "e1"}}
 
 
 def test_flush_on_reconnect_in_order(transport):

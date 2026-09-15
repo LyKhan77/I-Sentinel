@@ -17,6 +17,7 @@ from app.ws.hub import hub
 logger = logging.getLogger(__name__)
 
 EVENTS_TOPIC = "isentinel/events"
+MEDIA_TOPIC = "isentinel/events/media"
 LWT_TOPIC = "isentinel/nodes/+/lwt"
 HEARTBEAT_TOPIC = "isentinel/nodes/+/heartbeat"
 
@@ -40,6 +41,16 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             status, ev = ingest_event(db, data)
             if status == "created" and ev is not None:
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
+        elif topic == MEDIA_TOPIC:
+            event_id = data.get("event_id")
+            ev = db.query(Event).filter_by(event_id=event_id).first() if event_id else None
+            if ev is None:
+                logger.warning("media update for unknown event %r", event_id)
+                return
+            for col in ("clip_path", "snapshot_path"):
+                if data.get(col):
+                    setattr(ev, col, data[col])
+            db.commit()
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/heartbeat"):
             name = topic.split("/")[2]
             node = db.query(Node).filter_by(name=name).first()
@@ -105,8 +116,11 @@ class EventConsumer:
                 logger.exception("MQTT connect failed — retrying in 5s")
                 time.sleep(5)
 
+    def _subscriptions(self):
+        return [(EVENTS_TOPIC, 1), (MEDIA_TOPIC, 1), (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
+
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        client.subscribe([(EVENTS_TOPIC, 1), (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)])
+        client.subscribe(self._subscriptions())
 
     def _on_message(self, client, userdata, msg):
         from app.core.db import SessionLocal  # local import: avoid engine at module import in tests

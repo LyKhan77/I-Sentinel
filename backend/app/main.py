@@ -42,6 +42,10 @@ async def lifespan(app: FastAPI):
     db = next(gen) if hasattr(gen, "__next__") else gen
     try:
         _bootstrap(db)
+        from app.services.config_push import republish_all
+        republish_all(db)
+    except Exception:
+        logger.warning("republish_all at startup failed", exc_info=True)
     finally:
         db.close()
         if hasattr(gen, "__next__"): gen.close()
@@ -71,3 +75,5 @@ def health(): return {"status": "ok"}
 from app.api.events import router as events_router
 from app.models import event as _e  # noqa: F401 — register table
 app.include_router(events_router)
+from app.api.zones import router as zones_router
+app.include_router(zones_router)

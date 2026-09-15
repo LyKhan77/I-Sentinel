@@ -1,15 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
-import {
-  Dropdown,
-  InlineLoading,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@carbon/react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Dropdown, InlineLoading, Tag } from '@carbon/react'
+import { Download } from '@carbon/icons-react'
 import { useT } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
 import { listEvents, type EventOut } from '../../api/events'
@@ -17,10 +8,14 @@ import { useLiveEvents } from '../../api/useWs'
 
 const SEV_COLOR: Record<string, string> = { critical: '#fa4d56', warning: '#f1c21b' }
 
-function payloadSummary(e: EventOut): string {
-  if (!e.payload) return '—'
-  const s = JSON.stringify(e.payload)
-  return s.length > 60 ? `${s.slice(0, 57)}…` : s
+function timeStr(ts: string): string {
+  return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
+}
+
+function Thumb({ path, alt }: { path: string | null; alt: string }) {
+  if (!path) return <div style={{ width: 72, height: 40, background: 'var(--cds-layer)', flexShrink: 0, borderRadius: 0 }} />
+  // eslint-disable-next-line jsx-a11y/alt-text -- alt via prop
+  return <img src={`/api/v1/media/${path}`} alt={alt} style={{ width: 72, height: 40, objectFit: 'cover', flexShrink: 0, borderRadius: 0 }} />
 }
 
 export default function EventsPage() {
@@ -29,7 +24,7 @@ export default function EventsPage() {
   const [cams, setCams] = useState<{ id: number; name: string }[]>([])
   const [typeFilter, setTypeFilter] = useState<{ label: string } | null>(null)
   const [camFilter, setCamFilter] = useState<{ id: number; label: string } | null>(null)
-  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
@@ -58,13 +53,9 @@ export default function EventsPage() {
     (e) => (!typeFilter || e.type === typeFilter.label) && (!camFilter || e.camera_id === camFilter.id),
   )
 
-  const headers = [
-    t('events.col.time'),
-    t('events.col.type'),
-    t('events.col.severity'),
-    t('events.col.camera'),
-    t('events.col.payload'),
-  ]
+  // pilihan ikut list ter-filter; default event pertama
+  const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
+  const camName = (e: EventOut) => cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`
 
   return (
     <div style={{ padding: 32, maxWidth: 1200 }}>
@@ -94,46 +85,95 @@ export default function EventsPage() {
       ) : filtered.length === 0 ? (
         <p style={{ color: '#8d8d8d' }}>{t('events.empty')}</p>
       ) : (
-        <TableContainer>
-          <Table size="sm">
-            <TableHead>
-              <TableRow>
-                {headers.map((h) => (
-                  <TableHeader key={h}>{h}</TableHeader>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.map((e) => (
-                <Fragment key={e.id}>
-                  <TableRow
-                    key={e.id}
-                    onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <TableCell>{new Date(e.ts_event).toLocaleString()}</TableCell>
-                    <TableCell>{e.type}</TableCell>
-                    <TableCell>
-                      <span style={{ color: SEV_COLOR[e.severity] ?? '#8d8d8d' }}>● {e.severity}</span>
-                    </TableCell>
-                    <TableCell>{cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`}</TableCell>
-                    <TableCell>{payloadSummary(e)}</TableCell>
-                  </TableRow>
-                  {expandedId === e.id && (
-                    <TableRow>
-                      <TableCell colSpan={5}>
-                        <div style={{ fontSize: 12, color: '#8d8d8d', marginBottom: 4 }}>event_id: {e.event_id}</div>
-                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12 }}>
-                          {JSON.stringify(e.payload, null, 2)}
-                        </pre>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(0, 2fr)', gap: 16 }}>
+          {/* kiri: daftar event */}
+          <ul data-testid="event-list" style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 640, overflowY: 'auto' }}>
+            {filtered.map((e) => (
+              <li
+                key={e.id}
+                data-testid={`event-item-${e.id}`}
+                onClick={() => setSelectedId(e.id)}
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'center',
+                  padding: '8px 10px',
+                  cursor: 'pointer',
+                  borderRadius: 4,
+                  background: selected?.id === e.id ? 'var(--cds-layer-selected)' : 'transparent',
+                }}
+              >
+                <span
+                  title={e.severity}
+                  style={{ width: 10, height: 10, borderRadius: '50%', background: SEV_COLOR[e.severity] ?? '#8d8d8d', flexShrink: 0 }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span>{e.type}</span>
+                    <span style={{ fontSize: 11, color: 'var(--cds-text-helper)' }}>{timeStr(e.ts_event)}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{camName(e)}</div>
+                </div>
+                <Thumb path={e.snapshot_path} alt={e.type} />
+              </li>
+            ))}
+          </ul>
+
+          {/* kanan: detail panel */}
+          {selected && (
+            <div data-testid="event-detail" style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: 4, padding: 16 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <h2 style={{ fontWeight: 400, margin: 0, flex: 1 }}>
+                  {selected.type} · {camName(selected)}
+                </h2>
+                <Tag type={selected.severity === 'critical' ? 'red' : 'warm-gray'} size="sm">
+                  {selected.severity}
+                </Tag>
+              </div>
+
+              {selected.clip_path ? (
+                <video controls src={`/api/v1/media/${selected.clip_path}`} data-testid="event-clip" style={{ width: '100%', maxHeight: 360, background: '#000' }} />
+              ) : (
+                <div
+                  data-testid="event-clip-placeholder"
+                  style={{ display: 'grid', placeItems: 'center', height: 120, background: 'var(--cds-layer)', color: 'var(--cds-text-helper)', borderRadius: 4 }}
+                >
+                  {t('events.clipUnavailable')}
+                </div>
+              )}
+
+              {selected.snapshot_path && (
+                <img src={`/api/v1/media/${selected.snapshot_path}`} alt={t('events.snapshot')} style={{ width: '100%', maxHeight: 360, objectFit: 'contain', marginTop: 12 }} />
+              )}
+
+              <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 16px', fontSize: 13, marginTop: 16 }}>
+                <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.type')}</dt>
+                <dd style={{ margin: 0 }}>{selected.type}</dd>
+                <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.camera')}</dt>
+                <dd style={{ margin: 0 }}>{camName(selected)}</dd>
+                <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.severity')}</dt>
+                <dd style={{ margin: 0, color: SEV_COLOR[selected.severity] ?? undefined }}>● {selected.severity}</dd>
+                <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.time')}</dt>
+                <dd style={{ margin: 0 }}>{new Date(selected.ts_event).toLocaleString()}</dd>
+                <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.eventId')}</dt>
+                <dd style={{ margin: 0 }}>{selected.event_id}</dd>
+                <dt style={{ color: 'var(--cds-text-helper)' }}>{t('events.col.zone')}</dt>
+                <dd style={{ margin: 0 }}>{selected.zone_id ?? '—'}</dd>
+              </dl>
+
+              {selected.clip_path && (
+                <a
+                  href={`/api/v1/media/${selected.clip_path}`}
+                  download
+                  data-testid="event-download"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16, color: 'var(--cds-link-primary)' }}
+                >
+                  <Download size={16} /> {t('events.download')}
+                </a>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
