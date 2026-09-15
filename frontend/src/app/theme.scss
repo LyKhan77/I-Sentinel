@@ -394,6 +394,14 @@ html {
   max-inline-size: 240px;
 }
 
+/* Tabel Carbon di viewport sempit: `.cds--data-table-content` sudah punya
+   overflow-x:auto, tapi overflow tabel tetap tembus ke halaman (terukur 23px
+   di /config/gates 390px, halaman bisa di-scroll ke samping). Scroller di level
+   container menahannya — diverifikasi di browser: 23 → 0. */
+.cds--data-table-container {
+  overflow-x: auto;
+}
+
 /* Desain disetujui memakai sudut 0px; Carbon membulatkan tag & notifikasi. */
 .cds--tag,
 .cds--inline-notification,
