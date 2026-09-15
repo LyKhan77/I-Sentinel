@@ -157,10 +157,10 @@ class VisionNode:
         self.source_factory = source_factory or (
             lambda cam: FrameSource(cam.source_url, cam.ai_fps)
         )
+        self._config_q: queue.Queue = queue.Queue()
         self.transport = transport or MqttTransport(self.cfg, on_config=self._config_q.put)
         self._default_detector = detector_factory is None
         self.stop_event = threading.Event()
-        self._config_q: queue.Queue = queue.Queue()
         self._workers: list[CameraWorker] = []
         self.events: list[dict] = []  # test hook: all worker events
 
