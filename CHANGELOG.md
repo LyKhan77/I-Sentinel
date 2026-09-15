@@ -29,6 +29,45 @@ Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT �
 - **Backend**: consumer MQTT (events/heartbeat/LWT), idempotent ingest, WS broadcast, go2rtc sync
 - **Frontend**: dashboard tile hidup, live view snapshot grid (fokus+fullscreen), events list realtime
 
+## [0.5.2] — 2026-09-15 · Penutup polish + bug live view LAN
+
+Menutup dua elemen mockup yang belum dikerjakan, plus satu bug nyata yang
+membuat Live View mati untuk semua klien LAN.
+
+### Perbaikan
+
+- `fd42e31` fix(backend): host go2rtc untuk browser tidak lagi diturunkan dari header
+  `Host`. Proxy Vite dev mengirim `Host: localhost:8000` ke API → klien menerima
+  `http://localhost:1984/api/frame.jpeg`, yaitu mesin klien sendiri. Live View mati
+  total di luar server. Setting baru `GO2RTC_PUBLIC_HOST` (kosong = perilaku lama).
+  Fix `9fcfbee` sebelumnya mengganti host ke host request, tapi sumbernya sudah rusak.
+- `4413a7e` chore(.gitignore): `.env` tidak mengabaikan `.env.bak.*` / `.env.local`
+
+### Fitur (elemen mockup yang tersisa)
+
+- `9ca496c` feat(ui): Live View — chip "3/2/4 kolom" + filter "Semua lokasi" (mockup 02),
+  pilihan kolom persist; dipaksa turun di layar sempit (≤1055px → 2, ≤671px → 1).
+  Grid disamakan mockup: gap 1px di atas `#393939` + border luar.
+- `9ca496c` feat(ui): /config/zones — daftar zona di bawah editor dengan swatch tipe,
+  badge tipe + AKTIF/NONAKTIF, klik baris = pilih zona (mockup 06).
+
+### Bukti
+
+- `curl` lewat proxy Vite (jalur browser) sebelum/sesudah:
+  `"snapshot":"http://localhost:1984/..."` → `"snapshot":"http://192.168.2.133:1984/..."`
+- `pytest backend/tests` **201 passed** · `pytest vision/tests` **79 passed, 2 skipped**
+- `npx vitest run` **37 passed** · `npm run build` sukses · `npx oxlint` 0 error
+- Screenshot Live View (toolbar kolom + grid 3 kolom): `docs/evidence/ui-polish/after/`
+
+### Keamanan (temuan sesi ini, sudah ditindak)
+
+- PAT GitHub tersimpan plaintext di `.git/config` (remote URL) → sudah dicabut dari URL;
+  autentikasi lewat Git Credential Manager. **Token-nya sendiri masih perlu di-revoke user.**
+- `temp/data/` (gitignored, tidak pernah masuk history) berisi PAT, kredensial kamera uji,
+  dan catatan login SSH plaintext → dipindahkan ke `~/.isentinel/secrets/` di luar pohon proyek.
+- Tidak ada rahasia di file ter-track maupun di git history (diverifikasi `git grep` +
+  `git log -S`). `.env` server mode 600.
+
 ## [0.5.1] — 2026-09-15 · UI/UX Polish
 
 Semua 9 halaman dibuat proper terhadap mockup 01–06. Murni frontend — tidak ada perubahan
@@ -176,7 +215,8 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 - **CSV**: export (tanpa biometrik, anti-injection) + import upsert idempotent
 - **Vision**: face_gate crop dari MAINSTREAM (resolusi wajah) + upload blob; error isolation
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.3.0...v0.4.0

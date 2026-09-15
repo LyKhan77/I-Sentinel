@@ -13,7 +13,8 @@
 | 2 | Zona + events + clips + web inbox | [x] selesai | 2026-09-15 | E2E: editor zona klik-titik → intrusion event critical + clip mp4 + snapshot ter-upload, diputar di browser; 24 kamera NVR terdaftar; person_detect jadi opt-in | 7bf81e5..e03acfa |
 | 3 | Loitering + running + Telegram + rate-limit | [x] selesai (foundation) | 2026-09-15 | Analyzer loitering (7 test) + running anisotropic-fixed (10 test); alert E2E: critical → not_configured (token kosong), event ke-2 → rate_limited; badge + chip di inbox | |
 | 4 | Absensi wajah (enrollment, gate, shift) | [x] selesai | 2026-09-15 | Enrollment 3 foto nyata (InsightFace buffalo_l, CPU 200ms) → match score 1.0 → attendance_event + day; CSV export/import roundtrip; 3 halaman UI hidup | |
-| 4b | **UI/UX polish** (9 halaman vs mockup, shell, tema) | [x] selesai | 2026-09-15 | 9/9 halaman proper vs mockup (screenshot `docs/evidence/ui-polish/`); 36 vitest + 199 pytest + 79 vision + vite build hijau | `6c6545f..(merge)` |
+| 4b | **UI/UX polish** (9 halaman vs mockup, shell, tema) | [x] selesai | 2026-09-15 | 9/9 halaman proper vs mockup (screenshot `docs/evidence/ui-polish/`); 37 vitest + 201 pytest + 79 vision + vite build hijau | `6c6545f..0e0f5da` |
+| 4c | Penutup polish (kolom Live View, daftar zona) + bug live view LAN | [x] selesai | 2026-09-15 | `GO2RTC_PUBLIC_HOST`; snapshot klien LAN `http://localhost:1984` → `http://192.168.2.133:1984`; 3 test baru | `9ca496c..(v0.5.2)` |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [ ] | — | — | — |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
@@ -182,10 +183,45 @@ tapi belum proper secara visual. Murni frontend, tanpa perubahan perilaku backen
   di /config/gates berlatar putih dengan teks putih. Kini Carbon yang mengemit tokennya
 - Carbon mengemit `url('~@ibm/plex/…')` (sintaks webpack) yang tidak di-resolve Vite → Plex Sans tidak
   pernah termuat sejak Fase 0, teks jatuh ke Helvetica
-- Belum dikerjakan (di luar scope polish, kandidat fase 5): pemilih jumlah kolom di Live View
-  (mockup 02 punya chip 2/3/4 kolom), daftar zona di /config/zones (mockup 06 punya list pohon per kamera)
+- Belum dikerjakan (di luar scope polish, kandidat fase 5): — tidak ada lagi;
+  dua item mockup yang tersisa (pemilih jumlah kolom Live View, daftar zona pohon)
+  dikerjakan di Fase 4c
 - `frontend/public/icons.svg` adalah sisa boilerplate starter (Bluesky/GitHub icon), tidak direferensikan
   kode mana pun — dibiarkan, dihapus saja kalau mau bersih
+
+---
+
+## Fase 4c — Penutup polish + bug live view LAN
+
+Dua elemen mockup yang belum dibuat, plus satu bug nyata yang ditemukan saat verifikasi.
+
+**Kriteria selesai:**
+- [x] Elemen mockup yang tersisa terpasang (chip jumlah kolom Live View, daftar zona)
+- [x] Live View benar-benar jalan dari klien LAN (bukan cuma dari server)
+- [x] Test + build hijau
+
+**Bukti:**
+- Live View toolbar: chip "3/2/4 kolom" + "Semua lokasi"; `--lv-cols` persist di localStorage;
+  ≤1055px → 2 kolom, ≤671px → 1 kolom
+- Bug: `/api/v1/cameras/{id}/live` membangun URL go2rtc dari header `Host`, yang diganti
+  proxy Vite dev jadi `localhost:8000`, sehingga klien menerima
+  `http://localhost:1984/api/frame.jpeg` = mesin klien sendiri. Verifikasi lewat proxy:
+  sebelum `"snapshot":"http://localhost:1984/..."` → sesudah `"snapshot":"http://192.168.2.133:1984/..."`
+- `GO2RTC_PUBLIC_HOST=192.168.2.133` di `.env` server (mode 600, backup `.env.bak.*` juga 600
+  dan sudah masuk `.gitignore`)
+- `pytest backend/tests` **201 passed** (naik 2: `test_go2rtc.py` publik-menang & fallback-kosong)
+- `npx vitest run` **37 passed** (naik 1: kolom live view — nilai ngawur jatuh ke 3, bukan 0 kolom)
+- `pytest vision/tests` **79 passed, 2 skipped** · `npm run build` sukses · `npx oxlint` 0 error
+- Kedua service di-restart TANPA sudo (unit `Restart=always` + jalan sebagai user SSH):
+  `isentinel-web` 2640443 → 1370022, `isentinel-api` 2690192 → 1762576, keduanya active
+
+**Temuan keamanan sesi ini (sudah ditindak):**
+- PAT GitHub plaintext di `.git/config` remote URL → dicabut, autentikasi via Git Credential
+  Manager (push/pull diverifikasi masih jalan). **Token tetap wajib di-revoke oleh user.**
+- `temp/data/` isi PAT + kredensial kamera + catatan login SSH plaintext → dipindah ke
+  `~/.isentinel/secrets/` (di luar pohon proyek). Tidak pernah masuk git history.
+- `.gitignore` hanya mengabaikan `.env` persis, sehingga `.env.bak.<ts>` bocor → tambah `.env.*`
+  + negasi `!.env.example`
 
 ---
 
