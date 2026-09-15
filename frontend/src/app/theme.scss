@@ -158,6 +158,24 @@ html {
   white-space: nowrap;
 }
 
+.app-logo-word {
+  white-space: nowrap;
+}
+
+/* Header sempit: chip environment lalu wordmark dilepas supaya brand tidak
+   terpotong jadi dua baris (terlihat di 390px). Mark "IS" selalu tersisa. */
+@media (max-width: 671px) {
+  .app-env {
+    display: none;
+  }
+}
+
+@media (max-width: 479px) {
+  .app-logo-word {
+    display: none;
+  }
+}
+
 .app-lang {
   display: inline-flex;
   border: 1px solid var(--cds-border-subtle);

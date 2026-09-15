@@ -109,7 +109,7 @@ export default function AppShell() {
           <span className="app-logo-mark" aria-hidden="true">
             IS
           </span>
-          I-Sentinel
+          <span className="app-logo-word">I-Sentinel</span>
         </HeaderName>
         <span className="app-env">{t('app.env')}</span>
         <HeaderGlobalBar>
