@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Dropdown, InlineLoading, Tag } from '@carbon/react'
+import { Dropdown, InlineLoading, InlineNotification, Tag } from '@carbon/react'
 import { Download } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
@@ -42,14 +42,20 @@ export default function EventsPage() {
   const [sevFilter, setSevFilter] = useState<{ label: string } | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
   const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
   const [tg, setTg] = useState<TelegramStatus | null>(null)
 
   const refresh = useCallback(async () => {
-    const list = await listEvents({ limit: 100 }).catch(() => [])
-    setEvents(list)
-    setLoading(false)
+    try {
+      setEvents(await listEvents({ limit: 100 }))
+      setLoadFailed(false)
+    } catch {
+      setLoadFailed(true) // jangan tampilkan "Belum ada event" saat requestnya yang gagal
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -129,6 +135,16 @@ export default function EventsPage() {
           </span>
         )}
       </div>
+
+      {loadFailed && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          title={t('common.error')}
+          subtitle={t('common.loadFailed')}
+          onCloseButtonClick={() => setLoadFailed(false)}
+        />
+      )}
 
       <div style={{ display: 'flex', gap: 12, maxWidth: 720, marginBottom: 16 }}>
         <Dropdown

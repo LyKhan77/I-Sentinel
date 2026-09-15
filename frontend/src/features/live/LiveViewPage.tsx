@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Maximize, VideoOff } from '@carbon/icons-react'
-import { InlineLoading } from '@carbon/react'
+import { InlineLoading, InlineNotification } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
@@ -126,12 +126,14 @@ export default function LiveViewPage() {
   const [lives, setLives] = useState<Record<number, LiveInfo>>({})
   const [focusId, setFocusId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const focusRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
     try {
       const list = await listCameras()
       setCams(list)
+      setLoadFailed(false)
       const infos: Record<number, LiveInfo> = {}
       await Promise.all(
         list.map(async (c) => {
@@ -143,6 +145,8 @@ export default function LiveViewPage() {
         }),
       )
       setLives(infos)
+    } catch {
+      setLoadFailed(true) // jangan bilang "belum ada kamera" kalau requestnya yang gagal
     } finally {
       setLoading(false)
     }
@@ -179,6 +183,15 @@ export default function LiveViewPage() {
           <p className="app-page__sub">{t('live.sub')}</p>
         </div>
       </div>
+      {loadFailed && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          title={t('common.error')}
+          subtitle={t('common.loadFailed')}
+          onCloseButtonClick={() => setLoadFailed(false)}
+        />
+      )}
       {cams.length === 0 ? (
         <p style={{ color: '#8d8d8d' }}>{t('live.noCameras')}</p>
       ) : (

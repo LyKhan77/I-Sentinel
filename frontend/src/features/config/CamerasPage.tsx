@@ -128,6 +128,7 @@ export default function CamerasPage() {
       {error && (
         <InlineNotification
           kind="error"
+          lowContrast
           title={t('common.error')}
           subtitle={error}
           onCloseButtonClick={() => setError(null)}

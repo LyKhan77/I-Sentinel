@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Camera, Network_4, WarningAlt } from '@carbon/icons-react'
-import { SkeletonText, Tile } from '@carbon/react'
+import { SkeletonText, Tile, InlineNotification } from '@carbon/react'
 import { useT } from '../../app/i18n'
-import { listCameras, listNodes } from '../../api/cameras'
+import { listCameras, listNodes, type Camera as CameraRow, type CameraNode } from '../../api/cameras'
 import { eventStats, listEvents, type EventOut, type EventStats } from '../../api/events'
 
 // warna dot severity, konsisten dgn mockup: merah critical, kuning warning, abu info/low
@@ -48,14 +48,27 @@ export default function DashboardPage() {
   const [nodes, setNodes] = useState<{ total: number; online: number }>({ total: 0, online: 0 })
   const [stats, setStats] = useState<EventStats | null>(null)
   const [latest, setLatest] = useState<EventOut[]>([])
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const refresh = useCallback(async () => {
+    // ambil kegagalan per-request supaya tiap tile punya fallback sendiri,
+    // tapi user tetap diberi tahu saat datanya bukan nol tapi gagal dimuat.
+    let bad = false
+    const grab = async <T,>(p: Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await p
+      } catch {
+        bad = true
+        return fallback
+      }
+    }
     const [camsL, nodesL, statsL, latestL] = await Promise.all([
-      listCameras().catch(() => []),
-      listNodes().catch(() => []),
-      eventStats().catch(() => null),
-      listEvents({ limit: 3 }).catch(() => []),
+      grab(listCameras(), [] as CameraRow[]),
+      grab(listNodes(), [] as CameraNode[]),
+      grab(eventStats(), null as EventStats | null),
+      grab(listEvents({ limit: 3 }), [] as EventOut[]),
     ])
+    setLoadFailed(bad)
     const camOnline = camsL.filter((c) => c.status === 'online').length
     setCams({ total: camsL.length, online: camOnline })
     setNodes({ total: nodesL.length, online: nodesL.filter((n) => n.status === 'online').length })
@@ -127,6 +140,15 @@ export default function DashboardPage() {
       </div>
 
       <h3 style={{ fontSize: 16, fontWeight: 600, margin: '32px 0 12px' }}>{t('dash.latestAlerts')}</h3>
+      {loadFailed && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          title={t('common.error')}
+          subtitle={t('common.loadFailed')}
+          onCloseButtonClick={() => setLoadFailed(false)}
+        />
+      )}
       {loading ? (
         <SkeletonText width="100%" />
       ) : latest.length === 0 ? (
