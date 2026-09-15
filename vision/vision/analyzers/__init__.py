@@ -2,7 +2,10 @@
 from .base import Analyzer
 from .intrusion import IntrusionAnalyzer, point_in_polygon
 from .loitering import LoiteringAnalyzer
+from .running import RunningAnalyzer
 
-ANALYZERS = {"intrusion": IntrusionAnalyzer, "loitering": LoiteringAnalyzer}
+ANALYZERS = {"intrusion": IntrusionAnalyzer, "loitering": LoiteringAnalyzer,
+             "running": RunningAnalyzer}
 
-__all__ = ["Analyzer", "ANALYZERS", "IntrusionAnalyzer", "LoiteringAnalyzer", "point_in_polygon"]
+__all__ = ["Analyzer", "ANALYZERS", "IntrusionAnalyzer", "LoiteringAnalyzer",
+           "RunningAnalyzer", "point_in_polygon"]

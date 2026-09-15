@@ -161,6 +161,7 @@ class VisionNode:
             lambda cam: FrameSource(cam.source_url, cam.ai_fps)
         )
         self._config_q: queue.Queue = queue.Queue()
+        self._calib_warned: set[int] = set()  # log "no calibration" once per camera
         self.transport = transport or MqttTransport(self.cfg, on_config=self._config_q.put)
         self._default_detector = detector_factory is None
         self.stop_event = threading.Event()
@@ -172,10 +173,12 @@ class VisionNode:
         for c in cfg_dict.get("cameras", []):
             cam = CameraCfg(camera_id=c["camera_id"], source_url=c["source_url"],
                             ai_fps=c.get("ai_fps", 5.0),
+                            meters_per_pixel=c.get("meters_per_pixel"),
                             zones=[z for z in c.get("zones", [])
                                    if z.get("active", True)
                                    and (z.get("type") == "restricted"
-                                        or z.get("loiter_seconds", 0) > 0)])
+                                        or z.get("loiter_seconds", 0) > 0
+                                        or z.get("speed_limit_mps", 0) > 0)])
             cams.append(cam)
         return cams
 
@@ -183,11 +186,20 @@ class VisionNode:
         out = []
         for z in cam.zones:
             # a zone can carry more than one analyzer: restricted zones get
-            # intrusion, any zone with loiter_seconds > 0 also gets loitering
+            # intrusion, loiter_seconds > 0 gets loitering, and speed_limit_mps > 0
+            # gets running (only when the camera has a calibration)
             if z.get("type") == "restricted":
                 out.append(ANALYZERS["intrusion"](z))
             if z.get("loiter_seconds", 0) > 0:
                 out.append(ANALYZERS["loitering"](z))
+            if z.get("speed_limit_mps", 0) > 0:
+                if cam.meters_per_pixel is None:
+                    if cam.camera_id not in self._calib_warned:
+                        self._calib_warned.add(cam.camera_id)
+                        log.info("running analyzer skipped camera %s (no calibration)",
+                                 cam.camera_id)
+                else:
+                    out.append(ANALYZERS["running"](z, cam.meters_per_pixel))
         return out
 
     def apply_config(self, cfg_dict: dict) -> None:

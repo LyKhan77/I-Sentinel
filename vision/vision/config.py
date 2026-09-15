@@ -11,6 +11,7 @@ class CameraCfg(BaseModel):
     camera_id: int
     source_url: str
     ai_fps: float = 5.0
+    meters_per_pixel: float | None = None  # calibration for speed (m/s)
     zones: list = []  # restricted zones w/ schedule+polygon (from config apply)
 
 
