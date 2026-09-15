@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Maximize } from '@carbon/icons-react'
+import { Maximize, VideoOff } from '@carbon/icons-react'
 import { InlineLoading } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
@@ -11,7 +11,9 @@ const SNAPSHOT_REFRESH_MS = 2000
 // TODO(Task 9): WebRTC go2rtc — getLive() sudah expose streams/webrtc/mse/hls,
 // tinggal render <video> + WsWebRTC client dari {go2rtc_url}/api/ws.js.
 function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null; big?: boolean }) {
+  const { t } = useT()
   const [tick, setTick] = useState(0)
+  const [imgFailed, setImgFailed] = useState(false)
 
   useEffect(() => {
     if (!live?.snapshot) return
@@ -19,9 +21,9 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
     return () => clearInterval(timer)
   }, [live?.snapshot])
 
-  const dot = cam.status === 'online' ? '#42be65' : '#fa4d56'
+  const online = cam.status === 'online'
   const sep = live?.snapshot?.includes('?') ? '&' : '?'
-  const src = live?.snapshot ? `${live.snapshot}${sep}_t=${tick}` : null
+  const src = live?.snapshot && !imgFailed ? `${live.snapshot}${sep}_t=${tick}` : null
 
   return (
     <div
@@ -29,7 +31,7 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
       data-big={big ? 'big' : undefined}
       style={{
         position: 'relative',
-        background: '#161616',
+        background: '#000',
         border: '1px solid #393939',
         aspectRatio: '16/9',
         display: 'flex',
@@ -40,10 +42,44 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
       }}
     >
       {src ? (
-        <img src={src} alt={cam.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img
+          src={src}
+          alt={cam.name}
+          onError={() => setImgFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
       ) : (
-        <InlineLoading description={live === null ? undefined : 'no snapshot'} />
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 6,
+            color: '#6f6f6f',
+            fontSize: 12,
+            letterSpacing: '.32px',
+          }}
+        >
+          <VideoOff size={24} />
+          {t('live.offline')}
+        </div>
       )}
+
+      {src && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 6,
+            left: 10,
+            fontSize: 10,
+            color: '#8d8d8d',
+            fontFamily: 'var(--cds-font-family-mono, monospace)',
+          }}
+        >
+          {new Date().toLocaleString('sv-SE')}
+        </span>
+      )}
+
       <div
         style={{
           position: 'absolute',
@@ -51,17 +87,34 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
           right: 0,
           bottom: 0,
           padding: '6px 10px',
-          background: 'rgba(0,0,0,.6)',
+          background: 'linear-gradient(transparent, rgba(0,0,0,.75))',
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 8,
           fontSize: 12,
-          color: '#f4f4f4',
+          color: '#e8e8e8',
         }}
       >
-        <span style={{ color: dot }}>●</span>
         <span>{cam.name}</span>
-        {big && <Maximize size={14} style={{ marginLeft: 'auto' }} />}
+        <span
+          style={{
+            marginLeft: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            fontSize: 10,
+            letterSpacing: '.64px',
+            fontWeight: 600,
+            color: online ? '#fa4d56' : '#6f6f6f',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#fa4d56' : '#6f6f6f' }}
+          />
+          {online ? t('live.live') : t('live.offline')}
+        </span>
+        {big && <Maximize size={14} />}
       </div>
     </div>
   )
