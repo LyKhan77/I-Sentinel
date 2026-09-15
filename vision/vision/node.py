@@ -214,9 +214,13 @@ class VisionNode:
     def _start_workers(self, cameras: list[CameraCfg]) -> None:
         self._stop_workers()
         for cam in cameras:
+            recorder = None
+            if self.cfg.api_key:  # produksi: upload blob ke backend
+                from .recorder import Recorder
+                recorder = Recorder(cam.camera_id, self.cfg, self.transport)
             w = CameraWorker(cam, self.detector_factory, self.transport,
                              threading.Event(), self.cfg.node_id,
-                             analyzers=self._make_analyzers(cam))
+                             analyzers=self._make_analyzers(cam), recorder=recorder)
             w.source = self.source_factory(cam)
             w.start()
             self._workers.append(w)
@@ -228,6 +232,8 @@ class VisionNode:
             w.stop()
         for w in self._workers:
             w.join(timeout=5.0)
+            if getattr(w, "recorder", None) is not None:
+                w.recorder.close()
         stopped, self._workers = self._workers, []
         return stopped
 
