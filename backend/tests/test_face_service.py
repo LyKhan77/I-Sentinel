@@ -61,6 +61,11 @@ def test_cosine_zero_norm_guard():
     assert cosine([0.0, 0.0], [1.0, 0.0]) == 0.0
 
 
+def test_cosine_length_mismatch_raises():
+    with pytest.raises(ValueError, match="length mismatch"):
+        cosine([1.0, 0.0], [1.0, 0.0, 0.0])
+
+
 # --- (b) gallery.match exact vector ---
 
 def test_gallery_match_exact(db):
@@ -158,6 +163,17 @@ def test_enroll_low_quality_raises(db, monkeypatch):
     with pytest.raises(ValueError, match="low_quality"):
         enroll_embedding(db, e.id, "faces/small.jpg")
     assert db.query(FaceEmbedding).count() == 0
+
+
+def test_enroll_picks_largest_face(db, monkeypatch):
+    e = _employee(db)
+    small = FaceResult(vector=[1.0, 0.0, 0.0, 0.0], det_score=0.9, bbox=[0.0, 0.0, 40.0, 40.0], quality=0.9)
+    big = FaceResult(vector=[0.0, 1.0, 0.0, 0.0], det_score=0.9, bbox=[0.0, 0.0, 120.0, 120.0], quality=0.9)
+    _fake_embed(monkeypatch, small, big)  # besar bukan elemen pertama
+
+    row = enroll_embedding(db, e.id, "faces/group.jpg")
+
+    assert row.vector == pytest.approx([0.0, 1.0, 0.0, 0.0])
 
 
 # --- (g) match_crop flows ---

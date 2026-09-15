@@ -35,11 +35,18 @@ class MatchResult:
 
 def cosine(a, b) -> float:
     """Cosine similarity via dot product (vektor ArcFace sudah L2-normed). Guard zero-norm."""
+    if len(a) != len(b):
+        raise ValueError(f"cosine: length mismatch {len(a)} != {len(b)}")
     na = sum(x * x for x in a) ** 0.5
     nb = sum(x * x for x in b) ** 0.5
     if na == 0.0 or nb == 0.0:
         return 0.0
     return sum(x * y for x, y in zip(a, b)) / (na * nb)
+
+
+def _best_face(faces: list[FaceResult]) -> FaceResult:
+    """Wajah dengan area bbox terbesar — crop CCTV sering memuat beberapa orang."""
+    return max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
 
 
 class FaceEngine:
@@ -185,7 +192,7 @@ def match_crop(db, image_path: str) -> MatchResult:
     if not faces:
         return MatchResult(None, None, None, "no_face")
 
-    face = faces[0]
+    face = _best_face(faces)
     if face.quality < settings.face_min_quality:
         return MatchResult(None, None, face.quality, "low_quality")
 
@@ -206,7 +213,7 @@ def enroll_embedding(db, employee_id: int, image_path: str) -> FaceEmbedding:
     if not faces:
         raise ValueError("no_face")
 
-    face = faces[0]
+    face = _best_face(faces)
     if face.quality < settings.face_min_quality:
         raise ValueError("low_quality")
 

@@ -44,6 +44,11 @@ async def lifespan(app: FastAPI):
         _bootstrap(db)
         from app.services.config_push import republish_all
         republish_all(db)
+        try:
+            from app.services.face import refresh_gallery
+            refresh_gallery(db)
+        except Exception:
+            logger.warning("gallery refresh at startup failed", exc_info=True)
     except Exception:
         logger.warning("republish_all at startup failed", exc_info=True)
     finally:
@@ -83,5 +88,7 @@ app.include_router(alerts_router)
 app.include_router(telegram_router)
 from app.api.employees import router as employees_router
 from app.api.shifts import router as shifts_router
+from app.api.enrollment import router as enrollment_router
 app.include_router(employees_router)
 app.include_router(shifts_router)
+app.include_router(enrollment_router)

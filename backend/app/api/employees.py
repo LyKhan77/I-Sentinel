@@ -11,6 +11,7 @@ from app.models.employee import Employee
 from app.models.face_embedding import FaceEmbedding
 from app.models.shift import Shift
 from app.schemas.employee import EmployeeIn, EmployeePatch, EmployeeOut
+from app.services import face
 
 router = APIRouter(prefix="/api/v1/employees", tags=["employees"])
 
@@ -77,4 +78,5 @@ def delete_employee(employee_id: int, admin=Depends(require_admin), db: Session 
     db.query(FaceEmbedding).filter(FaceEmbedding.employee_id == employee_id).delete(synchronize_session=False)
     db.delete(emp); db.commit()
     shutil.rmtree(Path(settings.storage_root) / "faces" / str(employee_id), ignore_errors=True)
+    face.refresh_gallery(db)
     return {"ok": True}
