@@ -180,10 +180,13 @@ export default function LiveViewPage() {
     return () => el.removeEventListener('dblclick', onDbl)
   }, [focusId])
 
-  const focused = focusId != null ? cams.find((c) => c.id === focusId) : null
+  // Kamera nonaktif tidak punya stream di go2rtc (sync_camera(delete=True) saat
+  // disable) → tile-nya selalu 502 dengan badge LIVE yang menyesatkan.
+  const active = cams.filter((c) => c.enabled)
+  const focused = focusId != null ? active.find((c) => c.id === focusId) : null
   // lokasi kamera unik; null = semua
-  const locOptions = [...new Set(cams.map((c) => c.location).filter((l): l is string => !!l))].map((l) => ({ label: l }))
-  const shown = loc ? cams.filter((c) => c.location === loc.label) : cams
+  const locOptions = [...new Set(active.map((c) => c.location).filter((l): l is string => !!l))].map((l) => ({ label: l }))
+  const shown = loc ? active.filter((c) => c.location === loc.label) : active
   const others = focusId != null ? shown.filter((c) => c.id !== focusId) : shown
 
   const pickCols = (n: Cols) => {
@@ -236,8 +239,8 @@ export default function LiveViewPage() {
           onCloseButtonClick={() => setLoadFailed(false)}
         />
       )}
-      {cams.length === 0 ? (
-        <p style={{ color: '#8d8d8d' }}>{t('live.noCameras')}</p>
+      {shown.length === 0 ? (
+        <p style={{ color: '#8d8d8d' }}>{cams.length === 0 ? t('live.noCameras') : t('live.noActiveCameras')}</p>
       ) : (
         <>
           {focused && (

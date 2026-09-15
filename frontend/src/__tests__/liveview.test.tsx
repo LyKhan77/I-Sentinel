@@ -87,3 +87,24 @@ test('click tile focuses it (moves to big slot)', async () => {
   expect(tiles1.length).toBe(1)
   expect(tiles1[0].dataset.big ?? '').toBe('big')
 })
+
+test('kamera nonaktif tidak dirender di grid', async () => {
+  // kamera enabled=false tidak punya stream di go2rtc (sync_camera delete saat
+  // disable) → tile-nya selalu 502 dengan badge LIVE yang menyesatkan
+  const off = { ...CAMS[0], id: 9, name: 'CAM-OFF', enabled: false }
+  const base = stubFetch()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (String(url).endsWith('/cameras')) {
+        return { ok: true, status: 200, json: () => Promise.resolve([...CAMS, off]) }
+      }
+      return base(url)
+    }),
+  )
+  renderPage()
+
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  expect(screen.queryByText('CAM-OFF')).not.toBeInTheDocument()
+  expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(2)
+})
