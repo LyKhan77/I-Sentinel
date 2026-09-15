@@ -34,6 +34,7 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
   const [drawing, setDrawing] = useState(false)
   const [points, setPoints] = useState<[number, number][]>([])
   const [tick, setTick] = useState(0)
+  const [imgFailed, setImgFailed] = useState(false) // URL snapshot ada tapi gambarnya gagal dimuat (go2rtc belum siap)
   const svgRef = useRef<SVGSVGElement>(null)
   const dragRef = useRef<{ zoneIdx: number; ptIdx: number } | null>(null)
 
@@ -60,6 +61,7 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
   useEffect(() => {
     setDrawing(false)
     setPoints([])
+    setImgFailed(false)
   }, [cameraId])
 
   const clickFrame = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -171,12 +173,15 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
       <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', background: '#000' }}>
         {snapshot === undefined ? (
           <InlineLoading description={t('common.loading')} />
-        ) : snapshot === null ? (
-          <div style={{ color: '#8d8d8d', padding: 16 }}>{t('live.noSnapshot')}</div>
+        ) : snapshot === null || imgFailed ? (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8d8d8d' }}>
+            {t('live.noSnapshot')}
+          </div>
         ) : (
           <img
             src={`${snapshot}${tick}`}
             alt=""
+            onError={() => setImgFailed(true)}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
           />
         )}
@@ -260,7 +265,7 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
                 padding: '6px 8px',
                 cursor: 'pointer',
                 background: z.id === selectedId ? 'var(--cds-layer-selected)' : 'transparent',
-                borderRadius: 4,
+                borderRadius: 0,
               }}
             >
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: ZONE_COLOR[z.type], flexShrink: 0 }} />

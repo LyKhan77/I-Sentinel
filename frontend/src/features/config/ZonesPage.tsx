@@ -103,8 +103,13 @@ export default function ZonesPage() {
   ]
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 16 }}>{t('zones.title')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('zones.title')}</h1>
+          <p className="app-page__sub">{t('zones.sub')}</p>
+        </div>
+      </div>
 
       <div style={{ maxWidth: 360, marginBottom: 16 }}>
         <Dropdown

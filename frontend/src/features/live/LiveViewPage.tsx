@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Maximize } from '@carbon/icons-react'
-import { InlineLoading } from '@carbon/react'
+import { Maximize, VideoOff } from '@carbon/icons-react'
+import { InlineLoading, InlineNotification } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
@@ -11,7 +11,9 @@ const SNAPSHOT_REFRESH_MS = 2000
 // TODO(Task 9): WebRTC go2rtc — getLive() sudah expose streams/webrtc/mse/hls,
 // tinggal render <video> + WsWebRTC client dari {go2rtc_url}/api/ws.js.
 function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null; big?: boolean }) {
+  const { t } = useT()
   const [tick, setTick] = useState(0)
+  const [imgFailed, setImgFailed] = useState(false)
 
   useEffect(() => {
     if (!live?.snapshot) return
@@ -19,9 +21,9 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
     return () => clearInterval(timer)
   }, [live?.snapshot])
 
-  const dot = cam.status === 'online' ? '#42be65' : '#fa4d56'
+  const online = cam.status === 'online'
   const sep = live?.snapshot?.includes('?') ? '&' : '?'
-  const src = live?.snapshot ? `${live.snapshot}${sep}_t=${tick}` : null
+  const src = live?.snapshot && !imgFailed ? `${live.snapshot}${sep}_t=${tick}` : null
 
   return (
     <div
@@ -29,7 +31,7 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
       data-big={big ? 'big' : undefined}
       style={{
         position: 'relative',
-        background: '#161616',
+        background: '#000',
         border: '1px solid #393939',
         aspectRatio: '16/9',
         display: 'flex',
@@ -40,10 +42,44 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
       }}
     >
       {src ? (
-        <img src={src} alt={cam.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img
+          src={src}
+          alt={cam.name}
+          onError={() => setImgFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
       ) : (
-        <InlineLoading description={live === null ? undefined : 'no snapshot'} />
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 6,
+            color: '#6f6f6f',
+            fontSize: 12,
+            letterSpacing: '.32px',
+          }}
+        >
+          <VideoOff size={24} />
+          {t('live.offline')}
+        </div>
       )}
+
+      {src && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 6,
+            left: 10,
+            fontSize: 10,
+            color: '#8d8d8d',
+            fontFamily: 'var(--cds-font-family-mono, monospace)',
+          }}
+        >
+          {new Date().toLocaleString('sv-SE')}
+        </span>
+      )}
+
       <div
         style={{
           position: 'absolute',
@@ -51,17 +87,34 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
           right: 0,
           bottom: 0,
           padding: '6px 10px',
-          background: 'rgba(0,0,0,.6)',
+          background: 'linear-gradient(transparent, rgba(0,0,0,.75))',
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 8,
           fontSize: 12,
-          color: '#f4f4f4',
+          color: '#e8e8e8',
         }}
       >
-        <span style={{ color: dot }}>●</span>
         <span>{cam.name}</span>
-        {big && <Maximize size={14} style={{ marginLeft: 'auto' }} />}
+        <span
+          style={{
+            marginLeft: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            fontSize: 10,
+            letterSpacing: '.64px',
+            fontWeight: 600,
+            color: online ? '#fa4d56' : '#6f6f6f',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#fa4d56' : '#6f6f6f' }}
+          />
+          {online ? t('live.live') : t('live.offline')}
+        </span>
+        {big && <Maximize size={14} />}
       </div>
     </div>
   )
@@ -73,12 +126,14 @@ export default function LiveViewPage() {
   const [lives, setLives] = useState<Record<number, LiveInfo>>({})
   const [focusId, setFocusId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const focusRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
     try {
       const list = await listCameras()
       setCams(list)
+      setLoadFailed(false)
       const infos: Record<number, LiveInfo> = {}
       await Promise.all(
         list.map(async (c) => {
@@ -90,6 +145,8 @@ export default function LiveViewPage() {
         }),
       )
       setLives(infos)
+    } catch {
+      setLoadFailed(true) // jangan bilang "belum ada kamera" kalau requestnya yang gagal
     } finally {
       setLoading(false)
     }
@@ -116,11 +173,25 @@ export default function LiveViewPage() {
   const focused = focusId != null ? cams.find((c) => c.id === focusId) : null
   const others = focusId != null ? cams.filter((c) => c.id !== focusId) : cams
 
-  if (loading) return <div style={{ padding: 32 }}><InlineLoading description={t('common.loading')} /></div>
+  if (loading) return <div className="app-page"><InlineLoading description={t('common.loading')} /></div>
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 16 }}>{t('nav.live')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('nav.live')}</h1>
+          <p className="app-page__sub">{t('live.sub')}</p>
+        </div>
+      </div>
+      {loadFailed && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          title={t('common.error')}
+          subtitle={t('common.loadFailed')}
+          onCloseButtonClick={() => setLoadFailed(false)}
+        />
+      )}
       {cams.length === 0 ? (
         <p style={{ color: '#8d8d8d' }}>{t('live.noCameras')}</p>
       ) : (

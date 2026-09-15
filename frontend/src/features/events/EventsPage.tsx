@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Dropdown, InlineLoading, Tag } from '@carbon/react'
+import { Dropdown, InlineLoading, InlineNotification, Tag } from '@carbon/react'
 import { Download } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
@@ -42,14 +42,20 @@ export default function EventsPage() {
   const [sevFilter, setSevFilter] = useState<{ label: string } | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
   const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
   const [tg, setTg] = useState<TelegramStatus | null>(null)
 
   const refresh = useCallback(async () => {
-    const list = await listEvents({ limit: 100 }).catch(() => [])
-    setEvents(list)
-    setLoading(false)
+    try {
+      setEvents(await listEvents({ limit: 100 }))
+      setLoadFailed(false)
+    } catch {
+      setLoadFailed(true) // jangan tampilkan "Belum ada event" saat requestnya yang gagal
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -105,19 +111,22 @@ export default function EventsPage() {
   }, [])
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h1 style={{ fontWeight: 300, margin: 0 }}>{t('nav.events')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('nav.events')}</h1>
+          <p className="app-page__sub">{t('events.sub')}</p>
+        </div>
         {tg && (
           <span
             data-testid="telegram-chip"
             title={t('events.telegram.hint')}
             style={{
-              fontSize: 12,
-              padding: '2px 8px',
-              borderRadius: 10,
-              color: '#fff',
-              background: tg.configured ? ALERT_BG.sent : ALERT_BG.not_configured,
+              fontSize: 11,
+              padding: '3px 8px',
+              whiteSpace: 'nowrap',
+              border: `1px solid ${tg.configured ? '#42be65' : '#8d8d8d'}`,
+              color: tg.configured ? '#42be65' : '#8d8d8d',
             }}
           >
             {tg.configured
@@ -126,6 +135,16 @@ export default function EventsPage() {
           </span>
         )}
       </div>
+
+      {loadFailed && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          title={t('common.error')}
+          subtitle={t('common.loadFailed')}
+          onCloseButtonClick={() => setLoadFailed(false)}
+        />
+      )}
 
       <div style={{ display: 'flex', gap: 12, maxWidth: 720, marginBottom: 16 }}>
         <Dropdown
@@ -173,7 +192,7 @@ export default function EventsPage() {
                   alignItems: 'center',
                   padding: '8px 10px',
                   cursor: 'pointer',
-                  borderRadius: 4,
+                  borderRadius: 0,
                   background: selected?.id === e.id ? 'var(--cds-layer-selected)' : 'transparent',
                 }}
               >
@@ -202,7 +221,7 @@ export default function EventsPage() {
 
           {/* kanan: detail panel */}
           {selected && (
-            <div data-testid="event-detail" style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: 4, padding: 16 }}>
+            <div data-testid="event-detail" style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: 0, padding: 16 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <h2 style={{ fontWeight: 400, margin: 0, flex: 1 }}>
                   {selected.type} · {camName(selected)}
@@ -217,7 +236,7 @@ export default function EventsPage() {
                       fontSize: 11,
                       fontWeight: 600,
                       padding: '2px 8px',
-                      borderRadius: 2,
+                      borderRadius: 0,
                       background: ALERT_BG[detailAlert],
                       color: detailAlert === 'rate_limited' ? '#161616' : '#fff',
                     }}
@@ -232,7 +251,7 @@ export default function EventsPage() {
               ) : (
                 <div
                   data-testid="event-clip-placeholder"
-                  style={{ display: 'grid', placeItems: 'center', height: 120, background: 'var(--cds-layer)', color: 'var(--cds-text-helper)', borderRadius: 4 }}
+                  style={{ display: 'grid', placeItems: 'center', height: 120, background: 'var(--cds-layer)', color: 'var(--cds-text-helper)', borderRadius: 0 }}
                 >
                   {t('events.clipUnavailable')}
                 </div>

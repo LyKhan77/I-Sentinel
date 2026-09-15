@@ -214,8 +214,13 @@ export default function AttendancePage() {
   const headers = ['at.col.employee', 'at.col.shift', 'at.col.entry', 'at.col.exit', 'at.col.duration', 'at.col.status'] as const
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 8 }}>{t('at.title')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('at.title')}</h1>
+          <p className="app-page__sub">{t('at.sub')}</p>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #393939', marginBottom: 14 }}>
         <TabButton active={tab === 'daily'} label={t('at.tab.daily')} onClick={() => setTab('daily')} testId="tab-daily" />

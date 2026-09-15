@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Camera, Network_4, WarningAlt } from '@carbon/icons-react'
-import { SkeletonText, Tile } from '@carbon/react'
+import { SkeletonText, Tile, InlineNotification } from '@carbon/react'
 import { useT } from '../../app/i18n'
-import { listCameras, listNodes } from '../../api/cameras'
+import { listCameras, listNodes, type Camera as CameraRow, type CameraNode } from '../../api/cameras'
 import { eventStats, listEvents, type EventOut, type EventStats } from '../../api/events'
 
 // warna dot severity, konsisten dgn mockup: merah critical, kuning warning, abu info/low
@@ -22,7 +22,7 @@ function TileStat({
   loading: boolean
 }) {
   return (
-    <Tile style={{ background: '#262626', border: '1px solid #393939' }}>
+    <Tile style={{ background: '#262626' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8d8d8d', fontSize: 12, letterSpacing: 0.32 }}>
         {icon}
         <span style={{ textTransform: 'uppercase' }}>{label}</span>
@@ -48,14 +48,27 @@ export default function DashboardPage() {
   const [nodes, setNodes] = useState<{ total: number; online: number }>({ total: 0, online: 0 })
   const [stats, setStats] = useState<EventStats | null>(null)
   const [latest, setLatest] = useState<EventOut[]>([])
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const refresh = useCallback(async () => {
+    // ambil kegagalan per-request supaya tiap tile punya fallback sendiri,
+    // tapi user tetap diberi tahu saat datanya bukan nol tapi gagal dimuat.
+    let bad = false
+    const grab = async <T,>(p: Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await p
+      } catch {
+        bad = true
+        return fallback
+      }
+    }
     const [camsL, nodesL, statsL, latestL] = await Promise.all([
-      listCameras().catch(() => []),
-      listNodes().catch(() => []),
-      eventStats().catch(() => null),
-      listEvents({ limit: 3 }).catch(() => []),
+      grab(listCameras(), [] as CameraRow[]),
+      grab(listNodes(), [] as CameraNode[]),
+      grab(eventStats(), null as EventStats | null),
+      grab(listEvents({ limit: 3 }), [] as EventOut[]),
     ])
+    setLoadFailed(bad)
     const camOnline = camsL.filter((c) => c.status === 'online').length
     setCams({ total: camsL.length, online: camOnline })
     setNodes({ total: nodesL.length, online: nodesL.filter((n) => n.status === 'online').length })
@@ -77,9 +90,14 @@ export default function DashboardPage() {
     : null
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 16 }}>{t('nav.dashboard')}</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1 }}>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('nav.dashboard')}</h1>
+          <p className="app-page__sub">{t('dash.sub')}</p>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1, background: '#393939', border: '1px solid #393939' }}>
         <TileStat
           loading={loading}
           icon={<Camera size={16} />}
@@ -121,7 +139,16 @@ export default function DashboardPage() {
         />
       </div>
 
-      <h3 style={{ fontWeight: 400, margin: '24px 0 8px' }}>{t('dash.latestAlerts')}</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 600, margin: '32px 0 12px' }}>{t('dash.latestAlerts')}</h3>
+      {loadFailed && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          title={t('common.error')}
+          subtitle={t('common.loadFailed')}
+          onCloseButtonClick={() => setLoadFailed(false)}
+        />
+      )}
       {loading ? (
         <SkeletonText width="100%" />
       ) : latest.length === 0 ? (

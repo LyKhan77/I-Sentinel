@@ -33,41 +33,52 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: '96px auto', padding: '0 16px' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 300, marginBottom: 24 }}>{t('login.title')}</h1>
-      {apiError && (
-        <InlineNotification
-          kind="error"
-          lowContrast
-          title={t('login.invalid')}
-          subtitle=""
-          onCloseButtonClick={() => setApiError(false)}
-        />
-      )}
-      <form onSubmit={onSubmit}>
-        <Stack gap={5}>
-          <TextInput
-            id="username"
-            labelText={t('login.username')}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            invalid={!!errors.username}
-            invalidText={errors.username}
+    <div className="login">
+      <div className="login__panel">
+        <div className="login__brand">
+          <span className="app-logo-mark" aria-hidden="true">
+            IS
+          </span>
+          I-Sentinel
+        </div>
+        <h1 className="login__title">{t('login.title')}</h1>
+        <p className="login__sub">{t('login.sub')}</p>
+        {apiError && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            title={t('login.invalid')}
+            subtitle=""
+            onCloseButtonClick={() => setApiError(false)}
           />
-          <TextInput
-            id="password"
-            type="password"
-            labelText={t('login.password')}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            invalid={!!errors.password}
-            invalidText={errors.password}
-          />
-          <Button type="submit" disabled={busy}>
-            {t('login.submit')}
-          </Button>
-        </Stack>
-      </form>
+        )}
+        <form onSubmit={onSubmit}>
+          <Stack gap={5}>
+            <TextInput
+              id="username"
+              autoComplete="username"
+              labelText={t('login.username')}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              invalid={!!errors.username}
+              invalidText={errors.username}
+            />
+            <TextInput
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              labelText={t('login.password')}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              invalid={!!errors.password}
+              invalidText={errors.password}
+            />
+            <Button type="submit" disabled={busy}>
+              {t('login.submit')}
+            </Button>
+          </Stack>
+        </form>
+      </div>
     </div>
   )
 }
