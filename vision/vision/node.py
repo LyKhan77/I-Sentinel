@@ -187,8 +187,17 @@ class VisionNode:
         """Hot-reload: stop current workers, start new ones from cfg_dict."""
         det = cfg_dict.get("detector")
         if det:
+            # model dari config bisa nama file relatif (mis. "yolo26s.engine");
+            # resolve ke direktori model env bila file relatif tidak ada di cwd.
+            model = det.get("model") or self.cfg.detector_model
+            if model and not os.path.isabs(model):
+                local = os.path.abspath(model)
+                env_dir = os.path.dirname(os.path.abspath(self.cfg.detector_model))
+                candidate = os.path.join(env_dir, os.path.basename(model))
+                if not os.path.exists(local) and os.path.exists(candidate):
+                    model = candidate
             self._detector_settings = {
-                "model": det.get("model", self.cfg.detector_model),
+                "model": model,
                 "nms": det.get("nms", self.cfg.detector_nms),
                 "conf": det.get("conf", self.cfg.detector_conf),
                 "imgsz": det.get("imgsz", self.cfg.detector_imgsz),

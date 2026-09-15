@@ -221,3 +221,14 @@ def test_no_config_backward_compat(tmp_path):
     node.run()
     assert len(t.events) == 1
     assert t.events[0]["type"] == "person_detect"
+
+def test_detector_model_relative_resolved_to_env_dir(tmp_path, monkeypatch):
+    from vision.node import VisionNode
+    engine_dir = tmp_path / "models"
+    engine_dir.mkdir()
+    (engine_dir / "yolo26s.engine").write_bytes(b"x")
+    cfg = NodeSettings(detector_model=str(engine_dir / "yolo26s.engine"))
+    node = VisionNode(cfg, transport=object(), source_factory=lambda c: None)
+    node._default_detector = True
+    node.apply_config({"detector": {"model": "yolo26s.engine"}, "cameras": []})
+    assert node._detector_settings["model"] == str(engine_dir / "yolo26s.engine")
