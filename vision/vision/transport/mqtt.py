@@ -15,8 +15,9 @@ EVENTS_TOPIC = "isentinel/events"
 
 
 class MqttTransport:
-    def __init__(self, cfg):
+    def __init__(self, cfg, on_config=None):
         self.cfg = cfg
+        self._on_config = on_config  # callable(cfg_dict), fired on config topic message
         self._queue = DiskQueue(os.path.join(os.path.expanduser(cfg.data_dir), "queue"))
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2, client_id=f"vision-{cfg.node_id}-{os.getpid()}"
@@ -27,12 +28,23 @@ class MqttTransport:
             f"isentinel/nodes/{cfg.node_id}/lwt", '{"status":"offline"}', qos=1, retain=True
         )
         self._client.on_connect = self._on_connect
+        self._client.on_message = self._on_message
+        self._config_topic = f"isentinel/config/{cfg.node_id}"
         host, _, port = cfg.mqtt_url.rpartition(":")
         self._client.connect(host or cfg.mqtt_url, int(port) if port else 1883)
         self._client.loop_start()  # network thread + auto-reconnect
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
+        client.subscribe(self._config_topic, qos=1)
         self._flush(client)
+
+    def _on_message(self, client, userdata, msg):
+        if msg.topic != self._config_topic or self._on_config is None:
+            return
+        try:
+            self._on_config(json.loads(msg.payload.decode("utf-8")))
+        except (ValueError, UnicodeDecodeError):
+            log.exception("invalid config payload on %s", self._config_topic)
 
     def _flush(self, client) -> None:
         while True:

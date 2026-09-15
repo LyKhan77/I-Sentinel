@@ -1,0 +1,73 @@
+"""Intrusion analyzer: ray-casting point-in-polygon on track centroids, schedule-gated."""
+from __future__ import annotations
+
+from datetime import datetime
+
+from .base import Analyzer
+
+
+def point_in_polygon(pt: tuple[float, float], poly: list) -> bool:
+    """Ray casting, handles concave polygons. poly: [[x, y], ...] normalized."""
+    x, y = pt
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        if (y1 > y) != (y2 > y):
+            xin = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            if x < xin:
+                inside = not inside
+    return inside
+
+
+def _schedule_active(schedule: dict | None, ts: float) -> bool:
+    if not schedule:
+        return True
+    local = datetime.fromtimestamp(ts)
+    iso_dow = local.isoweekday()  # Monday=1..Sunday=7
+    if iso_dow not in schedule.get("days", []):
+        return False
+    hhmm = local.strftime("%H:%M")
+    return schedule["start"] <= hhmm <= schedule["end"]
+
+
+class IntrusionAnalyzer(Analyzer):
+    """Emits an intrusion event when a track transitions outside->inside a restricted zone."""
+
+    def __init__(self, zone: dict):
+        self.zone_id = zone["id"]
+        self.zone_name = zone.get("name", "")
+        self.severity = zone.get("severity", "warning")
+        self.schedule = zone.get("schedule")
+        self.polygon = [tuple(p) for p in zone["polygon"]]
+        self._inside: set[int] = set()
+
+    def on_frame(self, ts: float, tracks: list, frame_w: int, frame_h: int) -> list[dict]:
+        if not _schedule_active(self.schedule, ts):
+            return []
+        events = []
+        new_inside: set[int] = set()
+        present: set[int] = set()
+        for tr in tracks:
+            present.add(tr.id)
+            # centroid already normalized 0-1 (tracker bboxes are normalized xyxy)
+            in_poly = point_in_polygon(tr.centroid, self.polygon)
+            if in_poly and tr.id not in self._inside:
+                events.append({
+                    "zone_id": self.zone_id,
+                    "type": "intrusion",
+                    "severity": self.severity,
+                    "payload": {
+                        "zone_name": self.zone_name,
+                        "track_id": tr.id,
+                        "confidence": None,
+                        "bbox_norm": list(tr.bbox),
+                    },
+                })
+            if in_poly:
+                new_inside.add(tr.id)
+        # state = ids currently inside; leaving or losing the track removes the id
+        # (so re-entry re-emits)
+        self._inside = new_inside
+        return events

@@ -29,6 +29,11 @@ class FakeClient:
     def will_set(self, topic, payload, retain=False, qos=0):
         self.will = (topic, payload, retain, qos)
 
+    def subscribe(self, topic, qos=0):
+        self.subscribed = getattr(self, "subscribed", [])
+        self.subscribed.append((topic, qos))
+        return FakeResult(0)
+
     def connect(self, host, port):
         self.host_port = (host, port)
 
