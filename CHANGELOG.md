@@ -3,6 +3,32 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+## [0.2.0] — 2026-09-15 · Fase 1: Vision Inti
+
+Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT → DB → dashboard/live/events. Terverifikasi 4 kamera NVR via go2rtc di server GPU.
+
+### Commits (ringkas)
+
+- `728de79`/`0449061` feat: event model, ingest idempotent, events API + ws hub
+- `3454791` feat: mqtt events consumer (events + node lwt)
+- `1098d86` feat: go2rtc stream sync + live url endpoint
+- `9d5746e` feat: vision pipeline stages (source, detector iface, byte tracker)
+- `b09c6cc`/`d3c5e7d` feat: vision node runner (mqtt transport, disk queue, graceful)
+- `0d60702` feat: yolo26s tensorrt export script + gpu smoke test
+- `cef8afa` feat: internal heartbeat ingest + node staleness + vision deploy files
+- `3dced18` feat: dashboard tiles, live view (snapshot), events live list
+- `f25c664` fix: g100 dark theme via css custom properties
+- `ea892ee`/`e5a8302` fix: ts_event wall-clock (monotonic offset)
+- `1bdb19b`/`9c25396`/`17f3d10` fix: ingest node-by-name + iso parsing + relationship
+- `2a65d4c` feat: consumer marks node online from heartbeat topic
+
+### Highlights
+
+- **vision/** paket terpisah (tanpa FastAPI): pipeline source→detector→tracker→emit, DiskQueue store-and-forward, LWT+heartbeat MQTT
+- **YOLO26s TRT FP16 nms=False**: 1.7 ms/frame di 4090, 762 MB GPU
+- **Backend**: consumer MQTT (events/heartbeat/LWT), idempotent ingest, WS broadcast, go2rtc sync
+- **Frontend**: dashboard tile hidup, live view snapshot grid (fokus+fullscreen), events list realtime
+
 ## [Unreleased]
 
 ## [0.1.0] — 2026-09-10 · Fase 0: Skeleton
@@ -45,5 +71,6 @@ Backend, frontend, dan infrastruktur dasar I-Sentinel: auth, kamera + probe RTSP
 - **Deploy**: systemd units (api/web), go2rtc + mosquitto configs, bootstrap script; zero-secret (kredensial kamera via env, path RTSP saja di DB).
 - **Keputusan model AI**: detektor YOLO26s TensorRT FP16 `nms=False` (spec §2.7); benchmark validasi di Fase 1.
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/LyKhan77/I-Sentinel/commits/v0.1.0
