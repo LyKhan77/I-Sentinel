@@ -105,19 +105,22 @@ export default function EventsPage() {
   }, [])
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h1 style={{ fontWeight: 300, margin: 0 }}>{t('nav.events')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('nav.events')}</h1>
+          <p className="app-page__sub">{t('events.sub')}</p>
+        </div>
         {tg && (
           <span
             data-testid="telegram-chip"
             title={t('events.telegram.hint')}
             style={{
-              fontSize: 12,
-              padding: '2px 8px',
-              borderRadius: 10,
-              color: '#fff',
-              background: tg.configured ? ALERT_BG.sent : ALERT_BG.not_configured,
+              fontSize: 11,
+              padding: '3px 8px',
+              whiteSpace: 'nowrap',
+              border: `1px solid ${tg.configured ? '#42be65' : '#8d8d8d'}`,
+              color: tg.configured ? '#42be65' : '#8d8d8d',
             }}
           >
             {tg.configured
@@ -173,7 +176,7 @@ export default function EventsPage() {
                   alignItems: 'center',
                   padding: '8px 10px',
                   cursor: 'pointer',
-                  borderRadius: 4,
+                  borderRadius: 0,
                   background: selected?.id === e.id ? 'var(--cds-layer-selected)' : 'transparent',
                 }}
               >
@@ -202,7 +205,7 @@ export default function EventsPage() {
 
           {/* kanan: detail panel */}
           {selected && (
-            <div data-testid="event-detail" style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: 4, padding: 16 }}>
+            <div data-testid="event-detail" style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: 0, padding: 16 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <h2 style={{ fontWeight: 400, margin: 0, flex: 1 }}>
                   {selected.type} · {camName(selected)}
@@ -217,7 +220,7 @@ export default function EventsPage() {
                       fontSize: 11,
                       fontWeight: 600,
                       padding: '2px 8px',
-                      borderRadius: 2,
+                      borderRadius: 0,
                       background: ALERT_BG[detailAlert],
                       color: detailAlert === 'rate_limited' ? '#161616' : '#fff',
                     }}
@@ -232,7 +235,7 @@ export default function EventsPage() {
               ) : (
                 <div
                   data-testid="event-clip-placeholder"
-                  style={{ display: 'grid', placeItems: 'center', height: 120, background: 'var(--cds-layer)', color: 'var(--cds-text-helper)', borderRadius: 4 }}
+                  style={{ display: 'grid', placeItems: 'center', height: 120, background: 'var(--cds-layer)', color: 'var(--cds-text-helper)', borderRadius: 0 }}
                 >
                   {t('events.clipUnavailable')}
                 </div>

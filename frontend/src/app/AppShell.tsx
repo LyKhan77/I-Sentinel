@@ -1,20 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Header,
-  HeaderContainer,
-  HeaderName,
   HeaderMenuButton,
-  HeaderSideNavItems,
+  HeaderName,
   HeaderGlobalBar,
   HeaderGlobalAction,
   SideNav,
   SideNavItems,
-  SideNavMenuItem,
-  SideNavDivider,
+  SideNavLink,
   SkipToContent,
-  Tag,
-  Button,
 } from '@carbon/react'
 import {
   Dashboard,
@@ -23,129 +18,178 @@ import {
   UserAvatar,
   ScanAlt,
   Settings,
-  ChevronDown,
+  Logout,
 } from '@carbon/icons-react'
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
 
 const COLLAPSE_KEY = 'isentinel_sidenav_collapsed'
+const DESKTOP_QUERY = '(min-width: 1056px)' // breakpoint lg Carbon
 
 // ponytail: satu grup render saja — System grup mockup masih kosong, tambah item saat ada fitur
-type Item = { to: string; key: TKey; icon: React.ReactNode; adminOnly?: boolean }
+type Item = { to: string; key: TKey; icon: ComponentType<{ size?: number }>; adminOnly?: boolean }
 
 const GROUPS: { key: TKey; items: Item[] }[] = [
   {
     key: 'nav.group.monitoring',
     items: [
-      { to: '/dashboard', key: 'nav.dashboard', icon: <Dashboard size={16} /> },
-      { to: '/live', key: 'nav.live', icon: <Video size={16} /> },
-      { to: '/events', key: 'nav.events', icon: <EventsAlt size={16} /> },
+      { to: '/dashboard', key: 'nav.dashboard', icon: Dashboard },
+      { to: '/live', key: 'nav.live', icon: Video },
+      { to: '/events', key: 'nav.events', icon: EventsAlt },
     ],
   },
   {
     key: 'nav.group.management',
     items: [
-      { to: '/attendance', key: 'nav.attendance', icon: <UserAvatar size={16} /> },
-      { to: '/enrollment', key: 'nav.enrollment', icon: <ScanAlt size={16} /> },
-      { to: '/config/cameras', key: 'nav.configuration', icon: <Settings size={16} />, adminOnly: true },
-      { to: '/config/zones', key: 'zones.title', icon: <Settings size={16} />, adminOnly: true },
-      { to: '/config/gates', key: 'gates.title', icon: <Settings size={16} />, adminOnly: true },
+      { to: '/attendance', key: 'nav.attendance', icon: UserAvatar },
+      { to: '/enrollment', key: 'nav.enrollment', icon: ScanAlt },
+      { to: '/config/cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
+      { to: '/config/zones', key: 'zones.title', icon: Settings, adminOnly: true },
+      { to: '/config/gates', key: 'gates.title', icon: Settings, adminOnly: true },
     ],
   },
 ]
 
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia(DESKTOP_QUERY).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(DESKTOP_QUERY)
+    const onChange = () => setIsDesktop(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return isDesktop
+}
+
+function initials(name: string) {
+  return name.trim().slice(0, 2).toUpperCase()
+}
+
 export default function AppShell() {
   const { t, locale, setLocale } = useT()
   const navigate = useNavigate()
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
-  const [me, setMe] = useState<Me | null>(null)
   const location = useLocation()
+  const isDesktop = useIsDesktop()
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [me, setMe] = useState<Me | null>(null)
 
   useEffect(() => {
     getMe().then(setMe).catch(() => setMe(null)) // ponytail: jsdom fetch → rejected promise; ganti router-guard data saat Fase berikutnya
   }, [location.pathname])
 
-  const toggleCollapsed = () => {
-    setCollapsed((c) => {
-      localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1')
-      return !c
-    })
+  // navigasi di mobile → tutup overlay
+  useEffect(() => setMobileOpen(false), [location.pathname])
+
+  const expanded = isDesktop ? !collapsed : mobileOpen
+  const rail = isDesktop && collapsed
+
+  const toggleNav = () => {
+    if (isDesktop) {
+      setCollapsed((c) => {
+        localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1')
+        return !c
+      })
+    } else {
+      setMobileOpen((o) => !o)
+    }
   }
 
   return (
-    <HeaderContainer
-      render={({ isSideNavExpanded, onClickSideNavExpand }) => (
-        <>
-          <Header aria-label="I-Sentinel">
-            <SkipToContent />
-            <HeaderMenuButton
-              aria-label="Toggle menu"
-              isCollapsible
-              onClick={onClickSideNavExpand}
-              isActive={isSideNavExpanded}
-            />
-            <HeaderName href="#" prefix="">
-              IS
-            </HeaderName>
-            <Tag type="blue" size="sm" title={t('app.env')}>
-              {t('app.env')}
-            </Tag>
-            <HeaderGlobalBar>
-              <Button
-                kind="ghost"
-                size="sm"
-                onClick={() => setLocale(locale === 'id' ? 'en' : 'id')}
+    <>
+      <Header aria-label="I-Sentinel">
+        <SkipToContent />
+        <HeaderMenuButton
+          aria-label={rail ? t('nav.expand') : t('nav.collapse')}
+          isCollapsible
+          onClick={toggleNav}
+          isActive={expanded}
+        />
+        <HeaderName href="/" prefix="">
+          <span className="app-logo-mark" aria-hidden="true">
+            IS
+          </span>
+          I-Sentinel
+        </HeaderName>
+        <span className="app-env">{t('app.env')}</span>
+        <HeaderGlobalBar>
+          <div className="app-lang" role="group" aria-label={t('app.lang')}>
+            {(['id', 'en'] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                className="app-lang__opt"
+                aria-pressed={locale === l}
+                onClick={() => setLocale(l)}
               >
-                {locale === 'id' ? 'ID' : 'EN'}
-              </Button>
-              <HeaderGlobalAction
-                aria-label={t('login.logout')}
-                onClick={async () => {
-                  await logout()
-                  navigate('/login')
-                }}
-              >
-                <ChevronDown size={20} />
-              </HeaderGlobalAction>
-            </HeaderGlobalBar>
-          </Header>
-          <SideNav aria-label="I-Sentinel" expanded={!collapsed} onToggle={toggleCollapsed} isChildOfHeader>
-            <SideNavItems>
-              {GROUPS.map((g) => {
-                const items = g.items.filter((i) => !i.adminOnly || me?.role === 'admin')
-                if (items.length === 0) return null
-                return (
-                  <div key={g.key}>
-                    <h3 className="cds--side-nav__submenu" style={{ padding: '6px 16px', color: 'var(--cds-text-secondary)', fontSize: 12, margin: 0 }}>
-                      {t(g.key)}
-                    </h3>
-                    {items.map((i) => (
-                      <SideNavMenuItem key={i.to} renderIcon={() => i.icon} isActive={location.pathname === i.to}>
-                        <NavLink to={i.to} style={{ color: 'inherit', textDecoration: 'none', display: 'block' }}>
-                          {t(i.key)}
-                        </NavLink>
-                      </SideNavMenuItem>
-                    ))}
-                    <SideNavDivider />
-                  </div>
-                )
-              })}
-              {me && (
-                <div style={{ padding: '12px 16px', fontSize: 13 }}>
-                  <div>{me.username}</div>
-                  <div style={{ color: 'var(--cds-text-secondary)' }}>{me.role}</div>
-                </div>
-              )}
-              <HeaderSideNavItems>
-                {/* isi menu header (mobile) — kosong sampai menu mobile diperlukan */}
-              </HeaderSideNavItems>
-            </SideNavItems>
-          </SideNav>
-          <main id="main-content" style={{ paddingTop: '48px', minHeight: '100vh' }}>
-            <Outlet context={me} />
-          </main>
-        </>
-      )}
-    />
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <HeaderGlobalAction
+            aria-label={t('login.logout')}
+            tooltipAlignment="end"
+            onClick={async () => {
+              await logout()
+              navigate('/login')
+            }}
+          >
+            <Logout size={20} />
+          </HeaderGlobalAction>
+        </HeaderGlobalBar>
+      </Header>
+
+      <SideNav
+        aria-label="I-Sentinel"
+        isChildOfHeader
+        expanded={expanded}
+        isRail={rail}
+        addMouseListeners={false}
+      >
+        <SideNavItems>
+          {GROUPS.map((g) => {
+            const items = g.items.filter((i) => !i.adminOnly || me?.role === 'admin')
+            if (items.length === 0) return null
+            return (
+              <li key={g.key}>
+                <div className="app-sidenav-group">{t(g.key)}</div>
+                <ul className="app-sidenav-items">
+                  {items.map((i) => (
+                    <SideNavLink
+                      key={i.to}
+                      as={NavLink}
+                      to={i.to}
+                      isActive={location.pathname === i.to}
+                      renderIcon={i.icon}
+                    >
+                      {t(i.key)}
+                    </SideNavLink>
+                  ))}
+                </ul>
+              </li>
+            )
+          })}
+          {me && (
+            <li className="app-sidenav-user">
+              <span className="app-sidenav-user__avatar" aria-hidden="true">
+                {initials(me.username)}
+              </span>
+              <span className="app-sidenav-user__info">
+                <span className="app-sidenav-user__name">{me.username}</span>
+                <br />
+                <span className="app-sidenav-user__role">{me.role}</span>
+              </span>
+            </li>
+          )}
+        </SideNavItems>
+      </SideNav>
+
+      <main
+        id="main-content"
+        className={rail ? 'app-main app-main--rail' : 'app-main'}
+      >
+        <Outlet context={me} />
+      </main>
+    </>
   )
 }

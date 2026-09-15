@@ -260,7 +260,7 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
                 padding: '6px 8px',
                 cursor: 'pointer',
                 background: z.id === selectedId ? 'var(--cds-layer-selected)' : 'transparent',
-                borderRadius: 4,
+                borderRadius: 0,
               }}
             >
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: ZONE_COLOR[z.type], flexShrink: 0 }} />

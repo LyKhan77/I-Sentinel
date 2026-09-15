@@ -116,9 +116,12 @@ export default function CamerasPage() {
   ]
 
   return (
-    <div style={{ padding: 32, maxWidth: 960 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontWeight: 300, margin: 0 }}>{t('cameras.title')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('cameras.title')}</h1>
+          <p className="app-page__sub">{t('cameras.sub')}</p>
+        </div>
         {isAdmin && <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>}
       </div>
 

@@ -116,11 +116,16 @@ export default function LiveViewPage() {
   const focused = focusId != null ? cams.find((c) => c.id === focusId) : null
   const others = focusId != null ? cams.filter((c) => c.id !== focusId) : cams
 
-  if (loading) return <div style={{ padding: 32 }}><InlineLoading description={t('common.loading')} /></div>
+  if (loading) return <div className="app-page"><InlineLoading description={t('common.loading')} /></div>
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 16 }}>{t('nav.live')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('nav.live')}</h1>
+          <p className="app-page__sub">{t('live.sub')}</p>
+        </div>
+      </div>
       {cams.length === 0 ? (
         <p style={{ color: '#8d8d8d' }}>{t('live.noCameras')}</p>
       ) : (

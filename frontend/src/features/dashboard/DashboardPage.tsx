@@ -77,8 +77,13 @@ export default function DashboardPage() {
     : null
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 16 }}>{t('nav.dashboard')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('nav.dashboard')}</h1>
+          <p className="app-page__sub">{t('dash.sub')}</p>
+        </div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1 }}>
         <TileStat
           loading={loading}

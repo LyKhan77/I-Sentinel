@@ -11,3 +11,6 @@ dist/
 .venv/
 *.egg-info/
 backend/test.db
+
+# artefak sesi browser lokal
+.playwright-mcp/

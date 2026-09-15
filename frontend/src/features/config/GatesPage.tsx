@@ -103,8 +103,13 @@ export default function GatesPage() {
   const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.active']
 
   return (
-    <div style={{ padding: 32, maxWidth: 1100 }}>
-      <h1 style={{ fontWeight: 300, margin: 0, marginBottom: 16 }}>{t('gates.title')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('gates.title')}</h1>
+          <p className="app-page__sub">{t('gates.sub')}</p>
+        </div>
+      </div>
 
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />}
 

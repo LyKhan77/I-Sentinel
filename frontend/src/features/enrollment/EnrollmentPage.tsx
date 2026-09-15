@@ -200,9 +200,12 @@ export default function EnrollmentPage() {
   const st = (id: number) => status[id] ?? EMPTY_STATUS
 
   return (
-    <div style={{ padding: 32, maxWidth: 1200 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontWeight: 300, margin: 0 }}>{t('en.title')}</h1>
+    <div className="app-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('en.title')}</h1>
+          <p className="app-page__sub">{t('en.sub')}</p>
+        </div>
         {isAdmin && (
           <Button data-testid="en-add" onClick={() => setAdding(true)}>
             {t('en.add')}
