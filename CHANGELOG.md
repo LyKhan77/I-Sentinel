@@ -3,6 +3,57 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+## [0.6.0] — 2026-09-16 · Fase 5: Hardening (Task 1-8)
+
+Hardening retensi, keamanan, dan resiliensi. Sistem live di server terverifikasi:
+migration 0006 diterapkan, API restart + route baru aktif, halaman Retensi & Storage
+berjalan dengan data nyata, harness resiliensi **5 PASS / 0 FAIL**.
+
+### Perubahan
+
+- **Retensi dua-lapis** (`82538f7`, `21d4931`): `Event.media_expired` + migrasi 0006;
+  sweeper `app/services/retention.py` — lapis DB (event > `RETENTION_DAYS` → file dihapus,
+  event ditandai, path di-null-kan) + sapuan orphan (file tanpa baris event, berbasis mtime),
+  dengan guard path-escape (`_safe_join` — path DB tak bisa menghapus di luar `storage_root`)
+  dan dry-run yang tidak menyentuh apa pun.
+- **API storage** (`1962cad`): `GET /api/v1/storage/stats` (disk, per-jenis, sweep terakhir
+  dari `Setting.retention_last_sweep`) + `POST /api/v1/storage/sweep?dry_run=` (admin-gated);
+  helper test `admin_headers`/`viewer_headers` di conftest.
+- **Entrypoint + timer systemd** (`5618396`): `backend/scripts/retention_sweep.py`
+  (bootstrap sys.path supaya `python scripts/…` jalan tanpa install paket) + unit
+  `deploy/systemd/isentinel-retention.{service,timer}` (03:00 harian, `Persistent=true`).
+  **Pemasangan di server menunggu user (sudo).**
+- **Halaman Retensi & Storage** (`9e485e7`): route `/config/storage`, nav admin-only,
+  kartu disk/retensi/path, tabel per jenis, kartu sweep terakhir, tombol Dry run +
+  Jalankan sekarang; i18n ID/EN. Bukti: `docs/evidence/fase-5/storage-page.png`,
+  `storage-dryrun.png` — data cocok `df -h` (915G, sisa 132G); dry run UI terbukti
+  `2117 → 2117` file.
+- **Rate-limit login** (`6da6af3`): 429 + `Retry-After` setelah `login_max_attempts`
+  gagal per (username, ip); reset saat login sukses; state per-proses (uvicorn satu
+  worker); fixture autouse reset `_FAILURES` mencegah kebocoran antar-test —
+  full suite **215 passed** saat itu.
+- **Sisa keamanan pass** (`1171d5e`): PATCH attendance ternyata sudah admin-gated
+  (2 test penegasan); keputusan CORS (sengaja tak ada, same-origin) + rotasi JWT
+  (prosedur operasional) tercatat di `docs/plans/00-master.md`.
+- **Harness resiliensi** (`cf09af8`, `df2e3b0`, `85b14b1`): `deploy/loadtest/resilience.sh`
+  — polling status node dengan deadline, bukan sleep tetap (LWT retained datang
+  segera setelah kill -9; sleep tetap 20/30 s sempat menghasilkan FAIL palsu).
+  Bukti: `docs/evidence/fase-5/resilience.txt` — 5 PASS / 0 FAIL di gspe-ai3.
+
+### Verifikasi
+
+- Backend: **217 passed** (204 sebelum Fase 5 + 6 retensi + 3 storage + 2 ratelimit + 2 security)
+- Frontend: **39 passed** + `npm run build` sukses
+- Alembic: 0005 → 0006 diterapkan di server (PostgreSQL) sebelum restart API
+- Server `gspe-ai3`: main @ `85b14b1`, API + web aktif, node vision online
+
+### Ditunda (keputusan user)
+
+- Task 9-12 (pin GPU, generator stream sintetis, soak, dokumentasi operasional).
+  D1 (GPU mana + durasi) dan D2 (izin `sudo apt install ffmpeg`) belum diambil.
+- Pemasangan unit `isentinel-retention.{service,timer}` ke `/etc/systemd/system/`
+  butuh `sudo` — perintah siap, menunggu user.
+
 ## [0.2.0] — 2026-09-15 · Fase 1: Vision Inti
 
 Pipeline vision end-to-end: YOLO26s TensorRT (nms=False) + ByteTrack → MQTT → DB → dashboard/live/events. Terverifikasi 4 kamera NVR via go2rtc di server GPU.

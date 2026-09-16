@@ -1,0 +1,13 @@
+== 1. API restart saat jalan ==
+  PASS  API kembali aktif
+  PASS  health 200 setelah restart
+== 2. kill -9 vision → LWT → node offline ==
+  PASS  node offline setelah 0s (LWT + staleness)
+== 3. vision pulih + antrean ter-flush ==
+  PASS  vision-node aktif lagi
+  PASS  node online lagi setelah 0s (heartbeat pertama)
+== 4. kamera mati → status offline + event system ==
+  (manual: cabut/putus salah satu kamera, lalu jalankan ulang skrip ini)
+  ekspektasi: /api/v1/cameras menunjukkan status != online dan muncul event type=system
+
+ringkasan: 5 PASS, 0 FAIL
