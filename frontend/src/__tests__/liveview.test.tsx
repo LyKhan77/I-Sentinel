@@ -67,7 +67,7 @@ class FakeWebSocket {
   static CLOSING = 2
   static CLOSED = 3
   readyState = 0
-  constructor(public url: string) {}
+  constructor(_url: string) {}
   addEventListener() {}
   removeEventListener() {}
   close() {}
