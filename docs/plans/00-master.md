@@ -32,6 +32,19 @@ React 18 + TypeScript + Vite + @carbon/react / pytest / vitest.
   `gspe-ai3` via SSH (git pull → jalankan). GitHub = source of truth, tidak ada copy manual.
 - Zona polygon tersimpan ternormalisasi 0–1; min 3 titik; editor tutup via klik titik awal.
 
+### Keputusan keamanan (Fase 5, dicatat supaya tidak "diperbaiki" orang lain)
+
+- **CORS sengaja tidak ditambahkan.** App diakses same-origin (Vite proxy `/api` → API :8000),
+  jadi browser tidak menganggap request lintas-origin. Menambah `allow_origins` di FastAPI
+  justru melebarkan permukaan serangan (origin mana pun yang cocok bisa kirim request
+  credentialed). Kalau suatu saat arsitektur berubah (frontend berdiri di origin sendiri),
+  tambahkan CORS saat itu — dengan origin eksplisit, bukan `*`.
+- **Rotasi JWT secret** = prosedur operasional, bukan kode: ganti `JWT_SECRET` di `.env`,
+  restart API. Semua sesi login langsung mati, user login ulang. Prosedur lengkap masuk
+  RUNBOOK (Fase 5 Task 12; draf bagian keamanan tinggal di file ini sampai RUNBOOK dibuat).
+- **Rate-limit login in-memory** (`app/api/auth.py::_FAILURES`), bukan Redis: deployment
+  satu worker uvicorn, jadi per-proses sudah benar. Multi-worker → pindah ke DB/Redis.
+
 ## Struktur Proyek (monorepo)
 
 ```

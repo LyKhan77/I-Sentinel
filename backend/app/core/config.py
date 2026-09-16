@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     detector_conf: float = 0.4
     detector_imgsz: int = 640
     retention_days: int = 30
+    login_max_attempts: int = 5      # percobaan login gagal per (username, ip) sebelum dikunci
+    login_lockout_min: int = 15      # lama kunci, menit
     admin_username: str = "admin"
     admin_password: str = ""   # wajib diisi di .env server; bootstrap gagal jelas bila kosong
     # face recognition (insightface buffalo_l): model diunduh scripts/download_face_models.py

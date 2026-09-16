@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Integer, DateTime, JSON, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 
@@ -18,5 +18,7 @@ class Event(Base):
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     clip_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     snapshot_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # media sudah dihapus sweeper retensi (file lama) — beda dari "belum pernah ada"
+    media_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     dedup_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -23,3 +23,32 @@ def db():
     s = sessionmaker(bind=engine)()
     yield s
     s.close()
+
+
+def admin_headers(client):
+    tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
+    return {"Authorization": f"Bearer {tok}"}
+
+
+def viewer_headers(client):
+    """Buat user viewer lewat API admin, lalu login sebagai dia.
+
+    Lewat API (bukan langsung ke DB) supaya helper ini tidak perlu tahu soal
+    fixture db. Tiap test punya DB in-memory sendiri, jadi user 'vw' selalu baru.
+    """
+    client.post(
+        "/api/v1/users",
+        json={"username": "vw", "password": "pw12345", "role": "viewer"},
+        headers=admin_headers(client),
+    )
+    tok = client.post("/api/v1/auth/login", json={"username": "vw", "password": "pw12345"}).json()["token"]
+    return {"Authorization": f"Bearer {tok}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_ratelimit():
+    """Penghitung rate-limit login bersifat level-modul; bersihkan tiap test."""
+    from app.api import auth as auth_mod
+    auth_mod._FAILURES.clear()
+    yield
+    auth_mod._FAILURES.clear()

@@ -7,6 +7,7 @@ import LoginPage from './features/auth/LoginPage'
 import CamerasPage from './features/config/CamerasPage'
 import ZonesPage from './features/config/ZonesPage'
 import GatesPage from './features/config/GatesPage'
+import StoragePage from './features/config/StoragePage'
 import DashboardPage from './features/dashboard/DashboardPage'
 import LiveViewPage from './features/live/LiveViewPage'
 import EventsPage from './features/events/EventsPage'
@@ -71,6 +72,7 @@ const router = createBrowserRouter([
           { path: 'config/cameras', element: <CamerasPage /> },
           { path: 'config/zones', element: <ZonesPage /> },
           { path: 'config/gates', element: <GatesPage /> },
+          { path: 'config/storage', element: <StoragePage /> },
           { path: '*', element: <Placeholder /> },
         ],
       },

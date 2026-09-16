@@ -1,0 +1,10 @@
+[Unit]
+Description=I-Sentinel Retention Sweep
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=gspe-ai3
+WorkingDirectory=/home/gspe-ai3/project_cv/I-Sentinel/backend
+EnvironmentFile=/home/gspe-ai3/project_cv/I-Sentinel/.env
+ExecStart=/home/gspe-ai3/isentinel-venv/bin/python scripts/retention_sweep.py

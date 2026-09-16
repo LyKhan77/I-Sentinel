@@ -19,6 +19,7 @@ import {
   ScanAlt,
   Settings,
   Logout,
+  DataBase,
 } from '@carbon/icons-react'
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
@@ -46,6 +47,7 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
       { to: '/config/cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
       { to: '/config/zones', key: 'zones.title', icon: Settings, adminOnly: true },
       { to: '/config/gates', key: 'gates.title', icon: Settings, adminOnly: true },
+      { to: '/config/storage', key: 'storage.title', icon: DataBase, adminOnly: true },
     ],
   },
 ]
