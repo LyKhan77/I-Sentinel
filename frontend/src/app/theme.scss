@@ -388,6 +388,37 @@ html {
   }
 }
 
+/* Editor zona + panel properti (mockup 06): dua kolom di desktop. Di layar
+   sempit kolom panel cuma menyisakan kanvas yang tak terbaca, jadi keduanya
+   ditumpuk satu kolom dan divider vertikal pindah jadi garis atas panel. */
+.configuration-zones {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+
+  > * {
+    min-inline-size: 0;
+  }
+}
+
+.configuration-zones__details {
+  border-inline-start: 1px solid var(--cds-border-subtle);
+  padding-inline-start: 16px;
+}
+
+@media (max-width: 671px) {
+  .configuration-zones {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .configuration-zones__details {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--cds-border-subtle);
+    margin-block-start: 16px;
+    padding-block-start: 16px;
+    padding-inline-start: 0;
+  }
+}
+
 /* Daftar zona di bawah editor (mockup 06). */
 .zone-list {
   margin-block-start: 12px;

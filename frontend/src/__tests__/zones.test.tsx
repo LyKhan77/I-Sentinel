@@ -77,6 +77,9 @@ test('save calls createZone with normalized polygon', async () => {
   render(<I18nProvider><ZonesPage /></I18nProvider>)
 
   await waitFor(() => expect(screen.getByTestId('zone-draw-start')).toBeInTheDocument())
+  // hook kelas semantik utk breakpoint: kanvas/daftar dulu, panel properti kedua
+  expect(document.querySelector('.configuration-zones')).toBeInTheDocument()
+  expect(document.querySelector('.configuration-zones__details')).toBeInTheDocument()
   const svg = screen.getByTestId('zone-svg')
   stubRect(svg)
 

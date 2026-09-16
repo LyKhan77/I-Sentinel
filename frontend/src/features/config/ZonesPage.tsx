@@ -124,7 +124,7 @@ export default function ZonesPage() {
       ) : !cam ? (
         <p style={{ color: '#8d8d8d' }}>{t('cameras.empty')}</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(280px, 1fr)' }}>
+        <div className="configuration-zones">
           <div style={{ minWidth: 0, paddingRight: 16 }}>
             <ZoneEditor
               cameraId={cam.id}
@@ -159,7 +159,7 @@ export default function ZonesPage() {
             </div>
           </div>
 
-          <div style={{ borderLeft: '1px solid #393939', paddingLeft: 16, minWidth: 0 }}>
+          <div className="configuration-zones__details">
             {selected ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <TextInput
