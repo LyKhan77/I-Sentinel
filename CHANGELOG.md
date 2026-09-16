@@ -5,6 +5,32 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### UI shell & Configuration workbench
+
+- `feat/ui-shell-configuration` (`79fe25a`, `e6b12c5`, `8b29e8a`, `918d526`, `dbb093d`,
+  `eacc1dc`, `1404c57`): konsolidasi empat halaman admin menjadi satu workbench
+  `/configuration?tab=cameras|zones|gates|storage`; sidebar kini punya satu entry
+  Configuration di System, logout berada di kartu akun, rail Carbon tidak melebar saat
+  link menerima pointer/fokus keyboard, label toggle mengikuti state desktop/mobile,
+  dan editor Zones menumpuk pada viewport sempit. Perubahan source: `frontend/src/app/AppShell.tsx`,
+  `frontend/src/app/theme.scss`, `frontend/src/app/i18n.tsx`, `frontend/src/main.tsx`,
+  `frontend/src/features/config/ConfigurationPage.tsx`,
+  `frontend/src/features/config/CamerasPage.tsx`,
+  `frontend/src/features/config/ZonesPage.tsx`,
+  `frontend/src/features/config/GatesPage.tsx`,
+  `frontend/src/features/config/StoragePage.tsx`. Regression coverage diperbarui di
+  `frontend/src/__tests__/shell.test.tsx`, `frontend/src/__tests__/configuration.test.tsx`,
+  `frontend/src/__tests__/cameras.test.tsx`, `frontend/src/__tests__/zones.test.tsx`,
+  `frontend/src/__tests__/gates.test.tsx`, dan `frontend/src/__tests__/storage.test.tsx`.
+  Bukti: focused Vitest **6 files / 26 tests PASS**, `npm run build` (**945 modules transformed,
+  built in 6.59s**), Playwright langsung ke `192.168.2.133:5173` membuktikan empat tab,
+  fallback query invalid/missing, back/forward, Gate → Zones, rail pointer/keyboard,
+  logout expanded/rail, mobile query-close, dan Zones tanpa horizontal overflow.
+  Screenshot: `docs/evidence/ui-shell-configuration-desktop.png` dan
+  `docs/evidence/ui-shell-configuration-mobile-zones.png`. Dampak: admin mendapat satu
+  konteks konfigurasi tanpa kehilangan operasi panel yang ada; rollback: revert commit
+  `1404c57`, `eacc1dc`, `dbb093d`, `918d526`, `8b29e8a`, `e6b12c5`, lalu `79fe25a`.
+
 - `0b0e3ca` feat: playback live view memakai **mainstream** (`cam_N_main`) — WebRTC/MSE/HLS
   URL `/live` beralih dari sub ke main; substream tetap milik AI (vision pull RTSP lokal) +
   snapshot fallback. Terbukti di browser LAN: 24/24 tile playing, 23 tile ≥1920 lebar
