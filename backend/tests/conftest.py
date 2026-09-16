@@ -43,3 +43,12 @@ def viewer_headers(client):
     )
     tok = client.post("/api/v1/auth/login", json={"username": "vw", "password": "pw12345"}).json()["token"]
     return {"Authorization": f"Bearer {tok}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_ratelimit():
+    """Penghitung rate-limit login bersifat level-modul; bersihkan tiap test."""
+    from app.api import auth as auth_mod
+    auth_mod._FAILURES.clear()
+    yield
+    auth_mod._FAILURES.clear()
