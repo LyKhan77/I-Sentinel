@@ -4,6 +4,7 @@ import { InlineLoading, InlineNotification, Dropdown } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
+import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
 
 const SNAPSHOT_REFRESH_MS = 2000
