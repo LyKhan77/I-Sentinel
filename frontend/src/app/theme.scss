@@ -52,10 +52,20 @@ html {
 
   /* Kartu akun 48px: avatar + ikon logout ditumpuk, bukan melebar ke samping. */
   .app-sidenav-user {
-    padding-inline: 4px;
+    padding-inline: 2px;
     flex-direction: column;
+    align-items: center;
     justify-content: center;
     gap: 6px;
+  }
+
+  // Rail 48px − padding 2px = target 44px, ikon di tengah; teks disembunyikan
+  // selector di atas (aria-label + title tetap ada).
+  .app-sidenav-user__logout {
+    inline-size: 44px;
+    block-size: 44px;
+    flex: 0 0 auto;
+    justify-content: center;
   }
 
   a.cds--side-nav__link {
@@ -95,6 +105,7 @@ html {
   border-block-start: 1px solid var(--cds-border-subtle);
   padding: 12px 16px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   white-space: nowrap;
@@ -111,8 +122,21 @@ html {
     font-weight: 600;
   }
 
+  // Username panjang menyusut + dipotong, tidak mendorong aksi keluar keluar
+  // dari kartu 232px.
   &__info {
+    flex: 1 1 auto;
     min-inline-size: 0;
+    overflow: hidden;
+  }
+
+  &__name,
+  &__role {
+    display: inline-block;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   &__name {
@@ -125,8 +149,12 @@ html {
     color: var(--cds-text-helper);
   }
 
+  // basis 100% + wrap → aksi jadi baris penuh kartu, bukan menempel di samping
+  // info akun.
   &__logout {
-    margin-inline-start: auto;
+    flex: 1 0 100%;
+    min-inline-size: 0;
+    justify-content: flex-start;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -146,6 +174,11 @@ html {
       outline: 2px solid var(--cds-focus);
       outline-offset: -2px;
     }
+  }
+
+  &__logout-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
