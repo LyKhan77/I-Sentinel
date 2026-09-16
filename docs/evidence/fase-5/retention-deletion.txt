@@ -1,0 +1,22 @@
+Bukti retensi nyata di server gspe-ai3 (2026-09-16 09:42 WIB)
+
+Setup: tanam file orphan $STORAGE_ROOT/crops/2026/08/01/doctest_expired.jpg,
+mtime backdated 40 hari (retention=30 hari).
+
+Jalankan: POST /api/v1/storage/sweep (non-dry, admin)
+
+Hasil:
+- files_before=2132 files_after=2131
+- seed_file_exists_after=no  (file benar-benar terhapus)
+- dir=pruned                 (direktori tanggal kosong ikut dibersihkan)
+- sweep_result={"files_deleted":0,"bytes_freed":5,"events_marked":0,
+  "orphans_deleted":1,"dry_run":false,"at":"2026-09-16T02:42:28.623187+00:00"}
+
+Lapis DB (events_marked) = 0 karena seluruh event produksi masih fresh
+(<= 2 hari). Kontrak event kedaluwarsa (file dihapus + media_expired=true +
+path di-null-kan) terbukti di backend/tests/test_retention.py 7/7 hijau.
+
+Timer systemd aktif: NEXT Thu 2026-09-17 03:00:46 WIB (RandomizedDelaySec=300).
+Sweep pertama via unit systemd (start manual):
+  journalctl -u isentinel-retention:
+  sweep selesai: 0 file, 0 byte, 0 event, 0 orphan (retention=30 hari)
