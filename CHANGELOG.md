@@ -5,6 +5,30 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### Camera Edit & Events triage
+
+- `feat/camera-edit-events` (`35bd458`, `6b48bd9`, `29301bc`, `a3753f7`): Camera admin kini
+  punya tombol **Ubah** dengan wizard terisi; perubahan metadata tersimpan langsung, sedangkan
+  perubahan host/node wajib probe baru. Probe edit tidak menulis state sebelum **Simpan** dan
+  respons probe lama diabaikan. Perubahan source: `frontend/src/features/config/CamerasPage.tsx`,
+  `frontend/src/features/config/CameraWizard.tsx`, `frontend/src/app/i18n.tsx`,
+  `backend/app/schemas/camera.py`; coverage: `frontend/src/__tests__/cameras.test.tsx` dan
+  `backend/tests/test_cameras_api.py`.
+- Events diubah menjadi master-detail triage mengikuti `mockup-ui/03-events.html`: filter tipe/
+  kamera/severity, rentang 24 jam/7 hari/30 hari/semua, pencarian, jumlah hasil, tombol baris
+  yang keyboard-accessible, metadata/media nyata, dan status alert/Telegram tetap memakai API
+  yang ada. Tidak ada fake zone history/tracking/false-positive dan tidak ada penghapusan riwayat.
+  Perubahan source: `frontend/src/features/events/EventsPage.tsx`, `frontend/src/app/theme.scss`,
+  `frontend/src/app/i18n.tsx`; coverage: `frontend/src/__tests__/events.test.tsx`.
+  Bukti: focused frontend **3 files / 22 tests PASS**, camera API **11 passed**, `npm run build`
+  (**945 modules transformed**, **8.21s**), dan Playwright langsung ke `192.168.2.133:5173`
+  membuktikan modal Camera Edit prefilled + gate probe, Events search/range/detail, serta mobile
+  tanpa horizontal overflow (`documentScrollWidth=375`, viewport `390`). Screenshot:
+  `docs/evidence/camera-edit-desktop.png`, `docs/evidence/events-redesign-desktop.png`, dan
+  `docs/evidence/events-redesign-mobile.png`. Dampak: admin dapat mengubah kamera tanpa
+  mengandalkan User Management; operator mendapat triage event ringkas tanpa mengubah data
+  historis. Rollback: revert `29301bc`, `6b48bd9`, `a3753f7`, `35bd458` (kembali ke `f3d960f`).
+
 ### UI shell & Configuration workbench
 
 - `feat/ui-shell-configuration` (`79fe25a`, `e6b12c5`, `8b29e8a`, `918d526`, `dbb093d`,
