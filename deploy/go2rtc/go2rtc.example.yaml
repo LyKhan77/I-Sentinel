@@ -6,6 +6,10 @@
 # ter-track → `git add -A` di server akan meng-commit 25 kredensial kamera.
 #   cam_1:      rtsp://user:pass@192.168.1.108/Streaming/Channels/102
 #   cam_1_main: rtsp://user:pass@192.168.1.108/Streaming/Channels/101
-api: { listen: ":1984" }
+# `api.origin: "*"` = izinkan Origin browser lain (live view mengakses 1984
+# LANGSUNG dari LAN, ws://<host>:1984/api/ws — go2rtc menolak handshake WS
+# dengan 403 kalau Origin tidak cocok). Boleh diperketat ke origin web saja,
+# mis. "http://192.168.2.133:5173".
+api: { listen: ":1984", origin: "*" }
 rtsp: { listen: ":8554" }
 log: { level: info }

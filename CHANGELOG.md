@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+## [Unreleased] — Live view streaming go2rtc
+
+- `6de1c50`/`06e7869` feat: live view streaming go2rtc — `<video-stream>` (vendor player
+  resmi go2rtc video-rtc.js v1.6.0) mode `webrtc,mse` per tile; fallback snapshot proxy
+  2 detik kalau transport gagal 10 s; backend tidak berubah (URL `/live` yang sudah ada).
+  Syarat infra: firewall ufw LAN membuka 1984/tcp + 8555/udp, dan `api.origin` go2rtc
+  diperluas (go2rtc menolak WS handshake 403 dengan Origin web). Bukti: Playwright di
+  `docs/evidence/fase-5/live-streaming.png` — **24/24 tile playing** (readyState 4),
+  fokus tile playing, go2rtc RSS 160 MB / CPU ~10%.
+
 ## [0.6.0] — 2026-09-16 · Fase 5: Hardening (Task 1-8)
 
 Hardening retensi, keamanan, dan resiliensi. Sistem live di server terverifikasi:
