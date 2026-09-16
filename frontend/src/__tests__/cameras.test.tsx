@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
@@ -301,6 +301,55 @@ test('edit: response of the old host probe cannot overwrite the new host result'
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled()
 })
 
+test('admin previews and applies CCTV inventory keyed by stream path', async () => {
+  const plan = {
+    applied: false,
+    total: 2,
+    matched: 2,
+    updated: 2,
+    unmatched: [],
+    errors: [],
+    items: [],
+  }
+  const calls = stubFetch((call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras/import') || call.url.endsWith('/cameras/import?apply=true')) {
+      return { status: 200, body: call.url.endsWith('?apply=true') ? { ...plan, applied: true } : plan }
+    }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: CAMS }
+    return { status: 404 }
+  })
+  renderPage()
+
+  const file = new File([
+    'rtsp://192.168.2.184:554/Streaming/Channels/101 (Lantai 3 - IOT samping)\n',
+    'rtsp://192.168.2.184:554/Streaming/Channels/201 (Lantai 3 - IOT Belakang Pojok)\n',
+  ], 'cctv-list.txt', { type: 'text/plain' })
+  fireEvent.change(await screen.findByTestId('camera-import-input'), { target: { files: [file] } })
+
+  expect(await screen.findByText('2 kamera · 2 cocok · 2 berubah')).toBeInTheDocument()
+  const preview = calls.find((call) => call.url.endsWith('/cameras/import'))
+  expect(JSON.parse(String(preview!.init!.body)).entries).toEqual([
+    {
+      name: 'NVR-CAM-01',
+      location: 'Lantai 3 - IOT samping',
+      host: '192.168.2.184:554',
+      rtsp_main: '/Streaming/Channels/101',
+      rtsp_sub: '/Streaming/Channels/102',
+    },
+    {
+      name: 'NVR-CAM-02',
+      location: 'Lantai 3 - IOT Belakang Pojok',
+      host: '192.168.2.184:554',
+      rtsp_main: '/Streaming/Channels/201',
+      rtsp_sub: '/Streaming/Channels/202',
+    },
+  ])
+
+  await userEvent.click(screen.getByRole('button', { name: 'Terapkan perubahan' }))
+  await waitFor(() => expect(calls.some((call) => call.url.endsWith('/cameras/import?apply=true'))).toBe(true))
+})
+
 test('viewer cannot edit cameras', async () => {
   stubFetch((call) => {
     if (call.url.endsWith('/auth/me')) return { status: 200, body: { id: 2, username: 'viewer', role: 'viewer' } }
@@ -311,6 +360,7 @@ test('viewer cannot edit cameras', async () => {
 
   const [editBtn] = await screen.findAllByRole('button', { name: 'Ubah' })
   expect(editBtn).toBeDisabled()
+  expect(screen.queryByTestId('camera-import-btn')).not.toBeInTheDocument()
   await userEvent.click(editBtn)
   expect(screen.queryByText('Ubah kamera')).not.toBeInTheDocument()
 })

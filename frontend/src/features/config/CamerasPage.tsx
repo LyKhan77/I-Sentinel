@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import {
   Button,
   DataTable,
@@ -21,7 +21,10 @@ import {
   updateCamera,
   deleteCamera,
   probeCamera,
+  importCameras,
   type Camera,
+  type CameraImportEntry,
+  type CameraImportResult,
 } from '../../api/cameras'
 import CameraWizard from './CameraWizard'
 
@@ -45,6 +48,28 @@ function StreamLine({ label, stream }: { label: string; stream: Camera['probe_ma
   )
 }
 
+function parseCctvList(text: string): CameraImportEntry[] {
+  const entries: CameraImportEntry[] = []
+  for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const match = line.match(/^rtsp:\/\/([^/]+)(\/\S+)\s+\((.*)\)$/)
+    if (!match) throw new Error(String(index + 1))
+    const [, host, rtspMain, location] = match
+    const rtspSub = rtspMain.replace(/01(?=$|\?)/, '02')
+    if (rtspSub === rtspMain) throw new Error(String(index + 1))
+    entries.push({
+      name: `NVR-CAM-${String(entries.length + 1).padStart(2, '0')}`,
+      location: location.trim() || null,
+      host,
+      rtsp_main: rtspMain,
+      rtsp_sub: rtspSub,
+    })
+  }
+  if (entries.length === 0) throw new Error('0')
+  return entries
+}
+
 export default function CamerasPage() {
   const { t } = useT()
   const [cams, setCams] = useState<Camera[]>([])
@@ -55,6 +80,10 @@ export default function CamerasPage() {
   const [editing, setEditing] = useState<Camera | null>(null)
   const [probingId, setProbingId] = useState<number | null>(null)
   const [toDelete, setToDelete] = useState<Camera | null>(null)
+  const importInput = useRef<HTMLInputElement>(null)
+  const [importEntries, setImportEntries] = useState<CameraImportEntry[] | null>(null)
+  const [importPlan, setImportPlan] = useState<CameraImportResult | null>(null)
+  const [importBusy, setImportBusy] = useState(false)
 
   const isAdmin = me?.role === 'admin'
 
@@ -108,6 +137,57 @@ export default function CamerasPage() {
     }
   }
 
+  const closeImport = () => {
+    setImportPlan(null)
+    setImportEntries(null)
+  }
+
+  const previewImport = async (file: File) => {
+    setImportBusy(true)
+    setError(null)
+    try {
+      const entries = parseCctvList(await file.text())
+      setImportEntries(entries)
+      setImportPlan(await importCameras(entries))
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : ''
+      setError(
+        /^\d+$/.test(detail)
+          ? detail === '0'
+            ? t('cameras.import.empty')
+            : t('cameras.import.invalidLine').replace('{line}', detail)
+          : t('cameras.import.loadError'),
+      )
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  const onImportFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) void previewImport(file)
+  }
+
+  const applyImport = async () => {
+    if (!importEntries || !importPlan || importPlan.errors.length > 0 || importPlan.unmatched.length > 0) return
+    setImportBusy(true)
+    setError(null)
+    try {
+      const result = await importCameras(importEntries, true)
+      if (result.applied) {
+        closeImport()
+        await refresh()
+      } else {
+        setImportPlan(result)
+      }
+    } catch {
+      setError(t('cameras.import.applyError'))
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   const headers = [
     { key: 'name', header: t('cameras.col.name') },
     { key: 'streams', header: t('cameras.col.streams') },
@@ -119,7 +199,18 @@ export default function CamerasPage() {
   return (
     <>
       {isAdmin && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 14 }}>
+          <input
+            ref={importInput}
+            type="file"
+            accept=".txt,text/plain"
+            data-testid="camera-import-input"
+            style={{ display: 'none' }}
+            onChange={onImportFile}
+          />
+          <Button kind="ghost" disabled={importBusy} data-testid="camera-import-btn" onClick={() => importInput.current?.click()}>
+            {t('cameras.import.button')}
+          </Button>
           <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>
         </div>
       )}
@@ -223,6 +314,49 @@ export default function CamerasPage() {
           }}
         />
       )}
+
+      <Modal
+        open={importPlan != null}
+        modalHeading={t('cameras.import.title')}
+        primaryButtonText={importBusy ? t('common.loading') : t('cameras.import.apply')}
+        secondaryButtonText={t('common.cancel')}
+        primaryButtonDisabled={
+          importBusy || importPlan == null || importPlan.errors.length > 0 || importPlan.unmatched.length > 0
+        }
+        onRequestClose={closeImport}
+        onRequestSubmit={applyImport}
+        size="lg"
+      >
+        {importPlan && (
+          <>
+            <p>
+              {t('cameras.import.summary')
+                .replace('{total}', String(importPlan.total))
+                .replace('{matched}', String(importPlan.matched))
+                .replace('{updated}', String(importPlan.updated))}
+            </p>
+            {importPlan.errors.length > 0 && (
+              <ul>
+                {importPlan.errors.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+            {importPlan.unmatched.length > 0 && (
+              <>
+                <p>{t('cameras.import.unmatched')}</p>
+                <ul>
+                  {importPlan.unmatched.map((item) => (
+                    <li key={`${item.after.host}${item.after.rtsp_main}`}>
+                      {item.after.name} · {item.after.host}{item.after.rtsp_main}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+      </Modal>
 
       <Modal
         open={toDelete != null}

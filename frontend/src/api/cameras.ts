@@ -37,6 +37,32 @@ export type CameraPayload = {
   status?: string
 }
 
+export type CameraImportEntry = {
+  name: string
+  location: string | null
+  host: string
+  rtsp_main: string
+  rtsp_sub: string | null
+}
+
+export type CameraImportItem = {
+  camera_id: number | null
+  matched: boolean
+  changed: boolean
+  before: CameraImportEntry | null
+  after: CameraImportEntry
+}
+
+export type CameraImportResult = {
+  applied: boolean
+  total: number
+  matched: number
+  updated: number
+  unmatched: CameraImportItem[]
+  errors: string[]
+  items: CameraImportItem[]
+}
+
 async function expectOk(res: Response, what: string) {
   if (!res.ok) throw new Error(`${what} failed: ${res.status}`)
   return res.json()
@@ -56,6 +82,14 @@ export async function createCamera(payload: CameraPayload): Promise<Camera> {
 export async function updateCamera(id: number, patch: Partial<CameraPayload> & { enabled?: boolean }): Promise<Camera> {
   const res = await apiFetch(`/cameras/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
   return expectOk(res, 'update camera')
+}
+
+export async function importCameras(entries: CameraImportEntry[], apply = false): Promise<CameraImportResult> {
+  const res = await apiFetch(`/cameras/import${apply ? '?apply=true' : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({ entries }),
+  })
+  return expectOk(res, 'import cameras')
 }
 
 export async function deleteCamera(id: number): Promise<void> {

@@ -124,3 +124,50 @@ def test_patch_camera_persists_probe_metadata(client):
     assert r.status_code == 200
     assert r.json()["name"] == "cam2"
     assert r.json()["probe_main"] == probe and r.json()["status"] == "online"
+
+def test_import_camera_inventory_matches_default_rtsp_port_and_applies(client):
+    from unittest.mock import patch
+
+    h = _admin_headers(client)
+    client.post("/api/v1/cameras", json={
+        "name": "old-1", "location": "old", "host": "192.168.2.184",
+        "rtsp_main": "/Streaming/Channels/101", "rtsp_sub": "/Streaming/Channels/102",
+    }, headers=h)
+    entries = [{
+        "name": "NVR-CAM-01", "location": "Lantai 3 - IOT samping",
+        "host": "192.168.2.184:554",
+        "rtsp_main": "/Streaming/Channels/101", "rtsp_sub": "/Streaming/Channels/102",
+    }]
+
+    preview = client.post("/api/v1/cameras/import", json={"entries": entries}, headers=h)
+    assert preview.status_code == 200
+    assert preview.json()["applied"] is False
+    assert preview.json()["matched"] == 1 and preview.json()["updated"] == 1
+    assert preview.json()["unmatched"] == [] and preview.json()["errors"] == []
+    assert client.get("/api/v1/cameras", headers=h).json()[0]["name"] == "old-1"
+
+    with patch("app.api.cameras.sync_camera"), patch("app.api.cameras._config_push"):
+        applied = client.post("/api/v1/cameras/import?apply=true", json={"entries": entries}, headers=h)
+    assert applied.status_code == 200 and applied.json()["applied"] is True
+    row = client.get("/api/v1/cameras", headers=h).json()[0]
+    assert row["name"] == "NVR-CAM-01" and row["location"] == "Lantai 3 - IOT samping"
+    assert row["host"] == "192.168.2.184" and row["rtsp_main"].endswith("/101")
+
+def test_import_camera_inventory_refuses_unmatched_apply(client):
+    h = _admin_headers(client)
+    entries = [{
+        "name": "NVR-CAM-99", "location": "Unknown", "host": "192.168.2.184:554",
+        "rtsp_main": "/Streaming/Channels/9901", "rtsp_sub": "/Streaming/Channels/9902",
+    }]
+    preview = client.post("/api/v1/cameras/import", json={"entries": entries}, headers=h)
+    assert preview.status_code == 200
+    assert preview.json()["matched"] == 0 and len(preview.json()["unmatched"]) == 1
+    applied = client.post("/api/v1/cameras/import?apply=true", json={"entries": entries}, headers=h)
+    assert applied.status_code == 200 and applied.json()["applied"] is False
+
+def test_import_camera_inventory_requires_admin(client):
+    entries = [{
+        "name": "NVR-CAM-01", "location": "Lantai 3", "host": "192.168.2.184",
+        "rtsp_main": "/Streaming/Channels/101", "rtsp_sub": "/Streaming/Channels/102",
+    }]
+    assert client.post("/api/v1/cameras/import", json={"entries": entries}).status_code == 401

@@ -45,3 +45,13 @@ class CameraPatch(BaseModel):
     probe_sub: dict | None = None
     status: str | None = None
     meters_per_pixel: float | None = Field(default=None, gt=0)
+
+class CameraImportEntry(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    location: str | None = Field(default=None, max_length=128)
+    host: str = Field(min_length=1, max_length=64)
+    rtsp_main: str = Field(min_length=1, max_length=255)
+    rtsp_sub: str | None = Field(default=None, max_length=255)
+
+class CameraImportIn(BaseModel):
+    entries: list[CameraImportEntry] = Field(min_length=1, max_length=100)

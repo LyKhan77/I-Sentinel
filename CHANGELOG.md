@@ -5,6 +5,19 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### CCTV inventory import
+
+- Safe admin-only import parses `temp/data/cctv-list.txt` in
+  `frontend/src/features/config/CamerasPage.tsx`, then previews/applies normalized
+  `(host, rtsp_main)` matches in `backend/app/api/cameras.py` and
+  `backend/app/schemas/camera.py`; `frontend/src/api/cameras.ts` and
+  `frontend/src/app/i18n.tsx` carry the contract. Existing camera IDs and probe metadata stay
+  intact; apply refuses unmatched or invalid input and never deletes cameras. Coverage:
+  `backend/tests/test_cameras_api.py` and `frontend/src/__tests__/cameras.test.tsx`.
+  Evidence: backend camera API **14 passed**, frontend cameras/events/alerts **23 passed**,
+  `npm run build` (**945 modules transformed**). Rollback: revert the importer commit; preview
+  has no data effect.
+
 ### Camera Edit & Events triage
 
 - `feat/camera-edit-events` (`35bd458`, `6b48bd9`, `29301bc`, `a3753f7`): Camera admin kini
