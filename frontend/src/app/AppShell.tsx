@@ -99,7 +99,7 @@ export default function AppShell() {
       <Header aria-label="I-Sentinel">
         <SkipToContent />
         <HeaderMenuButton
-          aria-label={rail ? t('nav.expand') : t('nav.collapse')}
+          aria-label={expanded ? t('nav.collapse') : t('nav.expand')}
           isCollapsible
           onClick={toggleNav}
           isActive={expanded}

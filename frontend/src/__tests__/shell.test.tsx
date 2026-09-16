@@ -218,7 +218,7 @@ test('closes the mobile nav when only the configuration query changes', async ()
   renderShell('/configuration?tab=zones')
 
   const nav = screen.getByRole('navigation', { name: 'I-Sentinel' })
-  await user.click(screen.getByRole('button', { name: 'Tutup sidebar' }))
+  await user.click(screen.getByRole('button', { name: 'Buka sidebar' }))
   await waitFor(() => expect(nav).toHaveClass('cds--side-nav--expanded'))
 
   // pindah tab hanya mengubah query: pathname tetap /configuration
