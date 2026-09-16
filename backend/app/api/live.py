@@ -70,9 +70,10 @@ def live_urls(camera_id: int, request: Request, user=Depends(get_current_user), 
     return {
         "camera_id": cam.id,
         "streams": {"sub": sub, "main": main},
-        "webrtc": _rewrite_host(f"{base}/api/ws?src={sub}", host),
-        "mse": _rewrite_host(f"{base}/api/stream.mse?src={sub}", host),
-        "hls": _rewrite_host(f"{base}/api/stream.m3u8?src={sub}", host),
+        # playback = MAINSTREAM; substream milik AI (vision pull RTSP lokal) + snapshot fallback
+        "webrtc": _rewrite_host(f"{base}/api/ws?src={main}", host),
+        "mse": _rewrite_host(f"{base}/api/stream.mse?src={main}", host),
+        "hls": _rewrite_host(f"{base}/api/stream.m3u8?src={main}", host),
         # same-origin + di belakang auth: satu-satunya bentuk yang jalan dari LAN
         "snapshot": f"/api/v1/cameras/{cam.id}/snapshot",
     }

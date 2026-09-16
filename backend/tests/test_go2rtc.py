@@ -104,11 +104,11 @@ def test_live_endpoint_shape_and_404(client, monkeypatch):
     body = r.json()
     assert body["camera_id"] == cid
     assert body["streams"]["sub"] == f"cam_{cid}" and body["streams"]["main"] == f"cam_{cid}_main"
-    # host = host dari request (TestClient → testserver), port go2rtc tetap 1984
+    # playback live view = MAINSTREAM (cam_N_main); substream hanya untuk AI + fallback snapshot
     base = "http://testserver:1984"
-    assert body["webrtc"] == f"{base}/api/ws?src=cam_{cid}"
-    assert body["mse"] == f"{base}/api/stream.mse?src=cam_{cid}"
-    assert body["hls"] == f"{base}/api/stream.m3u8?src=cam_{cid}"
+    assert body["webrtc"] == f"{base}/api/ws?src=cam_{cid}_main"
+    assert body["mse"] == f"{base}/api/stream.mse?src=cam_{cid}_main"
+    assert body["hls"] == f"{base}/api/stream.m3u8?src=cam_{cid}_main"
     # snapshot bukan URL go2rtc: port 1984 tidak terjangkau dari LAN, jadi lewat proxy API
     assert body["snapshot"] == f"/api/v1/cameras/{cid}/snapshot"
 
