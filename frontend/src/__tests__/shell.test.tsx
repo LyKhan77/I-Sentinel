@@ -30,8 +30,8 @@ function stubDesktopLayout() {
 
 // Route yang benar-benar dipakai shell, bukan state internal React Router.
 function LocationProbe() {
-  const { pathname } = useLocation()
-  return <span data-testid="location">{pathname}</span>
+  const { pathname, search } = useLocation()
+  return <span data-testid="location">{pathname + search}</span>
 }
 
 function renderShell(entry = '/dashboard') {
@@ -191,4 +191,40 @@ test('logout waits for the API response before navigating to /login', async () =
 
   release({ ok: true, status: 200 } as Response)
   await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/login'))
+})
+
+test('keeps logout reachable when the profile fetch fails', async () => {
+  stubDesktopLayout()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) =>
+      String(url).endsWith('/auth/me')
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(null) }),
+    ),
+  )
+  renderShell()
+
+  const nav = screen.getByRole('navigation', { name: 'I-Sentinel' })
+  const logoutButton = await screen.findByRole('button', { name: 'Keluar' })
+  expect(nav).toContainElement(logoutButton)
+  expect(logoutButton.closest('.app-sidenav-user')).not.toBeNull()
+  // detail profil tidak dirender saat getMe gagal
+  expect(within(nav).queryByText('admin')).toBeNull()
+})
+
+test('closes the mobile nav when only the configuration query changes', async () => {
+  const user = userEvent.setup()
+  renderShell('/configuration?tab=zones')
+
+  const nav = screen.getByRole('navigation', { name: 'I-Sentinel' })
+  await user.click(screen.getByRole('button', { name: 'Tutup sidebar' }))
+  await waitFor(() => expect(nav).toHaveClass('cds--side-nav--expanded'))
+
+  // pindah tab hanya mengubah query: pathname tetap /configuration
+  await user.click(await within(nav).findByRole('link', { name: 'Konfigurasi' }))
+  await waitFor(() =>
+    expect(screen.getByTestId('location').textContent).toBe('/configuration?tab=cameras'),
+  )
+  await waitFor(() => expect(nav).not.toHaveClass('cds--side-nav--expanded'))
 })

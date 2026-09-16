@@ -77,8 +77,8 @@ export default function AppShell() {
     getMe().then(setMe).catch(() => setMe(null)) // ponytail: jsdom fetch → rejected promise; ganti router-guard data saat Fase berikutnya
   }, [location.pathname])
 
-  // navigasi di mobile → tutup overlay
-  useEffect(() => setMobileOpen(false), [location.pathname])
+  // navigasi di mobile → tutup overlay (termasuk pindah tab lewat query saja)
+  useEffect(() => setMobileOpen(false), [location.pathname, location.search])
 
   const expanded = isDesktop ? !collapsed : mobileOpen
   const rail = isDesktop && collapsed
@@ -159,33 +159,36 @@ export default function AppShell() {
               </li>
             )
           })}
-          {me && (
-            <li className="app-sidenav-user">
-              <span className="app-sidenav-user__avatar" aria-hidden="true">
-                {initials(me.username)}
-              </span>
-              <span className="app-sidenav-user__info">
-                <span className="app-sidenav-user__name">{me.username}</span>
-                <br />
-                <span className="app-sidenav-user__role">
-                  {me.role === 'admin' ? t('app.role.admin') : t('app.role.viewer')}
+          {/* kartu akun tetap tampil walau profil gagal dimuat, supaya logout tidak hilang */}
+          <li className="app-sidenav-user">
+            {me && (
+              <>
+                <span className="app-sidenav-user__avatar" aria-hidden="true">
+                  {initials(me.username)}
                 </span>
-              </span>
-              <button
-                type="button"
-                className="app-sidenav-user__logout"
-                aria-label={t('login.logout')}
-                title={t('login.logout')}
-                onClick={async () => {
-                  await logout()
-                  navigate('/login')
-                }}
-              >
-                <Logout size={16} />
-                <span className="app-sidenav-user__logout-text">{t('login.logout')}</span>
-              </button>
-            </li>
-          )}
+                <span className="app-sidenav-user__info">
+                  <span className="app-sidenav-user__name">{me.username}</span>
+                  <br />
+                  <span className="app-sidenav-user__role">
+                    {me.role === 'admin' ? t('app.role.admin') : t('app.role.viewer')}
+                  </span>
+                </span>
+              </>
+            )}
+            <button
+              type="button"
+              className="app-sidenav-user__logout"
+              aria-label={t('login.logout')}
+              title={t('login.logout')}
+              onClick={async () => {
+                await logout()
+                navigate('/login')
+              }}
+            >
+              <Logout size={16} />
+              <span className="app-sidenav-user__logout-text">{t('login.logout')}</span>
+            </button>
+          </li>
         </SideNavItems>
       </SideNav>
 
