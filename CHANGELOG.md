@@ -7,7 +7,7 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ### CCTV inventory import
 
-- Safe admin-only import parses `temp/data/cctv-list.txt` in
+- `0f2a4b3`: safe admin-only import parses `temp/data/cctv-list.txt` in
   `frontend/src/features/config/CamerasPage.tsx`, then previews/applies normalized
   `(host, rtsp_main)` matches in `backend/app/api/cameras.py` and
   `backend/app/schemas/camera.py`; `frontend/src/api/cameras.ts` and
@@ -15,8 +15,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   intact; apply refuses unmatched or invalid input and never deletes cameras. Coverage:
   `backend/tests/test_cameras_api.py` and `frontend/src/__tests__/cameras.test.tsx`.
   Evidence: backend camera API **14 passed**, frontend cameras/events/alerts **23 passed**,
-  `npm run build` (**945 modules transformed**). Rollback: revert the importer commit; preview
-  has no data effect.
+  `npm run build` (**945 modules transformed**), and server preview at
+  `192.168.2.133:5173` returned **24/24 matched, 24 changed**; the preview was cancelled
+  without an `?apply=true` request. Screenshot: `docs/evidence/camera-import-preview-desktop.png`.
+  Rollback: revert `0f2a4b3`; preview has no data effect.
 
 ### Camera Edit & Events triage
 
