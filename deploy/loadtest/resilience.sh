@@ -20,6 +20,20 @@ restart_unit() { local u=$1
   for _ in $(seq 1 30); do sleep 1; systemctl is-active --quiet "$u" && return 0; done
   return 1; }
 
+# Status node bertransisi sesuai jadwal MQTT, bukan instan: LWT baru tiba setelah
+# broker mendeteksi koneksi mati (paho keepalive default 60 s → sampai ~90 s), dan
+# online kembali menunggu heartbeat pertama (heartbeat_s=10) setelah vision selesai
+# load model. Karena itu polling sampai deadline, jangan sleep tetap.
+wait_status() { # $1=status JSON yang ditunggu, $2=deadline detik
+  local want=$1 deadline=$2 start=$(date +%s)
+  for _ in $(seq 1 "$deadline"); do
+    STATE=$(nodes | grep -o '"status":"[a-z]*"' | head -1)
+    if [ "$STATE" = "$want" ]; then echo "$(( $(date +%s) - start ))"; return 0; fi
+    sleep 1
+  done
+  return 1
+}
+
 login
 trap 'rm -f "$JAR"' EXIT
 
@@ -32,16 +46,14 @@ sleep 3; login
 echo "== 2. kill -9 vision → LWT → node offline =="
 VPID=$(systemctl show -p MainPID --value vision-node.service)
 kill -9 "$VPID" 2>/dev/null
-sleep 20   # LWT broker + staleness di backend
-STATE=$(nodes | grep -o '"status":"[a-z]*"' | head -1)
-[ "$STATE" = '"status":"offline"' ] && ok "node terlihat offline ($STATE)" \
-  || bad "node belum offline setelah 20 s ($STATE)"
+LAT=$(wait_status '"status":"offline"' 120)
+[ -n "$LAT" ] && ok "node offline setelah ${LAT}s (LWT + staleness)" \
+  || bad "node belum offline setelah 120 s (terakhir: $STATE)"
 
 echo "== 3. vision pulih + antrean ter-flush =="
 restart_unit vision-node.service && ok "vision-node aktif lagi" || bad "vision-node gagal start"
-sleep 30
-STATE=$(nodes | grep -o '"status":"[a-z]*"' | head -1)
-[ "$STATE" = '"status":"online"' ] && ok "node online lagi" || bad "node masih $STATE"
+LAT=$(wait_status '"status":"online"' 180)
+[ -n "$LAT" ] && ok "node online lagi setelah ${LAT}s (heartbeat pertama)" || bad "node masih $STATE setelah 120s"
 
 echo "== 4. kamera mati → status offline + event system =="
 echo "  (manual: cabut/putus salah satu kamera, lalu jalankan ulang skrip ini)"
