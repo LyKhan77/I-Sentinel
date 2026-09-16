@@ -41,4 +41,7 @@ class CameraPatch(BaseModel):
     rtsp_sub: str | None = None
     node_id: int | None = None
     enabled: bool | None = None
+    probe_main: dict | None = None
+    probe_sub: dict | None = None
+    status: str | None = None
     meters_per_pixel: float | None = Field(default=None, gt=0)

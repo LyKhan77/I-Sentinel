@@ -216,6 +216,8 @@ test('edit: connection change needs a fresh probe before save', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
   await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('rtsp://u:p@192.168.1.109'))
   expect(saveBtn).toBeEnabled()
+  // probe murni: belum ada PATCH sebelum Simpan
+  expect(calls.some((c) => c.init?.method === 'PATCH')).toBe(false)
 
   await userEvent.click(saveBtn)
 
@@ -228,9 +230,13 @@ test('edit: connection change needs a fresh probe before save', async () => {
     expect(payload.node_id).toBe(1)
     expect(payload.rtsp_main).toBe('rtsp://u:p@192.168.1.109/Streaming/Channels/101')
     expect(payload.rtsp_sub).toBe('rtsp://u:p@192.168.1.109/Streaming/Channels/102')
-    // metadata probe disimpan lewat endpoint probe untuk kamera ini
+    // metadata probe ikut tersimpan lewat PATCH saat Simpan
+    expect(payload.probe_main).toEqual(FRESH.main)
+    expect(payload.probe_sub).toEqual(FRESH.sub)
+    expect(payload.status).toBe('online')
+    // probe edit tidak mengirim camera_id (tanpa persist di server)
     const probeCall = calls.find((c) => c.url.endsWith('/cameras/probe'))
-    expect(JSON.parse(String(probeCall!.init!.body)).camera_id).toBe(1)
+    expect(JSON.parse(String(probeCall!.init!.body))).toEqual({ host: '192.168.1.109' })
   })
 })
 

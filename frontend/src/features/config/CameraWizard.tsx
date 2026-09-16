@@ -80,8 +80,8 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
     setProbeFailed(false)
     setError(null)
     try {
-      // camera_id: backend menyimpan probe_main/probe_sub/status di sini (PATCH tidak menerimanya)
-      setProbe(await probeCamera(host.trim(), camera?.id))
+      // probe murni: hasil tidak dipersist di sini, hanya ikut saat Simpan (PATCH)
+      setProbe(await probeCamera(host.trim()))
     } catch {
       setProbeFailed(true)
     } finally {
@@ -98,12 +98,17 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
       rtsp_main: probe?.main_path ?? null,
       rtsp_sub: probe?.sub_path ?? null,
     }
+    const probeMeta = {
+      probe_main: probe?.main ?? null,
+      probe_sub: probe?.sub ?? null,
+      status: probe?.main || probe?.sub ? 'online' : 'offline',
+    }
     try {
       if (camera) {
         await updateCamera(
           camera.id,
           connectionTouched
-            ? { name: name.trim(), location: location.trim() || null, ...connection }
+            ? { name: name.trim(), location: location.trim() || null, ...connection, ...probeMeta }
             : { name: name.trim(), location: location.trim() || null },
         )
       } else {
@@ -111,9 +116,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
           name: name.trim(),
           location: location.trim() || null,
           ...connection,
-          probe_main: probe?.main ?? null,
-          probe_sub: probe?.sub ?? null,
-          status: probe?.main || probe?.sub ? 'online' : 'offline',
+          ...probeMeta,
         })
       }
       onSaved()

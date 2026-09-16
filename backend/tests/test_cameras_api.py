@@ -103,3 +103,24 @@ def test_probe_without_camera_id_does_not_persist(client, monkeypatch):
         assert client.post("/api/v1/cameras/probe", json={"host": "1.2.3.4"}, headers=h).status_code == 200
     listed = client.get("/api/v1/cameras", headers=h).json()[0]
     assert listed["probe_main"] is None and listed["status"] == "unknown"
+
+def test_patch_camera_persists_probe_metadata(client):
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "cam1", "host": "1.2.3.4"}, headers=h).json()["id"]
+    probe = {"res": "2560x1440", "fps": 25.0, "codec": "h264"}
+    r = client.patch(f"/api/v1/cameras/{cid}", json={
+        "host": "1.2.3.5", "rtsp_main": "/Streaming/Channels/101", "rtsp_sub": "/Streaming/Channels/102",
+        "probe_main": probe, "probe_sub": None, "status": "online",
+    }, headers=h)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["host"] == "1.2.3.5"
+    assert body["probe_main"] == probe and body["probe_sub"] is None and body["status"] == "online"
+    listed = [c for c in client.get("/api/v1/cameras", headers=h).json() if c["id"] == cid][0]
+    assert listed["probe_main"] == probe and listed["probe_sub"] is None and listed["status"] == "online"
+
+    # patch metadata saja tidak menimpa probe tersimpan
+    r = client.patch(f"/api/v1/cameras/{cid}", json={"name": "cam2"}, headers=h)
+    assert r.status_code == 200
+    assert r.json()["name"] == "cam2"
+    assert r.json()["probe_main"] == probe and r.json()["status"] == "online"
