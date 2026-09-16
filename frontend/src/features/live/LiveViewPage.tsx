@@ -4,8 +4,11 @@ import { InlineLoading, InlineNotification, Dropdown } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
+import type { StreamElement } from './go2rtc-player'
 
 const SNAPSHOT_REFRESH_MS = 2000
+// Batas tunggu transport streaming (webrtc → mse) sebelum tile jatuh ke snapshot.
+const STREAM_TIMEOUT_MS = 10000
 const COLS_KEY = 'isentinel_live_cols'
 const COL_OPTIONS = [3, 2, 4] as const // urutan mockup 02: default dulu
 
@@ -16,23 +19,52 @@ function initialCols(): Cols {
   return (COL_OPTIONS as readonly number[]).includes(v) ? (v as Cols) : 3
 }
 
-// Snapshot auto-refresh (cache-busting) = deliverable Fase 1.
-// TODO(Task 9): WebRTC go2rtc — getLive() sudah expose streams/webrtc/mse/hls,
-// tinggal render <video> + WsWebRTC client dari {go2rtc_url}/api/ws.js.
-function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null; big?: boolean }) {
+// Tile streaming: <video-stream> (player resmi go2rtc) mode webrtc,mse.
+// Kalau playing tidak terjadi dalam STREAM_TIMEOUT_MS → fallback ke snapshot
+// proxy 2 detik (jalur lama Fase 4e yang tetap berlaku).
+function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; big?: boolean }) {
   const { t } = useT()
+  const [streamFailed, setStreamFailed] = useState(false)
   const [tick, setTick] = useState(0)
   const [imgFailed, setImgFailed] = useState(false)
+  const elRef = useRef<StreamElement | null>(null)
+
+  const ws = live?.webrtc
+  const online = cam.status === 'online'
+  // Tanpa WebSocket (mis. environment test) → snapshot langsung.
+  const canStream = !!ws && online && typeof WebSocket !== 'undefined'
+  const streaming = canStream && !streamFailed
 
   useEffect(() => {
-    if (!live?.snapshot) return
+    if (!canStream || !elRef.current) return
+    const el = elRef.current
+    let playing = false
+    el.mode = 'webrtc,mse'
+    el.src = ws
+    const video = el.querySelector('video')
+    const onPlaying = () => {
+      playing = true
+      clearTimeout(timer)
+    }
+    const timer = setTimeout(() => {
+      if (!playing) setStreamFailed(true)
+    }, STREAM_TIMEOUT_MS)
+    video?.addEventListener('playing', onPlaying)
+    return () => {
+      video?.removeEventListener('playing', onPlaying)
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ws string stabil per kamera; retry lewat refresh /live
+  }, [canStream, ws])
+
+  // Interval cache-busting hanya dipakai mode snapshot.
+  const sep = live?.snapshot?.includes('?') ? '&' : '?'
+  const snapSrc = live?.snapshot && !imgFailed ? `${live.snapshot}${sep}_t=${tick}` : null
+  useEffect(() => {
+    if (streaming || !live?.snapshot) return
     const timer = setInterval(() => setTick((v) => v + 1), SNAPSHOT_REFRESH_MS)
     return () => clearInterval(timer)
-  }, [live?.snapshot])
-
-  const online = cam.status === 'online'
-  const sep = live?.snapshot?.includes('?') ? '&' : '?'
-  const src = live?.snapshot && !imgFailed ? `${live.snapshot}${sep}_t=${tick}` : null
+  }, [streaming, live?.snapshot])
 
   return (
     <div
@@ -49,9 +81,14 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
         overflow: 'hidden',
       }}
     >
-      {src ? (
+      {streaming ? (
+        <video-stream
+          ref={elRef}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }}
+        />
+      ) : snapSrc ? (
         <img
-          src={src}
+          src={snapSrc}
           alt={cam.name}
           onError={() => setImgFailed(true)}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -73,7 +110,7 @@ function CameraSnapshot({ cam, live, big }: { cam: Camera; live: LiveInfo | null
         </div>
       )}
 
-      {src && (
+      {snapSrc && !streaming && (
         <span
           style={{
             position: 'absolute',
@@ -250,13 +287,13 @@ export default function LiveViewPage() {
               style={{ marginBottom: 12, border: '1px solid #393939' }}
               title={t('live.clickUnfocus')}
             >
-              <CameraSnapshot cam={focused} live={lives[focused.id] ?? null} big />
+              <CameraTile cam={focused} live={lives[focused.id] ?? null} big />
             </div>
           )}
           <div className="lv-grid" style={{ '--lv-cols': cols } as React.CSSProperties}>
             {others.map((cam) => (
               <div key={cam.id} onClick={() => setFocusId(cam.id)} title={t('live.clickFocus')}>
-                <CameraSnapshot cam={cam} live={lives[cam.id] ?? null} />
+                <CameraTile cam={cam} live={lives[cam.id] ?? null} />
               </div>
             ))}
           </div>

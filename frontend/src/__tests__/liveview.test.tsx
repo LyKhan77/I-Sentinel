@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
@@ -59,18 +59,59 @@ test('jumlah kolom: default 3, pilihan persist, nilai ngawur di localStorage jat
   expect(document.querySelector('.lv-grid')).toHaveStyle({ '--lv-cols': '2' })
 })
 
-test('renders camera tiles with snapshot URLs from /live', async () => {
+// WebSocket palsu supaya jalur streaming deterministik di jsdom
+// (tidak menyentuh jaringan; onopen tak pernah terkirim → pengukur fallback jalan).
+class FakeWebSocket {
+  static CONNECTING = 0
+  static OPEN = 1
+  static CLOSING = 2
+  static CLOSED = 3
+  readyState = 0
+  constructor(public url: string) {}
+  addEventListener() {}
+  removeEventListener() {}
+  close() {}
+  send() {}
+}
+
+test('tile streaming: kamera online memakai video-stream, snapshot hanya fallback', async () => {
   vi.stubGlobal('fetch', stubFetch())
+  vi.stubGlobal('WebSocket', FakeWebSocket)
   renderPage()
 
   expect(await screen.findByText('CAM-01')).toBeInTheDocument()
-  expect(screen.getByText('CAM-02')).toBeInTheDocument()
+  // kamera online + /live sukses → <video-stream> (webrtc,mse), bukan img snapshot
+  const streamEl = document.querySelector('video-stream')
+  expect(streamEl).not.toBeNull()
+  expect(screen.queryByAltText('CAM-01')).not.toBeInTheDocument()
 
-  const img1 = screen.getByAltText('CAM-01') as HTMLImageElement
-  expect(img1.src).toContain('go2rtc/api/frame.jpeg?src=cam_1')
-
-  // kamera /live gagal → tile tanpa img snapshot
+  // kamera /live gagal → tile tanpa img snapshot dan tanpa streaming
   expect(screen.queryByAltText('CAM-02')).not.toBeInTheDocument()
+  expect(document.querySelectorAll('video-stream').length).toBe(1)
+  vi.unstubAllGlobals()
+})
+
+test('fallback: streaming yang tidak playing dalam 10 detik jatuh ke snapshot proxy', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('fetch', stubFetch())
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+  try {
+    renderPage()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(document.querySelector('video-stream')).not.toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+    const img = screen.getByAltText('CAM-01') as HTMLImageElement
+    expect(img.src).toContain('frame.jpeg?src=cam_1')
+    expect(document.querySelector('video-stream')).toBeNull()
+  } finally {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  }
 })
 
 test('click tile focuses it (moves to big slot)', async () => {
