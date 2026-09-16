@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ComposedModal,
   ModalHeader,
@@ -52,6 +52,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const [probeFailed, setProbeFailed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const probeSeq = useRef(0) // identitas probe terakhir; hasil request lama diabaikan
 
   useEffect(() => {
     listNodes()
@@ -68,6 +69,8 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const canSave = name.trim() !== '' && host.trim() !== '' && (!needsProbe || found >= 1)
 
   const clearProbe = () => {
+    probeSeq.current += 1 // probe in-flight untuk host/node lama tidak boleh dipakai lagi
+    setProbing(false)
     setProbe(null)
     setProbeFailed(false)
     setConnectionTouched(true)
@@ -75,17 +78,20 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
 
   const runProbe = async () => {
     if (host.trim() === '') return
+    const seq = ++probeSeq.current
     setProbing(true)
     setProbe(null)
     setProbeFailed(false)
     setError(null)
     try {
       // probe murni: hasil tidak dipersist di sini, hanya ikut saat Simpan (PATCH)
-      setProbe(await probeCamera(host.trim()))
+      const result = await probeCamera(host.trim())
+      if (seq !== probeSeq.current) return // host/node berubah saat request in-flight
+      setProbe(result)
     } catch {
-      setProbeFailed(true)
+      if (seq === probeSeq.current) setProbeFailed(true)
     } finally {
-      setProbing(false)
+      if (seq === probeSeq.current) setProbing(false)
     }
   }
 

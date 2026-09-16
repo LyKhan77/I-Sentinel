@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
@@ -40,16 +40,23 @@ const NODES = [{ id: 1, name: 'server', type: 'server', status: 'online' }]
 
 type Call = { url: string; init?: RequestInit }
 
-function stubFetch(respond: (call: Call) => { status: number; body?: unknown }) {
+type Resp = { status: number; body?: unknown }
+
+function stubFetch(respond: (call: Call) => Resp | Promise<Resp>) {
   const calls: Call[] = []
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const call = { url, init }
     calls.push(call)
-    const { status, body } = respond(call)
+    const { status, body } = await respond(call)
     return { ok: status < 400, status, json: () => Promise.resolve(body) }
   })
   vi.stubGlobal('fetch', fetchMock)
   return calls
+}
+
+// lib ES2023 belum punya tipe Promise.withResolvers (ES2024); runtime vitest Node ≥22 mendukung
+const promiseWithResolvers = Promise as unknown as {
+  withResolvers<T>(): { promise: Promise<T>; resolve: (v: T) => void }
 }
 
 function renderPage(initial = '/configuration?tab=cameras') {
@@ -238,6 +245,60 @@ test('edit: connection change needs a fresh probe before save', async () => {
     const probeCall = calls.find((c) => c.url.endsWith('/cameras/probe'))
     expect(JSON.parse(String(probeCall!.init!.body))).toEqual({ host: '192.168.1.109' })
   })
+})
+
+test('edit: response of the old host probe cannot overwrite the new host result', async () => {
+  const stale = promiseWithResolvers.withResolvers<void>()
+  const STALE = {
+    main: { res: '2560x1440', fps: 25, codec: 'h264' },
+    sub: { res: '640x360', fps: 15, codec: 'h264' },
+    main_path: 'rtsp://u:p@192.168.1.101/Streaming/Channels/101',
+    sub_path: 'rtsp://u:p@192.168.1.101/Streaming/Channels/102',
+  }
+  const FRESH = {
+    main: { res: '1280x720', fps: 20, codec: 'h265' },
+    sub: { res: '640x360', fps: 15, codec: 'h265' },
+    main_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/101',
+    sub_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/102',
+  }
+  stubFetch(async (call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras/probe')) {
+      const body = JSON.parse(String(call.init?.body)) as { host: string } // body probe selalu { host }
+      if (body.host === '192.168.1.101') {
+        await stale.promise // respons host lama sengaja ditahan
+        return { status: 200, body: STALE }
+      }
+      return { status: 200, body: FRESH }
+    }
+    if (call.url.endsWith('/nodes')) return { status: 200, body: NODES }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: CAMS }
+    return { status: 404 }
+  })
+  renderPage()
+
+  const [editBtn] = await screen.findAllByRole('button', { name: 'Ubah' })
+  await userEvent.click(editBtn)
+
+  // probe host lama dibiarkan in-flight, host diganti lalu di-probe ulang
+  const hostInput = await screen.findByLabelText('IP / Host')
+  await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
+  await userEvent.clear(hostInput)
+  await userEvent.type(hostInput, '192.168.1.109')
+  await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
+  await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('1280x720'))
+
+  // respons host lama baru tiba: tidak boleh menimpa hasil host baru
+  stale.resolve(undefined)
+  const tick = promiseWithResolvers.withResolvers<void>()
+  setTimeout(tick.resolve, 0)
+  await act(async () => {
+    await tick.promise
+  })
+
+  expect(screen.getByTestId('probe-box')).toHaveTextContent('1280x720')
+  expect(screen.getByTestId('probe-box')).not.toHaveTextContent('2560x1440')
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled()
 })
 
 test('viewer cannot edit cameras', async () => {
