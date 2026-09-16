@@ -5,7 +5,6 @@ import {
   HeaderMenuButton,
   HeaderName,
   HeaderGlobalBar,
-  HeaderGlobalAction,
   SideNav,
   SideNavItems,
   SideNavLink,
@@ -126,16 +125,6 @@ export default function AppShell() {
               </button>
             ))}
           </div>
-          <HeaderGlobalAction
-            aria-label={t('login.logout')}
-            tooltipAlignment="end"
-            onClick={async () => {
-              await logout()
-              navigate('/login')
-            }}
-          >
-            <Logout size={20} />
-          </HeaderGlobalAction>
         </HeaderGlobalBar>
       </Header>
 
@@ -145,6 +134,7 @@ export default function AppShell() {
         expanded={expanded}
         isRail={rail}
         addMouseListeners={false}
+        addFocusListeners={false}
       >
         <SideNavItems>
           {GROUPS.map((g) => {
@@ -181,6 +171,19 @@ export default function AppShell() {
                   {me.role === 'admin' ? t('app.role.admin') : t('app.role.viewer')}
                 </span>
               </span>
+              <button
+                type="button"
+                className="app-sidenav-user__logout"
+                aria-label={t('login.logout')}
+                title={t('login.logout')}
+                onClick={async () => {
+                  await logout()
+                  navigate('/login')
+                }}
+              >
+                <Logout size={16} />
+                <span className="app-sidenav-user__logout-text">{t('login.logout')}</span>
+              </button>
             </li>
           )}
         </SideNavItems>

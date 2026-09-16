@@ -40,12 +40,22 @@ html {
   inline-size: var(--app-sidenav-w);
 }
 
-/* Sidebar rail (collapsed): ikon saja, tanpa label, tanpa hover-expand. */
+/* Sidebar rail (collapsed): ikon saja, tanpa label, tanpa hover-expand.
+   Teks tombol logout ikut disembunyikan visual — aria-label & title tetap. */
 .cds--side-nav--rail {
   .cds--side-nav__link-text,
   .app-sidenav-group,
-  .app-sidenav-user__info {
+  .app-sidenav-user__info,
+  .app-sidenav-user__logout-text {
     display: none;
+  }
+
+  /* Kartu akun 48px: avatar + ikon logout ditumpuk, bukan melebar ke samping. */
+  .app-sidenav-user {
+    padding-inline: 4px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
   }
 
   a.cds--side-nav__link {
@@ -113,6 +123,29 @@ html {
   &__role {
     font-size: 11px;
     color: var(--cds-text-helper);
+  }
+
+  &__logout {
+    margin-inline-start: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    border: 0;
+    background: none;
+    color: var(--cds-text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--cds-background-hover);
+      color: var(--cds-text-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: -2px;
+    }
   }
 }
 
