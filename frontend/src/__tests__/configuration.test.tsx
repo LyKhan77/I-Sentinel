@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import ConfigurationPage from '../features/config/ConfigurationPage'
@@ -86,6 +86,21 @@ function LocationProbe() {
   return <output data-testid="location">{location.search}</output>
 }
 
+// probe history nyata: Back/Forward lewat useNavigate, bukan mock history
+function NavigationProbe() {
+  const navigate = useNavigate()
+  return (
+    <>
+      <button type="button" onClick={() => navigate(-1)}>
+        back
+      </button>
+      <button type="button" onClick={() => navigate(1)}>
+        forward
+      </button>
+    </>
+  )
+}
+
 function renderConfiguration(entry: string) {
   return render(
     <I18nProvider>
@@ -94,6 +109,7 @@ function renderConfiguration(entry: string) {
           <Route path="/configuration" element={<ConfigurationPage />} />
         </Routes>
         <LocationProbe />
+        <NavigationProbe />
       </MemoryRouter>
     </I18nProvider>,
   )
@@ -122,6 +138,38 @@ test('selects the tab named by the URL, mounts only that panel, and updates the 
   await user.click(screen.getByRole('tab', { name: 'Retensi & Storage' }))
   expect(screen.getByTestId('location')).toHaveTextContent('?tab=storage')
   expect(await screen.findByTestId('storage-retention')).toBeInTheDocument()
+})
+
+test('tab selection is a history entry that Back and Forward restore', async () => {
+  const user = userEvent.setup()
+  stubFetch([gate(1, 'entry')])
+  renderConfiguration('/configuration?tab=gates')
+
+  await user.click(await screen.findByRole('tab', { name: 'Retensi & Storage' }))
+  expect(await screen.findByTestId('storage-retention')).toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: 'back' }))
+  expect(await screen.findByRole('tab', { name: 'Gate Absensi', selected: true })).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent('?tab=gates')
+
+  await user.click(screen.getByRole('button', { name: 'forward' }))
+  expect(await screen.findByRole('tab', { name: 'Retensi & Storage', selected: true })).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent('?tab=storage')
+})
+
+test('clicking the already-selected tab does not push a duplicate history entry', async () => {
+  const user = userEvent.setup()
+  stubFetch([gate(1, 'entry')])
+  renderConfiguration('/configuration?tab=gates')
+
+  await user.click(await screen.findByRole('tab', { name: 'Retensi & Storage' }))
+  const storageTab = await screen.findByRole('tab', { name: 'Retensi & Storage', selected: true })
+  await user.click(storageTab)
+
+  // satu Back harus kembali ke Gate; entri history duplikat membuat Back tetap di Storage
+  await user.click(screen.getByRole('button', { name: 'back' }))
+  expect(await screen.findByRole('tab', { name: 'Gate Absensi', selected: true })).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent('?tab=gates')
 })
 
 test('falls back to Cameras for an invalid or missing tab', async () => {

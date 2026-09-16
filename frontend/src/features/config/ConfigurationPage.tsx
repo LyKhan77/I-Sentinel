@@ -34,7 +34,11 @@ export default function ConfigurationPage() {
 
       <Tabs
         selectedIndex={TABS.indexOf(tab)}
-        onChange={({ selectedIndex }) => setParams({ tab: TABS[selectedIndex] })}
+        onChange={({ selectedIndex }) => {
+          const next = TABS[selectedIndex]
+          // ponytail: Carbon tetap memanggil onChange saat tab aktif diklik → jangan push entri history duplikat
+          if (next !== tab) setParams({ tab: next })
+        }}
       >
         <TabList aria-label={t('nav.configuration')}>
           {TABS.map((id) => (

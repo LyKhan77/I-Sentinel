@@ -26,7 +26,6 @@ import { getMe, logout, type Me } from '../api/client'
 const COLLAPSE_KEY = 'isentinel_sidenav_collapsed'
 const DESKTOP_QUERY = '(min-width: 1056px)' // breakpoint lg Carbon
 
-// ponytail: satu grup render saja — System grup mockup masih kosong, tambah item saat ada fitur
 type Item = { to: string; key: TKey; icon: ComponentType<{ size?: number }>; adminOnly?: boolean }
 
 const GROUPS: { key: TKey; items: Item[] }[] = [
@@ -43,8 +42,11 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
     items: [
       { to: '/attendance', key: 'nav.attendance', icon: UserAvatar },
       { to: '/enrollment', key: 'nav.enrollment', icon: ScanAlt },
-      { to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
     ],
+  },
+  {
+    key: 'nav.group.system',
+    items: [{ to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true }],
   },
 ]
 
