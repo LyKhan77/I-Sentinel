@@ -15,10 +15,14 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   intact; apply refuses unmatched or invalid input and never deletes cameras. Coverage:
   `backend/tests/test_cameras_api.py` and `frontend/src/__tests__/cameras.test.tsx`.
   Evidence: backend camera API **14 passed**, frontend cameras/events/alerts **23 passed**,
-  `npm run build` (**945 modules transformed**), and server preview at
-  `192.168.2.133:5173` returned **24/24 matched, 24 changed**; the preview was cancelled
-  without an `?apply=true` request. Screenshot: `docs/evidence/camera-import-preview-desktop.png`.
-  Rollback: revert `0f2a4b3`; preview has no data effect.
+  `npm run build` (**945 modules transformed**), server preview at `192.168.2.133:5173`
+  returned **24/24 matched, 24 changed**, then explicit approval produced
+  `POST /api/v1/cameras/import?apply=true` **200**, `applied=true`, **24 updated**, **0 errors**,
+  **0 unmatched**. GET verification returned **25 total**: imported IDs **4–27** match every
+  file name/location/path; legacy ID 3 (`Cam 1`, `192.168.0.64`) stayed untouched by the
+  no-delete contract. Screenshots: `docs/evidence/camera-import-preview-desktop.png` and
+  `docs/evidence/camera-import-applied-desktop.png`. Rollback: revert `0f2a4b3` for code;
+  restore pre-import values from the preview `before` payload for data.
 
 ### Camera Edit & Events triage
 
