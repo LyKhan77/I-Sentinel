@@ -483,7 +483,7 @@ html {
   margin: 0;
 }
 
-/* Filter /events: 3 dropdown yang wrap di layar sempit, bukan mendorong
+/* Filter /events: dropdown yang wrap di layar sempit, bukan mendorong
    halaman melebar (172px overflow di 390px sebelum ini). */
 .events-filter {
   flex: 1 1 200px;
@@ -491,8 +491,54 @@ html {
   max-inline-size: 240px;
 }
 
+/* Toolbar /events (mockup 03): filter + rentang + cari + jumlah hasil. */
+.ev-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  margin-block-end: 16px;
+}
+
+.ev-toolbar__search {
+  flex: 1 1 200px;
+  min-inline-size: 0;
+  max-inline-size: 280px;
+}
+
+.ev-count {
+  align-self: center;
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--cds-text-helper);
+  white-space: nowrap;
+}
+
+.ev-empty {
+  color: var(--cds-text-helper);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Chip status Telegram di header halaman. */
+.ev-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  white-space: nowrap;
+
+  &--ok {
+    border: 1px solid #42be65;
+    color: #42be65;
+  }
+
+  &--muted {
+    border: 1px solid #8d8d8d;
+    color: #8d8d8d;
+  }
+}
+
 /* Master-detail /events (mockup 03). Di bawah 900px ditumpuk satu kolom:
-   kolom 2 yang menyusut ke ~30px tidak terpakai, dan isinya (thumbnail 72px,
+   kolom 2 yang menyusut ke ~30px tidak terpakai, dan isinya (thumbnail 64px,
    <video>) punya min-width:auto sehingga track ikut melebar dan halaman jadi
    bisa di-scroll ke samping (terukur 31px di 390px). */
 .events-split {
@@ -509,6 +555,274 @@ html {
   .events-split {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Baris event (mockup 03): dot severity, judul + kamera + tag, waktu, thumb.
+   Baris = <button> supaya bisa di-tab & di-Enter, bukan <li onclick>. */
+.ev-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-block-size: 640px;
+  overflow-y: auto;
+}
+
+.ev-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  inline-size: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-block-end: 1px solid #2d2d2d;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    background: #1c1c1c;
+  }
+
+  /* inset shadow, bukan border-inline-start: penanda pilihan tidak menggeser
+     isi baris saat seleksi pindah. */
+  &--sel {
+    background: var(--cds-layer-selected);
+    box-shadow: inset 3px 0 0 var(--cds-border-interactive);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+
+  .ev-dot {
+    margin-block-start: 5px;
+  }
+}
+
+.ev-row__main {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.ev-row__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ev-row__sub {
+  display: block;
+  font-size: 12px;
+  color: var(--cds-text-helper);
+  margin-block-start: 2px;
+}
+
+.ev-row__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-block-start: 6px;
+}
+
+/* Isi baris = phrasing content (span) supaya <button> tetap HTML valid;
+   span-nya di-block-kan di sini. */
+.ev-row__time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12px;
+  color: var(--cds-text-helper);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ev-dot {
+  display: inline-block;
+  inline-size: 8px;
+  block-size: 8px;
+  flex: 0 0 8px;
+
+  &--critical {
+    background: #fa4d56;
+  }
+
+  &--warning {
+    background: #f1c21b;
+  }
+
+  &--info {
+    background: #4589ff;
+  }
+
+  &--muted {
+    background: #8d8d8d;
+  }
+}
+
+.ev-tag {
+  font-size: 10px;
+  letter-spacing: 0.32px;
+  padding: 1px 6px;
+  border: 1px solid var(--cds-border-subtle);
+  color: var(--cds-text-secondary);
+  white-space: nowrap;
+
+  &--ok {
+    border-color: #42be65;
+    color: #42be65;
+  }
+
+  &--warn {
+    border-color: #f1c21b;
+    color: #f1c21b;
+  }
+
+  &--err {
+    border-color: #fa4d56;
+    color: #fa4d56;
+  }
+
+  &--info {
+    border-color: #4589ff;
+    color: #4589ff;
+  }
+
+  &--muted {
+    color: var(--cds-text-helper);
+  }
+}
+
+.ev-thumb {
+  inline-size: 64px;
+  block-size: 36px;
+  flex: 0 0 64px;
+  object-fit: cover;
+  border: 1px solid var(--cds-border-subtle);
+
+  &--empty {
+    background: #0d1117;
+  }
+}
+
+/* Panel detail: heading + tag, media, grid metadata, aksi unduh. */
+.ev-detail {
+  border: 1px solid var(--cds-border-subtle);
+  padding: 16px;
+  min-inline-size: 0;
+}
+
+.ev-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-block-end: 12px;
+}
+
+.ev-detail__title {
+  flex: 1 1 200px;
+  min-inline-size: 0;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.ev-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+
+  &--sent {
+    background: #24a148;
+    color: #fff;
+  }
+
+  &--rate_limited {
+    background: #f1c21b;
+    color: #161616;
+  }
+
+  &--failed {
+    background: #fa4d56;
+    color: #fff;
+  }
+
+  &--not_configured {
+    background: #8d8d8d;
+    color: #fff;
+  }
+}
+
+.ev-player {
+  display: block;
+  inline-size: 100%;
+  max-block-size: 360px;
+  background: #000;
+
+  &--empty {
+    display: grid;
+    place-items: center;
+    block-size: 120px;
+    background: var(--cds-layer);
+    color: var(--cds-text-helper);
+  }
+}
+
+.ev-snapshot {
+  inline-size: 100%;
+  max-block-size: 360px;
+  object-fit: contain;
+  margin-block-start: 12px;
+}
+
+/* Grid metadata bergaris 1px ala mockup; auto-fit supaya tetap 1 kolom di
+   panel sempit tanpa media query terpisah. */
+.ev-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1px;
+  background: var(--cds-border-subtle);
+  border: 1px solid var(--cds-border-subtle);
+  margin-block-start: 16px;
+}
+
+.ev-meta {
+  background: var(--cds-layer);
+  padding: 10px 12px;
+  min-inline-size: 0;
+}
+
+.ev-meta__k {
+  font-size: 11px;
+  letter-spacing: 0.32px;
+  color: var(--cds-text-helper);
+  text-transform: uppercase;
+}
+
+.ev-meta__v {
+  margin: 3px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.ev-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block-start: 16px;
+}
+
+.ev-detail__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--cds-link-primary);
 }
 
 /* Tabel Carbon di viewport sempit: `.cds--data-table-content` sudah punya

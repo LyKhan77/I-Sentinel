@@ -60,6 +60,8 @@ test('click list item selects event detail', async () => {
   await userEvent.click(item)
   await waitFor(() => expect(screen.getByTestId('event-detail')).toBeInTheDocument())
   expect(screen.getByText('ev-1')).toBeInTheDocument()
+  expect(screen.getByTestId('event-item-1')).toHaveAttribute('aria-current', 'true')
+  expect(screen.getByTestId('event-item-2')).not.toHaveAttribute('aria-current')
   // payload JSON dihilangkan dari detail (metadata grid menggantikan) — event_id cukup
 })
 
@@ -133,4 +135,51 @@ test('detail panel shows placeholder when clip_path null', async () => {
 
   expect(await screen.findByTestId('event-clip-placeholder')).toBeInTheDocument()
   expect(screen.queryByTestId('event-clip')).not.toBeInTheDocument()
+})
+
+test('search narrows list by camera name and payload, count follows', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  await screen.findByTestId('event-item-1')
+  expect(screen.getByTestId('event-count')).toHaveTextContent('2 event')
+
+  const search = screen.getByLabelText('Cari')
+
+  await userEvent.type(search, 'CAM-02') // nama kamera, bukan tipe
+  await waitFor(() => expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument())
+  expect(screen.getByTestId('event-item-2')).toBeInTheDocument()
+  expect(screen.getByTestId('event-count')).toHaveTextContent('1 event')
+  // pilihan ikut list ter-filter: ev-2 jadi event terpilih
+  expect(screen.getByTestId('event-item-2')).toHaveAttribute('aria-current', 'true')
+
+  await userEvent.clear(search)
+  await userEvent.type(search, 'line') // payload ev-1 = { line: 'A' }
+  await waitFor(() => expect(screen.queryByTestId('event-item-2')).not.toBeInTheDocument())
+  expect(screen.getByTestId('event-item-1')).toBeInTheDocument()
+
+  await userEvent.clear(search)
+  await userEvent.type(search, 'zzz')
+  await waitFor(() => expect(screen.getByText('Tidak ada event yang cocok')).toBeInTheDocument())
+  expect(screen.getByTestId('event-count')).toHaveTextContent('0 event')
+})
+
+test('range selector sends since for a finite range, plain limit for all', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const listQuery = () =>
+    fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes('/events?') && url.includes('limit=200'))
+  expect(listQuery()[0]).not.toContain('since=')
+
+  await userEvent.selectOptions(screen.getByLabelText('Rentang'), '24h')
+  await waitFor(() => expect(listQuery().some((url) => /since=\d{4}-\d{2}-\d{2}/.test(url))).toBe(true))
+
+  const before = listQuery().length
+  await userEvent.selectOptions(screen.getByLabelText('Rentang'), 'all')
+  await waitFor(() => expect(listQuery().length).toBeGreaterThan(before))
+  expect(listQuery()[listQuery().length - 1]).not.toContain('since=')
 })
