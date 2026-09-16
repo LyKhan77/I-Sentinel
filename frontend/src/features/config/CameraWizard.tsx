@@ -13,27 +13,42 @@ import {
 import { useT } from '../../app/i18n'
 import {
   createCamera,
+  updateCamera,
   listNodes,
   probeCamera,
+  type Camera,
   type CameraNode,
   type ProbeResult,
 } from '../../api/cameras'
 
-type Props = { onClose: () => void; onSaved: () => void }
+type Props = { camera?: Camera; onClose: () => void; onSaved: () => void }
 
 function streamText(s: { res: string; fps: number; codec: string } | null, path: string | null, failMsg: string) {
   return s ? `${s.res} · ${s.fps}fps · ${s.codec} (${path ?? '?'})` : failMsg
 }
 
-export default function CameraWizard({ onClose, onSaved }: Props) {
+// probe tersimpan kamera → bentuk ProbeResult agar bisa dipakai ulang saat edit
+function savedProbe(camera?: Camera): ProbeResult | null {
+  if (!camera || (!camera.probe_main && !camera.probe_sub)) return null
+  return {
+    main: camera.probe_main,
+    sub: camera.probe_sub,
+    main_path: camera.rtsp_main,
+    sub_path: camera.rtsp_sub,
+  }
+}
+
+export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const { t } = useT()
+  const isEdit = camera != null
   const [nodes, setNodes] = useState<CameraNode[]>([])
-  const [name, setName] = useState('')
-  const [location, setLocation] = useState('')
-  const [host, setHost] = useState('')
-  const [nodeId, setNodeId] = useState<number | ''>('')
+  const [name, setName] = useState(camera?.name ?? '')
+  const [location, setLocation] = useState(camera?.location ?? '')
+  const [host, setHost] = useState(camera?.host ?? '')
+  const [nodeId, setNodeId] = useState<number | ''>(camera?.node_id ?? '')
+  const [connectionTouched, setConnectionTouched] = useState(false)
   const [probing, setProbing] = useState(false)
-  const [probe, setProbe] = useState<ProbeResult | null>(null)
+  const [probe, setProbe] = useState<ProbeResult | null>(() => savedProbe(camera))
   const [probeFailed, setProbeFailed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,13 +57,21 @@ export default function CameraWizard({ onClose, onSaved }: Props) {
     listNodes()
       .then((ns) => {
         setNodes(ns)
-        if (ns.length > 0) setNodeId(ns[0].id)
+        if (!isEdit && ns.length > 0) setNodeId(ns[0].id)
       })
       .catch(() => {})
-  }, [])
+  }, [isEdit])
 
   const found = (probe?.main ? 1 : 0) + (probe?.sub ? 1 : 0)
-  const canSave = name.trim() !== '' && host.trim() !== '' && found >= 1
+  // saat edit, probe tersimpan masih valid selama host/node tidak diubah
+  const needsProbe = !isEdit || connectionTouched
+  const canSave = name.trim() !== '' && host.trim() !== '' && (!needsProbe || found >= 1)
+
+  const clearProbe = () => {
+    setProbe(null)
+    setProbeFailed(false)
+    setConnectionTouched(true)
+  }
 
   const runProbe = async () => {
     if (host.trim() === '') return
@@ -57,7 +80,8 @@ export default function CameraWizard({ onClose, onSaved }: Props) {
     setProbeFailed(false)
     setError(null)
     try {
-      setProbe(await probeCamera(host.trim()))
+      // camera_id: backend menyimpan probe_main/probe_sub/status di sini (PATCH tidak menerimanya)
+      setProbe(await probeCamera(host.trim(), camera?.id))
     } catch {
       setProbeFailed(true)
     } finally {
@@ -68,18 +92,30 @@ export default function CameraWizard({ onClose, onSaved }: Props) {
   const save = async () => {
     setSaving(true)
     setError(null)
+    const connection = {
+      host: host.trim(),
+      node_id: nodeId === '' ? null : nodeId,
+      rtsp_main: probe?.main_path ?? null,
+      rtsp_sub: probe?.sub_path ?? null,
+    }
     try {
-      await createCamera({
-        name: name.trim(),
-        location: location.trim() || null,
-        host: host.trim(),
-        node_id: nodeId === '' ? null : nodeId,
-        rtsp_main: probe?.main_path ?? null,
-        rtsp_sub: probe?.sub_path ?? null,
-        probe_main: probe?.main ?? null,
-        probe_sub: probe?.sub ?? null,
-        status: probe?.main || probe?.sub ? 'online' : 'offline',
-      })
+      if (camera) {
+        await updateCamera(
+          camera.id,
+          connectionTouched
+            ? { name: name.trim(), location: location.trim() || null, ...connection }
+            : { name: name.trim(), location: location.trim() || null },
+        )
+      } else {
+        await createCamera({
+          name: name.trim(),
+          location: location.trim() || null,
+          ...connection,
+          probe_main: probe?.main ?? null,
+          probe_sub: probe?.sub ?? null,
+          status: probe?.main || probe?.sub ? 'online' : 'offline',
+        })
+      }
       onSaved()
     } catch (e) {
       setError(e instanceof Error && e.message === 'duplicate' ? t('cameras.wizard.duplicate') : t('cameras.saveError'))
@@ -89,7 +125,7 @@ export default function CameraWizard({ onClose, onSaved }: Props) {
 
   return (
     <ComposedModal open onClose={onClose} size="sm" preventCloseOnClickOutside>
-      <ModalHeader title={t('cameras.wizard.title')} closeModal={onClose} />
+      <ModalHeader title={t(isEdit ? 'cameras.wizard.editTitle' : 'cameras.wizard.title')} closeModal={onClose} />
       <ModalBody>
         <TextInput
           id="wiz-name"
@@ -114,15 +150,17 @@ export default function CameraWizard({ onClose, onSaved }: Props) {
             value={host}
             onChange={(e) => {
               setHost(e.target.value)
-              setProbe(null)
-              setProbeFailed(false)
+              clearProbe()
             }}
           />
           <Select
             id="wiz-node"
             labelText={t('cameras.wizard.node')}
             value={nodeId}
-            onChange={(e) => setNodeId(Number(e.target.value))}
+            onChange={(e) => {
+              setNodeId(Number(e.target.value))
+              if (isEdit) clearProbe()
+            }}
           >
             {nodes.map((n) => (
               <SelectItem key={n.id} value={n.id} text={n.name} />

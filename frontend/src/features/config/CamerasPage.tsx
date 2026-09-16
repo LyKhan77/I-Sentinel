@@ -52,6 +52,7 @@ export default function CamerasPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [editing, setEditing] = useState<Camera | null>(null)
   const [probingId, setProbingId] = useState<number | null>(null)
   const [toDelete, setToDelete] = useState<Camera | null>(null)
 
@@ -169,6 +170,9 @@ export default function CamerasPage() {
                         </TableCell>
                         <TableCell>
                           <div style={{ display: 'flex', gap: 4 }}>
+                            <Button kind="ghost" size="sm" disabled={!isAdmin} onClick={() => setEditing(cam)}>
+                              {t('cameras.edit')}
+                            </Button>
                             <Button
                               kind="ghost"
                               size="sm"
@@ -205,11 +209,16 @@ export default function CamerasPage() {
         </DataTable>
       )}
 
-      {wizardOpen && (
+      {(wizardOpen || editing) && (
         <CameraWizard
-          onClose={() => setWizardOpen(false)}
+          camera={editing ?? undefined}
+          onClose={() => {
+            setWizardOpen(false)
+            setEditing(null)
+          }}
           onSaved={() => {
             setWizardOpen(false)
+            setEditing(null)
             refresh()
           }}
         />

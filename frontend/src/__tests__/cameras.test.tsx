@@ -151,3 +151,99 @@ test('wizard: probe failure keeps Simpan disabled', async () => {
 
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled()
 })
+
+test('edit: form prefilled, metadata-only save PATCHes name and location', async () => {
+  const calls = stubFetch((call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras/1') && call.init?.method === 'PATCH') return { status: 200, body: CAMS[0] }
+    if (call.url.endsWith('/nodes')) return { status: 200, body: NODES }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: CAMS }
+    return { status: 404 }
+  })
+  renderPage()
+
+  const [editBtn] = await screen.findAllByRole('button', { name: 'Ubah' })
+  await userEvent.click(editBtn)
+
+  expect(await screen.findByText('Ubah kamera')).toBeInTheDocument()
+  expect(screen.getByLabelText('Nama kamera')).toHaveValue('CAM-01')
+  expect(screen.getByLabelText('Lokasi')).toHaveValue('Gerbang Masuk')
+  expect(screen.getByLabelText('IP / Host')).toHaveValue('192.168.1.101')
+  // probe tersimpan tampil di form edit
+  expect(screen.getByTestId('probe-box')).toHaveTextContent('2560x1440')
+
+  await userEvent.clear(screen.getByLabelText('Lokasi'))
+  await userEvent.type(screen.getByLabelText('Lokasi'), 'Lobi Utara')
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+  await waitFor(() => {
+    const patch = calls.find((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH')
+    expect(patch).toBeDefined()
+    expect(JSON.parse(String(patch!.init!.body))).toEqual({ name: 'CAM-01', location: 'Lobi Utara' })
+  })
+})
+
+test('edit: connection change needs a fresh probe before save', async () => {
+  const FRESH = {
+    main: { res: '1280x720', fps: 20, codec: 'h265' },
+    sub: { res: '640x360', fps: 15, codec: 'h265' },
+    main_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/101',
+    sub_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/102',
+  }
+  const calls = stubFetch((call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras/probe')) return { status: 200, body: FRESH }
+    if (call.url.endsWith('/cameras/1') && call.init?.method === 'PATCH') return { status: 200, body: CAMS[0] }
+    if (call.url.endsWith('/nodes')) return { status: 200, body: NODES }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: CAMS }
+    return { status: 404 }
+  })
+  renderPage()
+
+  const [editBtn] = await screen.findAllByRole('button', { name: 'Ubah' })
+  await userEvent.click(editBtn)
+
+  const hostInput = await screen.findByLabelText('IP / Host')
+  expect(screen.getByTestId('probe-box')).toHaveTextContent('192.168.1.101')
+  await userEvent.clear(hostInput)
+  await userEvent.type(hostInput, '192.168.1.109')
+
+  // probe lama dibuang, simpan menunggu probe baru
+  expect(screen.getByTestId('probe-box')).not.toHaveTextContent('192.168.1.101')
+  const saveBtn = screen.getByRole('button', { name: 'Simpan' })
+  expect(saveBtn).toBeDisabled()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
+  await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('rtsp://u:p@192.168.1.109'))
+  expect(saveBtn).toBeEnabled()
+
+  await userEvent.click(saveBtn)
+
+  await waitFor(() => {
+    const patch = calls.find((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH')
+    expect(patch).toBeDefined()
+    const payload = JSON.parse(String(patch!.init!.body))
+    expect(payload.name).toBe('CAM-01')
+    expect(payload.host).toBe('192.168.1.109')
+    expect(payload.node_id).toBe(1)
+    expect(payload.rtsp_main).toBe('rtsp://u:p@192.168.1.109/Streaming/Channels/101')
+    expect(payload.rtsp_sub).toBe('rtsp://u:p@192.168.1.109/Streaming/Channels/102')
+    // metadata probe disimpan lewat endpoint probe untuk kamera ini
+    const probeCall = calls.find((c) => c.url.endsWith('/cameras/probe'))
+    expect(JSON.parse(String(probeCall!.init!.body)).camera_id).toBe(1)
+  })
+})
+
+test('viewer cannot edit cameras', async () => {
+  stubFetch((call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: { id: 2, username: 'viewer', role: 'viewer' } }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: CAMS }
+    return { status: 404 }
+  })
+  renderPage()
+
+  const [editBtn] = await screen.findAllByRole('button', { name: 'Ubah' })
+  expect(editBtn).toBeDisabled()
+  await userEvent.click(editBtn)
+  expect(screen.queryByText('Ubah kamera')).not.toBeInTheDocument()
+})
