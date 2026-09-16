@@ -5,6 +5,12 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+- `0b0e3ca` feat: playback live view memakai **mainstream** (`cam_N_main`) — WebRTC/MSE/HLS
+  URL `/live` beralih dari sub ke main; substream tetap milik AI (vision pull RTSP lokal) +
+  snapshot fallback. Terbukti di browser LAN: 24/24 tile playing, 23 tile ≥1920 lebar
+  (`docs/evidence/fase-5/live-mainstream.png`). Catatan: backend URL berubah → API harus
+  restart setelah pull.
+
 - `6de1c50`/`06e7869` feat: live view streaming go2rtc — `<video-stream>` (vendor player
   resmi go2rtc video-rtc.js v1.6.0) mode `webrtc,mse` per tile; fallback snapshot proxy
   2 detik kalau transport gagal 10 s; backend tidak berubah (URL `/live` yang sudah ada).
