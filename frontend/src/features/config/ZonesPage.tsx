@@ -103,14 +103,7 @@ export default function ZonesPage() {
   ]
 
   return (
-    <div className="app-page">
-      <div className="app-page__head">
-        <div>
-          <h1 className="app-page__title">{t('zones.title')}</h1>
-          <p className="app-page__sub">{t('zones.sub')}</p>
-        </div>
-      </div>
-
+    <>
       <div style={{ maxWidth: 360, marginBottom: 16 }}>
         <Dropdown
           id="zone-camera"
@@ -293,6 +286,6 @@ export default function ZonesPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

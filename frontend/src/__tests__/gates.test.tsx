@@ -50,7 +50,7 @@ function stubFetch(zones: Zone[], me = ME) {
 function renderPage() {
   return render(
     <I18nProvider>
-      <MemoryRouter initialEntries={['/config/gates']}>
+      <MemoryRouter initialEntries={['/configuration?tab=gates']}>
         <GatesPage />
       </MemoryRouter>
     </I18nProvider>,

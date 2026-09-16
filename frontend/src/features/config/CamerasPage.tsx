@@ -116,14 +116,12 @@ export default function CamerasPage() {
   ]
 
   return (
-    <div className="app-page">
-      <div className="app-page__head">
-        <div>
-          <h1 className="app-page__title">{t('cameras.title')}</h1>
-          <p className="app-page__sub">{t('cameras.sub')}</p>
+    <>
+      {isAdmin && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+          <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>
         </div>
-        {isAdmin && <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>}
-      </div>
+      )}
 
       {error && (
         <InlineNotification
@@ -229,6 +227,6 @@ export default function CamerasPage() {
       >
         <p>{t('cameras.deleteConfirmBody').replace('{name}', toDelete?.name ?? '')}</p>
       </Modal>
-    </div>
+    </>
   )
 }

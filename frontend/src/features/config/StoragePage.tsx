@@ -79,23 +79,17 @@ export default function StoragePage() {
   ).map(([kind, label]) => ({ kind, label, usage: stats?.kinds[kind] ?? { files: 0, bytes: 0 } }))
 
   return (
-    <div className="app-page">
-      <div className="app-page__head">
-        <div>
-          <h1 className="app-page__title">{t('storage.title')}</h1>
-          <p className="app-page__sub">{t('storage.sub')}</p>
+    <>
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 14 }}>
+          <Button kind="secondary" onClick={() => sweep(true)} disabled={sweeping !== null}>
+            {sweeping === 'dry' ? <InlineLoading description={t('common.loading')} /> : t('storage.dryRun')}
+          </Button>
+          <Button onClick={() => sweep(false)} disabled={sweeping !== null}>
+            {sweeping === 'now' ? <InlineLoading description={t('common.loading')} /> : t('storage.runNow')}
+          </Button>
         </div>
-        {isAdmin && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button kind="secondary" onClick={() => sweep(true)} disabled={sweeping !== null}>
-              {sweeping === 'dry' ? <InlineLoading description={t('common.loading')} /> : t('storage.dryRun')}
-            </Button>
-            <Button onClick={() => sweep(false)} disabled={sweeping !== null}>
-              {sweeping === 'now' ? <InlineLoading description={t('common.loading')} /> : t('storage.runNow')}
-            </Button>
-          </div>
-        )}
-      </div>
+      )}
 
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} />}
       {sweepResult && (
@@ -171,6 +165,6 @@ export default function StoragePage() {
           </div>
         </>
       )}
-    </div>
+    </>
   )
 }

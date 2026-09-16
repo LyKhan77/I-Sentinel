@@ -4,10 +4,7 @@ import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } fr
 import './app/styles.scss'
 import AppShell from './app/AppShell'
 import LoginPage from './features/auth/LoginPage'
-import CamerasPage from './features/config/CamerasPage'
-import ZonesPage from './features/config/ZonesPage'
-import GatesPage from './features/config/GatesPage'
-import StoragePage from './features/config/StoragePage'
+import ConfigurationPage from './features/config/ConfigurationPage'
 import DashboardPage from './features/dashboard/DashboardPage'
 import LiveViewPage from './features/live/LiveViewPage'
 import EventsPage from './features/events/EventsPage'
@@ -25,7 +22,6 @@ const SEGMENT_TO_KEY: Record<string, 'nav.dashboard' | 'nav.live' | 'nav.events'
   attendance: 'nav.attendance',
   enrollment: 'nav.enrollment',
   configuration: 'nav.configuration',
-  config: 'nav.configuration',
 }
 
 function Placeholder() {
@@ -69,10 +65,7 @@ const router = createBrowserRouter([
           { path: 'events', element: <EventsPage /> },
           { path: 'attendance', element: <AttendancePage /> },
           { path: 'enrollment', element: <EnrollmentPage /> },
-          { path: 'config/cameras', element: <CamerasPage /> },
-          { path: 'config/zones', element: <ZonesPage /> },
-          { path: 'config/gates', element: <GatesPage /> },
-          { path: 'config/storage', element: <StoragePage /> },
+          { path: 'configuration', element: <ConfigurationPage /> },
           { path: '*', element: <Placeholder /> },
         ],
       },

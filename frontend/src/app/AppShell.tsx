@@ -19,7 +19,6 @@ import {
   ScanAlt,
   Settings,
   Logout,
-  DataBase,
 } from '@carbon/icons-react'
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
@@ -44,10 +43,7 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
     items: [
       { to: '/attendance', key: 'nav.attendance', icon: UserAvatar },
       { to: '/enrollment', key: 'nav.enrollment', icon: ScanAlt },
-      { to: '/config/cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
-      { to: '/config/zones', key: 'zones.title', icon: Settings, adminOnly: true },
-      { to: '/config/gates', key: 'gates.title', icon: Settings, adminOnly: true },
-      { to: '/config/storage', key: 'storage.title', icon: DataBase, adminOnly: true },
+      { to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
     ],
   },
 ]
@@ -161,7 +157,7 @@ export default function AppShell() {
                       key={i.to}
                       as={NavLink}
                       to={i.to}
-                      isActive={location.pathname === i.to}
+                      isActive={location.pathname === i.to.split('?')[0]}
                       renderIcon={i.icon}
                     >
                       {t(i.key)}

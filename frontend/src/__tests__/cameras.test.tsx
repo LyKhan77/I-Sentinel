@@ -52,7 +52,7 @@ function stubFetch(respond: (call: Call) => { status: number; body?: unknown }) 
   return calls
 }
 
-function renderPage(initial = '/config/cameras') {
+function renderPage(initial = '/configuration?tab=cameras') {
   return render(
     <I18nProvider>
       <MemoryRouter initialEntries={[initial]}>

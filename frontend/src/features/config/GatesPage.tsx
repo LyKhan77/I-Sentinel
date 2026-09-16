@@ -94,7 +94,7 @@ export default function GatesPage() {
         snapshot: true,
         active: true,
       })
-      navigate('/config/zones')
+      navigate('/configuration?tab=zones')
     } catch {
       setError(t('gates.saveError'))
     }
@@ -103,14 +103,7 @@ export default function GatesPage() {
   const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.active']
 
   return (
-    <div className="app-page">
-      <div className="app-page__head">
-        <div>
-          <h1 className="app-page__title">{t('gates.title')}</h1>
-          <p className="app-page__sub">{t('gates.sub')}</p>
-        </div>
-      </div>
-
+    <>
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />}
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 14 }}>
@@ -192,7 +185,7 @@ export default function GatesPage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <Button kind="ghost" size="sm" data-testid={`gate-draw-${z.id}`} onClick={() => navigate('/config/zones')}>
+                      <Button kind="ghost" size="sm" data-testid={`gate-draw-${z.id}`} onClick={() => navigate('/configuration?tab=zones')}>
                         {t('gates.drawEditor')}
                       </Button>
                     </TableCell>
@@ -213,6 +206,6 @@ export default function GatesPage() {
           )}
         </>
       )}
-    </div>
+    </>
   )
 }
