@@ -75,7 +75,7 @@ export default function CameraSourcesPanel({ sources, profiles, onChanged }: Pro
         }}
       >
         {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        {t('cameras.sources.title')} ({sources.length} sumber · {profiles.length} {t('cameras.sources.profileCount')})
+        {t('cameras.sources.title')} ({sources.length} {t('cameras.sources.countSources')} · {profiles.length} {t('cameras.sources.profileCount')})
         <span style={{ color: 'var(--cds-text-placeholder)', marginLeft: 4 }}>— {t('cameras.sources.hint')}</span>
       </button>
       {open && (
