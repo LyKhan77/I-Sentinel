@@ -28,7 +28,6 @@ import {
   type CameraImportResult,
 } from '../../api/cameras'
 import { listStreamSources, type StreamSource } from '../../api/streamSources'
-import { listLocationGroups, type LocationGroup } from '../../api/locationGroups'
 import { listCredentialProfiles, type CredentialProfile } from '../../api/credentialProfiles'
 import CameraSourcesPanel from './CameraSourcesPanel'
 import CameraWizard from './CameraWizard'
@@ -96,7 +95,6 @@ export default function CamerasPage() {
   const [probingId, setProbingId] = useState<number | null>(null)
   const [toDelete, setToDelete] = useState<Camera | null>(null)
   const [sources, setSources] = useState<StreamSource[]>([])
-  const [groups, setGroups] = useState<LocationGroup[]>([])
   const [profiles, setProfiles] = useState<CredentialProfile[]>([])
   const importInput = useRef<HTMLInputElement>(null)
   const [importEntries, setImportEntries] = useState<CameraImportEntry[] | null>(null)
@@ -117,13 +115,11 @@ export default function CamerasPage() {
 
   const refreshReferences = useCallback(async () => {
     try {
-      const [nextSources, nextGroups, nextProfiles] = await Promise.all([
+      const [nextSources, nextProfiles] = await Promise.all([
         listStreamSources(),
-        listLocationGroups(),
         listCredentialProfiles(),
       ])
       setSources(nextSources)
-      setGroups(nextGroups)
       setProfiles(nextProfiles)
     } catch {
       setError(t('cameras.sources.loadError'))
@@ -253,7 +249,6 @@ export default function CamerasPage() {
       {isAdmin && (
         <CameraSourcesPanel
           sources={sources}
-          groups={groups}
           profiles={profiles}
           onChanged={refreshReferences}
         />

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
@@ -74,13 +74,28 @@ function baseResponse(call: Call, cameras: unknown[] = [CAMERA]): Resp | null {
   return null
 }
 
+test('sources panel collapsed by default; expand shows source and profile forms', async () => {
+  stubFetch((call) => baseResponse(call) ?? { status: 404 })
+  renderPage()
+
+  // collapsed: hanya baris ringkasan, form + chip tidak tampil
+  expect(await screen.findByTestId('camera-sources-toggle')).toHaveTextContent('1 sumber')
+  expect(screen.queryByText('NVR-A · 10.0.0.5:554 · nvr-main')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('source-create')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
+
+  await userEvent.click(screen.getByTestId('camera-sources-toggle'))
+  expect(screen.getByTestId('source-create')).toBeInTheDocument()
+  expect(screen.getByTestId('profile-create')).toBeInTheDocument()
+  expect(screen.queryByTestId('group-create')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Nama grup lokasi')).not.toBeInTheDocument()
+})
+
 test('wizard shows no password, source, group, or credential fields', async () => {
   stubFetch((call) => baseResponse(call) ?? { status: 404 })
   renderPage()
 
-  expect(await screen.findByText('NVR-A')).toBeInTheDocument()
-  expect(screen.getAllByText('Lantai 1').length).toBeGreaterThan(0)
-  expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
+  expect(await screen.findByTestId('camera-sources-toggle')).toBeInTheDocument()
 
   await userEvent.click(screen.getByText('+ Tambah kamera'))
   await screen.findByLabelText('Nama kamera')

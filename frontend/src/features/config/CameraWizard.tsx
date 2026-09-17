@@ -45,6 +45,13 @@ function safePath(value: string | null | undefined): string | null {
   return raw.startsWith('/') ? raw : `/${raw}`
 }
 
+function safeHost(value: string | null | undefined): [string, string | null] {
+  if (!value) return ['', null]
+  const idx = value.lastIndexOf(':')
+  if (idx > 0 && /^\d+$/.test(value.slice(idx + 1))) return [value.slice(0, idx), value.slice(idx + 1)]
+  return [value, null]
+}
+
 function streamText(s: { res: string; fps: number; codec: string } | null, path: string | null, failMsg: string) {
   return s ? `${s.res} · ${s.fps}fps · ${s.codec} (${path ?? '?'})` : failMsg
 }
@@ -71,7 +78,8 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const [nodes, setNodes] = useState<CameraNode[]>([])
   const [name, setName] = useState(camera?.name ?? '')
   const [location, setLocation] = useState(camera?.location ?? '')
-  const [host, setHost] = useState(camera?.host ?? '')
+  const [host, setHost] = useState(safeHost(camera?.host)[0] ?? '')
+  const [port, setPort] = useState(safeHost(camera?.host)[1] ?? '554')
   const [nodeId, setNodeId] = useState<number | ''>(camera?.node_id ?? '')
   const [mainPath, setMainPath] = useState(camera?.main_path ?? safePath(camera?.rtsp_main) ?? '')
   const [subPath, setSubPath] = useState(camera?.sub_path ?? safePath(camera?.rtsp_sub) ?? '')
@@ -100,7 +108,8 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const found = (probe?.main ? 1 : 0) + (probe?.sub ? 1 : 0)
   const needsProbe = !isEdit || connectionTouched
   const verified = !needsProbe || found >= 1
-  const canSave = name.trim() !== '' && host.trim() !== '' && verified
+  const endpointHost = port.trim() && Number(port) !== 554 ? `${host.trim()}:${Number(port)}` : host.trim()
+  const canSave = name.trim() !== '' && endpointHost !== '' && verified
 
   const clearProbe = () => {
     probeSeq.current += 1
@@ -118,13 +127,13 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   }
 
   const runScan = async () => {
-    if (!host.trim()) return
+    if (!endpointHost) return
     invalidate()
     const seq = ++probeSeq.current
     setScanning(true)
     setError(null)
     try {
-      const { streams } = await scanCamera(host.trim())
+      const { streams } = await scanCamera(endpointHost)
       if (seq !== probeSeq.current) return
       setScans(streams)
       setScanEmpty(streams.length === 0)
@@ -147,7 +156,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   }
 
   const runProbe = async () => {
-    if (!host.trim() || !mainPath.trim()) return
+    if (!endpointHost || !mainPath.trim()) return
     const seq = ++probeSeq.current
     setProbing(true)
     setProbe(null)
@@ -155,7 +164,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
     setError(null)
     try {
       const result = await probeCamera({
-        host: host.trim(),
+        host: endpointHost,
         main_path: safePath(mainPath),
         sub_path: safePath(subPath),
       })
@@ -174,7 +183,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
     setSaving(true)
     setError(null)
     const connection = {
-      host: host.trim(),
+      host: endpointHost,
       node_id: nodeId === '' ? null : nodeId,
       rtsp_main: probe?.main_path ?? (safePath(mainPath) || null),
       rtsp_sub: probe?.sub_path ?? (safePath(subPath) || null),
@@ -230,7 +239,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
           onChange={(e) => setLocation(e.target.value)}
           style={{ marginTop: 12 }}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginTop: 12 }}>
           <TextInput
             id="wiz-host"
             labelText={t('cameras.wizard.host')}
@@ -238,6 +247,16 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
             value={host}
             onChange={(e) => {
               setHost(e.target.value)
+              invalidate()
+            }}
+          />
+          <TextInput
+            id="wiz-port"
+            labelText={t('cameras.wizard.port')}
+            placeholder="554"
+            value={port}
+            onChange={(e) => {
+              setPort(e.target.value.replace(/\D/g, ''))
               invalidate()
             }}
           />
@@ -255,7 +274,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
-          <Button kind="secondary" size="sm" onClick={runScan} disabled={scanning || !host.trim()}>
+          <Button kind="secondary" size="sm" onClick={runScan} disabled={scanning || !endpointHost}>
             {t('cameras.wizard.autoDetect')}
           </Button>
           {scans.length > 0 && !scanning && (
