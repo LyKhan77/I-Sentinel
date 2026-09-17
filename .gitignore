@@ -1,5 +1,8 @@
 .superpowers/
 .cooper/
+.commandcode/
+.cooperstructure/
+.impeccable/
 temp/
 __pycache__/
 node_modules/
