@@ -7,7 +7,7 @@ from app.core.db import get_db
 from app.models.camera import Camera
 from app.models.credential_profile import CredentialProfile
 from app.models.stream_source import StreamSource
-from app.services.probe import probe_camera, probe_exact
+from app.services.probe import probe_camera, probe_exact, scan_camera_channels
 from app.services.stream_endpoint import (
     StreamEndpointError,
     resolve_source_stream,
@@ -25,6 +25,11 @@ class ProbeIn(BaseModel):
     credential_override_id: int | None = None
     main_path: str | None = None
     sub_path: str | None = None
+
+
+class ScanIn(BaseModel):
+    host: str
+    max_channel: int = 32
 
 
 def _source(db: Session, source_id: int | None) -> StreamSource | None:
@@ -110,3 +115,12 @@ def probe(body: ProbeIn, admin=Depends(require_admin), db: Session = Depends(get
         db.commit()
         db.refresh(cam)
     return result
+
+
+@router.post("/scan")
+def scan(body: ScanIn, admin=Depends(require_admin)):
+    host = body.host.strip()
+    if not host:
+        raise HTTPException(422, "camera host is required")
+    streams = scan_camera_channels(host, max_channel=min(body.max_channel, 64))
+    return {"streams": streams}

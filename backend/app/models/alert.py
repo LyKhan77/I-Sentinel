@@ -9,7 +9,7 @@ class Alert(Base):
     __tablename__ = "alert"
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(Integer, ForeignKey("event.id"), unique=True, nullable=False)
-    camera_id: Mapped[int] = mapped_column(Integer, ForeignKey("camera.id"), nullable=False)
+    camera_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("camera.id", ondelete="SET NULL"), nullable=True)
     zone_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # no FK — zones come Fase 2
     type: Mapped[str] = mapped_column(String(32))
     severity: Mapped[str] = mapped_column(String(16), default="info")

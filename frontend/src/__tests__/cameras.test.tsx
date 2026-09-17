@@ -83,22 +83,18 @@ test('renders camera rows from mocked list', async () => {
   expect(screen.getByText(/640x360 · 15fps · h264/)).toBeInTheDocument()
 })
 
-test('wizard: probe success enables Simpan, payload carries rtsp paths', async () => {
+test('wizard: auto-detect scan enables Simpan with selected channel paths', async () => {
+  const SCAN = [
+    { channel: 1, main: { res: '1920x1080', fps: 25, codec: 'h264' }, sub: { res: '640x480', fps: 25, codec: 'h264' }, main_path: '/Streaming/Channels/101', sub_path: '/Streaming/Channels/102' },
+    { channel: 2, main: { res: '1920x1080', fps: 25, codec: 'h264' }, sub: { res: '640x480', fps: 25, codec: 'h264' }, main_path: '/Streaming/Channels/201', sub_path: '/Streaming/Channels/202' },
+  ]
   const calls = stubFetch((call) => {
     if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras/scan')) {
+      return { status: 200, body: { streams: SCAN } }
+    }
     if (call.url.endsWith('/cameras') && call.init?.method === 'POST') {
       return { status: 200, body: CAMS[0] }
-    }
-    if (call.url.endsWith('/cameras/probe')) {
-      return {
-        status: 200,
-        body: {
-          main: { res: '2560x1440', fps: 25, codec: 'h264' },
-          sub: { res: '640x360', fps: 15, codec: 'h264' },
-          main_path: 'rtsp://192.168.1.108/Streaming/Channels/101',
-          sub_path: 'rtsp://192.168.1.108/Streaming/Channels/102',
-        },
-      }
     }
     if (call.url.endsWith('/nodes')) return { status: 200, body: NODES }
     if (call.url.endsWith('/cameras')) return { status: 200, body: [] }
@@ -110,16 +106,18 @@ test('wizard: probe success enables Simpan, payload carries rtsp paths', async (
   await waitFor(() => expect(screen.getByText('+ Tambah kamera')).toBeEnabled())
   await userEvent.click(screen.getByText('+ Tambah kamera'))
 
-  const nameInput = await screen.findByLabelText('Nama kamera')
-  const hostInput = screen.getByLabelText('IP / Host')
-  await userEvent.type(nameInput, 'CAM-06')
-  await userEvent.type(hostInput, '192.168.1.108')
+  await userEvent.type(await screen.findByLabelText('Nama kamera'), 'CAM-06')
+  await userEvent.type(screen.getByLabelText('IP / Host'), '192.168.1.108')
 
   const saveBtn = screen.getByRole('button', { name: 'Simpan' })
   expect(saveBtn).toBeDisabled()
 
-  await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
-  await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('2560x1440'))
+  await userEvent.click(screen.getByRole('button', { name: 'Deteksi otomatis' }))
+  await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('1920x1080'))
+
+  // hasil scan pertama otomatis terpilih
+  expect((screen.getByLabelText('Stream terdeteksi') as HTMLSelectElement).value).toBe('1')
+  await waitFor(() => expect(screen.getByTestId('probe-box').closest('[role=dialog]')!.textContent).toContain('channel terdeteksi'))
 
   expect(saveBtn).toBeEnabled()
   await userEvent.click(saveBtn)
@@ -131,14 +129,15 @@ test('wizard: probe success enables Simpan, payload carries rtsp paths', async (
     expect(payload.name).toBe('CAM-06')
     expect(payload.host).toBe('192.168.1.108')
     expect(payload.node_id).toBe(1)
-    expect(payload.rtsp_main).toBe('rtsp://192.168.1.108/Streaming/Channels/101')
-    expect(payload.rtsp_sub).toBe('rtsp://192.168.1.108/Streaming/Channels/102')
+    expect(payload.rtsp_main).toBe('/Streaming/Channels/101')
+    expect(payload.rtsp_sub).toBe('/Streaming/Channels/102')
   })
 })
 
-test('wizard: probe failure keeps Simpan disabled', async () => {
+test('wizard: scan without result offers manual paths, Simpan stays disabled', async () => {
   stubFetch((call) => {
     if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras/scan')) return { status: 200, body: { streams: [] } }
     if (call.url.endsWith('/cameras/probe')) return { status: 500, body: null }
     if (call.url.endsWith('/nodes')) return { status: 200, body: NODES }
     if (call.url.endsWith('/cameras')) return { status: 200, body: [] }
@@ -153,9 +152,14 @@ test('wizard: probe failure keeps Simpan disabled', async () => {
   await userEvent.type(screen.getByLabelText('Nama kamera'), 'CAM-06')
   await userEvent.type(screen.getByLabelText('IP / Host'), '10.0.0.99')
 
-  await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
-  await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('gagal · timeout'))
+  await userEvent.click(screen.getByRole('button', { name: 'Deteksi otomatis' }))
+  await waitFor(() => expect(screen.getByText('Tidak ada channel NVR terdeteksi. Gunakan isi path manual.')).toBeInTheDocument())
 
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled()
+
+  // fallback manual: isi path lalu probe exact
+  await userEvent.click(screen.getByRole('button', { name: 'Isi path manual' }))
+  await userEvent.type(screen.getByLabelText('Path MAIN (utama)'), '/Streaming/Channels/101')
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled()
 })
 
@@ -211,7 +215,7 @@ test('edit: connection change needs a fresh probe before save', async () => {
   await userEvent.click(editBtn)
 
   const hostInput = await screen.findByLabelText('IP / Host')
-  expect(screen.getByTestId('probe-box')).toHaveTextContent('192.168.1.101')
+  expect(screen.getByTestId('probe-box')).toHaveTextContent('/Streaming/Channels/101')
   await userEvent.clear(hostInput)
   await userEvent.type(hostInput, '192.168.1.109')
 
@@ -243,7 +247,11 @@ test('edit: connection change needs a fresh probe before save', async () => {
     expect(payload.status).toBe('online')
     // probe edit tidak mengirim camera_id (tanpa persist di server)
     const probeCall = calls.find((c) => c.url.endsWith('/cameras/probe'))
-    expect(JSON.parse(String(probeCall!.init!.body))).toEqual({ host: '192.168.1.109' })
+    expect(JSON.parse(String(probeCall!.init!.body))).toEqual({
+      host: '192.168.1.109',
+      main_path: '/Streaming/Channels/101',
+      sub_path: '/Streaming/Channels/102',
+    })
   })
 })
 

@@ -11,7 +11,7 @@ class Event(Base):
     type: Mapped[str] = mapped_column(String(32))
     node_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("node.id"), nullable=True)
     node = relationship("Node", lazy="joined")
-    camera_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("camera.id"), nullable=True)
+    camera_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("camera.id", ondelete="SET NULL"), nullable=True)
     zone_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # no FK — zones come Fase 2
     severity: Mapped[str] = mapped_column(String(16), default="info")
     ts_event: Mapped[datetime] = mapped_column(DateTime(timezone=True))

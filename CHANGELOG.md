@@ -5,6 +5,23 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### Camera management: wizard sederhana + scan channel + FK SET NULL
+
+- Wizard "Tambah kamera" disederhanakan sesuai keputusan desain: field Nama, Lokasi,
+  IP/Host, Node, lalu "Deteksi otomatis" (POST `/api/v1/cameras/scan` memindai channel
+  NVR 1-32 paralel wave, berhenti 2 wave kosong; dropdown stream terdeteksi dengan
+  label `ch N — MAIN res·codec / SUB res·codec`, pilihan pertama otomatis terpilih),
+  fallback "Isi path manual" (MAIN/SUB + probe exact). Combobox Sumber stream/Grup
+  lokasi/Override kredensial dihapus dari wizard; grouping kini otomatis dari teks
+  Lokasi (get-or-create grup sama nama, backend `_prepare_camera_data`), masih bisa
+  eksplisit lewat import. Error simpan kini InlineNotification (409 duplicate jelas
+  terlihat), bukan teks kecil. `LocationGroupSelect.tsx` dihapus (tak terpakai).
+- `POST /api/v1/cameras/scan` (admin) + `scan_camera_channels()` di services/probe.py.
+- Migration `0008`: `alert.camera_id` nullable + FK `event/alert.camera_id` →
+  `ON DELETE SET NULL` (hapus kamera tidak lagi 500 oleh event/alert lama).
+- Evidence: backend **252 passed**, frontend **13 files / 64 tests passed**,
+  `npm run build` 949 modules. Rollback: `git revert` + alembic downgrade 0007.
+
 ### Agent contributor guide
 
 - `AGENTS.md` (new) documents project overview, tech stack, key features, structure,

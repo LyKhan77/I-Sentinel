@@ -87,3 +87,45 @@ def probe_camera(host, user=None, password=None):
             sub_path = _path_only(url)
             break
     return {"main": main, "sub": sub, "main_path": main_path, "sub_path": sub_path}
+
+
+def _probe_channel(base, ch, timeout):
+    def probe(num):
+        return probe_url(f"{base}/Streaming/Channels/{num}", timeout=timeout)
+
+    main = probe(ch * 100 + 1)
+    sub = probe(ch * 100 + 2)
+    return {
+        "channel": ch,
+        "main": main,
+        "sub": sub,
+        "main_path": f"/Streaming/Channels/{ch * 100 + 1}" if main else None,
+        "sub_path": f"/Streaming/Channels/{ch * 100 + 2}" if sub else None,
+    }
+
+
+def scan_camera_channels(host, user=None, password=None, max_channel=32, timeout=5.0):
+    """Scan NVR channels 1..max (Hikvision main=odd/sub=even) in parallel waves.
+    ponytail: hanya pola path Hikvision /Streaming/Channels/<ch>; kamera Dahua/other
+    tetap pakai probe_camera (kandidat vendor). Berhenti setelah 2 wave berturut kosong."""
+    u, p = _creds(user, password)
+    auth = f"{u}:{p}@" if p else (f"{u}@" if u else "")
+    base = f"rtsp://{auth}{host}"
+    from concurrent.futures import ThreadPoolExecutor
+
+    found = []
+    misses = 0
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for start in range(1, max_channel + 1, 4):
+            channels = range(start, min(start + 4, max_channel + 1))
+            wave = [pool.submit(_probe_channel, base, ch, timeout) for ch in channels]
+            hit = False
+            for fut in wave:
+                result = fut.result()
+                if result["main"] or result["sub"]:
+                    hit = True
+                    found.append(result)
+            misses = 0 if hit else misses + 4
+            if misses >= 8:
+                break
+    return found

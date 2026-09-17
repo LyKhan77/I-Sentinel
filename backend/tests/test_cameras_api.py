@@ -521,3 +521,44 @@ def test_source_suggestion_probe_uses_resolved_credentials(client, monkeypatch):
         )
     assert response.status_code == 200
     assert suggestion.call_args.args == ("10.0.0.80", "probe-user", "probe-pass")
+
+
+def test_location_text_auto_groups(client):
+    h = _admin_headers(client)
+    r1 = client.post("/api/v1/cameras", json={"name": "camA", "host": "1.2.3.4", "location": "Lantai 1 - Lorong"}, headers=h)
+    r2 = client.post("/api/v1/cameras", json={"name": "camB", "host": "1.2.3.5", "location": "Lantai 1 - Lorong"}, headers=h)
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["location_group_id"] == r2.json()["location_group_id"]
+    assert r1.json()["location_group"]["name"] == "Lantai 1 - Lorong"
+    # ubah lokasi → grup ikut terderivasi ulang
+    r3 = client.patch(f"/api/v1/cameras/{r1.json()['id']}", json={"location": "Gudang"}, headers=h)
+    assert r3.json()["location_group"]["name"] == "Gudang"
+    assert r3.json()["location_group_id"] != r1.json()["location_group_id"]
+
+
+def test_scan_camera_endpoint(client, monkeypatch):
+    from unittest.mock import patch
+    h = _admin_headers(client)
+    assert client.post("/api/v1/cameras/scan", json={"host": "1.2.3.4"}).status_code == 401
+    fake = [{"channel": 1, "main": {"res": "1920x1080", "fps": 25.0, "codec": "h264"},
+             "sub": {"res": "640x480", "fps": 25.0, "codec": "h264"},
+             "main_path": "/Streaming/Channels/101", "sub_path": "/Streaming/Channels/102"}]
+    with patch("app.api.probe.scan_camera_channels", return_value=fake) as scan:
+        r = client.post("/api/v1/cameras/scan", json={"host": "192.168.2.184"}, headers=h)
+    assert r.status_code == 200 and r.json() == {"streams": fake}
+    assert scan.call_args.kwargs["max_channel"] == 32
+
+
+def test_alert_camera_nullable_allows_camera_delete(client, db):
+    h = _admin_headers(client)
+    cam = client.post("/api/v1/cameras", json={"name": "camA", "host": "1.2.3.4"}, headers=h).json()
+    from datetime import datetime, timezone
+    from app.models.event import Event
+    from app.models.alert import Alert
+    ev = Event(type="intrusion", ts_event=datetime.now(timezone.utc), camera_id=cam["id"])
+    db.add(ev)
+    db.flush()
+    db.add(Alert(camera_id=cam["id"], event_id=ev.id, type="intrusion", severity="critical", status="new"))
+    db.commit()
+    assert client.delete(f"/api/v1/cameras/{cam['id']}", headers=h).status_code == 200
+    assert db.query(Alert).count() == 1 and db.query(Alert).first().camera_id is None

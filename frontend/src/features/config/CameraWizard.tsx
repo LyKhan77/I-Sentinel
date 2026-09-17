@@ -9,6 +9,7 @@ import {
   Select,
   SelectItem,
   InlineLoading,
+  InlineNotification,
 } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import {
@@ -16,20 +17,15 @@ import {
   updateCamera,
   listNodes,
   probeCamera,
+  scanCamera,
   type Camera,
   type CameraNode,
   type ProbeResult,
+  type ScanChannel,
 } from '../../api/cameras'
-import type { StreamSource } from '../../api/streamSources'
-import type { LocationGroup } from '../../api/locationGroups'
-import type { CredentialProfile } from '../../api/credentialProfiles'
-import LocationGroupSelect from './LocationGroupSelect'
 
 type Props = {
   camera?: Camera
-  sources?: StreamSource[]
-  groups?: LocationGroup[]
-  profiles?: CredentialProfile[]
   onClose: () => void
   onSaved: () => void
 }
@@ -53,17 +49,23 @@ function streamText(s: { res: string; fps: number; codec: string } | null, path:
   return s ? `${s.res} · ${s.fps}fps · ${s.codec} (${path ?? '?'})` : failMsg
 }
 
+function channelLabel(ch: ScanChannel, failMsg: string): string {
+  const main = ch.main ? `MAIN ${ch.main.res} · ${ch.main.codec}` : `MAIN ${failMsg}`
+  const sub = ch.sub ? `SUB ${ch.sub.res} · ${ch.sub.codec}` : `SUB ${failMsg}`
+  return `ch ${ch.channel} — ${main} / ${sub}`
+}
+
 function savedProbe(camera?: Camera): ProbeResult | null {
   if (!camera || (!camera.probe_main && !camera.probe_sub)) return null
   return {
     main: camera.probe_main,
     sub: camera.probe_sub,
-    main_path: camera.source_id != null ? (camera.main_path ?? safePath(camera.rtsp_main)) : camera.rtsp_main,
-    sub_path: camera.source_id != null ? (camera.sub_path ?? safePath(camera.rtsp_sub)) : camera.rtsp_sub,
+    main_path: camera.main_path ?? safePath(camera.rtsp_main),
+    sub_path: camera.sub_path ?? safePath(camera.rtsp_sub),
   }
 }
 
-export default function CameraWizard({ camera, sources = [], groups = [], profiles = [], onClose, onSaved }: Props) {
+export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const { t } = useT()
   const isEdit = camera != null
   const [nodes, setNodes] = useState<CameraNode[]>([])
@@ -71,12 +73,13 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
   const [location, setLocation] = useState(camera?.location ?? '')
   const [host, setHost] = useState(camera?.host ?? '')
   const [nodeId, setNodeId] = useState<number | ''>(camera?.node_id ?? '')
-  const [sourceId, setSourceId] = useState<number | ''>(camera?.source_id ?? '')
-  const [groupId, setGroupId] = useState<number | ''>(camera?.location_group_id ?? '')
-  const [credentialId, setCredentialId] = useState<number | ''>(camera?.credential_override_id ?? '')
   const [mainPath, setMainPath] = useState(camera?.main_path ?? safePath(camera?.rtsp_main) ?? '')
   const [subPath, setSubPath] = useState(camera?.sub_path ?? safePath(camera?.rtsp_sub) ?? '')
-  const [pathsTouched, setPathsTouched] = useState(false)
+  const [manual, setManual] = useState(camera?.rtsp_main != null || camera?.main_path != null)
+  const [scanning, setScanning] = useState(false)
+  const [scans, setScans] = useState<ScanChannel[]>([])
+  const [scanSelected, setScanSelected] = useState<ScanChannel | null>(null)
+  const [scanEmpty, setScanEmpty] = useState(false)
   const [connectionTouched, setConnectionTouched] = useState(false)
   const [probing, setProbing] = useState(false)
   const [probe, setProbe] = useState<ProbeResult | null>(() => savedProbe(camera))
@@ -94,11 +97,10 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
       .catch(() => {})
   }, [isEdit])
 
-  const sourceMode = sourceId !== ''
   const found = (probe?.main ? 1 : 0) + (probe?.sub ? 1 : 0)
   const needsProbe = !isEdit || connectionTouched
-  const endpointReady = sourceMode ? mainPath.trim() !== '' : host.trim() !== ''
-  const canSave = name.trim() !== '' && endpointReady && (!needsProbe || found >= 1)
+  const verified = !needsProbe || found >= 1
+  const canSave = name.trim() !== '' && host.trim() !== '' && verified
 
   const clearProbe = () => {
     probeSeq.current += 1
@@ -108,34 +110,59 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
     setConnectionTouched(true)
   }
 
+  const invalidate = () => {
+    clearProbe()
+    setScanSelected(null)
+    setScans([])
+    setScanEmpty(false)
+  }
+
+  const runScan = async () => {
+    if (!host.trim()) return
+    invalidate()
+    const seq = ++probeSeq.current
+    setScanning(true)
+    setError(null)
+    try {
+      const { streams } = await scanCamera(host.trim())
+      if (seq !== probeSeq.current) return
+      setScans(streams)
+      setScanEmpty(streams.length === 0)
+      const first = streams[0]
+      if (first && !isEdit) selectScan(first)
+    } catch {
+      if (seq === probeSeq.current) setScanEmpty(true)
+    } finally {
+      if (seq === probeSeq.current) setScanning(false)
+    }
+  }
+
+  function selectScan(ch: ScanChannel) {
+    setScanSelected(ch)
+    setMainPath(ch.main_path ?? '')
+    setSubPath(ch.sub_path ?? '')
+    setProbe({ main: ch.main, sub: ch.sub, main_path: ch.main_path, sub_path: ch.sub_path })
+    setProbeFailed(false)
+    setConnectionTouched(true)
+  }
+
   const runProbe = async () => {
-    if (!endpointReady) return
+    if (!host.trim() || !mainPath.trim()) return
     const seq = ++probeSeq.current
     setProbing(true)
     setProbe(null)
     setProbeFailed(false)
     setError(null)
     try {
-      const result = sourceMode
-        ? await probeCamera({
-            source_id: sourceId as number,
-            credential_override_id: credentialId === '' ? undefined : credentialId,
-            main_path: safePath(mainPath),
-            sub_path: safePath(subPath),
-          })
-        : pathsTouched
-          ? await probeCamera({
-              host: host.trim(),
-              main_path: safePath(mainPath),
-              sub_path: safePath(subPath),
-            })
-          : await probeCamera(host.trim())
+      const result = await probeCamera({
+        host: host.trim(),
+        main_path: safePath(mainPath),
+        sub_path: safePath(subPath),
+      })
       if (seq !== probeSeq.current) return
       setProbe(result)
-      if (sourceMode || pathsTouched) {
-        setMainPath(safePath(result.main_path) ?? '')
-        setSubPath(safePath(result.sub_path) ?? '')
-      }
+      setMainPath(safePath(result.main_path) ?? mainPath)
+      setSubPath(safePath(result.sub_path) ?? subPath)
     } catch {
       if (seq === probeSeq.current) setProbeFailed(true)
     } finally {
@@ -146,21 +173,12 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
   const save = async () => {
     setSaving(true)
     setError(null)
-    const connection = sourceMode
-      ? {
-          source_id: sourceId as number,
-          location_group_id: groupId === '' ? null : groupId,
-          credential_override_id: credentialId === '' ? null : credentialId,
-          node_id: nodeId === '' ? null : nodeId,
-          main_path: safePath(probe?.main_path) ?? safePath(mainPath),
-          sub_path: safePath(probe?.sub_path) ?? safePath(subPath),
-        }
-      : {
-          host: host.trim(),
-          node_id: nodeId === '' ? null : nodeId,
-          rtsp_main: probe?.main_path ?? (safePath(mainPath) || null),
-          rtsp_sub: probe?.sub_path ?? (safePath(subPath) || null),
-        }
+    const connection = {
+      host: host.trim(),
+      node_id: nodeId === '' ? null : nodeId,
+      rtsp_main: probe?.main_path ?? (safePath(mainPath) || null),
+      rtsp_sub: probe?.sub_path ?? (safePath(subPath) || null),
+    }
     const probeMeta = {
       probe_main: probe?.main ?? null,
       probe_sub: probe?.sub ?? null,
@@ -184,12 +202,15 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
       }
       onSaved()
     } catch (e) {
-      setError(e instanceof Error && e.message === 'duplicate' ? t('cameras.wizard.duplicate') : t('cameras.saveError'))
+      setError(
+        e instanceof Error && e.message === 'duplicate'
+          ? t('cameras.wizard.duplicate')
+          : t('cameras.saveError'),
+      )
       setSaving(false)
     }
   }
 
-  const selectedSource = sources.find((source) => source.id === sourceId)
   return (
     <ComposedModal open onClose={onClose} size="sm" preventCloseOnClickOutside>
       <ModalHeader title={t(isEdit ? 'cameras.wizard.editTitle' : 'cameras.wizard.title')} closeModal={onClose} />
@@ -209,58 +230,15 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
           onChange={(e) => setLocation(e.target.value)}
           style={{ marginTop: 12 }}
         />
-        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
-          <Select
-            id="wiz-source"
-            labelText={t('cameras.wizard.source')}
-            value={sourceId}
-            onChange={(e) => {
-              const next = e.target.value === '' ? '' : Number(e.target.value)
-              setSourceId(next)
-              const source = sources.find((item) => item.id === next)
-              if (source) setHost(source.port === 554 ? source.host : `${source.host}:${source.port}`)
-              clearProbe()
-            }}
-          >
-            <SelectItem value="" text={t('cameras.wizard.legacySource')} />
-            {sources
-              .filter((source) => source.enabled || source.id === sourceId)
-              .map((source) => <SelectItem key={source.id} value={source.id} text={`${source.name} · ${source.host}:${source.port}`} />)}
-          </Select>
-          <LocationGroupSelect
-            groups={groups}
-            value={groupId}
-            onChange={setGroupId}
-            emptyLabel={t('cameras.wizard.noGroup')}
-            labelText={t('cameras.wizard.group')}
-          />
-          {sourceMode && (
-            <Select
-              id="wiz-credential"
-              labelText={t('cameras.wizard.credential')}
-              value={credentialId}
-              onChange={(e) => {
-                setCredentialId(e.target.value === '' ? '' : Number(e.target.value))
-                clearProbe()
-              }}
-            >
-              <SelectItem value="" text={t('cameras.wizard.sourceDefault')} />
-              {profiles
-                .filter((profile) => profile.enabled || profile.id === credentialId)
-                .map((profile) => <SelectItem key={profile.id} value={profile.id} text={`${profile.name} · ${profile.username}`} />)}
-            </Select>
-          )}
-        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
           <TextInput
             id="wiz-host"
             labelText={t('cameras.wizard.host')}
             placeholder="192.168.1.108"
             value={host}
-            disabled={sourceMode}
             onChange={(e) => {
               setHost(e.target.value)
-              clearProbe()
+              invalidate()
             }}
           />
           <Select
@@ -275,31 +253,93 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
             {nodes.map((n) => <SelectItem key={n.id} value={n.id} text={n.name} />)}
           </Select>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-          <TextInput
-            id="wiz-main-path"
-            labelText={t('cameras.wizard.mainPath')}
-            placeholder="/Streaming/Channels/101"
-            value={mainPath}
-            onChange={(e) => {
-              setMainPath(e.target.value)
-              setPathsTouched(true)
-              clearProbe()
-            }}
-          />
-          <TextInput
-            id="wiz-sub-path"
-            labelText={t('cameras.wizard.subPath')}
-            placeholder="/Streaming/Channels/102"
-            value={subPath}
-            onChange={(e) => {
-              setSubPath(e.target.value)
-              setPathsTouched(true)
-              clearProbe()
-            }}
-          />
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
+          <Button kind="secondary" size="sm" onClick={runScan} disabled={scanning || !host.trim()}>
+            {t('cameras.wizard.autoDetect')}
+          </Button>
+          {scans.length > 0 && !scanning && (
+            <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>
+              {scans.length} {t('cameras.wizard.scanFound')}
+            </span>
+          )}
         </div>
-        {selectedSource && <div style={{ color: 'var(--cds-text-secondary)', fontSize: 12, marginTop: 8 }}>{selectedSource.name}</div>}
+        {scanning && <InlineLoading style={{ marginTop: 8 }} description={t('cameras.wizard.scanning')} />}
+        {scanEmpty && !scanning && (
+          <p style={{ fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 8 }}>
+            {t('cameras.wizard.scanEmpty')}
+          </p>
+        )}
+        {scans.length > 0 && !scanning && (
+          <Select
+            id="wiz-scan"
+            labelText={t('cameras.wizard.detectedPaths')}
+            value={scanSelected?.channel ?? ''}
+            onChange={(e) => {
+              const ch = scans.find((s) => s.channel === Number(e.target.value))
+              if (ch) selectScan(ch)
+            }}
+            style={{ marginTop: 12 }}
+          >
+            <SelectItem value="" text={t('cameras.wizard.chooseChannel')} />
+            {scans.map((ch) => (
+              <SelectItem key={ch.channel} value={ch.channel} text={channelLabel(ch, t('cameras.wizard.probeFail'))} />
+            ))}
+          </Select>
+        )}
+
+        {!manual ? (
+          <button
+            type="button"
+            onClick={() => setManual(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--cds-link-primary)',
+              cursor: 'pointer',
+              padding: 0,
+              marginTop: 12,
+              fontSize: 13,
+            }}
+          >
+            {t('cameras.wizard.manualToggle')}
+          </button>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <TextInput
+                id="wiz-main-path"
+                labelText={t('cameras.wizard.mainPath')}
+                placeholder="/Streaming/Channels/101"
+                value={mainPath}
+                onChange={(e) => {
+                  setMainPath(e.target.value)
+                  clearProbe()
+                }}
+              />
+              <TextInput
+                id="wiz-sub-path"
+                labelText={t('cameras.wizard.subPath')}
+                placeholder="/Streaming/Channels/102"
+                value={subPath}
+                onChange={(e) => {
+                  setSubPath(e.target.value)
+                  clearProbe()
+                }}
+              />
+            </div>
+            <Button
+              kind="secondary"
+              size="sm"
+              onClick={runProbe}
+              disabled={probing || !mainPath.trim()}
+              style={{ marginTop: 8 }}
+            >
+              {t('cameras.wizard.probe')}
+            </Button>
+          </div>
+        )}
+
         <div
           data-testid="probe-box"
           style={{ border: '1px dashed var(--cds-border-subtle)', padding: 12, marginTop: 14, fontSize: 12, minHeight: 84 }}
@@ -319,11 +359,19 @@ export default function CameraWizard({ camera, sources = [], groups = [], profil
             t('cameras.wizard.probeHint')
           )}
         </div>
-        {error && <div style={{ color: '#fa4d56', marginTop: 8 }}>{error}</div>}
+        {error && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            subtitle={error}
+            title={t('cameras.wizard.saveFailed')}
+            onCloseButtonClick={() => setError(null)}
+            style={{ marginTop: 12 }}
+          />
+        )}
       </ModalBody>
       <ModalFooter>
         <Button kind="ghost" onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="secondary" onClick={runProbe} disabled={probing || !endpointReady}>{t('cameras.wizard.probe')}</Button>
         <Button onClick={save} disabled={!canSave || saving}>{t('common.save')}</Button>
       </ModalFooter>
     </ComposedModal>

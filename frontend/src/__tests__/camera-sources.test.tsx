@@ -74,26 +74,26 @@ function baseResponse(call: Call, cameras: unknown[] = [CAMERA]): Resp | null {
   return null
 }
 
-test('source, group, and credential options render without password fields', async () => {
+test('wizard shows no password, source, group, or credential fields', async () => {
   stubFetch((call) => baseResponse(call) ?? { status: 404 })
   renderPage()
 
   expect(await screen.findByText('NVR-A')).toBeInTheDocument()
   expect(screen.getAllByText('Lantai 1').length).toBeGreaterThan(0)
   expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
-  expect((await screen.findAllByText(/NVR-A · 10\.0\.0\.5:554/)).length).toBeGreaterThan(0)
 
   await userEvent.click(screen.getByText('+ Tambah kamera'))
-  const sourceSelect = await screen.findByLabelText('Sumber stream')
-  expect(within(sourceSelect).getByText('NVR-A · 10.0.0.5:554')).toBeInTheDocument()
-  await userEvent.selectOptions(sourceSelect, String(SOURCE.id))
-  expect(within(screen.getByLabelText('Override kredensial')).getByText('nvr-main · viewer')).toBeInTheDocument()
+  await screen.findByLabelText('Nama kamera')
+  expect(screen.queryByLabelText('Sumber stream')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/override kredensial/i)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Grup lokasi')).not.toBeInTheDocument()
 })
 
-test('creating a source camera sends exact paths and references', async () => {
+test('creating a direct-host camera with manual paths sends host and paths', async () => {
   const calls = stubFetch((call) => {
     const fallback = baseResponse(call, [])
     if (fallback) return fallback
+    if (call.url.endsWith('/cameras/scan')) return { status: 200, body: { streams: [] } }
     if (call.url.endsWith('/cameras/probe')) {
       return {
         status: 200,
@@ -111,13 +111,13 @@ test('creating a source camera sends exact paths and references', async () => {
   renderPage()
   await userEvent.click(await screen.findByText('+ Tambah kamera'))
   await userEvent.type(await screen.findByLabelText('Nama kamera'), 'CAM-B')
-  const sourceSelect = await screen.findByLabelText('Sumber stream')
-  await waitFor(() => expect(within(sourceSelect).getByText('NVR-A · 10.0.0.5:554')).toBeInTheDocument())
-  await userEvent.selectOptions(sourceSelect, String(SOURCE.id))
-  await userEvent.selectOptions(screen.getAllByLabelText('Grup lokasi').at(-1)!, String(GROUP.id))
-  await userEvent.selectOptions(screen.getByLabelText('Override kredensial'), String(PROFILE.id))
-  await userEvent.type(screen.getByLabelText('Path MAIN exact'), '/vendor/high?profile=recording')
-  await userEvent.type(screen.getByLabelText('Path SUB exact'), '/vendor/low?profile=ai')
+  await userEvent.type(screen.getByLabelText('Lokasi'), 'Lantai 1')
+  await userEvent.type(screen.getByLabelText('IP / Host'), '10.0.0.5')
+  await userEvent.click(screen.getByRole('button', { name: 'Deteksi otomatis' }))
+  await waitFor(() => expect(screen.getByText('Tidak ada channel NVR terdeteksi. Gunakan isi path manual.')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Isi path manual' }))
+  await userEvent.type(screen.getByLabelText('Path MAIN (utama)'), '/vendor/high?profile=recording')
+  await userEvent.type(screen.getByLabelText('Path SUB (deteksi)'), '/vendor/low?profile=ai')
   await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
   await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('1920x1080'))
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
@@ -125,15 +125,12 @@ test('creating a source camera sends exact paths and references', async () => {
   await waitFor(() => {
     const probe = calls.find((call) => call.url.endsWith('/cameras/probe'))
     const payload = JSON.parse(String(probe!.init!.body))
-    expect(payload).toEqual({ source_id: SOURCE.id, credential_override_id: PROFILE.id, main_path: '/vendor/high?profile=recording', sub_path: '/vendor/low?profile=ai' })
+    expect(payload).toEqual({ host: '10.0.0.5', main_path: '/vendor/high?profile=recording', sub_path: '/vendor/low?profile=ai' })
     const create = calls.find((call) => call.url.endsWith('/cameras') && call.init?.method === 'POST')
     const saved = JSON.parse(String(create!.init!.body))
-    expect(saved.source_id).toBe(SOURCE.id)
-    expect(saved.location_group_id).toBe(GROUP.id)
-    expect(saved.credential_override_id).toBe(PROFILE.id)
-    expect(saved.main_path).toBe('/vendor/high?profile=recording')
-    expect(saved.sub_path).toBe('/vendor/low?profile=ai')
-    expect(saved.host).toBeUndefined()
+    expect(saved.host).toBe('10.0.0.5')
+    expect(saved.rtsp_main).toBe('/vendor/high?profile=recording')
+    expect(saved.rtsp_sub).toBe('/vendor/low?profile=ai')
   })
 })
 
@@ -157,9 +154,7 @@ test('editing one exact path retains the other path', async () => {
   })
   renderPage()
   await userEvent.click((await screen.findAllByRole('button', { name: 'Ubah' }))[0])
-  const main = await screen.findByLabelText('Path MAIN exact')
-  await waitFor(() => expect(screen.getByLabelText('Sumber stream')).toHaveValue(String(SOURCE.id)))
-  expect(screen.getByLabelText('Grup lokasi')).toHaveValue(String(GROUP.id))
+  const main = await screen.findByLabelText('Path MAIN (utama)')
   await userEvent.clear(main)
   await userEvent.type(main, '/vendor/changed')
   await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
@@ -169,8 +164,8 @@ test('editing one exact path retains the other path', async () => {
   await waitFor(() => {
     const patch = calls.find((call) => call.url.endsWith('/cameras/1') && call.init?.method === 'PATCH')
     const payload = JSON.parse(String(patch!.init!.body))
-    expect(payload.main_path).toBe('/vendor/changed')
-    expect(payload.sub_path).toBe('/vendor/sub?profile=low')
+    expect(payload.rtsp_main).toBe('/vendor/changed')
+    expect(payload.rtsp_sub).toBe('/vendor/sub?profile=low')
   })
 })
 

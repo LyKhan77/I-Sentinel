@@ -269,8 +269,23 @@ def _prepare_camera_data(
     elif credential is not None or "credential_override_id" in raw:
         data["credential_override_id"] = credential.id if credential else None
 
-    if "location_group_id" in raw or current is None:
+    if "location_group_id" in raw and "location" not in raw:
         data["location_group_id"] = group.id if group else None
+    elif "location" in raw or current is None:
+        # grouping otomatis dari teks lokasi (keputusan desain: UI tidak minta grup manual)
+        loc = data.get("location", current.location if current else None)
+        loc = str(loc).strip() if loc else ""
+        if group is not None and ("location_group_id" in raw or current is None):
+            data["location_group_id"] = group.id
+        elif loc:
+            match = db.query(LocationGroup).filter(LocationGroup.name == loc).first()
+            if match is None:
+                match = LocationGroup(name=loc)
+                db.add(match)
+                db.flush()
+            data["location_group_id"] = match.id
+        else:
+            data["location_group_id"] = None
     if group is not None and (
         current is None
         or ("location_group_id" in raw and group.id != current.location_group_id)

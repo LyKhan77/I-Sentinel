@@ -349,9 +349,6 @@ export default function CamerasPage() {
       {(wizardOpen || editing) && (
         <CameraWizard
           camera={editing ?? undefined}
-          sources={sources}
-          groups={groups}
-          profiles={profiles}
           onClose={() => {
             setWizardOpen(false)
             setEditing(null)

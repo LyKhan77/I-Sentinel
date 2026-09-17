@@ -148,6 +148,19 @@ export async function probeCamera(hostOrPayload: string | ProbePayload, cameraId
   return expectOk(res, 'probe')
 }
 
+export type ScanChannel = {
+  channel: number
+  main: ProbeStream | null
+  sub: ProbeStream | null
+  main_path: string | null
+  sub_path: string | null
+}
+
+export async function scanCamera(host: string): Promise<{ streams: ScanChannel[] }> {
+  const res = await apiFetch('/cameras/scan', { method: 'POST', body: JSON.stringify({ host }) })
+  return expectOk(res, 'scan camera')
+}
+
 export async function listNodes(): Promise<CameraNode[]> {
   const res = await apiFetch('/nodes')
   return expectOk(res, 'list nodes')
