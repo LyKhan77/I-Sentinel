@@ -5,6 +5,9 @@ from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
+from app.api.stream_sources import router as stream_sources_router
+from app.api.location_groups import router as location_groups_router
+from app.api.credential_profiles import router as credential_profiles_router
 from app.core.config import settings
 from app.core.db import Base, get_db, SessionLocal
 from app.core.security import hash_password
@@ -65,6 +68,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="I-Sentinel API", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(stream_sources_router)
+app.include_router(location_groups_router)
+app.include_router(credential_profiles_router)
 from app.api.nodes import router as nodes_router
 from app.api.cameras import router as cameras_router
 from app.api.probe import router as probe_router

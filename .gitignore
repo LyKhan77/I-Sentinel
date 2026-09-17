@@ -4,6 +4,7 @@ temp/
 __pycache__/
 node_modules/
 *.pyc
+.runtime/
 .env
 .env.*
 !.env.example

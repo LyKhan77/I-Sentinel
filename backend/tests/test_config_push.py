@@ -5,6 +5,8 @@ import pytest
 from app.core.config import settings
 from app.models.node import Node
 from app.models.camera import Camera
+from app.models.credential_profile import CredentialProfile
+from app.models.stream_source import StreamSource
 from app.models.zone import Zone
 from app.services import config_push
 from tests.conftest import *  # noqa
@@ -56,6 +58,33 @@ def test_build_node_config_server_includes_active_cam_and_zones_excludes_disable
         "loiter_seconds": 0, "speed_limit_mps": 0,
         "snapshot": True, "telegram": False,
     }]
+
+def test_build_node_config_edge_uses_resolved_exact_substream(db, monkeypatch):
+    monkeypatch.setenv("CAMERA_CRED_EDGE", "edge-pass")
+    node = _node(db, name="edge-1", type="edge")
+    profile = CredentialProfile(name="edge-cred", username="edge-user", secret_ref="env:CAMERA_CRED_EDGE")
+    source = StreamSource(
+        name="edge-camera",
+        kind="ip_camera",
+        host="10.0.0.9",
+        port=8554,
+        default_credential=profile,
+    )
+    camera = Camera(
+        name="edge-cam",
+        host="legacy",
+        node_id=node.id,
+        source=source,
+        rtsp_sub="/vendor/low?profile=ai",
+    )
+    db.add(camera)
+    db.commit()
+
+    config = config_push.build_node_config(db, node)
+
+    assert config["cameras"][0]["source_url"] == (
+        "rtsp://edge-user:edge-pass@10.0.0.9:8554/vendor/low?profile=ai"
+    )
 
 
 class FakeClient:

@@ -14,7 +14,7 @@ import {
   TableRow,
   Tag,
 } from '@carbon/react'
-import { useT } from '../../app/i18n'
+import { useT, type TKey } from '../../app/i18n'
 import { getMe, type Me } from '../../api/client'
 import {
   listCameras,
@@ -24,8 +24,13 @@ import {
   importCameras,
   type Camera,
   type CameraImportEntry,
+  type CameraImportItem,
   type CameraImportResult,
 } from '../../api/cameras'
+import { listStreamSources, type StreamSource } from '../../api/streamSources'
+import { listLocationGroups, type LocationGroup } from '../../api/locationGroups'
+import { listCredentialProfiles, type CredentialProfile } from '../../api/credentialProfiles'
+import CameraSourcesPanel from './CameraSourcesPanel'
 import CameraWizard from './CameraWizard'
 
 // status dot: probe_main ada → online; probe pernah gagal → offline; belum pernah → unknown
@@ -36,6 +41,16 @@ function statusKind(cam: Camera): 'online' | 'offline' | 'unknown' {
 }
 
 const DOT_COLOR = { online: '#42be65', offline: '#fa4d56', unknown: '#8d8d8d' } as const
+
+const IMPORT_CLASS_LABEL: Record<CameraImportItem['classification'], TKey> = {
+  MATCHED: 'cameras.import.class.matched',
+  CREATE: 'cameras.import.class.create',
+  UPDATE: 'cameras.import.class.update',
+  'NEW SOURCE': 'cameras.import.class.newSource',
+  ORPHAN: 'cameras.import.class.orphan',
+  DUPLICATE: 'cameras.import.class.duplicate',
+  CREDENTIAL: 'cameras.import.class.credential',
+}
 
 function StreamLine({ label, stream }: { label: string; stream: Camera['probe_main'] }) {
   const { t } = useT()
@@ -80,13 +95,14 @@ export default function CamerasPage() {
   const [editing, setEditing] = useState<Camera | null>(null)
   const [probingId, setProbingId] = useState<number | null>(null)
   const [toDelete, setToDelete] = useState<Camera | null>(null)
+  const [sources, setSources] = useState<StreamSource[]>([])
+  const [groups, setGroups] = useState<LocationGroup[]>([])
+  const [profiles, setProfiles] = useState<CredentialProfile[]>([])
   const importInput = useRef<HTMLInputElement>(null)
   const [importEntries, setImportEntries] = useState<CameraImportEntry[] | null>(null)
   const [importPlan, setImportPlan] = useState<CameraImportResult | null>(null)
-  const [importBusy, setImportBusy] = useState(false)
-
   const isAdmin = me?.role === 'admin'
-
+  const [importBusy, setImportBusy] = useState(false)
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -99,10 +115,30 @@ export default function CamerasPage() {
     }
   }, [t])
 
+  const refreshReferences = useCallback(async () => {
+    try {
+      const [nextSources, nextGroups, nextProfiles] = await Promise.all([
+        listStreamSources(),
+        listLocationGroups(),
+        listCredentialProfiles(),
+      ])
+      setSources(nextSources)
+      setGroups(nextGroups)
+      setProfiles(nextProfiles)
+    } catch {
+      setError(t('cameras.sources.loadError'))
+    }
+  }, [t])
+
   useEffect(() => {
-    getMe().then(setMe).catch(() => setMe(null))
+    getMe()
+      .then((user) => {
+        setMe(user)
+        if (user?.role === 'admin') void refreshReferences()
+      })
+      .catch(() => setMe(null))
     refresh()
-  }, [refresh])
+  }, [refresh, refreshReferences])
 
   const reprobe = async (cam: Camera) => {
     setProbingId(cam.id)
@@ -214,6 +250,14 @@ export default function CamerasPage() {
           <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>
         </div>
       )}
+      {isAdmin && (
+        <CameraSourcesPanel
+          sources={sources}
+          groups={groups}
+          profiles={profiles}
+          onChanged={refreshReferences}
+        />
+      )}
 
       {error && (
         <InlineNotification
@@ -246,7 +290,9 @@ export default function CamerasPage() {
                       <TableRow key={cam.id}>
                         <TableCell>
                           <div style={{ fontWeight: 600 }}>{cam.name}</div>
-                          {cam.location && (
+                          {cam.source && <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{cam.source.name}</div>}
+                          {cam.location_group && <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{cam.location_group.name}</div>}
+                          {!cam.source && cam.location && (
                             <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{cam.location}</div>
                           )}
                         </TableCell>
@@ -303,6 +349,9 @@ export default function CamerasPage() {
       {(wizardOpen || editing) && (
         <CameraWizard
           camera={editing ?? undefined}
+          sources={sources}
+          groups={groups}
+          profiles={profiles}
           onClose={() => {
             setWizardOpen(false)
             setEditing(null)
@@ -310,7 +359,7 @@ export default function CamerasPage() {
           onSaved={() => {
             setWizardOpen(false)
             setEditing(null)
-            refresh()
+            void refresh()
           }}
         />
       )}
@@ -339,6 +388,16 @@ export default function CamerasPage() {
               <ul>
                 {importPlan.errors.map((item) => (
                   <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+            {importPlan.items.length > 0 && (
+              <ul data-testid="camera-import-classifications">
+                {importPlan.items.map((item, index) => (
+                  <li key={`${item.classification}-${item.camera_id ?? index}`}>
+                    {t(IMPORT_CLASS_LABEL[item.classification])} · {item.after.name} · {item.after.host ?? item.after.source ?? ''}
+                    {item.after.main_path ?? item.after.rtsp_main ?? ''}
+                  </li>
                 ))}
               </ul>
             )}

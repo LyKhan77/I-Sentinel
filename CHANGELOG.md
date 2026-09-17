@@ -5,6 +5,47 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### Runtime data layout
+
+- Runtime data on `gspe-ai3` now lives under the sibling
+  `/home/gspe-ai3/project_cv/I-Sentinel-data/{api,vision}` instead of the Git
+  worktree/default home paths. `.env` carries `STORAGE_ROOT`, `FACE_MODEL_DIR`,
+  and `VISION_DATA_DIR`; old roots were copied, not deleted. Evidence: API health
+  returned `{"status":"ok"}`, both systemd services are active, live process
+  environments report the target paths, and target contents include
+  `clips/crops/faces/faces_models/models/snapshots` plus `outbox/queue`. Impact:
+  deployments no longer mix runtime growth with source checkout. Rollback:
+  restore `.env.before-runtime-migration-20260916-160718` and restart API/vision;
+  delete neither old root until separately approved.
+
+### Camera management B′
+
+- `feat/camera-management-b-prime`: adds source-aware camera management in
+  `backend/app/models/camera.py`, `backend/app/models/credential_profile.py`,
+  `backend/app/models/location_group.py`, `backend/app/models/stream_source.py`,
+  `backend/app/api/cameras.py`, `backend/app/api/probe.py`,
+  `backend/app/api/credential_profiles.py`, `backend/app/api/location_groups.py`,
+  `backend/app/api/stream_sources.py`, `backend/app/schemas/camera.py`,
+  `backend/app/schemas/credential_profile.py`, `backend/app/schemas/location_group.py`,
+  `backend/app/schemas/stream_source.py`, `backend/app/services/stream_endpoint.py`,
+  `backend/app/services/probe.py`, `backend/app/services/go2rtc.py`,
+  `backend/app/services/config_push.py`, `backend/scripts/camera_management_migrate.py`,
+  `backend/alembic/versions/0007_camera_management_expand.py`,
+  `frontend/src/api/cameras.ts`, `frontend/src/api/credentialProfiles.ts`,
+  `frontend/src/api/locationGroups.ts`, `frontend/src/api/streamSources.ts`,
+  `frontend/src/features/config/CamerasPage.tsx`,
+  `frontend/src/features/config/CameraWizard.tsx`,
+  `frontend/src/features/config/CameraSourcesPanel.tsx`,
+  `frontend/src/features/config/LocationGroupSelect.tsx`,
+  `frontend/src/app/i18n.tsx`, `.env.example`, and
+  `docs/runbooks/camera-management-migration.md`. Evidence: offline PostgreSQL
+  Alembic SQL contains all five required `0007` statements; backend **249/249**
+  collected tests passed in isolated batches; focused frontend **3 files / 19 tests**
+  passed; `npm run build` transformed **950 modules** in **5.94s**. Impact: admins
+  manage sources, locations, and environment-referenced credentials without API
+  secret leakage while legacy camera fields remain compatible. Rollback: follow
+  `docs/runbooks/camera-management-migration.md`; no server migration was run.
+
 ### CCTV inventory import
 
 - `0f2a4b3`: safe admin-only import parses `temp/data/cctv-list.txt` in

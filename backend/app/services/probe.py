@@ -2,6 +2,7 @@ import os
 import subprocess
 from urllib.parse import quote
 
+from app.services.stream_endpoint import EffectiveStream, build_rtsp_url
 
 def _creds(user, password):
     u = user or os.environ.get("CAM_USERNAME", "admin")
@@ -49,6 +50,19 @@ def probe_url(url, timeout=6.0):
         return None
     return {"res": f"{s['width']}x{s['height']}", "fps": fps, "codec": s["codec_name"]}
 
+def probe_exact(stream: EffectiveStream):
+    """Probe only the selected paths; never infer a vendor path."""
+    def probe_path(path):
+        url = build_rtsp_url(stream, path)
+        return probe_url(url) if url else None
+
+    return {
+        "main": probe_path(stream.main_path),
+        "sub": probe_path(stream.sub_path),
+        "main_path": stream.main_path,
+        "sub_path": stream.sub_path,
+    }
+
 
 def _path_only(url):
     """Strip scheme://userinfo@host — return path (and query) only (zero-secret)."""
@@ -57,9 +71,9 @@ def _path_only(url):
     return parts.path + (f"?{parts.query}" if parts.query else "")
 
 
-def probe_camera(host):
+def probe_camera(host, user=None, password=None):
     """Try main candidates then sub candidates until first hit each."""
-    cands = build_rtsp_candidates(host)
+    cands = build_rtsp_candidates(host, user, password)
     main = sub = None
     main_path = sub_path = None
     for url in cands["main"]:

@@ -1,11 +1,15 @@
 import logging
-from urllib.parse import quote
 
 import httpx
 
 from app.core.config import settings
+from app.services.stream_endpoint import (
+    build_rtsp_url as build_endpoint_url,
+    resolve_camera_stream,
+)
 
 logger = logging.getLogger(__name__)
+
 
 
 def _client() -> httpx.Client:
@@ -49,13 +53,9 @@ def stream_info(name: str) -> dict | None:
 
 
 def build_rtsp_url(camera, field: str = "rtsp_sub") -> str | None:
-    path = getattr(camera, field, None)
-    if not path:
-        return None
-    u = quote(settings.cam_username or "", safe="")
-    p = quote(settings.cam_password or "", safe="")
-    auth = f"{u}:{p}@" if (u or p) else ""
-    return f"rtsp://{auth}{camera.host}{path}"
+    """Build one URL through the shared endpoint resolver."""
+    stream = resolve_camera_stream(camera)
+    return build_endpoint_url(stream, getattr(camera, field, None))
 
 
 def sync_camera(camera, delete: bool = False) -> None:

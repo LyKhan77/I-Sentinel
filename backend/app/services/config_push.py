@@ -1,6 +1,5 @@
 import json
 import logging
-from urllib.parse import quote
 
 import paho.mqtt.client as mqtt
 from sqlalchemy.orm import Session
@@ -9,8 +8,10 @@ from app.core.config import settings
 from app.models.camera import Camera
 from app.models.node import Node
 from app.models.zone import Zone
+from app.services.stream_endpoint import StreamEndpointError, build_rtsp_url, resolve_camera_stream
 
 logger = logging.getLogger(__name__)
+
 
 DEFAULT_FPS = 5.0
 
@@ -50,11 +51,15 @@ def build_node_config(db: Session, node: Node) -> dict:
         if node.type == "server":
             source_url = f"rtsp://localhost:8554/cam_{cam.id}"
         else:
-            u = quote(settings.cam_username or "admin", safe="")
-            p = quote(settings.cam_password or "", safe="")
-            auth = f"{u}:{p}@" if p else (f"{u}@" if u else "")
-            sub = cam.rtsp_sub or ""
-            source_url = f"rtsp://{auth}{cam.host}{sub}"
+            try:
+                stream = resolve_camera_stream(cam)
+                source_url = build_rtsp_url(stream, stream.sub_path)
+            except StreamEndpointError:
+                logger.warning("node config camera %s endpoint unavailable", cam.id)
+                continue
+            if source_url is None:
+                logger.warning("node config camera %s has no substream", cam.id)
+                continue
         cameras.append({
             "camera_id": cam.id,
             "source_url": source_url,

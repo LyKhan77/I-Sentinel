@@ -95,8 +95,8 @@ test('wizard: probe success enables Simpan, payload carries rtsp paths', async (
         body: {
           main: { res: '2560x1440', fps: 25, codec: 'h264' },
           sub: { res: '640x360', fps: 15, codec: 'h264' },
-          main_path: 'rtsp://u:p@192.168.1.108/Streaming/Channels/101',
-          sub_path: 'rtsp://u:p@192.168.1.108/Streaming/Channels/102',
+          main_path: 'rtsp://192.168.1.108/Streaming/Channels/101',
+          sub_path: 'rtsp://192.168.1.108/Streaming/Channels/102',
         },
       }
     }
@@ -131,8 +131,8 @@ test('wizard: probe success enables Simpan, payload carries rtsp paths', async (
     expect(payload.name).toBe('CAM-06')
     expect(payload.host).toBe('192.168.1.108')
     expect(payload.node_id).toBe(1)
-    expect(payload.rtsp_main).toBe('rtsp://u:p@192.168.1.108/Streaming/Channels/101')
-    expect(payload.rtsp_sub).toBe('rtsp://u:p@192.168.1.108/Streaming/Channels/102')
+    expect(payload.rtsp_main).toBe('rtsp://192.168.1.108/Streaming/Channels/101')
+    expect(payload.rtsp_sub).toBe('rtsp://192.168.1.108/Streaming/Channels/102')
   })
 })
 
@@ -194,8 +194,8 @@ test('edit: connection change needs a fresh probe before save', async () => {
   const FRESH = {
     main: { res: '1280x720', fps: 20, codec: 'h265' },
     sub: { res: '640x360', fps: 15, codec: 'h265' },
-    main_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/101',
-    sub_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/102',
+    main_path: 'rtsp://192.168.1.109/Streaming/Channels/101',
+    sub_path: 'rtsp://192.168.1.109/Streaming/Channels/102',
   }
   const calls = stubFetch((call) => {
     if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
@@ -221,7 +221,7 @@ test('edit: connection change needs a fresh probe before save', async () => {
   expect(saveBtn).toBeDisabled()
 
   await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
-  await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('rtsp://u:p@192.168.1.109'))
+  await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('rtsp://192.168.1.109'))
   expect(saveBtn).toBeEnabled()
   // probe murni: belum ada PATCH sebelum Simpan
   expect(calls.some((c) => c.init?.method === 'PATCH')).toBe(false)
@@ -235,8 +235,8 @@ test('edit: connection change needs a fresh probe before save', async () => {
     expect(payload.name).toBe('CAM-01')
     expect(payload.host).toBe('192.168.1.109')
     expect(payload.node_id).toBe(1)
-    expect(payload.rtsp_main).toBe('rtsp://u:p@192.168.1.109/Streaming/Channels/101')
-    expect(payload.rtsp_sub).toBe('rtsp://u:p@192.168.1.109/Streaming/Channels/102')
+    expect(payload.rtsp_main).toBe('rtsp://192.168.1.109/Streaming/Channels/101')
+    expect(payload.rtsp_sub).toBe('rtsp://192.168.1.109/Streaming/Channels/102')
     // metadata probe ikut tersimpan lewat PATCH saat Simpan
     expect(payload.probe_main).toEqual(FRESH.main)
     expect(payload.probe_sub).toEqual(FRESH.sub)
@@ -252,14 +252,14 @@ test('edit: response of the old host probe cannot overwrite the new host result'
   const STALE = {
     main: { res: '2560x1440', fps: 25, codec: 'h264' },
     sub: { res: '640x360', fps: 15, codec: 'h264' },
-    main_path: 'rtsp://u:p@192.168.1.101/Streaming/Channels/101',
-    sub_path: 'rtsp://u:p@192.168.1.101/Streaming/Channels/102',
+    main_path: 'rtsp://192.168.1.101/Streaming/Channels/101',
+    sub_path: 'rtsp://192.168.1.101/Streaming/Channels/102',
   }
   const FRESH = {
     main: { res: '1280x720', fps: 20, codec: 'h265' },
     sub: { res: '640x360', fps: 15, codec: 'h265' },
-    main_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/101',
-    sub_path: 'rtsp://u:p@192.168.1.109/Streaming/Channels/102',
+    main_path: 'rtsp://192.168.1.109/Streaming/Channels/101',
+    sub_path: 'rtsp://192.168.1.109/Streaming/Channels/102',
   }
   stubFetch(async (call) => {
     if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
