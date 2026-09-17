@@ -222,6 +222,7 @@ export default function CamerasPage() {
 
   const headers = [
     { key: 'name', header: t('cameras.col.name') },
+    { key: 'location', header: t('cameras.col.location') },
     { key: 'streams', header: t('cameras.col.streams') },
     { key: 'node', header: t('cameras.col.node') },
     { key: 'status', header: t('cameras.col.status') },
@@ -286,11 +287,8 @@ export default function CamerasPage() {
                         <TableCell>
                           <div style={{ fontWeight: 600 }}>{cam.name}</div>
                           {cam.source && <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{cam.source.name}</div>}
-                          {cam.location_group && <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{cam.location_group.name}</div>}
-                          {!cam.source && cam.location && (
-                            <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{cam.location}</div>
-                          )}
                         </TableCell>
+                        <TableCell>{cam.location ?? '—'}</TableCell>
                         <TableCell>
                           <StreamLine label="MAIN" stream={cam.probe_main} />
                           <StreamLine label="SUB" stream={cam.probe_sub} />

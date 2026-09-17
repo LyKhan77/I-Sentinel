@@ -174,7 +174,7 @@ export default function LiveViewPage() {
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [cols, setCols] = useState<Cols>(initialCols)
-  const [loc, setLoc] = useState<{ label: string } | null>(null)
+  const [loc, setLoc] = useState<{ id: string; label: string } | null>(null)
   const focusRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
@@ -222,9 +222,13 @@ export default function LiveViewPage() {
   // disable) → tile-nya selalu 502 dengan badge LIVE yang menyesatkan.
   const active = cams.filter((c) => c.enabled)
   const focused = focusId != null ? active.find((c) => c.id === focusId) : null
-  // lokasi kamera unik; null = semua
-  const locOptions = [...new Set(active.map((c) => c.location).filter((l): l is string => !!l))].map((l) => ({ label: l }))
-  const shown = loc ? active.filter((c) => c.location === loc.label) : active
+  // lokasi kamera unik; item "semua" di depan supaya filter bisa direset
+  const allItem = { id: '__all__', label: t('live.allLocations') }
+  const locOptions = [
+    allItem,
+    ...[...new Set(active.map((c) => c.location).filter((l): l is string => !!l))].map((l) => ({ id: l, label: l })),
+  ]
+  const shown = loc && loc.id !== '__all__' ? active.filter((c) => c.location === loc.label) : active
   const others = focusId != null ? shown.filter((c) => c.id !== focusId) : shown
 
   const pickCols = (n: Cols) => {
