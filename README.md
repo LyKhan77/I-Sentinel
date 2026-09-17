@@ -77,6 +77,35 @@ curl -s localhost:8000/api/v1/health
 
 `bootstrap.sh` membuat venv, install `backend[dev]`, `alembic upgrade head`, menyalin unit systemd ke `/etc/systemd/system/`, lalu daemon-reload + enable (tidak start).
 
+## Manajemen Kamera
+
+Registrasi kamera cukup lewat **Konfigurasi → Kamera → + Tambah kamera**:
+
+1. Isi **Nama kamera**, **Lokasi**, **IP / Host**, **Port** (default 554), **Node**.
+2. Klik **Deteksi otomatis** — backend memindai channel NVR (pola Hikvision
+   `/Streaming/Channels/<ch>`, wave paralel, berhenti setelah 2 wave kosong) dan
+   menampilkan dropdown `ch N — MAIN res·codec / SUB res·codec`. Channel pertama
+   otomatis terpilih; pilih lainnya bila perlu.
+3. Kamera non-NVR / vendor lain: gunakan **Isi path manual** (MAIN/SUB) + tombol
+   **Probe** untuk verifikasi exact path.
+4. **Simpan** — aktif hanya setelah stream terverifikasi (scan/probe menemukan ≥1 stream).
+
+Aturan yang perlu diketahui:
+
+- **Grup lokasi otomatis** dari teks Lokasi (get-or-create, tidak diinput manual).
+- **Password kamera tidak pernah diketik di UI** — kredensial selalu referensi
+  `env:VAR` (fallback `CAM_USERNAME`/`CAM_PASSWORD`); password hidup di `.env` server.
+- Duplikat nama-per-node atau duplikat stream ditolak (409) dan ditampilkan
+  sebagai InlineNotification.
+- Panel **Sumber & kredensial (lanjutan)** di halaman Kamera hanya untuk
+  **Import CCTV** dan perubahan NVR/kredensial — collapsed by default.
+- Menghapus kamera tidak menghapus riwayat: `event` dan `alert` tetap
+  (migration `0008`, FK `ON DELETE SET NULL`).
+- List kamera memakai kolom terpisah Nama/Lokasi; Live View filter lokasi bisa
+  direset ke **All locations**.
+
+Detail migrasi skema: `docs/runbooks/camera-management-migration.md`.
+
 Catatan: unit systemd di `deploy/systemd/` masih memakai `/opt/isentinel` +
 `User=isentinel`, sedangkan yang berjalan di `gspe-ai3` memakai
 `/home/gspe-ai3/project_cv/I-Sentinel` + `User=gspe-ai3`. Rekonsiliasi = Fase 5

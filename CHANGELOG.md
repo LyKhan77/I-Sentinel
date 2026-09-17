@@ -5,6 +5,20 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### Camera flow polish: self-contained wizard, compact panel, columns
+
+- Wizard self-contained: field **Port** (default 554) di samping IP/Host;
+  endpoint host = `ip` atau `ip:port`. Panel **Sumber & kredensial** collapsed
+  jadi satu baris ringkasan (khusus import CCTV / perubahan NVR); section Grup
+  dihapus dari UI (grup auto dari Lokasi); CamerasPage berhenti fetch
+  `/location-groups`. List kamera: **kolom Lokasi terpisah** dari Nama.
+  Live View: filter lokasi bisa direset ke **All locations** (item `__all__`).
+- Evidence: frontend **13 files / 65 tests passed**, build **949 modules**;
+  verifikasi browser di server (port default 554, form grup hilang, reset
+  filter terbukti). Screenshots: `docs/evidence/camera-page-compact-final.png`,
+  `camera-wizard-v3-port.png`, `camera-list-location-column.png`,
+  `live-view-filter-all.png`. Rollback: `git revert`.
+
 ### Camera management: wizard sederhana + scan channel + FK SET NULL
 
 - Wizard "Tambah kamera" disederhanakan sesuai keputusan desain: field Nama, Lokasi,

@@ -6,6 +6,12 @@ Revision `0007` is expand-only: it adds `credential_profile`, `location_group`,
 and `stream_source`, then nullable camera references. Legacy camera host, path,
 location, and identity fields remain live during this rollout.
 
+Revision `0008` makes `alert.camera_id` nullable and rebinds the
+`event.camera_id` / `alert.camera_id` foreign keys to `ON DELETE SET NULL`, so
+deleting a camera keeps its historical event and alert rows (camera link is
+cleared instead of blocking the delete). Rollback note: `0008` downgrade
+requires orphan-free camera references before restoring the NOT NULL column.
+
 Credential profiles store a reference only. Set the referenced secret in the
 service environment; never put a password in the API, import file, database,
 or command history.
