@@ -25,7 +25,7 @@ isentinel/
 │   ├── analyzers/            # intrusion.py, loitering.py, running.py, face_gate.py
 │   ├── transport/            # mqtt client + disk queue store-and-forward
 │   └── tests/
-├── frontend/                 # placeholder — scaffold di Task 8 (Fase 0)
+├── frontend/                 # React 19 + Vite + Carbon (9 halaman)
 │   ├── src/
 │   │   ├── app/              # shell, routing, i18n
 │   │   ├── features/         # dashboard, live, events, attendance, enrollment, config
@@ -55,23 +55,32 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-Frontend (dev server dengan proxy ke API):  
+Frontend (dev server dengan proxy ke API):
 
 ```bash
 cd frontend
 npm install
 npm run dev
+npm test          # vitest run
 ```
 
 ## Run (server dev)
 
 ```bash
 ssh gspe-ai3
-cd /opt/isentinel && git pull
+cd /home/gspe-ai3/project_cv/I-Sentinel && git pull
 ./deploy/bootstrap.sh
-# isi /opt/isentinel/.env (DATABASE_URL postgres, JWT_SECRET, ADMIN_PASSWORD, CAM_USERNAME/PASSWORD)
+# isi .env di root project (DATABASE_URL postgres, JWT_SECRET, ADMIN_PASSWORD, CAM_USERNAME/PASSWORD)
 sudo systemctl start isentinel-api
 curl -s localhost:8000/api/v1/health
 ```
 
 `bootstrap.sh` membuat venv, install `backend[dev]`, `alembic upgrade head`, menyalin unit systemd ke `/etc/systemd/system/`, lalu daemon-reload + enable (tidak start).
+
+Catatan: unit systemd di `deploy/systemd/` masih memakai `/opt/isentinel` +
+`User=isentinel`, sedangkan yang berjalan di `gspe-ai3` memakai
+`/home/gspe-ai3/project_cv/I-Sentinel` + `User=gspe-ai3`. Rekonsiliasi = Fase 5
+Task 12 (`docs/plans/06-fase-5-hardening.md`). `sudo` tanpa password tidak
+tersedia di server, jadi restart service dilakukan lewat
+`kill $(cat /sys/fs/cgroup/system.slice/<unit>.service/cgroup.procs)` (unit
+memakai `Restart=always`).

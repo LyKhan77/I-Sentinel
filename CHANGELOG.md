@@ -5,6 +5,23 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### Agent contributor guide
+
+- `AGENTS.md` (new) documents project overview, tech stack, key features, structure,
+  commands, coding conventions, workflow, current-state pointers, and the repo rules
+  (incl. the no-AI-attribution rule). Derived from the actual tree: `backend/app/*`,
+  `vision/vision/*`, `frontend/src/*`, `deploy/*`, `docs/*`, `pyproject.toml`s,
+  `package.json`, `.env.example`. Server credentials are deliberately NOT recorded —
+  only host/IP/paths plus a pointer to the gitignored note and server `.env`.
+  Alongside: `README.md` server path corrected `/opt/isentinel` →
+  `/home/gspe-ai3/project_cv/I-Sentinel`, stale "frontend placeholder" line replaced,
+  and the repo-vs-running systemd unit mismatch (Fase 5 Task 12) plus the
+  no-passwordless-sudo restart procedure noted; `frontend/package.json` gained
+  `"test": "vitest run"`; `.gitignore` now excludes `.commandcode/`,
+  `.cooperstructure/`, `.impeccable/`. Evidence: `npm test` → **13 files / 64 tests
+  passed** in 32.26s. Impact: agents and new contributors get one accurate entry
+  point; no runtime code touched. Rollback: `git revert` the two commits.
+
 ### Runtime data layout
 
 - Runtime data on `gspe-ai3` now lives under the sibling
