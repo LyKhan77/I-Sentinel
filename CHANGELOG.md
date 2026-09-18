@@ -5,6 +5,27 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### GPU hardware probe per node + detector device pin (Task 9)
+
+- Vision node kini melaporkan hardware GPU lewat heartbeat MQTT: kolom `hw`
+  (daftar GPU: nama, VRAM used/total, util %, **proses pemakai lintas user** via
+  NVML, `python_vram_mb`) dan `modules.detector` (device pin, model,
+  ms/frame). File baru `vision/vision/hardware.py` (pynvml, graceful fallback
+  `{}` tanpa NVIDIA — heartbeat tetap jalan). Dep baru: `pynvml`.
+- Task 9: `VISION_DETECTOR_DEVICE` (mis. `cuda:1`) — pin device detektor,
+  diteruskan ke `YOLO.predict`; **fail-fast** saat pin tidak valid (node exit
+  dengan log ERROR, bukan fallback senyap ke GPU lain).
+- Backend: migration `0009` (`node.hw`, `node.modules` JSON nullable,
+  expand-only), heartbeat consumer menyimpan keduanya, `GET /api/v1/nodes`
+  mengembalikan. Heartbeat lama tanpa `hw` tetap kompatibel.
+- Frontend: kartu **Perangkat node** di Dashboard — GPU chips + proses pemakai
+  + badge `Detektor: PIN cuda:N` / `AUTO` (kuning bila auto). i18n id+en.
+- Evidence: vision **89 passed**, backend **256 passed** (`-m "not gpu"`),
+  frontend **66 tests**, build OK; live di server: 3 GPU (4090 + 2×5080) +
+  proses vLLM/isaacsim/vision tampil. Screenshots:
+  `docs/evidence/2026-09-18-dashboard-node-hw-{en,id}.png`.
+  Rollback: `git revert` + `alembic downgrade 0008`.
+
 ### Camera flow polish: self-contained wizard, compact panel, columns
 
 - Wizard self-contained: field **Port** (default 554) di samping IP/Host;

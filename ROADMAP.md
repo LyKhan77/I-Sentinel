@@ -293,7 +293,8 @@ Plan: `docs/plans/06-fase-5-hardening.md` (12 task, 66 step — dikembangkan dar
 
 - **D1** — GPU & durasi soak. GPU0 (RTX 4090) saat audit 23 644 / 24 564 MiB terpakai beban
   lain; GPU1/GPU2 (RTX 5080 16 GB) lebih lega. Brief mengizinkan **2 jam + uji churn** sebagai
-  alternatif 24 jam. Butuh `VISION_DETECTOR_DEVICE=cuda:1` (field baru, Task 9).
+  alternatif 24 jam. Butuh `VISION_DETECTOR_DEVICE=cuda:1` (field baru, Task 9 —
+  sudah tersedia sejak 2026-09-18 dengan fail-fast validasi pin).
 - **D2** — izin `sudo apt install -y ffmpeg` di `gspe-ai3` (sekarang hanya ada `ffprobe`).
 
 **Temuan audit yang membentuk plan (2026-09-15):**

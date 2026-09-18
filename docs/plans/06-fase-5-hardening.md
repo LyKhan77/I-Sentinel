@@ -1253,15 +1253,21 @@ git commit -m "test: resilience harness (API restart, kill -9 LWT, vision recove
 
 ---
 
-### Task 9: Pilih GPU untuk detektor
+### Task 9: Pilih GPU untuk detektor — SELESAI (2026-09-18)
 
 **Files:**
-- Modify: `vision/vision/config.py`, `vision/vision/pipeline/detector.py`
-- Test: `vision/tests/test_detector.py`
+- Modify: `vision/vision/config.py`, `vision/vision/pipeline/detector.py`, `vision/vision/node.py`
+- Test: `vision/tests/test_detector_device.py` (+ `vision/tests/test_hardware.py`)
 
 **Interfaces:**
 - Produces: `NodeSettings.detector_device: str = ""` (env `VISION_DETECTOR_DEVICE`), diteruskan
   ke `YOLO.predict(device=...)`. Kosong = perilaku lama (Ultralytics pilih sendiri).
+- Tambahan (plan 2026-09-17): pin divalidasi fail-fast saat node start via
+  `vision/vision/hardware.py` `validate_device_pin()` — pin `cuda:N` tidak valid
+  (NVML melihat ≤ N GPU) → log ERROR + exit, bukan fallback senyap.
+- Evidence: `pytest vision -m "not gpu"` 89 passed (test fail-fast + forwarding device);
+  knob terlaporkan di heartbeat `modules.detector.device` dan tampil sebagai badge
+  `Detektor: AUTO/PIN` pada kartu node Dashboard.
 
 - [ ] **Step 1: Tulis test yang gagal**
 
