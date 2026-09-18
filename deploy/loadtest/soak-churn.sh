@@ -8,10 +8,10 @@ export ISENTINEL_PASS="${ISENTINEL_PASS:?ISENTINEL_PASS belum diset}"
 
 for i in $(seq 1 "$CYCLES"); do
   echo "[churn $i] $(date +%H:%M:%S) remove..."
-  "$DIR/register-cams.py" remove || true
+  python3 "$DIR/register-cams.py" remove || true
   sleep 20
   echo "[churn $i] add kembali..."
-  "$DIR/register-cams.py" add 32 || true
+  python3 "$DIR/register-cams.py" add 32 || true
   [ "$i" -lt "$CYCLES" ] && sleep "$WAIT"
 done
 echo "churn selesai"
