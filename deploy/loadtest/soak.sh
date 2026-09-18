@@ -9,7 +9,7 @@ MINUTES="${1:-120}"; N="${2:-32}"
 OUT="${SOAK_OUT:-$HOME/isentinel-data/loadtest/soak-$(date +%Y%m%d-%H%M).csv}"
 API="${ISENTINEL_API:-http://127.0.0.1:8000}"
 PASS="${ISENTINEL_PASS:?ISENTINEL_PASS belum diset}"
-PYBIN="${PY:-python3}"
+PY="${PY:-python3}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$(dirname "$OUT")"
 
@@ -35,7 +35,7 @@ fi
 
 # --- mulai stream + kamera
 "$DIR/make-streams.sh" start "$N"
-"$DIR/register-cams.py" add "$N" || true
+"$PY" "$DIR/register-cams.py" add "$N" || true
 
 echo "ts,gpu0_util,gpu0_mem,gpu1_util,gpu1_mem,gpu2_util,gpu2_mem,vision_rss_kb,api_rss_kb,events_total,nvidia_worker_procs" > "$OUT"
 END=$(( $(date +%s) + MINUTES * 60 ))
