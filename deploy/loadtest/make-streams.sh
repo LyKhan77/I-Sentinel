@@ -9,31 +9,24 @@
 set -uo pipefail
 
 GO2RTC_API="${GO2RTC_API:-http://127.0.0.1:1984}"
-SRC="${SYNTH_SRC:-$HOME/isentinel-data/loadtest/sample.mp4}"
-
-src_url() {
-  # go2rtc ffmpeg file source + loop tanpa batas (query pakai '+' sbg spasi)
-  printf -- '-G %s --data-urlencode src=ffmpeg:%s#input=-stream_loop -1 %s' \
-    "$GO2RTC_API/api/streams" "$SRC" ""
-}
+SYNTH_SRC="${SYNTH_SRC:-$HOME/isentinel-data/loadtest/sample.mp4}"
 
 start() {
   local n="${1:-32}" i created=0 code
-  [ -f "${SYNTH_SRC:-$HOME/isentinel-data/loadtest/sample.mp4}" ] || {
-    echo "video sumber tidak ada"; exit 1; }
+  [ -f "$SYNTH_SRC" ] || { echo "video sumber tidak ada: $SYNTH_SRC"; exit 1; }
   for i in $(seq 1 "$n"); do
     code=$(curl -s -X PUT -G "$GO2RTC_API/api/streams" \
       --data-urlencode "name=synth_$i" \
       --data-urlencode "src=ffmpeg:$SYNTH_SRC#input=-stream_loop -1" \
-      -o /dev/null -w '%{http_code}')
+      -o /dev/null -w '%{http_code}') || code="ERR"
     if [ "$code" = "200" ]; then created=$((created+1)); else echo "synth_$i -> $code"; fi
   done
   echo "didistribusikan: $created"
 }
 
 stop() {
-  local n="${1:-}" i removed=0 code
-  for i in $(seq 1 "${n:-2000}"); do
+  local n="${1:-2000}" i removed=0 code
+  for i in $(seq 1 "$n"); do
     code=$(curl -s -X DELETE "$GO2RTC_API/api/streams?src=synth_$i" -o /dev/null -w '%{http_code}')
     [ "$code" = "200" ] && removed=$((removed+1))
   done
@@ -41,12 +34,8 @@ stop() {
 }
 
 status() {
-  local all live=0
-  all=$(curl -s "$GO2RTC_API/api/streams" | grep -o '"synth_[0-9]*"' | sort -u | wc -l)
-  for s in $(curl -s "$GO2RTC_API/api/streams" | grep -o 'synth_[0-9]*' | sort -u); do
-    # producer aktif = daftar streams ada; frame API untuk uji hidup mahal, cukup hitung
-    live=$((live+1))
-  done
+  local all
+  all=$(curl -s "$GO2RTC_API/api/streams" | grep -o 'synth_[0-9]*' | sort -u | wc -l)
   echo "stream synth terdaftar: $all"
   free -m | awk 'NR==2{printf "RAM: %s MB terpakai dari %s MB\n", $3, $2}'
   nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv,noheader 2>/dev/null
