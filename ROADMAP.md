@@ -288,14 +288,18 @@ sama seperti snapshot — jangan dibuka tanpa autentikasi, go2rtc tidak punya au
 
 Plan: `docs/plans/06-fase-5-hardening.md` (12 task, 66 step — dikembangkan dari brief 2026-09-15)
 
-**Status: plan siap, eksekusi belum mulai.** Dua keputusan user dibutuhkan lebih dulu
-(tertulis di bagian Prasyarat plan):
+**Status: berjalan.** Selesai: Task 1–8 (rate-limit login, retensi+sweeper+timer,
+storage API+halaman, resiliensi), Task 9 (device pin + GPU probe heartbeat + kartu
+node + UI delegasi device — `feat/gpu-hardware-probe`, `feat/gpu-device-settings-ui`),
+Task 10 (generator stream sintetis + soak harness), Task 12 (RUNBOOK + rekonsiliasi
+unit systemd). Task 11 (soak 2 jam + laporan) dijalankan lewat Task 10 harness.
+Dua keputusan prasyarat:
 
 - **D1** — GPU & durasi soak. GPU0 (RTX 4090) saat audit 23 644 / 24 564 MiB terpakai beban
   lain; GPU1/GPU2 (RTX 5080 16 GB) lebih lega. Brief mengizinkan **2 jam + uji churn** sebagai
-  alternatif 24 jam. Butuh `VISION_DETECTOR_DEVICE=cuda:1` (field baru, Task 9 —
-  sudah tersedia sejak 2026-09-18 dengan fail-fast validasi pin).
-- **D2** — izin `sudo apt install -y ffmpeg` di `gspe-ai3` (sekarang hanya ada `ffprobe`).
+  alternatif 24 jam. Pin kini bisa via **UI Konfigurasi → Node** (tanpa env/restart) —
+  dipilih **cuda:1** untuk soak.
+- **D2** — `ffmpeg`: sudah terpasang di gspe-ai3 (6.1.1) — selesai tanpa pemasangan.
 
 **Temuan audit yang membentuk plan (2026-09-15):**
 

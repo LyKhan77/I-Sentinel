@@ -2,6 +2,22 @@
 
 Sistem surveillance AI: FastAPI backend + vision-node + frontend.
 
+## Arsitektur
+
+```
+Browser (LAN)
+   │  :5173 (Vite dev — isentinel-web.service)
+   ▼
+API FastAPI :8000 ──── Postgres (isentinel) ─── go2rtc :1984 (API/snapshot, proxy same-origin)
+   ▲  ▲                                    └── go2rtc :8554 RTSP (LAN, tertutup firewall)
+   │  └── MQTT Mosquitto :1883 ◄── vision-node (heartbeat + event + config push + LWT)
+   └──── blob upload (clip/snapshot/crop) ─── vision-node (YOLO26s TensorRT + ByteTrack)
+```
+
+- Port terbuka di LAN: **8000** (API), **5173** (UI dev). go2rtc 1984/8554 hanya
+  localhost/LAN-internal — snapshot browser lewat proxy API (auth-gated).
+- Vision node: satu worker per kamera; detektor pin GPU via UI (Konfigurasi → Node).
+
 ## Peta Folder
 
 ```
@@ -106,10 +122,10 @@ Aturan yang perlu diketahui:
 
 Detail migrasi skema: `docs/runbooks/camera-management-migration.md`.
 
-Catatan: unit systemd di `deploy/systemd/` masih memakai `/opt/isentinel` +
-`User=isentinel`, sedangkan yang berjalan di `gspe-ai3` memakai
-`/home/gspe-ai3/project_cv/I-Sentinel` + `User=gspe-ai3`. Rekonsiliasi = Fase 5
-Task 12 (`docs/plans/06-fase-5-hardening.md`). `sudo` tanpa password tidak
-tersedia di server, jadi restart service dilakukan lewat
+Prosedur operasional (restart, backup, tambah kamera, pin GPU, troubleshooting,
+load test): lihat **`docs/RUNBOOK.md`**. Unit systemd di `deploy/systemd/` kini
+sudah direkonsiliasi dengan yang berjalan di `gspe-ai3` (Fase 5 Task 12):
+`User=gspe-ai3` + path `/home/gspe-ai3/project_cv/I-Sentinel`. `sudo` tanpa
+password tidak tersedia di server, jadi restart service dilakukan lewat
 `kill $(cat /sys/fs/cgroup/system.slice/<unit>.service/cgroup.procs)` (unit
 memakai `Restart=always`).
