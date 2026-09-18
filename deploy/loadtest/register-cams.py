@@ -51,7 +51,7 @@ def add(n):
         _req("/api/v1/cameras", "POST", {
             "name": name,
             "location": "LOADTEST",
-            "host": "127.0.0.1",
+            "host": "127.0.0.1:8554",  # port wajib: pull kembali dari go2rtc sendiri
             "rtsp_sub": f"/synth_{i}",
             "node_id": node_id,
         }, cookie=cookie)
