@@ -30,7 +30,18 @@ export type Camera = {
   probe_sub: ProbeStream | null
 }
 
-export type CameraNode = { id: number; name: string; type: string; status: string }
+export type GpuProcess = { pid: number; name: string; user: string | null; mem_mb: number | null }
+export type GpuInfo = {
+  idx: number
+  name: string
+  vram_used_mb: number | null
+  vram_total_mb: number | null
+  util_pct: number | null
+  processes: GpuProcess[]
+}
+export type NodeHw = { gpus: GpuInfo[]; python_vram_mb?: number | null }
+export type NodeModules = { detector?: { device: string; model: string; ms_per_frame?: number | null } }
+export type CameraNode = { id: number; name: string; type: string; status: string; hw?: NodeHw | null; modules?: NodeModules | null }
 
 export type ProbeResult = {
   main: ProbeStream | null

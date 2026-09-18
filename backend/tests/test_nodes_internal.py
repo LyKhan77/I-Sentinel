@@ -78,3 +78,13 @@ def test_nodes_list_runs_sweeper(client, db):
     rows = client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {tok}"}).json()
     old = next(n for n in rows if n["name"] == "old-node")
     assert old["status"] == "offline"
+
+
+def test_nodes_list_returns_hw(client, db):
+    from app.models.node import Node
+    db.add(Node(name="vision-1", status="online", hw={"gpus": [{"idx": 0, "name": "RTX 4090"}]}))
+    db.commit()
+    tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
+    rows = client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {tok}"}).json()
+    row = next(n for n in rows if n["name"] == "vision-1")
+    assert row["hw"]["gpus"][0]["name"] == "RTX 4090"

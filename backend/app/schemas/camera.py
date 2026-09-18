@@ -37,6 +37,8 @@ class NodeOut(BaseModel):
     name: str
     type: str
     status: str
+    hw: dict | None = None
+    modules: dict | None = None
 
     model_config = {"from_attributes": True}
 

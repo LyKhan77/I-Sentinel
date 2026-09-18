@@ -14,6 +14,7 @@ from .analyzers import ANALYZERS
 from .analyzers.base import Analyzer
 from .analyzers.face_gate import crop_upper_body
 from .config import CameraCfg, NodeSettings
+from . import hardware
 from .pipeline.detector import PersonDetector
 from .pipeline.source import FrameSource
 from .pipeline.tracker import ByteTracker
@@ -231,7 +232,8 @@ class VisionNode:
         self.cfg = cfg or NodeSettings()
         self.detector_factory = detector_factory or (
             lambda cam_id: PersonDetector(self.cfg.detector_model, nms=self.cfg.detector_nms,
-                                          conf=self.cfg.detector_conf, imgsz=self.cfg.detector_imgsz)
+                                          conf=self.cfg.detector_conf, imgsz=self.cfg.detector_imgsz,
+                                          device=self.cfg.detector_device)
         )
         self.source_factory = source_factory or (
             lambda cam: FrameSource(cam.source_url, cam.ai_fps)
@@ -305,7 +307,8 @@ class VisionNode:
             if self._default_detector:
                 s = self._detector_settings
                 self.detector_factory = lambda cam_id: PersonDetector(
-                    s["model"], nms=s["nms"], conf=s["conf"], imgsz=s["imgsz"]
+                    s["model"], nms=s["nms"], conf=s["conf"], imgsz=s["imgsz"],
+                    device=self.cfg.detector_device
                 )
         self._start_workers(self._cameras_from_config(cfg_dict))
 
@@ -337,6 +340,11 @@ class VisionNode:
         return stopped
 
     def run(self, join_timeout: float = 5.0):
+        # fail-fast: device pin tidak valid -> jangan mulai deteksi di GPU salah
+        err = hardware.validate_device_pin(self.cfg.detector_device)
+        if err:
+            log.error("%s", err)
+            raise SystemExit(1)
         if threading.current_thread() is threading.main_thread():
             for sig in (signal.SIGINT, signal.SIGTERM):
                 signal.signal(sig, self._signal)
@@ -367,6 +375,15 @@ class VisionNode:
     def _signal(self, signum, frame):
         self.stop_event.set()
 
+    def _detector_module_info(self) -> dict:
+        """modules.detector payload: device pin, model name, ms/frame measurement."""
+        model = getattr(self, "_detector_settings", {}).get("model") or self.cfg.detector_model
+        ms = None
+        if self._default_detector and PersonDetector.detect_n:
+            ms = round(PersonDetector.detect_ms_total / PersonDetector.detect_n, 1)
+        return {"device": self.cfg.detector_device or "auto",
+                "model": os.path.basename(model), "ms_per_frame": ms}
+
     def _heartbeat_loop(self):
         while not self.stop_event.is_set():
             cam_ids = [w.camera_cfg.camera_id for w in getattr(self, "_workers", [])]
@@ -374,9 +391,13 @@ class VisionNode:
                 cpu = os.getloadavg()[0]
             except (AttributeError, OSError):
                 cpu = None
-            self.transport.publish_heartbeat(
-                {"ts": _iso(time.time()), "cpu_percent": cpu, "gpu_mem": None, "cameras": cam_ids}
-            )
+            hb = {"ts": _iso(time.time()), "cpu_percent": cpu, "gpu_mem": None,
+                  "cameras": cam_ids}
+            hw = hardware.collect_gpu_info()
+            if hw:
+                hb["hw"] = hw
+            hb["modules"] = {"detector": self._detector_module_info()}
+            self.transport.publish_heartbeat(hb)
             self.stop_event.wait(self.cfg.heartbeat_s)
 
 

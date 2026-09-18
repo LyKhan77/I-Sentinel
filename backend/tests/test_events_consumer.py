@@ -68,3 +68,36 @@ def test_duplicate_event_id_no_error_no_double_row(db, broadcast):
     handle_message(db, "isentinel/events", payload)
     handle_message(db, "isentinel/events", payload)
     assert db.query(ec.Event).count() == 1
+
+
+def test_heartbeat_saves_hw_and_modules(db, broadcast):
+    db.add(Node(name="vision-1"))
+    db.commit()
+    hb = {"ts": datetime.now(timezone.utc).isoformat(), "cpu_percent": 5.0,
+          "cameras": [1, 2],
+          "hw": {"gpus": [{"idx": 0, "name": "RTX 4090", "vram_used_mb": 900,
+                           "vram_total_mb": 24564, "util_pct": 10, "processes": []}]},
+          "modules": {"detector": {"device": "cuda:0", "model": "yolo26s.engine"}}}
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps(hb).encode())
+    node = db.query(Node).filter_by(name="vision-1").one()
+    assert node.hw["gpus"][0]["name"] == "RTX 4090"
+    assert node.modules["detector"]["device"] == "cuda:0"
+
+
+def test_heartbeat_without_hw_backward_compatible(db, broadcast):
+    db.add(Node(name="vision-1"))
+    db.commit()
+    hb = {"ts": datetime.now(timezone.utc).isoformat(), "cpu_percent": 5.0, "cameras": []}
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps(hb).encode())
+    node = db.query(Node).filter_by(name="vision-1").one()
+    assert node.status == "online"
+    assert node.hw is None and node.modules is None
+
+
+def test_heartbeat_bad_hw_shape_ignored(db, broadcast):
+    db.add(Node(name="vision-1"))
+    db.commit()
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat",
+                   json.dumps({"ts": "x", "hw": "junk"}).encode())
+    node = db.query(Node).filter_by(name="vision-1").one()
+    assert node.hw is None and node.status == "online"

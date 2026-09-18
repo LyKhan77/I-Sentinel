@@ -1,12 +1,79 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Camera, Network_4, WarningAlt } from '@carbon/icons-react'
-import { SkeletonText, Tile, InlineNotification } from '@carbon/react'
+import { SkeletonText, Tile, InlineNotification, Tag } from '@carbon/react'
 import { useT } from '../../app/i18n'
-import { listCameras, listNodes, type Camera as CameraRow, type CameraNode } from '../../api/cameras'
+import {
+  listCameras,
+  listNodes,
+  type Camera as CameraRow,
+  type CameraNode,
+  type NodeHw,
+  type NodeModules,
+} from '../../api/cameras'
 import { eventStats, listEvents, type EventOut, type EventStats } from '../../api/events'
 
 // warna dot severity, konsisten dgn mockup: merah critical, kuning warning, abu info/low
 const SEV_COLOR: Record<string, string> = { critical: '#fa4d56', warning: '#f1c21b' }
+
+function DetectorBadge({ modules }: { modules: NodeModules | null | undefined }) {
+  const { t } = useT()
+  const det = modules?.detector
+  if (!det) return null
+  const pinned = !!det.device && det.device !== 'auto'
+  return (
+    <Tag size="sm" type={pinned ? 'green' : 'cool-gray'} title={pinned ? det.device : t('dash.notPinned')}>
+      {t('dash.detector')}: {pinned ? `${t('dash.pinned')} ${det.device}` : t('dash.auto')}
+    </Tag>
+  )
+}
+
+function NodeCard({ node }: { node: CameraNode }) {
+  const { t } = useT()
+  const hw: NodeHw | null | undefined = node.hw
+  const online = node.status === 'online'
+  return (
+    <Tile style={{ background: '#262626' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ color: online ? '#42be65' : '#fa4d56' }}>●</span>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{node.name}</span>
+        <span style={{ fontSize: 12, color: '#8d8d8d' }}>{node.type}</span>
+        <span style={{ marginLeft: 'auto' }}>
+          <DetectorBadge modules={node.modules} />
+        </span>
+      </div>
+      {hw?.gpus?.length ? (
+        hw.gpus.map((g) => (
+          <div
+            key={g.idx}
+            style={{
+              marginTop: 10,
+              padding: '8px 10px',
+              border: '1px solid #393939',
+              background: '#161616',
+              fontSize: 12,
+              color: '#c6c6c6',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600, color: '#f4f4f4' }}>GPU{g.idx}</span>
+              <span>{g.name}</span>
+              <span style={{ marginLeft: 'auto', color: '#8d8d8d' }}>
+                {t('dash.vram')} {g.vram_used_mb}/{g.vram_total_mb} MB · {g.util_pct}%
+              </span>
+            </div>
+            {g.processes.length > 0 && (
+              <div style={{ marginTop: 4, color: '#8d8d8d' }}>
+                {g.processes.map((p) => `pid ${p.pid} ${p.name}${p.mem_mb ? ` ${p.mem_mb} MB` : ''}`).join(' · ')}
+              </div>
+            )}
+          </div>
+        ))
+      ) : (
+        <p style={{ fontSize: 12, color: '#8d8d8d', marginTop: 8 }}>{t('dash.noGpuInfo')}</p>
+      )}
+    </Tile>
+  )
+}
 
 function TileStat({
   icon,
@@ -45,7 +112,7 @@ export default function DashboardPage() {
   const { t } = useT()
   const [loading, setLoading] = useState(true)
   const [cams, setCams] = useState<{ total: number; online: number }>({ total: 0, online: 0 })
-  const [nodes, setNodes] = useState<{ total: number; online: number }>({ total: 0, online: 0 })
+  const [nodes, setNodes] = useState<CameraNode[]>([])
   const [stats, setStats] = useState<EventStats | null>(null)
   const [latest, setLatest] = useState<EventOut[]>([])
   const [loadFailed, setLoadFailed] = useState(false)
@@ -71,7 +138,7 @@ export default function DashboardPage() {
     setLoadFailed(bad)
     const camOnline = camsL.filter((c) => c.status === 'online').length
     setCams({ total: camsL.length, online: camOnline })
-    setNodes({ total: nodesL.length, online: nodesL.filter((n) => n.status === 'online').length })
+    setNodes(nodesL)
     setStats(statsL)
     setLatest(latestL)
     setLoading(false)
@@ -125,12 +192,12 @@ export default function DashboardPage() {
           loading={loading}
           icon={<Network_4 size={16} />}
           label={t('dash.nodes')}
-          value={`${nodes.online}/${nodes.total}`}
+          value={`${nodes.filter((n) => n.status === 'online').length}/${nodes.length}`}
           sub={
-            nodes.total > 0 ? (
+            nodes.length > 0 ? (
               <>
-                <span style={{ color: nodes.online === nodes.total ? '#42be65' : '#f1c21b' }}>●</span>{' '}
-                {nodes.online}/{nodes.total} {t('dash.online')}
+                <span style={{ color: nodes.every((n) => n.status === 'online') ? '#42be65' : '#f1c21b' }}>●</span>{' '}
+                {nodes.filter((n) => n.status === 'online').length}/{nodes.length} {t('dash.online')}
               </>
             ) : (
               t('dash.noNodes')
@@ -138,6 +205,17 @@ export default function DashboardPage() {
           }
         />
       </div>
+
+      {nodes.length > 0 && (
+        <>
+          <h3 style={{ fontSize: 16, fontWeight: 600, margin: '32px 0 12px' }}>{t('dash.nodeHw')}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 8 }}>
+            {nodes.map((n) => (
+              <NodeCard key={n.id} node={n} />
+            ))}
+          </div>
+        </>
+      )}
 
       <h3 style={{ fontSize: 16, fontWeight: 600, margin: '32px 0 12px' }}>{t('dash.latestAlerts')}</h3>
       {loadFailed && (

@@ -32,6 +32,7 @@ class NodeSettings(BaseSettings):
     go2rtc_url: str = "http://localhost:1984"
     record_clip_s: int = 30
     log_level: str = "INFO"
+    detector_device: str = ""  # ""=auto; "cuda:N" pin (Task 9, fail-fast if invalid)
     cameras_json: str = ""  # JSON: [{"camera_id": int, "source_url": str, "ai_fps": float}]
 
     model_config = SettingsConfigDict(env_prefix="VISION_", env_file=".env", extra="ignore")

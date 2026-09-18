@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import String, DateTime
+from sqlalchemy import JSON, String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 
@@ -20,4 +20,7 @@ class Node(Base):
     type: Mapped[str] = mapped_column(String(8), default="edge")
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(8), default="unknown")
+    # hardware probe dari heartbeat vision: {gpus: [...], python_vram_mb} + modules
+    hw: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    modules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

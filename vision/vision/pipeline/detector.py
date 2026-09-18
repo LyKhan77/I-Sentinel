@@ -1,6 +1,7 @@
 """Person detector interface: Ultralytics YOLO behind lazy import + test mock."""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -17,13 +18,19 @@ class PersonDetector:
 
     ultralytics is imported lazily on first detect() call — install the
     `gpu` extra to use it. Model loading happens on first detect().
+    Class-level detect_ms_total/detect_n feed the heartbeat ms_per_frame.
     """
 
-    def __init__(self, model_path: str, nms: bool = False, conf: float = 0.4, imgsz: int = 640):
+    detect_ms_total = 0.0
+    detect_n = 0
+
+    def __init__(self, model_path: str, nms: bool = False, conf: float = 0.4, imgsz: int = 640,
+                 device: str = ""):
         self.model_path = model_path
         self.nms = nms
         self.conf = conf
         self.imgsz = imgsz
+        self.device = device  # ""=auto; "cuda:N" forwarded to predict
         self._model = None
 
     def _load(self):
@@ -38,9 +45,14 @@ class PersonDetector:
     def detect(self, frame: np.ndarray, ts: float = 0.0) -> list[Detection]:
         if self._model is None:
             self._load()
+        kwargs = {"device": self.device} if self.device else {}
+        t0 = time.perf_counter()
         results = self._model.predict(
-            frame, conf=self.conf, iou=0.7 if self.nms else 0.0, imgsz=self.imgsz, verbose=False
+            frame, conf=self.conf, iou=0.7 if self.nms else 0.0, imgsz=self.imgsz,
+            verbose=False, **kwargs
         )
+        PersonDetector.detect_ms_total += (time.perf_counter() - t0) * 1000
+        PersonDetector.detect_n += 1
         out: list[Detection] = []
         for r in results:
             h, w = r.orig_shape

@@ -70,6 +70,10 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 return
             node.status = "online"
             node.last_seen = datetime.now(timezone.utc)
+            if isinstance(data.get("hw"), dict):
+                node.hw = data["hw"]
+            if isinstance(data.get("modules"), dict):
+                node.modules = data["modules"]
             db.commit()
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/lwt"):
             name = topic.split("/")[2]
