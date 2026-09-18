@@ -1638,7 +1638,7 @@ git commit -m "test: 32-stream soak harness + laporan metrik"
 
 **Interfaces:** tidak ada kode; ini yang membuat sistem bisa dioperasikan orang lain.
 
-- [ ] **Step 1: Rekonsiliasi unit systemd dengan yang AKTUAL**
+- [ ] **Step 1: Rekonsiliasi unit systemd dengan yang AKTUAL** — SELESAI 2026-09-18: repo unit = aktual (User=gspe-ai3, project_cv path, isentinel-vision, + isentinel-web.service baru; retention sudah cocok; recorder stub dicatat di RUNBOOK §7).
 
 Repo dan server berbeda (P5). Samakan ke yang aktual supaya `deploy/` bisa dipakai ulang:
 
@@ -1649,7 +1649,7 @@ Lalu ubah file di `deploy/systemd/` agar cocok — termasuk mengganti `User=isen
 `User=gspe-ai3`, `/opt/isentinel` → `/home/gspe-ai3/project_cv/I-Sentinel`, dan
 `isentinel-venv/bin/vision-node` → `vision-venv/bin/isentinel-vision`.
 
-- [ ] **Step 2: Tulis RUNBOOK**
+- [ ] **Step 2: Tulis RUNBOOK** — SELESAI 2026-09-18: docs/RUNBOOK.md (7 bagian + alert/JWT/retensi).
 
 `docs/RUNBOOK.md` wajib memuat, dengan perintah yang **sudah diverifikasi jalan**:
 
@@ -1664,7 +1664,7 @@ Lalu ubah file di `deploy/systemd/` agar cocok — termasuk mengganti `User=isen
 6. **Rotasi JWT secret** — prosedur + efek (semua sesi mati).
 7. **Retensi** — jadwal timer, cara menjalankan manual, cara membaca hasil sweep.
 
-- [ ] **Step 3: Diagram arsitektur final**
+- [ ] **Step 3: Diagram arsitektur final** — SELESAI 2026-09-18: diagram ASCII di README.md §Arsitektur.
 
 Tambahkan diagram ASCII ke `README.md`: browser → Vite :5173 → API :8000 → Postgres,
 go2rtc :1984/:8554 (tertutup firewall, snapshot lewat proxy API), Mosquitto :1883,

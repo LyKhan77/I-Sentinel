@@ -6,7 +6,8 @@ After=network.target isentinel-api.service
 User=gspe-ai3
 WorkingDirectory=/home/gspe-ai3/project_cv/I-Sentinel
 EnvironmentFile=/home/gspe-ai3/project_cv/I-Sentinel/.env
-ExecStart=/home/gspe-ai3/isentinel-venv/bin/vision-node
+EnvironmentFile=/home/gspe-ai3/project_cv/I-Sentinel/vision.env
+ExecStart=/home/gspe-ai3/vision-venv/bin/isentinel-vision
 Restart=always
 
 [Install]
