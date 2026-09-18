@@ -196,3 +196,69 @@ test('Gate draw action selects the Zones tab in the same workbench', async () =>
   expect(screen.getByTestId('location')).toHaveTextContent('?tab=zones')
   expect(await screen.findByTestId('zone-draw-start')).toBeInTheDocument()
 })
+
+const NODES = [
+  {
+    id: 1,
+    name: 'server',
+    type: 'server',
+    status: 'online',
+    detector_device: 'cuda:1',
+    hw: {
+      gpus: [
+        { idx: 0, name: 'NVIDIA GeForce RTX 4090', vram_used_mb: 9000, vram_total_mb: 24564, util_pct: 12, processes: [] },
+        { idx: 1, name: 'NVIDIA GeForce RTX 5080', vram_used_mb: 262, vram_total_mb: 16303, util_pct: 35, processes: [] },
+      ],
+    },
+  },
+]
+
+test('Nodes tab lists nodes with GPU dropdown and saves detector device', async () => {
+  const user = userEvent.setup()
+  const calls: Call[] = []
+  const resp = (status: number, body: unknown) => ({ ok: status < 400, status, json: () => Promise.resolve(body) })
+  let nodeDevice = 'cuda:1'
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      calls.push({ url: u, init })
+      if (u.endsWith('/auth/me')) return resp(200, ME)
+      if (u.endsWith('/nodes')) return resp(200, NODES.map((n) => ({ ...n, detector_device: nodeDevice })))
+      if (u.endsWith('/nodes/1/detector-device')) {
+        nodeDevice = JSON.parse(init?.body as string).device
+        return resp(200, { ...NODES[0], detector_device: nodeDevice })
+      }
+      return resp(404, null)
+    }),
+  )
+  renderConfiguration('/configuration?tab=nodes')
+
+  // dropdown terisi dari DB + opsi GPU dari heartbeat hw
+  expect(await screen.findByText('Device detektor (GPU)')).toBeInTheDocument()
+  expect(screen.getByText(/cuda:1 — NVIDIA GeForce RTX 5080/)).toBeInTheDocument()
+
+  // simpan pin baru
+  await user.selectOptions(screen.getByLabelText('Device detektor (GPU)'), 'cuda:0')
+  await user.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Tersimpan, node hot-reload')
+  const put = calls.find((c) => c.url.endsWith('/nodes/1/detector-device'))
+  expect(put?.init?.method).toBe('PUT')
+  expect(JSON.parse(put?.init?.body as string)).toEqual({ device: 'cuda:0' })
+})
+
+test('Nodes tab shows fallback when node has no hw heartbeat', async () => {
+  const resp = (status: number, body: unknown) => ({ ok: status < 400, status, json: () => Promise.resolve(body) })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.endsWith('/auth/me')) return resp(200, ME)
+      if (u.endsWith('/nodes')) return resp(200, [{ id: 2, name: 'edge-1', type: 'edge', status: 'online' }])
+      return resp(404, null)
+    }),
+  )
+  renderConfiguration('/configuration?tab=nodes')
+  expect(await screen.findByText('edge-1')).toBeInTheDocument()
+  expect(screen.getByText('Belum ada data GPU dari heartbeat node — hanya Auto tersedia')).toBeInTheDocument()
+})

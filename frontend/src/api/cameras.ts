@@ -41,7 +41,15 @@ export type GpuInfo = {
 }
 export type NodeHw = { gpus: GpuInfo[]; python_vram_mb?: number | null }
 export type NodeModules = { detector?: { device: string; model: string; ms_per_frame?: number | null } }
-export type CameraNode = { id: number; name: string; type: string; status: string; hw?: NodeHw | null; modules?: NodeModules | null }
+export type CameraNode = {
+  id: number
+  name: string
+  type: string
+  status: string
+  hw?: NodeHw | null
+  modules?: NodeModules | null
+  detector_device?: string | null
+}
 
 export type ProbeResult = {
   main: ProbeStream | null
@@ -175,4 +183,12 @@ export async function scanCamera(host: string): Promise<{ streams: ScanChannel[]
 export async function listNodes(): Promise<CameraNode[]> {
   const res = await apiFetch('/nodes')
   return expectOk(res, 'list nodes')
+}
+
+export async function setNodeDetectorDevice(nodeId: number, device: string): Promise<CameraNode> {
+  const res = await apiFetch(`/nodes/${nodeId}/detector-device`, {
+    method: 'PUT',
+    body: JSON.stringify({ device }),
+  })
+  return expectOk(res, 'set detector device')
 }

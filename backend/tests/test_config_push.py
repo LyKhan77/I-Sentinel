@@ -44,6 +44,7 @@ def test_build_node_config_server_includes_active_cam_and_zones_excludes_disable
         "nms": settings.detector_nms,
         "conf": settings.detector_conf,
         "imgsz": settings.detector_imgsz,
+        "device": "",
     }
     assert len(cfg["cameras"]) == 1
     cam = cfg["cameras"][0]
@@ -159,3 +160,23 @@ def test_republish_all_iterates_nodes(db, fake_mqtt):
     assert config_push.republish_all(db) is True
     topics = [c.published[0][0] for c in fake_mqtt.calls for _ in c.published]
     assert topics == ["isentinel/config/n1", "isentinel/config/n2"]
+
+
+def test_build_node_config_includes_detector_device(db):
+    from app.models.node import Node
+    from app.services.config_push import build_node_config
+    node = Node(name="n1", detector_device="cuda:1")
+    db.add(node)
+    db.commit()
+    cfg = build_node_config(db, node)
+    assert cfg["detector"]["device"] == "cuda:1"
+
+
+def test_build_node_config_device_empty_when_unset(db):
+    from app.models.node import Node
+    from app.services.config_push import build_node_config
+    node = Node(name="n1")
+    db.add(node)
+    db.commit()
+    cfg = build_node_config(db, node)
+    assert cfg["detector"]["device"] == ""

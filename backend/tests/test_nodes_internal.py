@@ -88,3 +88,62 @@ def test_nodes_list_returns_hw(client, db):
     rows = client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {tok}"}).json()
     row = next(n for n in rows if n["name"] == "vision-1")
     assert row["hw"]["gpus"][0]["name"] == "RTX 4090"
+
+
+def _admin_tok(client):
+    return client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
+
+
+def test_nodes_api_get_returns_detector_device(client, db):
+    from app.models.node import Node
+    db.add(Node(name="n1", detector_device="cuda:1"))
+    db.commit()
+    tok = _admin_tok(client)
+    rows = client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert next(n for n in rows if n["name"] == "n1")["detector_device"] == "cuda:1"
+
+
+def test_nodes_api_put_detector_device_roundtrip(client, db):
+    from app.models.node import Node
+    db.add(Node(name="n1"))
+    db.commit()
+    tok = _admin_tok(client)
+    r = client.put("/api/v1/nodes/1/detector-device", json={"device": "cuda:1"},
+                   headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    db.expire_all()
+    assert db.get(Node, 1).detector_device == "cuda:1"
+    rows = client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert rows[0]["detector_device"] == "cuda:1"
+
+
+def test_nodes_api_put_detector_device_rejects_invalid(client, db):
+    from app.models.node import Node
+    db.add(Node(name="n1"))
+    db.commit()
+    tok = _admin_tok(client)
+    r = client.put("/api/v1/nodes/1/detector-device", json={"device": "notcuda"},
+                   headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 422
+    # hw tersedia (1 GPU): cuda:0 OK, cuda:1 ditolak (idx >= count)
+    n1 = db.get(Node, 1)
+    n1.hw = {"gpus": [{"idx": 0, "name": "RTX 4090"}]}
+    db.commit()
+    r = client.put("/api/v1/nodes/1/detector-device", json={"device": "cuda:0"},
+                   headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    r = client.put("/api/v1/nodes/1/detector-device", json={"device": "cuda:1"},
+                   headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 422
+
+
+def test_nodes_api_put_detector_device_clears_to_auto(client, db):
+    from app.models.node import Node
+    db.add(Node(name="n1", detector_device="cuda:1"))
+    db.commit()
+    tok = _admin_tok(client)
+    r = client.put("/api/v1/nodes/1/detector-device", json={"device": ""},
+                   headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    db.expire_all()
+    assert db.get(Node, 1).detector_device in (None, "")

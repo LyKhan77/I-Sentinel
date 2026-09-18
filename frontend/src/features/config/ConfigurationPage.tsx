@@ -5,8 +5,9 @@ import CamerasPage from './CamerasPage'
 import ZonesPage from './ZonesPage'
 import GatesPage from './GatesPage'
 import StoragePage from './StoragePage'
+import NodesPanel from './NodesPanel'
 
-const TABS = ['cameras', 'zones', 'gates', 'storage'] as const
+const TABS = ['cameras', 'zones', 'gates', 'storage', 'nodes'] as const
 type ConfigurationTab = (typeof TABS)[number]
 
 const TAB_LABEL: Record<ConfigurationTab, TKey> = {
@@ -14,6 +15,7 @@ const TAB_LABEL: Record<ConfigurationTab, TKey> = {
   zones: 'zones.title',
   gates: 'gates.title',
   storage: 'storage.title',
+  nodes: 'configuration.tabNodes',
 }
 
 export default function ConfigurationPage() {
@@ -50,6 +52,7 @@ export default function ConfigurationPage() {
           <TabPanel>{tab === 'zones' && <ZonesPage />}</TabPanel>
           <TabPanel>{tab === 'gates' && <GatesPage />}</TabPanel>
           <TabPanel>{tab === 'storage' && <StoragePage />}</TabPanel>
+          <TabPanel>{tab === 'nodes' && <NodesPanel />}</TabPanel>
         </TabPanels>
       </Tabs>
     </div>

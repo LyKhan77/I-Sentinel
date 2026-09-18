@@ -302,6 +302,18 @@ class VisionNode:
                 "conf": det.get("conf", self.cfg.detector_conf),
                 "imgsz": det.get("imgsz", self.cfg.detector_imgsz),
             }
+            # device pin dari config push (UI/DB). ""/absen = tidak override
+            # (fallback env VISION_DETECTOR_DEVICE). Pin invalid -> reject config,
+            # tetap pakai device lama; node tetap hidup (beda dari fail-fast start).
+            dev = det.get("device")
+            if dev:
+                err = hardware.validate_device_pin(dev)
+                if err:
+                    log.error("config push rejected: %s", err)
+                else:
+                    self.cfg.detector_device = dev
+            else:
+                self.cfg.detector_device = self.cfg.detector_device
             # only rebuild the default factory; injected factories (tests, custom
             # deployments) stay as-is
             if self._default_detector:

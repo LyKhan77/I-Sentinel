@@ -22,6 +22,7 @@ def build_node_config(db: Session, node: Node) -> dict:
         "nms": settings.detector_nms,
         "conf": settings.detector_conf,
         "imgsz": settings.detector_imgsz,
+        "device": node.detector_device or "",  # "" = node pakai env/auto
     }
     cameras = []
     for cam in (
