@@ -17,7 +17,7 @@ start() {
   for i in $(seq 1 "$n"); do
     code=$(curl -s -X PUT -G "$GO2RTC_API/api/streams" \
       --data-urlencode "name=synth_$i" \
-      --data-urlencode "src=ffmpeg:$SYNTH_SRC#input=-stream_loop -1" \
+      --data-urlencode "src=ffmpeg:$SYNTH_SRC" \
       -o /dev/null -w '%{http_code}') || code="ERR"
     if [ "$code" = "200" ]; then created=$((created+1)); else echo "synth_$i -> $code"; fi
   done
