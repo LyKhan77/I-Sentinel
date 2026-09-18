@@ -1,6 +1,6 @@
 # UI Settings: GPU device delegasi per node (config push)
 
-Status: MENUNGGU — kerjakan setelah `feat/gpu-hardware-probe` di-merge.
+Status: SELESAI — dieksekusi di branch feat/gpu-device-settings-ui (2026-09-18).
 Tanggal: 2026-09-18. Keputusan user: opsi B, task terpisah (chat 2026-09-18).
 
 ## Tujuan

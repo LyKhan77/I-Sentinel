@@ -5,6 +5,29 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ## [Unreleased] — Live view streaming go2rtc
 
+### Detector device delegation via UI (Nodes tab) + hot-reload
+
+- Admin kini pin GPU detektor **per node via UI**: tab **Node** di
+  Konfigurasi — dropdown diisi dari heartbeat `hw` per node (Auto +
+  `cuda:N — <nama GPU>`), simpan → config push MQTT → node **hot-reload
+  tanpa restart**, badge Dashboard ikut berubah.
+- Backend: migration `0010` (`node.detector_device` string nullable),
+  `build_node_config()` kirim `detector.device`, API
+  `PUT /api/v1/nodes/{id}/detector-device` (admin; validasi format
+  `cuda:N` + cek jumlah GPU dari hw heartbeat; 422 bila invalid).
+- Prioritas device: **DB (config push) > env `VISION_DETECTOR_DEVICE` >
+  auto**; key `device` selalu ada di payload sehingga "" = auto eksplisit.
+- Vision `apply_config()`: pin invalid dari config push → **reject config +
+  log ERROR, node tetap hidup dengan device lama** (fail-fast exit tetap
+  hanya di start).
+- Keterbatasan hot-reload: inferensia pindah device seketika, tapi CUDA
+  context lama di GPU sebelumnya baru lepas saat proses node direstart.
+- Evidence: backend **262 passed**, vision **93 passed**, vitest **68**,
+  build OK; live: pin cuda:1 via API & UI → heartbeat `device: cuda:1`
+  tanpa restart vision; unpin → `auto`; invalid ditolak 422.
+  Screenshots: `docs/evidence/2026-09-18-nodes-tab-pin-cuda1.png`,
+  `nodes-tab-en.png`. Rollback: `git revert` + `alembic downgrade 0009`.
+
 ### GPU hardware probe per node + detector device pin (Task 9)
 
 - Vision node kini melaporkan hardware GPU lewat heartbeat MQTT: kolom `hw`
