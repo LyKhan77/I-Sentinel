@@ -39,11 +39,12 @@ def test_apply_config_invalid_device_rejected_keeps_old(fake_nvml):
     assert node.cfg.detector_device == "cuda:0"  # keep old, node alive
 
 
-def test_apply_config_empty_device_falls_back_to_env(fake_nvml):
+def test_apply_config_empty_device_means_auto(fake_nvml):
+    """Empty device dari config push = auto eksplisit (DB menang atas env)."""
     fake_nvml([("A", 0, 100, 0, [])])
     node = _node(detector_device_env="cuda:0")
     node.apply_config({"detector": {"device": ""}, "cameras": []})
-    assert node.cfg.detector_device == "cuda:0"
+    assert node.cfg.detector_device == ""
 
 
 def test_apply_config_without_device_key_keeps_env(fake_nvml):
