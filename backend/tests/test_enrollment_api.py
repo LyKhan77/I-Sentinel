@@ -274,7 +274,7 @@ def test_batch_upload_multi_files(client, db, monkeypatch, tmp_path):
         return [FaceResult(vector=[1.0, 0.0], det_score=0.9,
                            bbox=[10.0, 10.0, 100.0, 100.0], quality=0.9)]
 
-    monkeypatch.setattr(face.engine, "embed", _embed)
+    monkeypatch.setattr(FaceEngine, "embed", lambda self, path: _embed(path))
     r = client.post(f"/api/v1/employees/{e.id}/photos/batch", files=files, headers=h)
     assert r.status_code == 200
     res = r.json()["results"]
@@ -287,7 +287,7 @@ def test_batch_upload_stores_cropped_face(client, db, monkeypatch, tmp_path):
     """source_image_path mengarah ke file crop hasil SCRFD, bukan foto mentah."""
     h = _admin_headers(client)
     e = _employee(db)
-    monkeypatch.setattr(face.engine, "embed", _fake_embed_with_bbox())
+    monkeypatch.setattr(FaceEngine, "embed", lambda self, path: _fake_embed_with_bbox()(path))
     r = client.post(
         f"/api/v1/employees/{e.id}/photos/batch",
         files=[("files", ("p.jpg", _jpg_bytes(), "image/jpeg"))],
@@ -312,9 +312,9 @@ def test_batch_upload_duplicate_warns(client, db, monkeypatch, tmp_path):
     db.commit()
     monkeypatch.setattr(face, "gallery", FaceGallery())
     face.gallery.load(db)
-    monkeypatch.setattr(face.engine, "embed",
-                        lambda path: [FaceResult(vector=[1.0, 0.0], det_score=0.9,
-                                                 bbox=[10.0, 10.0, 100.0, 100.0], quality=0.9)])
+    monkeypatch.setattr(FaceEngine, "embed",
+                        lambda self, path: [FaceResult(vector=[1.0, 0.0], det_score=0.9,
+                                                       bbox=[10.0, 10.0, 100.0, 100.0], quality=0.9)])
     r = client.post(
         f"/api/v1/employees/{e1.id}/photos/batch",
         files=[("files", ("p.jpg", _jpg_bytes(), "image/jpeg"))],
