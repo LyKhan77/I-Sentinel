@@ -3,7 +3,61 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-## [Unreleased] — Live view streaming go2rtc
+## [0.7.0] — 2026-09-21 · Fase 5: GPU hardware probe + device delegation + soak
+
+### GPU hardware probe per node + detector device pin (Task 9)
+
+- Vision node kini melaporkan hardware GPU lewat heartbeat MQTT: kolom `hw`
+  (daftar GPU: nama, VRAM used/total, util %, **proses pemakai lintas user** via
+  NVML, `python_vram_mb`) dan `modules.detector` (device pin, model,
+  ms/frame). File baru `vision/vision/hardware.py` (pynvml, graceful fallback
+  `{}` tanpa NVIDIA — heartbeat tetap jalan). Dep baru: `pynvml`.
+- Task 9: `VISION_DETECTOR_DEVICE` (mis. `cuda:1`) — pin device detektor,
+  diteruskan ke `YOLO.predict`; **fail-fast** saat pin tidak valid (node exit
+  dengan log ERROR, bukan fallback senyap ke GPU lain).
+- Backend: migration `0009` (`node.hw`, `node.modules` JSON nullable,
+  expand-only), heartbeat consumer menyimpan keduanya, `GET /api/v1/nodes`
+  mengembalikan. Heartbeat lama tanpa `hw` tetap kompatibel.
+- Frontend: kartu **Perangkat node** di Dashboard — GPU chips + proses pemakai
+  + badge `Detektor: PIN cuda:N` / `AUTO`. i18n id+en.
+
+### Detector device delegation via UI (Nodes tab) + hot-reload (Task 9 lanjutan)
+
+- Tab **Node** di Konfigurasi: dropdown device per node — sumber dari heartbeat
+  `hw`; simpan → config push MQTT → node **hot-reload tanpa restart**.
+- Backend: migration `0010` (`node.detector_device`), API
+  `PUT /api/v1/nodes/{id}/detector-device` (admin, validasi `cuda:N` + cek hw).
+- Prioritas: **DB (config push) > env > auto**; key `device` selalu ada —
+  `""` = auto eksplisit. Pin invalid via config push → **reject config, node
+  tetap hidup** (beda dari fail-fast start).
+
+### Soak harness + laporan (Task 10–11)
+
+- `deploy/loadtest/`: `make-streams.sh` (32 stream via go2rtc API `ffmpeg:`
+  file source), `register-cams.py` (kamera SYNTH-01..N), `soak.sh` (sampler
+  30 s per-GPU + RSS), `soak-churn.sh` (remove+add 32).
+- Soak 2 jam + churn: **RSS delta 2.2% < 10% = tanpa leak**; GPU1 pinned
+  bersih; 0 detector error selama soak. Laporan:
+  `docs/evidence/fase-5/soak.md` (termasuk catatan jujur: p95 latensi event
+  tak terukur — 0 person di video sintetis).
+
+### RUNBOOK + rekonsiliasi unit (Task 12)
+
+- `docs/RUNBOOK.md` baru: restart/backup/kamera/pin GPU/troubleshooting/
+  alert/JWT/retensi/load test.
+- `deploy/systemd/` direkonsiliasi ke aktual (`User=gspe-ai3`, path
+  `project_cv`, `isentinel-vision`, + `isentinel-web.service`) — P5 tuntas.
+- Diagram arsitektur ASCII di README.
+
+### Perbaikan
+
+- Engine TensorRT tidak lintas-device: rebuild `yolo26s.engine` di device pin
+  (`CUDA_VISIBLE_DEVICES=1`, smoke 9.9 ms/frame) setelah runtime gagal memuat
+  engine lama (dibangun untuk compute 12.0).
+
+Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
+
+## [Unreleased] — Fase E: Edge Jetson
 
 ### Detector device delegation via UI (Nodes tab) + hot-reload
 
@@ -581,7 +635,7 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 - **CSV**: export (tanpa biometrik, anti-injection) + import upsert idempotent
 - **Vision**: face_gate crop dari MAINSTREAM (resolusi wajah) + upload blob; error isolation
 
-[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/LyKhan77/I-Sentinel/compare/v0.7.0...HEAD
 [0.5.5]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/LyKhan77/I-Sentinel/compare/v0.5.2...v0.5.3

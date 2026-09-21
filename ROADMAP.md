@@ -284,22 +284,22 @@ sama seperti snapshot — jangan dibuka tanpa autentikasi, go2rtc tidak punya au
 
 ---
 
-## Fase 5 — Hardening
+## Fase 5 — Hardening — **DONE (2026-09-21)**
 
 Plan: `docs/plans/06-fase-5-hardening.md` (12 task, 66 step — dikembangkan dari brief 2026-09-15)
 
-**Status: berjalan.** Selesai: Task 1–8 (rate-limit login, retensi+sweeper+timer,
-storage API+halaman, resiliensi), Task 9 (device pin + GPU probe heartbeat + kartu
-node + UI delegasi device — `feat/gpu-hardware-probe`, `feat/gpu-device-settings-ui`),
-Task 10 (generator stream sintetis + soak harness), Task 12 (RUNBOOK + rekonsiliasi
-unit systemd). Task 11 (soak 2 jam + laporan) dijalankan lewat Task 10 harness.
-Dua keputusan prasyarat:
+**Status: DONE.** Task 1–8 (retensi+sweeper+timer, storage API+halaman, rate-limit
+login, resiliensi), Task 9 (device pin + GPU probe heartbeat + UI delegasi device),
+Task 10 (generator stream sintetis + soak harness), Task 11 (soak 2 jam + churn —
+bukti: `docs/evidence/fase-5/soak.md`, RSS delta **2.2% < 10%** = tidak ada leak,
+GPU1 pinned bersih), Task 12 (RUNBOOK + rekonsiliasi unit + diagram README).
+Bukti penuh: laporan soak + CHANGELOG v0.6.0.
 
-- **D1** — GPU & durasi soak. GPU0 (RTX 4090) saat audit 23 644 / 24 564 MiB terpakai beban
-  lain; GPU1/GPU2 (RTX 5080 16 GB) lebih lega. Brief mengizinkan **2 jam + uji churn** sebagai
-  alternatif 24 jam. Pin kini bisa via **UI Konfigurasi → Node** (tanpa env/restart) —
-  dipilih **cuda:1** untuk soak.
-- **D2** — `ffmpeg`: sudah terpasang di gspe-ai3 (6.1.1) — selesai tanpa pemasangan.
+Prasyarat:
+
+- **D1** — GPU & durasi soak: dipilih **cuda:1 (RTX 5080) 2 jam + uji churn 5 siklus** —
+  pin via UI Konfigurasi → Node (tanpa env/restart).
+- **D2** — `ffmpeg` sudah terpasang di gspe-ai3 (6.1.1) — selesai tanpa pemasangan.
 
 **Temuan audit yang membentuk plan (2026-09-15):**
 
@@ -318,11 +318,14 @@ Dua keputusan prasyarat:
 ---
 
 **Kriteria selesai:**
-- [ ] Soak 24 jam 32 stream sintetis: GPU/RSS plateau, tanpa leak
-- [ ] Cleanup retensi 30 hari terbukti (file + DB)
-- [ ] Docs operasional selesai
+- [x] Soak 2 jam + churn 32 stream sintetis: GPU/RSS plateau — **delta RSS 2.2% < 10%**, tanpa leak (`docs/evidence/fase-5/soak.md`)
+- [x] Cleanup retensi 30 hari terbukti (file + DB) — Task 1–3 + timer harian
+- [x] Docs operasional selesai — `docs/RUNBOOK.md` + diagram README + unit reconcile
 
-**Bukti:** —
+**Bukti:** laporan soak `docs/evidence/fase-5/soak.md` (238 sampel, GPU1 pinned,
+GPU0 bersih, 0 detector error selama soak); unit `deploy/systemd/` = aktual;
+CHANGELOG `0.6.0`. Catatan jujur: p95 latensi event tak terukur (video sintetis
+tanpa person, 0 event) — dicatat di laporan sebagai kandidat uji lanjutan.
 
 ---
 

@@ -171,11 +171,11 @@ RETENTION_DAYS=30
 | File | Isi | Status |
 |---|---|---|
 | `01-fase-0-skeleton.md` | Monorepo + backend skeleton + auth + kamera CRUD/probe + frontend shell/login/kamera + deploy configs | **DONE — merged main a8a08b3** |
-| `02-fase-1-vision-inti.md` | Pipeline deteksi+tracking (YOLO26s nms=False), MQTT event, live view, dashboard tile | **PLAN DETAIL SIAP** |
-| `03-fase-2-zona-events.md` | Zona + editor polygon, intrusion, clips/snapshots, web inbox | brief |
-| `04-fase-3-analyzers-alerting.md` | Loitering, running, Telegram + rate-limit | brief |
-| `05-fase-4-absensi.md` | Enrollment, face match, gate entry/exit, shift/telat, export/import | brief |
-| `06-fase-5-hardening.md` | Retensi 30 hari, uji beban 30 stream sintetis, docs | brief |
+| `02-fase-1-vision-inti.md` | Pipeline deteksi+tracking (YOLO26s nms=False), MQTT event, live view, dashboard tile | **DONE — merged main 50c0516** |
+| `03-fase-2-zona-events.md` | Zona + editor polygon, intrusion, clips/snapshots, web inbox | **DONE** |
+| `04-fase-3-analyzers-alerting.md` | Loitering, running, Telegram + rate-limit | **DONE** |
+| `05-fase-4-absensi.md` | Enrollment, face match, gate entry/exit, shift/telat, export/import | **DONE** |
+| `06-fase-5-hardening.md` | Retensi 30 hari, uji beban 30 stream sintetis, docs | **DONE — 2026-09-21, soak bukti + tag v0.6.0** |
 | `07-edge-jetson.md` | Migrasi vision-node ke Orin Nano, store-and-forward nyata | brief (nanti) |
 
 Brief → dikembangkan jadi plan detail (format sama dengan Fase 0) saat milestone

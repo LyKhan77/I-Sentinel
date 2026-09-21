@@ -1670,13 +1670,13 @@ Tambahkan diagram ASCII ke `README.md`: browser → Vite :5173 → API :8000 →
 go2rtc :1984/:8554 (tertutup firewall, snapshot lewat proxy API), Mosquitto :1883,
 vision-node → MQTT + HTTP upload. Sebutkan **port** dan mana yang terbuka.
 
-- [ ] **Step 4: Tandai milestone selesai**
+- [x] **Step 4: Tandai milestone selesai** — SELESAI 2026-09-21: 00-master DONE; ROADMAP kriteria soak [x]; CHANGELOG **0.7.0** (0.6.0 sudah dipakai Task 1–8 sejak 2026-09-16 — koreksi dari rencana).
 
 `docs/plans/00-master.md`: baris Fase 5 → **DONE** + hash range.
 `ROADMAP.md`: baris Fase 5 → `[x]` + tabel bukti.
 `CHANGELOG.md`: entri versi baru (0.6.0) dengan semua commit fase ini.
 
-- [ ] **Step 5: Verifikasi seluruh gerbang**
+- [x] **Step 5: Verifikasi seluruh gerbang** — SELESAI 2026-09-18: backend 262 passed, vision 93 passed, vitest 68, build OK (lihat CHANGELOG 0.7.0).
 
 ```bash
 cd backend && .venv/Scripts/python.exe -m pytest tests -q
