@@ -57,6 +57,44 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 
+## [Unreleased] — R1 Testing & Refining (anotasi wajah, device split, enrollment)
+
+### Delegasi device per-analyzer (tab Node) + rebuild embedder
+
+- Delegasi GPU kini per-analyzer: **detector YOLO** dan **face recognition**
+  masing-masing punya pin sendiri. Backend: migration `0011` (`node.face_device`),
+  API `PUT /api/v1/nodes/{id}/face-device` (pola + validasi sama dengan
+  detector-device), config push kirim `face: {device}` berdampingan
+  `detector: {device}` — struktur map per-analyzer siap diperluas untuk
+  analyzer baru. Vision: device face dari config push menang atas env;
+  perubahan device → **FaceEmbedder di-rebuild** (provider onnxruntime ikut),
+  pin invalid → config ditolak, node tetap hidup.
+- UI tab Node: dua dropdown per node (Device detektor / Device face
+  recognition), i18n EN/ID; simpan hanya mengirim PUT untuk field yang berubah.
+
+### Anotasi wajah + identitas pada crop attendance
+
+- Vision node: bbox wajah (SCRFD) + label `face <det_score>` digambar pada
+  crop attendance **sebelum upload**; `payload.face_bbox` ikut di event.
+- Backend: setelah match sukses, crop di-overwrite dengan nama employee +
+  match_score (`app/services/annotate.py`, Pillow best-effort — gagal tidak
+  memblok attendance). Dep baru backend: `pillow`.
+
+### Enrollment multi-upload + auto-crop + gate
+
+- API baru `POST /employees/{id}/photos/batch` (≤5 foto): per-file hasil
+  `{ok, quality, reason, duplicate_of?}` — foto mentah tidak disimpan,
+  hanya hasil crop wajah (SCRFD bbox + margin 30%). Dup wajah employee lain
+  → warning cosine ≥ `FACE_DUP_WARN` (default 0.6, non-blocking).
+- UI Enrollment: input `multiple`, hasil per foto (ok/skor/duplikat/alasan
+  gagal), i18n EN/ID.
+
+### Operasional
+
+- Runbook baru `docs/runbooks/events-cleanup.md`; eksekusi 2026-09-21:
+  events 4491 → 5 (1 contoh per type dengan 2 media), blob disk terbersihkan.
+- Bukti: vision 108 test, backend 272, frontend 70, `npm run build` ok.
+
 ## [Unreleased] — Face embed at node (Opsi B)
 
 ### Face embedding pindah ke vision node — server hanya match gallery
