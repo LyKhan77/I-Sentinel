@@ -102,6 +102,7 @@ class CameraWorker(threading.Thread):
         self.analyzers = analyzers or []
         self.recorder = recorder
         self.emit_person_detect = emit_person_detect
+        self.face = None  # FaceEmbedder (Opsi B), di-set oleh VisionNode
         self.events: list[dict] = []  # test hook
         self.source = None
 
@@ -184,6 +185,11 @@ class CameraWorker(threading.Thread):
             return
         if path:
             payload["crop_path"] = path
+            if self.face is not None:
+                res = self.face.embed_jpeg(jpeg)
+                if res:
+                    payload["embedding"] = res["vector"]
+                    payload["face_quality"] = res["det_score"]
 
     def _mainstream_crop(self, bbox_norm) -> bytes | None:
         """Crop from the full-res main stream; None on any failure (caller falls back)."""
@@ -245,6 +251,11 @@ class VisionNode:
         self.stop_event = threading.Event()
         self._workers: list[CameraWorker] = []
         self.events: list[dict] = []  # test hook: all worker events
+        from .face import FaceEmbedder
+        self.face = (FaceEmbedder(self.cfg.face_model_dir
+                                  or os.path.join(self.cfg.data_dir, "faces_models"),
+                                  self.cfg.face_device)
+                     if self.cfg.face_embed else None)
 
     def _cameras_from_config(self, cfg_dict: dict) -> list[CameraCfg]:
         cams = []
@@ -334,6 +345,7 @@ class VisionNode:
                              threading.Event(), self.cfg.node_id,
                              analyzers=self._make_analyzers(cam), recorder=recorder,
                              emit_person_detect=self.cfg.emit_person_detect)
+            w.face = self.face
             w.source = self.source_factory(cam)
             w.start()
             self._workers.append(w)

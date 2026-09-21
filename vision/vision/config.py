@@ -33,6 +33,9 @@ class NodeSettings(BaseSettings):
     record_clip_s: int = 30
     log_level: str = "INFO"
     detector_device: str = ""  # ""=auto; "cuda:N" pin (Task 9, fail-fast if invalid)
+    face_embed: bool = True   # Opsi B: embed wajah di node; False = kirim crop saja
+    face_device: str = ""     # ""=auto, "cpu", "cuda:N"
+    face_model_dir: str = ""  # default: <data_dir>/faces_models
     cameras_json: str = ""  # JSON: [{"camera_id": int, "source_url": str, "ai_fps": float}]
 
     model_config = SettingsConfigDict(env_prefix="VISION_", env_file=".env", extra="ignore")
