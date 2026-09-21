@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     face_model_dir: str = "~/.isentinel/faces_models"
     face_match_threshold: float = 0.40
     face_min_quality: float = 0.5
+    face_dup_warn: float = 0.6  # warn enrollment bila cosine vs employee lain >= ini
     no_exit_grace_min: int = 60  # toleransi setelah jam shift usai sebelum status jadi no_exit
     # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)
 
