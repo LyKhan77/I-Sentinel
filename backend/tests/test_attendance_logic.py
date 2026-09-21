@@ -9,6 +9,7 @@ from app.models.event import Event
 from app.models.shift import Shift
 from app.services import attendance
 from app.services.attendance import LOCAL_TZ
+from app.core.config import settings
 from app.services.face import MatchResult
 
 MON = (2025, 1, 6)  # Senin — masuk workdays default
@@ -308,3 +309,47 @@ def test_handle_face_event_fallback_crop_without_embedding(db, monkeypatch):
     row = attendance.handle_face_event(db, ev)
     assert row is not None
     assert row.employee_id == e.id
+
+
+# --- R1: anotasi identitas pada crop setelah match ---------------------------
+
+def test_handle_face_event_annotates_crop(tmp_path, db, monkeypatch):
+    """Match sukses → file crop di-overwrite dengan nama + score (best-effort)."""
+    from PIL import Image
+    import numpy as np
+
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path))
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+
+    p = tmp_path / "crops" / "x.jpg"
+    p.parent.mkdir()
+    Image.new("RGB", (120, 120), (255, 255, 255)).save(p)
+    before = p.read_bytes()
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.9})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None
+    after = p.read_bytes()
+    assert after != before
+    img = Image.open(p)
+    assert img.size == (120, 120)
+
+
+def test_handle_face_event_annotation_failure_not_fatal(tmp_path, db, monkeypatch):
+    """Crop hilang/corrupt → attendance tetap jalan (anotasi best-effort)."""
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path))
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.9,
+                     "crop_path": "crops/nope.jpg"})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None

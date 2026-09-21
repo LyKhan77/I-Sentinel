@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
 from app.services import face
+from app.services.annotate import annotate_face_crop
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,12 @@ def handle_face_event(db, event) -> AttendanceEvent | None:
         res = face.match_vector(payload["embedding"], payload.get("face_quality"))
     else:
         res = face.match_crop(db, str(Path(settings.storage_root) / crop))
+    if res.employee_id is not None:
+        emp = db.get(Employee, res.employee_id)
+        if emp is not None:
+            annotate_face_crop(str(Path(settings.storage_root) / crop),
+                               emp.name, res.score or 0.0,
+                               payload.get("face_bbox"))
     if res.employee_id is None:
         payload["employee_id"] = None
         payload["match_reason"] = res.reason
