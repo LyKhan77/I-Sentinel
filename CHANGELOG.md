@@ -57,6 +57,33 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 
+## [Unreleased] — Face embed at node (Opsi B)
+
+### Face embedding pindah ke vision node — server hanya match gallery
+
+- **Delegasi wajah per-node**: vision node kini embed wajah sendiri (InsightFace
+  SCRFD + ArcFace `buffalo_l`) dari crop yang sudah di-produksi face gate, lalu
+  event MQTT attendance membawa `embedding` (512-d L2-normed) + `face_quality`
+  (det_score). Backend tidak lagi menjalankan inferensi wajah untuk match —
+  cukup cosine vs gallery terpusat (`match_vector`). Gallery tetap di server:
+  enroll baru langsung efektif tanpa sentuh edge (kriteria Fase E tetap terpenuhi).
+- Kompatibel mundur dua arah: payload tanpa `embedding` → backend embed crop
+  seperti sebelumnya (`match_crop`); node tanpa insightface → kirim crop saja.
+- File: `vision/vision/face.py` (FaceEmbedder, lazy import + cache gagal),
+  wiring `vision/vision/node.py` (`_attach_crop` menempel embedding, embedder
+  dibuat sekali per node dan dibagikan ke worker), config node
+  `VISION_FACE_EMBED` (default true), `VISION_FACE_DEVICE` (""/cpu/cuda:N),
+  `VISION_FACE_MODEL_DIR` (default `<data_dir>/faces_models`). Backend:
+  `match_vector()` di `app/services/face.py`, cabang embedding di
+  `handle_face_event` (`app/services/attendance.py`). Extra paket vision:
+  `face = [insightface>=0.7, onnxruntime-gpu>=1.19]`.
+- Bukti: vision 98→104 test (`tests/test_face_embed.py` 5, `tests/test_node_face_embed.py` 6), backend 16 test attendance logic baru (embedding match,
+  low_quality reject, fallback crop), full suite backend 265 passed.
+- Deploy server: `pip install -e "./vision[face]"` di venv, `VISION_FACE_MODEL_DIR`
+  mengarah ke `faces_models` di STORAGE_ROOT, restart `isentinel-vision`.
+- Rollback: `VISION_FACE_EMBED=false` + restart node (kembali kirim crop saja);
+  backend menerima kedua bentuk payload tanpa perubahan.
+
 ## [Unreleased] — Fase E: Edge Jetson
 
 ### Detector device delegation via UI (Nodes tab) + hot-reload
