@@ -81,6 +81,9 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   low_quality reject, fallback crop), full suite backend 265 passed.
 - Deploy server: `pip install -e "./vision[face]"` di venv, `VISION_FACE_MODEL_DIR`
   mengarah ke `faces_models` di STORAGE_ROOT, restart `isentinel-vision`.
+  Catatan: dep insightface menarik `onnxruntime` (CPU) yang menutupi
+  `onnxruntime-gpu` → setelah install, uninstall `onnxruntime` polos atau
+  `pip install --force-reinstall --no-deps onnxruntime-gpu` supaya CUDA EP aktif.
 - Rollback: `VISION_FACE_EMBED=false` + restart node (kembali kirim crop saja);
   backend menerima kedua bentuk payload tanpa perubahan.
 
