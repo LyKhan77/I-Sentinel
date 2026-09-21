@@ -109,7 +109,10 @@ def handle_face_event(db, event) -> AttendanceEvent | None:
         logger.warning("attendance: direction %r tidak valid pada event %s — skip", direction, event.event_id)
         return None
 
-    res = face.match_crop(db, str(Path(settings.storage_root) / crop))
+    if payload.get("embedding"):
+        res = face.match_vector(payload["embedding"], payload.get("face_quality"))
+    else:
+        res = face.match_crop(db, str(Path(settings.storage_root) / crop))
     if res.employee_id is None:
         payload["employee_id"] = None
         payload["match_reason"] = res.reason

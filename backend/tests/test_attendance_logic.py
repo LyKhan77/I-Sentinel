@@ -255,3 +255,56 @@ def test_recompute_keeps_override_note(db):
     attendance.recompute_day(db, e.id, _at(*MON, 7, 10).date())
     db.refresh(row)
     assert row.override_note == "izin telat"
+
+
+# --- Opsi B: payload embedding dari node -> match gallery langsung -----------
+
+def test_handle_face_event_with_node_embedding(db, monkeypatch):
+    """Payload bawa embedding -> match gallery langsung, tanpa engine backend."""
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    called = {"embed": 0}
+
+    def _spy_match_crop(db_, path):
+        called["embed"] += 1
+        return MatchResult(None, None, None, "not_configured")
+
+    monkeypatch.setattr(attendance.face, "match_crop", _spy_match_crop)
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.9})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None
+    assert row.employee_id == e.id
+    assert called["embed"] == 0  # backend TIDAK embed ulang
+
+
+def test_handle_face_event_low_quality_rejected(db, monkeypatch):
+    _shift(db)
+    _emp(db, _shift(db))
+    _camera(db)
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(None, None, q, "low_quality"))
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.1})
+    assert attendance.handle_face_event(db, ev) is None
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "low_quality"
+
+
+def test_handle_face_event_fallback_crop_without_embedding(db, monkeypatch):
+    """Tanpa embedding -> jalur lama (match_crop) — status quo terjaga."""
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    monkeypatch.setattr(attendance.face, "match_crop",
+                        lambda db_, path: MatchResult(e.id, 0.8, 0.9, "matched"))
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10))  # tanpa embedding
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None
+    assert row.employee_id == e.id

@@ -181,6 +181,20 @@ def refresh_gallery(db) -> FaceGallery:
     return gallery
 
 
+def match_vector(vector, quality: float | None = None) -> MatchResult:
+    """Cocokkan embedding dari node (Opsi B) ke gallery. reason: low_quality|matched|no_match.
+
+    quality = det_score dari node; threshold sama dengan match_crop.
+    """
+    if quality is not None and quality < settings.face_min_quality:
+        return MatchResult(None, None, quality, "low_quality")
+    hit = gallery.match(list(vector))
+    if hit is None:
+        return MatchResult(None, None, quality, "no_match")
+    employee_id, score = hit
+    return MatchResult(employee_id, score, quality, "matched")
+
+
 def match_crop(db, image_path: str) -> MatchResult:
     """Embed satu crop lalu cocokkan ke gallery. reason: not_configured|no_face|low_quality|matched|no_match."""
     try:
