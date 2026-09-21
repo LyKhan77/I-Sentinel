@@ -177,6 +177,12 @@ class CameraWorker(threading.Thread):
             jpeg = self._frame_crop(frame.data, payload["bbox_norm"])
         if jpeg is None:
             return
+        res = self.face.embed_jpeg(jpeg) if self.face is not None else None
+        if res:
+            payload["embedding"] = res["vector"]
+            payload["face_quality"] = res["det_score"]
+            payload["face_bbox"] = [float(v) for v in res["bbox"]]
+            jpeg = self._draw_face_box(jpeg, res) or jpeg
         try:
             path = self.recorder.upload_bytes(jpeg, "crop")
         except Exception:
@@ -185,11 +191,29 @@ class CameraWorker(threading.Thread):
             return
         if path:
             payload["crop_path"] = path
-            if self.face is not None:
-                res = self.face.embed_jpeg(jpeg)
-                if res:
-                    payload["embedding"] = res["vector"]
-                    payload["face_quality"] = res["det_score"]
+
+    def _draw_face_box(self, jpeg: bytes, res: dict) -> bytes | None:
+        """Kembalikan jpeg dengan rect + label 'face <det>' di area bbox wajah.
+
+        Anotasi dilakukan SEBELUM upload sehingga crop yang tersimpan (dan
+        ditampilkan UI) sudah membawa bbox wajah. None/gagal = crop polos.
+        """
+        try:
+            import cv2
+            import numpy as np
+            img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                return None
+            x1, y1, x2, y2 = [int(v) for v in res["bbox"]]
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 200, 0), 2)
+            label = f"face {res['det_score']:.2f}"
+            cv2.putText(img, label, (x1, max(12, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (0, 200, 0), 1, cv2.LINE_AA)
+            ok, buf = cv2.imencode(".jpg", img)
+            return buf.tobytes() if ok else None
+        except Exception:
+            log.warning("face box draw gagal — crop polos", exc_info=True)
+            return None
 
     def _mainstream_crop(self, bbox_norm) -> bytes | None:
         """Crop from the full-res main stream; None on any failure (caller falls back)."""

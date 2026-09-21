@@ -49,7 +49,8 @@ class FakeEmbedder:
     """Embedder siap: satu wajah fixed (menggantikan FaceEmbedder asli)."""
 
     def embed_jpeg(self, jpeg):
-        return {"vector": [0.1] * 512, "det_score": 0.9, "bbox": [0, 0, 10, 10]}
+        return {"vector": [0.1] * 512, "det_score": 0.9,
+                "bbox": [10.0, 10.0, 100.0, 100.0]}
 
 
 def _partial():
@@ -72,6 +73,29 @@ def test_attach_crop_adds_embedding():
     assert p["crop_path"] == "crops/x.jpg"
     assert len(p["embedding"]) == 512
     assert p["face_quality"] == pytest.approx(0.9)
+    assert p["face_bbox"] == [10.0, 10.0, 100.0, 100.0]
+
+
+def test_attach_crop_draws_face_box_before_upload():
+    """Crop yang di-upload berisi rect hijau di area bbox (anotasi sebelum upload)."""
+    rec = FakeRecorder()
+    w = _worker(rec, FakeEmbedder())
+    # mainstream_crop mengembalikan jpeg polos putih
+    import cv2
+    ok, buf = cv2.imencode(".jpg", np.full((240, 320, 3), 255, np.uint8))
+    assert ok
+    w._mainstream_crop = lambda bbox: buf.tobytes()
+    partial = _partial()
+    w._attach_crop(partial, _frame())
+    assert len(rec.uploaded) == 1
+    up = rec.uploaded[0][1]  # (kind, data)
+    assert up != buf.tobytes()  # anotasi mengubah bytes
+    img = cv2.imdecode(np.frombuffer(up, np.uint8), cv2.IMREAD_COLOR)
+    # tepi rect (x=10..100): cari pixel dengan hijau dominan (0,200,0) di dekat garis
+    region = img[8:102, 8:102]
+    green = ((region[:, :, 1] > 120) & (region[:, :, 0] < 120) &
+             (region[:, :, 2] < 120)).sum()
+    assert green > 20, "rect hijau tidak terdeteksi pada crop yang di-upload"
 
 
 def test_attach_crop_fallback_without_embedder():
