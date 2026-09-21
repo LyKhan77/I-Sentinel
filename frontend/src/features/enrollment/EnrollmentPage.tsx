@@ -8,7 +8,7 @@ import {
   SelectItem,
   TextInput,
 } from '@carbon/react'
-import { useT } from '../../app/i18n'
+import { useT, type TKey } from '../../app/i18n'
 import { getMe, type Me } from '../../api/client'
 import {
   createEmployee,
@@ -20,7 +20,8 @@ import {
   listShifts,
   purgeBiometrics,
   updateEmployee,
-  uploadPhoto,
+  uploadPhotosBatch,
+  type BatchPhotoResult,
   type Employee,
   type EnrollmentStatus,
   type Photo,
@@ -55,6 +56,7 @@ export default function EnrollmentPage() {
   const [purging, setPurging] = useState(false)
   const [newShift, setNewShift] = useState({ name: '', start: '07:00', end: '16:00' })
   const [showAddShift, setShowAddShift] = useState(false)
+  const [batchResults, setBatchResults] = useState<BatchPhotoResult[] | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isAdmin = me?.role === 'admin'
@@ -111,12 +113,13 @@ export default function EnrollmentPage() {
   }
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+    const files = Array.from(e.target.files ?? [])
     e.target.value = ''
-    if (!file || selectedId == null) return
+    if (files.length === 0 || selectedId == null) return
     setError(null)
     try {
-      await uploadPhoto(selectedId, file)
+      const { results } = await uploadPhotosBatch(selectedId, files)
+      setBatchResults(results)
       await reloadPhotos()
     } catch {
       setError(t('en.uploadError'))
@@ -328,10 +331,21 @@ export default function EnrollmentPage() {
                       </div>
                     ))}
                   </div>
-                  <input ref={fileRef} type="file" accept="image/*" data-testid="en-upload-input" style={{ display: 'none' }} onChange={onUpload} />
-                  <Button kind="tertiary" size="sm" style={{ marginTop: 10 }} disabled={!isAdmin} onClick={() => fileRef.current?.click()}>
+                  <input ref={fileRef} type="file" accept="image/*" multiple data-testid="en-upload-input" style={{ display: 'none' }} onChange={onUpload} />
+                  <Button kind="tertiary" size="sm" style={{ marginTop: 10 }} disabled={!isAdmin} onClick={() => { setBatchResults(null); fileRef.current?.click() }}>
                     {t('en.upload')}
                   </Button>
+                  {batchResults && (
+                    <ul data-testid="en-batch-results" style={{ margin: '8px 0 0', padding: 0, listStyle: 'none', fontSize: 12 }}>
+                      {batchResults.map((r, i) => (
+                        <li key={i} style={{ color: r.ok ? '#42be65' : '#fa4d56' }}>
+                          {r.ok
+                            ? `${t('en.batch.ok')} — ${t('en.face.quality')}: ${(r.quality ?? 0).toFixed(2)}${r.duplicate_of ? ` — ⚠ ${t('en.dup.warn')} #${r.duplicate_of.employee_id} (${r.duplicate_of.score})` : ''}`
+                            : `${t(`en.batch.${r.reason === 'max_photos' ? 'max' : r.reason === 'too_large' ? 'tooLarge' : r.reason}` as TKey)}`}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div style={{ border: '1px solid #393939', background: '#262626', padding: 14, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>

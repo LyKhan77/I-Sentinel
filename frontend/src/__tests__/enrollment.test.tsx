@@ -32,6 +32,7 @@ function stubFetch() {
     if (u.endsWith('/auth/me')) return resp(200, ME)
     if (u.endsWith('/shifts')) return resp(200, SHIFTS)
     if (u.endsWith('/enrollment-status')) return resp(200, STATUS[Number(u.match(/employees\/(\d+)/)?.[1])] ?? { photos: 0, active: false })
+    if (u.endsWith('/photos/batch') && init?.method === 'POST') return resp(200, { results: [{ ok: true, quality: 0.9 }] })
     if (u.endsWith('/photos') && init?.method === 'POST') return resp(200, { embedding_id: 9, quality: 0.9 })
     if (u.endsWith('/photos')) return resp(200, PHOTOS)
     if (u.endsWith('/employees')) return resp(200, EMPLOYEES)
@@ -75,9 +76,43 @@ test('upload input posts multipart to enrollment API', async () => {
   fireEvent.change(screen.getByTestId('en-upload-input'), { target: { files: [file] } })
 
   await waitFor(() => {
-    const post = calls.find((c) => c.url.endsWith('/employees/1/photos') && c.init?.method === 'POST')
+    const post = calls.find((c) => c.url.endsWith('/employees/1/photos/batch') && c.init?.method === 'POST')
     expect(post).toBeDefined()
     expect(post!.init!.body).toBeInstanceOf(FormData)
-    expect((post!.init!.body as FormData).get('file')).toBe(file)
+    expect((post!.init!.body as FormData).getAll('files')).toEqual([file])
   })
+})
+
+test('multi-file upload: batch dipanggil sekali + hasil per foto tampil', async () => {
+  const calls = stubFetch()
+  renderPage()
+  await screen.findAllByText('Budi Santoso')
+
+  const ok = new File(['a'], 'a.jpg', { type: 'image/jpeg' })
+  const bad = new File(['b'], 'b.jpg', { type: 'image/jpeg' })
+  // stub batch: file kedua gagal (no_face)
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const u = String(url)
+    calls.push({ url: u, init })
+    if (u.endsWith('/auth/me')) return resp(200, ME)
+    if (u.endsWith('/shifts')) return resp(200, SHIFTS)
+    if (u.endsWith('/enrollment-status')) return resp(200, { photos: 0, active: false })
+    if (u.endsWith('/photos/batch') && init?.method === 'POST') {
+      return resp(200, { results: [{ ok: true, quality: 0.91 }, { ok: false, reason: 'no_face' }] })
+    }
+    if (u.endsWith('/photos')) return resp(200, PHOTOS)
+    if (u.endsWith('/employees')) return resp(200, EMPLOYEES)
+    return resp(404, null)
+  }))
+  fireEvent.change(screen.getByTestId('en-upload-input'), { target: { files: [ok, bad] } })
+
+  await waitFor(() => {
+    const post = calls.find((c) => c.url.endsWith('/employees/1/photos/batch'))
+    expect(post).toBeDefined()
+    expect((post!.init!.body as FormData).getAll('files')).toHaveLength(2)
+  })
+  const list = await screen.findByTestId('en-batch-results')
+  expect(list).toHaveTextContent('Tersimpan (hasil crop)')
+  expect(list).toHaveTextContent('Skor: 0.91')
+  expect(list).toHaveTextContent('Wajah tidak terdeteksi')
 })
