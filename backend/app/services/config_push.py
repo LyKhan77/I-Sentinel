@@ -24,6 +24,7 @@ def build_node_config(db: Session, node: Node) -> dict:
         "imgsz": settings.detector_imgsz,
         "device": node.detector_device or "",  # "" = node pakai env/auto
     }
+    face = {"device": node.face_device or ""}  # "" = node pakai env/auto
     cameras = []
     for cam in (
         db.query(Camera)
@@ -67,7 +68,7 @@ def build_node_config(db: Session, node: Node) -> dict:
             "ai_fps": DEFAULT_FPS,
             "meters_per_pixel": cam.meters_per_pixel,
         } | {"zones": zones})
-    return {"node_id": node.name, "detector": detector, "cameras": cameras}
+    return {"node_id": node.name, "detector": detector, "face": face, "cameras": cameras}
 
 
 def publish_node_config(client_or_none, db: Session, node_name: str) -> bool:

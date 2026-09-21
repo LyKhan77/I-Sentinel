@@ -356,6 +356,20 @@ class VisionNode:
                     s["model"], nms=s["nms"], conf=s["conf"], imgsz=s["imgsz"],
                     device=self.cfg.detector_device
                 )
+        face = cfg_dict.get("face")
+        if face and "device" in face and self.face is not None:
+            dev = (face.get("device") or "").strip()
+            err = hardware.validate_device_pin(dev)
+            if err:
+                log.error("config push rejected (face): %s", err)
+            elif dev != self.cfg.face_device:
+                # rebuild embedder dengan pin baru (InsightFace dibuat ulang,
+                # provider onnxruntime mengikuti device)
+                from .face import FaceEmbedder
+                root = self.cfg.face_model_dir or os.path.join(self.cfg.data_dir,
+                                                               "faces_models")
+                self.face = FaceEmbedder(root, dev)
+                self.cfg.face_device = dev
         self._start_workers(self._cameras_from_config(cfg_dict))
 
     def _start_workers(self, cameras: list[CameraCfg]) -> None:

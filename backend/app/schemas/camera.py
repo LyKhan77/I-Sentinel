@@ -40,6 +40,7 @@ class NodeOut(BaseModel):
     hw: dict | None = None
     modules: dict | None = None
     detector_device: str | None = None
+    face_device: str | None = None
 
     model_config = {"from_attributes": True}
 

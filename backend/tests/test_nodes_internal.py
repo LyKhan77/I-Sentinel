@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi.testclient import TestClient
 from app.main import app
 from app.core.db import get_db
+from app.models.node import Node
 
 @pytest.fixture
 
@@ -147,3 +148,37 @@ def test_nodes_api_put_detector_device_clears_to_auto(client, db):
     assert r.status_code == 200
     db.expire_all()
     assert db.get(Node, 1).detector_device in (None, "")
+
+
+# --- R1: face_device — pin per-analyzer terpisah ------------------------------
+
+def test_nodes_api_put_face_device_roundtrip(client, db):
+    n = Node(name="n1", detector_device="cuda:2")
+    db.add(n)
+    db.commit()
+    db.refresh(n)
+    tok = _admin_tok(client)
+    r = client.put(f"/api/v1/nodes/{n.id}/face-device", json={"device": "cuda:1"},
+                   headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    db.expire_all()
+    row = db.get(Node, n.id)
+    assert row.face_device == "cuda:1"
+    assert row.detector_device == "cuda:2"  # tak terganggu
+
+    r2 = client.put(f"/api/v1/nodes/{n.id}/face-device", json={"device": ""},
+                    headers={"Authorization": f"Bearer {tok}"})
+    assert r2.status_code == 200
+    db.expire_all()
+    assert db.get(Node, n.id).face_device is None
+
+
+def test_nodes_api_put_face_device_invalid(client, db):
+    n = Node(name="n1")
+    db.add(n)
+    db.commit()
+    db.refresh(n)
+    tok = _admin_tok(client)
+    r = client.put(f"/api/v1/nodes/{n.id}/face-device", json={"device": "gpu-x"},
+                   headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 422

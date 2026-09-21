@@ -44,3 +44,25 @@ def set_detector_device(node_id: int, body: DetectorDeviceIn,
     publish_node_config(None, db, node.name)
     db.refresh(node)
     return node
+
+
+@router.put("/{node_id}/face-device", response_model=NodeOut)
+def set_face_device(node_id: int, body: DetectorDeviceIn,
+                    user=Depends(require_admin), db: Session = Depends(get_db)):
+    """Pin/unpin GPU face recognition via config push. Empty device = auto (env fallback)."""
+    device = (body.device or "").strip()
+    m = _CUDA_RE.match(device)
+    if device and not m:
+        raise HTTPException(422, "device must be 'cuda:N' or empty (auto)")
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(404, "node not found")
+    if device:
+        n = len((node.hw or {}).get("gpus", []))
+        if n and n <= int(m.group(1)):
+            raise HTTPException(422, f"device {device} not found: node reports {n} GPU")
+    node.face_device = device or None
+    db.commit()
+    publish_node_config(None, db, node.name)
+    db.refresh(node)
+    return node

@@ -11,8 +11,9 @@ from vision.pipeline.detector import MockDetector
 from vision.pipeline.source import FrameSource
 
 
-def _node(device="", detector_device_env="", cameras=None):
+def _node(device="", detector_device_env="", cameras=None, face_device_env=""):
     cfg = NodeSettings(node_id="n1", detector_device=detector_device_env,
+                       face_device=face_device_env,
                        cameras_json=cameras or "[]")
     node = VisionNode(cfg=cfg, transport=type("T", (), {"close": staticmethod(lambda: None)})())
     return node
@@ -52,3 +53,39 @@ def test_apply_config_without_device_key_keeps_env(fake_nvml):
     node = _node(detector_device_env="cuda:0")
     node.apply_config({"detector": {"model": "m"}, "cameras": []})
     assert node.cfg.detector_device == "cuda:0"
+
+
+# --- R1: face device per-analyzer -------------------------------------------
+
+def test_apply_config_sets_face_device_rebuilds_embedder(fake_nvml):
+    fake_nvml([("A", 0, 100, 0, []), ("B", 0, 100, 0, [])])
+    n = _node(face_device_env="")
+    n.face = object()  # embedder lama
+    calls = {}
+
+    class FakeEmb:
+        def __init__(self, root, device):
+            calls["device"] = device
+
+    import unittest.mock as mock
+    with mock.patch("vision.face.FaceEmbedder", FakeEmb):
+        n.apply_config({"cameras": [], "face": {"device": "cuda:1"}})
+    assert n.cfg.face_device == "cuda:1"
+    assert calls["device"] == "cuda:1"  # embeder di-rebuild dgn pin baru
+
+
+def test_apply_config_invalid_face_pin_rejected(fake_nvml):
+    fake_nvml([("A", 0, 100, 0, [])])
+    n = _node(face_device_env="cuda:0")
+    old = n.face
+    n.apply_config({"cameras": [], "face": {"device": "cuda:9"}})
+    assert n.cfg.face_device == "cuda:0"  # tetap lama, config ditolak
+    assert n.face is old
+
+
+def test_apply_config_no_face_key_keeps_embedder():
+    n = _node(face_device_env="cuda:0")
+    old = n.face
+    n.apply_config({"cameras": []})
+    assert n.face is old
+    assert n.cfg.face_device == "cuda:0"
