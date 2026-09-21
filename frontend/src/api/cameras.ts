@@ -49,6 +49,7 @@ export type CameraNode = {
   hw?: NodeHw | null
   modules?: NodeModules | null
   detector_device?: string | null
+  face_device?: string | null
 }
 
 export type ProbeResult = {
@@ -191,4 +192,12 @@ export async function setNodeDetectorDevice(nodeId: number, device: string): Pro
     body: JSON.stringify({ device }),
   })
   return expectOk(res, 'set detector device')
+}
+
+export async function setNodeFaceDevice(nodeId: number, device: string): Promise<CameraNode> {
+  const res = await apiFetch(`/nodes/${nodeId}/face-device`, {
+    method: 'PUT',
+    body: JSON.stringify({ device }),
+  })
+  return expectOk(res, 'set face device')
 }

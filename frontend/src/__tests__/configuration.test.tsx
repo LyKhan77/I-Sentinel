@@ -234,9 +234,10 @@ test('Nodes tab lists nodes with GPU dropdown and saves detector device', async 
   )
   renderConfiguration('/configuration?tab=nodes')
 
-  // dropdown terisi dari DB + opsi GPU dari heartbeat hw
+  // dropdown terisi dari DB + opsi GPU dari heartbeat hw (dua dropdown: detector & face)
   expect(await screen.findByText('Device detektor (GPU)')).toBeInTheDocument()
-  expect(screen.getByText(/cuda:1 — NVIDIA GeForce RTX 5080/)).toBeInTheDocument()
+  expect(screen.getByText('Device face recognition (GPU)')).toBeInTheDocument()
+  expect(screen.getAllByText(/cuda:1 — NVIDIA GeForce RTX 5080/)).toHaveLength(2)
 
   // simpan pin baru
   await user.selectOptions(screen.getByLabelText('Device detektor (GPU)'), 'cuda:0')
@@ -260,5 +261,37 @@ test('Nodes tab shows fallback when node has no hw heartbeat', async () => {
   )
   renderConfiguration('/configuration?tab=nodes')
   expect(await screen.findByText('edge-1')).toBeInTheDocument()
-  expect(screen.getByText('Belum ada data GPU dari heartbeat node — hanya Auto tersedia')).toBeInTheDocument()
+  expect(screen.getAllByText('Belum ada data GPU dari heartbeat node — hanya Auto tersedia')).toHaveLength(2)
+})
+
+test('Nodes tab: face device dropdown terpisah dan simpan ke endpoint sendiri', async () => {
+  const user = userEvent.setup()
+  const calls: Call[] = []
+  const resp = (status: number, body: unknown) => ({ ok: status < 400, status, json: () => Promise.resolve(body) })
+  let faceDevice = ''
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      calls.push({ url: u, init })
+      if (u.endsWith('/auth/me')) return resp(200, ME)
+      if (u.endsWith('/nodes')) {
+        return resp(200, NODES.map((n) => ({ ...n, detector_device: 'cuda:1', face_device: faceDevice })))
+      }
+      if (u.endsWith('/nodes/1/face-device')) {
+        faceDevice = JSON.parse(init?.body as string).device
+        return resp(200, { ...NODES[0], face_device: faceDevice })
+      }
+      return resp(404, null)
+    }),
+  )
+  renderConfiguration('/configuration?tab=nodes')
+
+  expect(await screen.findByText('Device face recognition (GPU)')).toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Device face recognition (GPU)'), 'cuda:1')
+  await user.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Tersimpan, node hot-reload')
+  const put = calls.find((c) => c.url.endsWith('/nodes/1/face-device'))
+  expect(put?.init?.method).toBe('PUT')
+  expect(JSON.parse(put?.init?.body as string)).toEqual({ device: 'cuda:1' })
 })
