@@ -71,7 +71,7 @@ test('click 3 points shows green start ring, click ring closes polygon', async (
 })
 
 test('save calls createZone with normalized polygon', async () => {
-  const created: Zone = { id: 10, camera_id: 1, name: 'Zona 1', type: 'restricted', direction: null, polygon: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]], schedule: null, severity: 'warning', rate_limit_min: 5, snapshot: true, telegram: false, active: true }
+  const created: Zone = { id: 10, camera_id: 1, name: 'Zona 1', type: 'restricted', direction: null, polygon: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]], schedule: null, severity: 'warning', rate_limit_min: 5, snapshot: true, clip: true, telegram: false, active: true }
   const fetchMock = stubFetch({ created })
   vi.stubGlobal('fetch', fetchMock)
   render(<I18nProvider><ZonesPage /></I18nProvider>)
@@ -114,7 +114,7 @@ test('draw mode cancel resets points', async () => {
 })
 
 test('right-click handle deletes point, min 3 enforced', async () => {
-  const zone: Zone = { id: 1, camera_id: 1, name: 'z', type: 'free', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, snapshot: true, telegram: false, active: true }
+  const zone: Zone = { id: 1, camera_id: 1, name: 'z', type: 'free', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, snapshot: true, clip: true, telegram: false, active: true }
   vi.stubGlobal('fetch', stubFetch({ zones: [zone] }))
   let zones: Zone[] = [zone]
   // parent-nya ZonesPage yg pegang selectedId — bungkus dgn state, pola sama dgn page asli

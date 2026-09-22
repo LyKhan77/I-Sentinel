@@ -295,9 +295,9 @@ export default function EventsPage() {
                 <img className="ev-snapshot" src={`/api/v1/media/${selected.snapshot_path}`} alt={t('events.snapshot')} />
               )}
 
-              {selected.payload?.crop_path && (
+              {typeof selected.payload?.crop_path === 'string' && (
                 <div className="ev-crop" data-testid="event-crop">
-                  <img src={`/api/v1/media/${selected.payload.crop_path}`} alt={t('events.crop')} />
+                  <img src={`/api/v1/media/${String(selected.payload.crop_path)}`} alt={t('events.crop')} />
                 </div>
               )}
 

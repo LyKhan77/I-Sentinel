@@ -90,6 +90,7 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
       severity: 'warning',
       rate_limit_min: 5,
       snapshot: true,
+      clip: true,
       telegram: false,
       active: true,
     }

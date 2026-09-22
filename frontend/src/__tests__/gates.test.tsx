@@ -23,7 +23,7 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     schedule: null,
     severity: 'warning',
     rate_limit_min: 5,
-    snapshot: true,
+    snapshot: true, clip: true,
     telegram: false,
     active: true,
     camera_name: 'CAM-01',
