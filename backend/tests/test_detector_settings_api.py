@@ -47,3 +47,11 @@ def test_admin_put_persists_global_settings_and_config_uses_them(client, db):
 def test_viewer_cannot_change_detector_settings(client):
     response = client.put("/api/v1/detector-settings", json=VALUES, headers=viewer_headers(client))
     assert response.status_code == 403
+
+
+def test_get_without_row_returns_env_defaults(client):
+    response = client.get("/api/v1/detector-settings", headers=admin_headers(client))
+
+    assert response.status_code == 200
+    assert response.json()["default_ai_fps"] == settings.default_ai_fps
+    assert response.json()["updated_at"] is not None

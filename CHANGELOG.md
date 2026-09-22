@@ -984,3 +984,11 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 [0.3.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/LyKhan77/I-Sentinel/commits/v0.1.0
+- Task 10 (fix): `GET /api/v1/detector-settings` 500 di server (`ResponseValidationError:
+  updated_at input None`). Akar masalah **bukan** baris DB NULL (kolom `nullable=False`)
+  melainkan objek fallback di `_effective()` yang tidak pernah di-flush — `default=` SQLAlchemy
+  hanya jalan saat INSERT, jadi `updated_at` tetap `None` saat tabel masih kosong. Fallback kini
+  mengisi `updated_at` sendiri; tanpa migration baru. Bukti: test baru
+  `test_get_without_row_returns_env_defaults` RED (`datetime_type ... input None`) → GREEN;
+  backend `pytest -m "not gpu"` **309 passed**, vision **134 passed, 2 deselected**,
+  `npx vitest run` **86 passed**, `npm run build` exit 0, lint tanpa warning baru.
