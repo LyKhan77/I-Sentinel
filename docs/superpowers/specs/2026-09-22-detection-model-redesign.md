@@ -144,17 +144,36 @@ Konsekuensi teknis:
 
 ---
 
-## 4. Pertanyaan terbuka (ditunggu jawabannya)
+## 4. Keputusan (sudah dijawab user 2026-09-22)
 
-1. **Kepemilikan toggle behavior**: per kamera (mockup) atau per zona, atau
-   keduanya (kamera = master on/off, zona = area + parameter)?
-2. **Trigger threshold vs loiter**: satu field `trigger_seconds` untuk semua zona
-   (loitering = behavior dengan threshold itu) atau `loiter_seconds` tetap
-   terpisah?
-3. **Strategi klip**: opsi A (segment cache + cut), B (ring frame + post), atau C
-   (tetap post-only)? Dan stream klip: substream atau mainstream?
-4. **Attendance**: face detector per frame (face-first penuh) atau pertahankan
-   person→crop→embed dengan perbaikan timing crop saja?
+1. **Kepemilikan toggle behavior**: kamera = master on/off (chips di tab Deteksi &
+   Model), zona = area + parameter (threshold, speed, schedule).
+2. **Trigger threshold**: satu semantik per behavior (`trigger_seconds` di entry
+   `zone.behaviors`); `loiter_seconds` dihapus dan dimigrasi. Form zona menampilkan
+   satu input trigger per behavior yang dicentang.
+3. **Threshold global**: blok **Advanced** collapsible di tab Deteksi & Model
+   (model/imgsz/nms, motion gate, face match/quality/dedup, media pre/post capture,
+   panjang segmen, retensi). Zona tetap mengatur parameter area.
+4. **Klip**: **segment cache substream** (pola Frigate; `pre_capture`/`post_capture`).
+5. **Attendance**: **face-first di substream** — detektor wajah per frame
+   (motion-gated), tanpa person tracking, tanpa clip, snapshot konteks + crop wajah,
+   wajah tak dikenal tetap terbit dengan label `unknown`.
+6. **Motion gate**: ON default, override per kamera; mask area menyusul bila perlu.
+7. **Kamera tanpa substream** (mis. ZKteco cam 364): `sync_camera` menulis alias
+   `cam_<id>` = URL main; plus endpoint admin + tombol UI **Sync go2rtc** untuk
+   rekonsiliasi saat drift (dan best-effort saat API start).
+
+Catatan teknis pendukung keputusan 7 (bukti 2026-09-22): go2rtc hanya punya
+`cam_364_main`; sumber kameranya hidup (`h264 1920x1080 25fps` via go2rtc), worker
+vision mati karena `config_push` menunjuk `cam_364`. Stream go2rtc dipersistensi ke
+`deploy/go2rtc/go2rtc.yaml` (gitignored, berisi kredensial).
+
+### Pertanyaan yang masih bisa muncul (bukan penghalang)
+
+- Apakah `ai_fps = 0` harus bermakna "kamera tanpa analitik" (alternatif: gunakan
+  `analyzers: []` + AI FPS minimum 0.5).
+- Apakah clip untuk kamera attendance tetap dinonaktifkan total (keputusan 5) walau
+  zona punya `clip: true` (akan dijaga di kode: skip clip bila `type=attendance`).
 
 ---
 

@@ -21,7 +21,35 @@
 6. Motion gate: **on default, override per kamera**; mask area menyusul bila perlu.
 7. Threshold global di **blok Advanced collapsible** tab Detection & Model.
 
-**Urutan eksekusi:** Task 1–5 = fondasi data + node + overlay (bisa dites lokal), Task 6–10 = API + UI + deploy.
+**Urutan eksekusi:** Task 0 (sync go2rtc) → Task 1–5 = fondasi data + node + overlay (bisa dites lokal), Task 6–10 = API + UI + deploy.
+
+---
+
+### Task 0: Sync go2rtc — alias kamera single-stream + endpoint/tombol sync
+
+**Latar (temuan 2026-09-22):** `sync_camera` melewati stream yang URL-nya kosong,
+sehingga kamera tanpa substream (ZKteco cam 364, `rtsp_sub` kosong) hanya punya
+`cam_364_main`. Sementara `config_push` untuk node `type=server` dan
+`recorder._save_clip` selalu memakai `cam_<id>` → worker vision mati
+(`cannot open video source: rtsp://localhost:8554/cam_364`) dan klip gagal.
+Sumber kameranya sendiri sehat (ffprobe via go2rtc: `h264 1920x1080 25fps`).
+Tidak ada resync saat drift (sync hanya dipicu mutasi lewat API).
+
+**Keputusan user:** alias `cam_<id>` = URL main bila substream tidak ada;
+endpoint admin + tombol UI untuk sync.
+
+**Files:**
+- Modify: `backend/app/services/go2rtc.py`
+- Modify: `backend/app/api/cameras.py`
+- Modify: `backend/app/main.py` (best-effort sync saat startup)
+- Modify: `frontend/src/features/config/CamerasPage.tsx`, `frontend/src/api/cameras.ts`, `frontend/src/app/i18n.tsx`
+- Test: `backend/tests/test_go2rtc.py`, `backend/tests/test_cameras_api.py`, `frontend/src/__tests__/cameras.test.tsx`
+
+- [ ] **Step 1: test (merah)** — `test_go2rtc_sync_camera_aliases_sub_to_main`: kamera `rtsp_sub=None`, `rtsp_main=/stream` → `add_stream` dipanggil untuk `cam_<id>` **dan** `cam_<id>_main` dengan URL main (bulan hanya `_main`). `test_sync_all_idempotent`: DB 2 kamera enabled, go2rtc punya 3 stream cam_ (1 orphan) → hasil `{added:[...], removed:['cam_9']}`, dipanggil dua kali hasil kedua kosong.
+- [ ] **Step 2: implementasi `sync_camera`** — hitung `sub_src` dan `main_src` lewat `resolve_camera_stream` + `build_endpoint_url`; tulis `cam_<id>` = `sub_src or main_src`, `cam_<id>_main` = `main_src or sub_src` (alias dua arah supaya kamera yang hanya punya salah satu tetap lengkap).
+- [ ] **Step 3: implementasi `sync_all(db)` + endpoint** — `POST /api/v1/cameras/sync-go2rtc` (admin): bandingkan nama `cam_*` di go2rtc vs kamera `enabled` di DB → PUT yang kurang (idempotent), DELETE yang tidak diinginkan, kembalikan `{"added", "removed", "kept"}`. Stream di luar pola `cam_*` (mis. buatan tangan di yaml) **tidak disentuh**. Panggil best-effort di lifespan `main.py` setelah `republish_all` (bungkus try/except + log warning; go2rtc belum tentu siap saat API start).
+- [ ] **Step 4: tombol UI** — di tab Kamera, tombol **"Sync go2rtc"** (`data-testid="go2rtc-sync"`) → panggil endpoint, tampilkan hasil (`+2 / −1 stream`) sebagai InlineNotification; i18n EN/ID; test vitest: klik → `POST .../sync-go2rtc` dipanggil + pesan hasil tampil.
+- [ ] **Step 5: commit** `fix(backend): sync go2rtc — alias kamera single-stream + endpoint/UI sync`
 
 ---
 
@@ -261,6 +289,6 @@ R5b akan mengirim `kind: "face"` + `label` = nama karyawan / `"unknown"`.
 
 ## Self-Review
 
-- **Spec user:** tab Deteksi & Model ✓ (Task 8), type Attendance|Behavior ✓ (Task 9), Trigger threshold per behavior ✓ (Task 1/3/9), behavior on/off per kamera ✓ (Task 7/8), motion gate on + override ✓ (Task 4/6/7), overlay "Tampilkan deteksi" ✓ (Task 5), klip pre-roll (R5c) & attendance face-first (R5b) eksplisit di luar plan ini.
+- **Spec user:** tab Deteksi & Model ✓ (Task 8), type Attendance|Behavior ✓ (Task 9), Trigger threshold per behavior ✓ (Task 1/3/9), behavior on/off per kamera ✓ (Task 7/8), motion gate on + override ✓ (Task 4/6/7), overlay "Tampilkan deteksi" ✓ (Task 5), klip pre-roll (R5c) & attendance face-first (R5b) eksplisit di luar plan ini, kamera single-stream + sync go2rtc ✓ (Task 0).
 - **Placeholder:** tidak ada; setiap task punya test + langkah verifikasi konkret.
-- **Risiko yang diakui:** (a) motion gate bisa menunda deteksi orang yang masuk frame tanpa gerak besar → mitigasi `force_interval_s` + test; (b) kolom lama tetap ada (expand-only) sehingga ada dua sumber kebenaran sementara → ditandai deprecated di model + inventory; (c) `analyzers=[]` = kamera tanpa analitik → pastikan config push tetap mengirim kamera (live view tetap jalan).
+- **Risiko yang diakui:** (a) motion gate bisa menunda deteksi orang yang masuk frame tanpa gerak besar → mitigasi `force_interval_s` + test; (b) kolom lama tetap ada (expand-only) sehingga ada dua sumber kebenaran sementara → ditandai deprecated di model + inventory; (c) `analyzers=[]` = kamera tanpa analitik → pastikan config push tetap mengirim kamera (live view tetap jalan); (d) alias `cam_<id>` = main membuka 2 producer go2rtc ke kamera yang sama untuk kamera single-stream → dipantau lewat CPU/bandwidth saat uji lapangan; bila terbukti berat, pindah ke opsi "fallback di konsumen".

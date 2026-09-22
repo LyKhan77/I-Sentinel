@@ -161,6 +161,21 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   `isentinel/detections/server` → diterima klien WS (cookie auth) sebagai
   `{"type":"detections",...}`.
 
+### Perencanaan R5 + temuan sync go2rtc (Task 0 disetujui)
+
+- Spec keputusan: `docs/superpowers/specs/2026-09-22-detection-model-redesign.md`
+  (8 keputusan user: behaviors per zona + master per kamera, `trigger_seconds`
+  per behavior, Advanced global, klip segment cache substream, attendance
+  face-first substream, motion gate on+override, alias kamera single-stream,
+  endpoint+tombol Sync go2rtc).
+- Plan eksekusi: `docs/superpowers/plans/2026-09-22-detection-model-r5a.md`
+  (Task 0–10; Task 0 = perbaikan sync go2rtc, R5b attendance & R5c klip menyusul).
+- Temuan: kamera tanpa substream (ZKteco cam 364) hanya terdaftar sebagai
+  `cam_364_main` di go2rtc → worker vision mati (`cannot open video source:
+  rtsp://localhost:8554/cam_364`) dan `_save_clip` (yang memakai `cam_<id>`)
+  akan gagal; sumber kameranya sendiri sehat (`h264 1920x1080 25fps`). Sync ke
+  go2rtc hanya dipicu mutasi lewat API — tidak ada rekonsiliasi saat drift.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime
