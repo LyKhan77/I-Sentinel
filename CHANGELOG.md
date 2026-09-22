@@ -833,6 +833,10 @@ diperbaiki di akarnya (offset konten, token tema, pemuatan font).
 
 ## [Unreleased]
 
+### R5a — Detection & Model
+
+- Task 5: Live View debugger menerima payload deteksi `kind` (`person`/`face`) dan `label`; toggle menjadi **Tampilkan deteksi**, dengan bbox person oranye dan wajah biru.
+
 - `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
 - `3ec0d3a` feat: zone editor (click-to-draw polygon) + events master-detail inbox
 - feat: loitering analyzer (dwell per zone)

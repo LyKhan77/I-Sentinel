@@ -150,4 +150,5 @@ def test_publish_detections_qos0_topic(transport):
     assert qos == 0 and retain is False
     data = json.loads(payload)
     assert data["camera_id"] == 7
+    assert data["kind"] == "person"
     assert data["boxes"][0]["id"] == 1

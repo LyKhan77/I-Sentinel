@@ -128,7 +128,7 @@ test('click tile membuka modal debugger (bukan big-on-top)', async () => {
   expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(2)
 })
 
-test('WS detections menggambar bbox untuk kamera modal', async () => {
+test('WS detections renders kind-specific boxes and labels for the modal camera', async () => {
   // fake WebSocket global: hook useLiveEvents membuat instance ini
   const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
   class FakeWS {
@@ -148,12 +148,22 @@ test('WS detections menggambar bbox untuk kamera modal', async () => {
 
   const ws = handlers[0]
   await act(async () => {
-    ws.onmessage?.({ data: JSON.stringify({ type: 'detections', camera_id: 1, boxes: [{ id: 9, bbox_norm: [0.1, 0.1, 0.5, 0.6] }] }) })
+    ws.onmessage?.({ data: JSON.stringify({
+      type: 'detections', camera_id: 1, kind: 'person',
+      boxes: [{ id: 9, bbox_norm: [0.1, 0.1, 0.5, 0.6], label: null }],
+    }) })
   })
-  const overlay = screen.getByTestId('debug-overlay')
-  expect(overlay.querySelector('rect')).not.toBeNull()
-  expect(overlay.querySelector('rect')?.getAttribute('x')).toBe('10')
-  expect(overlay.textContent).toContain('ID 9')
+  expect(screen.getByTestId('debug-box-9')).toHaveAttribute('stroke', '#ff832b')
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('ID 9')
+
+  await act(async () => {
+    ws.onmessage?.({ data: JSON.stringify({
+      type: 'detections', camera_id: 1, kind: 'face',
+      boxes: [{ id: 4, bbox_norm: [0.2, 0.2, 0.4, 0.4], label: 'Angly' }],
+    }) })
+  })
+  expect(screen.getByTestId('debug-box-4')).toHaveAttribute('stroke', '#78a9ff')
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Angly')
 })
 
 test('kamera nonaktif tidak dirender di grid', async () => {

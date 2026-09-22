@@ -95,9 +95,9 @@ class FakeTransportWithCfg:
     def publish_heartbeat(self, hb):
         self.heartbeats.append(hb)
 
-    def publish_detections(self, camera_id, boxes):
+    def publish_detections(self, camera_id, boxes, kind="person"):
         self.detections = getattr(self, 'detections', [])
-        self.detections.append((camera_id, boxes))
+        self.detections.append((camera_id, kind, boxes))
 
     def close(self):
         self.close_calls += 1

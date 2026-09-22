@@ -31,9 +31,9 @@ class FakeTransport:
     def publish_heartbeat(self, hb):
         self.heartbeats.append(hb)
 
-    def publish_detections(self, camera_id, boxes):
+    def publish_detections(self, camera_id, boxes, kind="person"):
         self.detections = getattr(self, 'detections', [])
-        self.detections.append((camera_id, boxes))
+        self.detections.append((camera_id, kind, boxes))
 
     def close(self):
         pass
@@ -189,3 +189,14 @@ def test_camera_confidence_overrides_global():
     node._cameras_from_config({"cameras": [cam]})
     assert node.detector_factory(5).conf == 0.45
     assert node.detector_factory(99).conf == node.cfg.detector_conf   # tanpa override
+
+def test_worker_publishes_person_detection_kind(tmp_path):
+    """Debugger receives the producer kind as a top-level detection field."""
+    node, transport = make_node(tmp_path, {2: [[(0.1, 0.1, 0.3, 0.4)]]})
+
+    node.run()
+
+    camera_id, kind, boxes = transport.detections[0]
+    assert camera_id == 2
+    assert kind == "person"
+    assert boxes == [{"id": 1, "bbox_norm": [0.1, 0.1, 0.3, 0.4], "label": None}]

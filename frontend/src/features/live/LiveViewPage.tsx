@@ -170,15 +170,15 @@ function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo |
 }
 
 // Overlay debugger di modal: SVG koordinat normalisasi (viewBox 0 0 100 100)
-// sehingga zona/bbox tidak butuh tahu ukuran video. Polygon zona + bbox person
-// realtime (WS type:"detections").
+// sehingga zona/bbox tidak butuh tahu ukuran video. Polygon zona + deteksi realtime.
 const ZONE_COLORS: Record<string, string> = { absensi: '#42be65', restricted: '#fa4d56' }
-const BOX_COLOR = '#ff832b'
+const BOX_COLORS = { person: '#ff832b', face: '#78a9ff' } as const
 
-type DetBox = { id: number; bbox_norm: number[] }
+type DetectionKind = keyof typeof BOX_COLORS
+type DetBox = { id: number; bbox_norm: number[]; label?: string | null; kind: DetectionKind }
 
-function DebugOverlay({ camId, showZones, showBbox, boxes }: {
-  camId: number; showZones: boolean; showBbox: boolean; boxes: DetBox[]
+function DebugOverlay({ camId, showZones, showDetection, boxes }: {
+  camId: number; showZones: boolean; showDetection: boolean; boxes: DetBox[]
 }) {
   const { t } = useT()
   const [zones, setZones] = useState<Zone[]>([])
@@ -188,7 +188,7 @@ function DebugOverlay({ camId, showZones, showBbox, boxes }: {
     listZones().then((all) => { if (alive) setZones(all.filter((z) => z.camera_id === camId && z.active)) }).catch(() => {})
     return () => { alive = false }
   }, [camId, showZones])
-  if (!showZones && !showBbox) return null
+  if (!showZones && !showDetection) return null
   return (
     <svg
       data-testid="debug-overlay"
@@ -210,17 +210,18 @@ function DebugOverlay({ camId, showZones, showBbox, boxes }: {
           </text>
         </g>
       ))}
-      {showBbox && boxes.map((b) => b.bbox_norm?.length === 4 && (
+      {showDetection && boxes.map((b) => b.bbox_norm?.length === 4 && (
         <g key={b.id}>
           <rect
+            data-testid={`debug-box-${b.id}`}
             x={b.bbox_norm[0] * 100} y={b.bbox_norm[1] * 100}
             width={(b.bbox_norm[2] - b.bbox_norm[0]) * 100}
             height={(b.bbox_norm[3] - b.bbox_norm[1]) * 100}
-            fill="none" stroke={BOX_COLOR} strokeWidth={0.6}
+            fill="none" stroke={BOX_COLORS[b.kind]} strokeWidth={0.6}
           />
           <text x={b.bbox_norm[0] * 100} y={Math.max(4, b.bbox_norm[1] * 100 - 1)}
-            fontSize={4} fill={BOX_COLOR}>
-            {t('live.trackId').replace('{n}', String(b.id))}
+            fontSize={4} fill={BOX_COLORS[b.kind]}>
+            {b.label ?? t('live.trackId').replace('{n}', String(b.id))}
           </text>
         </g>
       ))}
@@ -233,7 +234,7 @@ export default function LiveViewPage() {
   const [lives, setLives] = useState<Record<number, LiveInfo>>({})
   const [debugCam, setDebugCam] = useState<Camera | null>(null)
   const [showZones, setShowZones] = useState(true)
-  const [showBbox, setShowBbox] = useState(true)
+  const [showDetection, setShowDetection] = useState(true)
   const [boxes, setBoxes] = useState<DetBox[]>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -242,9 +243,11 @@ export default function LiveViewPage() {
 
   // deteksi realtime (debugger modal): WS type:"detections"
   useLiveEvents((e) => {
-    const m = e as { type?: string; camera_id?: number; boxes?: DetBox[] }
+    const m = e as { type?: string; camera_id?: number; kind?: DetectionKind; boxes?: Omit<DetBox, 'kind'>[] }
     if (m?.type === 'detections') {
-      setBoxes((prev) => (m.camera_id === debugCam?.id ? (m.boxes ?? []) : prev))
+      setBoxes((prev) => (m.camera_id === debugCam?.id
+        ? (m.boxes ?? []).map((box) => ({ ...box, kind: m.kind ?? 'person' }))
+        : prev))
     }
   })
 
@@ -360,12 +363,12 @@ export default function LiveViewPage() {
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8 }}>
             <Toggle id="lv-zones" size="sm" labelText={t('live.showZones')}
               toggled={showZones} onToggle={(v) => setShowZones(v)} />
-            <Toggle id="lv-bbox" size="sm" labelText={t('live.showBbox')}
-              toggled={showBbox} onToggle={(v) => setShowBbox(v)} />
+            <Toggle id="lv-detection" size="sm" labelText={t('live.showDetection')}
+              toggled={showDetection} onToggle={(v) => setShowDetection(v)} />
           </div>
           <div style={{ position: 'relative', background: '#000', aspectRatio: '16/9' }}>
             <CameraTile cam={debugCam} live={lives[debugCam.id] ?? null} big />
-            <DebugOverlay camId={debugCam.id} showZones={showZones} showBbox={showBbox} boxes={boxes} />
+            <DebugOverlay camId={debugCam.id} showZones={showZones} showDetection={showDetection} boxes={boxes} />
           </div>
         </Modal>
       )}

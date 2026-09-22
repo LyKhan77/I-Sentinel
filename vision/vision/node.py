@@ -139,9 +139,9 @@ class CameraWorker(threading.Thread):
                 tracks = tracker.update(detections, frame.ts)
                 if tracks and self.transport is not None:
                     self.transport.publish_detections(cam_id, [
-                        {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox]}
+                        {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox], "label": None}
                         for t in tracks
-                    ])
+                    ], kind="person")
                 if self.recorder is not None:
                     if detections and frame.data is not None:
                         try:
