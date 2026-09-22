@@ -114,19 +114,46 @@ test('fallback: streaming yang tidak playing dalam 10 detik jatuh ke snapshot pr
   }
 })
 
-test('click tile focuses it (moves to big slot)', async () => {
+test('click tile membuka modal debugger (bukan big-on-top)', async () => {
   vi.stubGlobal('fetch', stubFetch())
   renderPage()
 
   expect(await screen.findByText('CAM-01')).toBeInTheDocument()
-  const tile1 = screen.getByTestId('cam-tile-1')
-  const user = userEvent.setup()
-  await user.click(tile1)
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
 
-  // fokus: tile CAM-01 ada dua render (besar + strip)? Tidak — fokus mengeluarkannya dari grid
-  const tiles1 = screen.getAllByTestId('cam-tile-1')
-  expect(tiles1.length).toBe(1)
-  expect(tiles1[0].dataset.big ?? '').toBe('big')
+  // modal terbuka: heading + toggle zones/bbox + overlay + stream tile di dalam modal
+  expect(await screen.findByTestId('live-modal')).toBeInTheDocument()
+  expect(screen.getByTestId('debug-overlay')).toBeInTheDocument()
+  // grid tetap 2 tile (tile tidak di-pause)
+  expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(2)
+})
+
+test('WS detections menggambar bbox untuk kamera modal', async () => {
+  // fake WebSocket global: hook useLiveEvents membuat instance ini
+  const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
+  class FakeWS {
+    onmessage: ((ev: { data: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    constructor(_url: string) { handlers.push(this as { onmessage?: (ev: { data: string }) => void }) }
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+
+  const ws = handlers[0]
+  await act(async () => {
+    ws.onmessage?.({ data: JSON.stringify({ type: 'detections', camera_id: 1, boxes: [{ id: 9, bbox_norm: [0.1, 0.1, 0.5, 0.6] }] }) })
+  })
+  const overlay = screen.getByTestId('debug-overlay')
+  expect(overlay.querySelector('rect')).not.toBeNull()
+  expect(overlay.querySelector('rect')?.getAttribute('x')).toBe('10')
+  expect(overlay.textContent).toContain('ID 9')
 })
 
 test('kamera nonaktif tidak dirender di grid', async () => {

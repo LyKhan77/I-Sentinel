@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Maximize, VideoOff } from '@carbon/icons-react'
-import { InlineLoading, InlineNotification, Dropdown } from '@carbon/react'
+import { InlineLoading, InlineNotification, Dropdown, Modal, Toggle } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
+import { listZones, type Zone } from '../../api/zones'
+import { useLiveEvents } from '../../api/useWs'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
 
@@ -23,7 +25,7 @@ function initialCols(): Cols {
 // Tile streaming: <video-stream> (player resmi go2rtc) mode webrtc,mse.
 // Kalau playing tidak terjadi dalam STREAM_TIMEOUT_MS → fallback ke snapshot
 // proxy 2 detik (jalur lama Fase 4e yang tetap berlaku).
-function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; big?: boolean }) {
+function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo | null; big?: boolean; onClick?: () => void }) {
   const { t } = useT()
   const [streamFailed, setStreamFailed] = useState(false)
   const [tick, setTick] = useState(0)
@@ -71,6 +73,7 @@ function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; bi
     <div
       data-testid={`cam-tile-${cam.id}`}
       data-big={big ? 'big' : undefined}
+      onClick={onClick}
       style={{
         position: 'relative',
         background: '#000',
@@ -166,16 +169,84 @@ function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; bi
   )
 }
 
+// Overlay debugger di modal: SVG koordinat normalisasi (viewBox 0 0 100 100)
+// sehingga zona/bbox tidak butuh tahu ukuran video. Polygon zona + bbox person
+// realtime (WS type:"detections").
+const ZONE_COLORS: Record<string, string> = { absensi: '#42be65', restricted: '#fa4d56' }
+const BOX_COLOR = '#ff832b'
+
+type DetBox = { id: number; bbox_norm: number[] }
+
+function DebugOverlay({ camId, showZones, showBbox, boxes }: {
+  camId: number; showZones: boolean; showBbox: boolean; boxes: DetBox[]
+}) {
+  const { t } = useT()
+  const [zones, setZones] = useState<Zone[]>([])
+  useEffect(() => {
+    if (!showZones) return
+    let alive = true
+    listZones().then((all) => { if (alive) setZones(all.filter((z) => z.camera_id === camId && z.active)) }).catch(() => {})
+    return () => { alive = false }
+  }, [camId, showZones])
+  if (!showZones && !showBbox) return null
+  return (
+    <svg
+      data-testid="debug-overlay"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+    >
+      {showZones && zones.map((z) => (
+        <g key={z.id}>
+          <polygon
+            points={z.polygon.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
+            fill={`${ZONE_COLORS[z.type] ?? '#8d8d8d'}22`}
+            stroke={ZONE_COLORS[z.type] ?? '#8d8d8d'}
+            strokeWidth={0.5}
+          />
+          <text x={z.polygon[0][0] * 100} y={z.polygon[0][1] * 100 - 1} fontSize={3.5}
+            fill={ZONE_COLORS[z.type] ?? '#8d8d8d'}>
+            {z.name} ({z.type})
+          </text>
+        </g>
+      ))}
+      {showBbox && boxes.map((b) => b.bbox_norm?.length === 4 && (
+        <g key={b.id}>
+          <rect
+            x={b.bbox_norm[0] * 100} y={b.bbox_norm[1] * 100}
+            width={(b.bbox_norm[2] - b.bbox_norm[0]) * 100}
+            height={(b.bbox_norm[3] - b.bbox_norm[1]) * 100}
+            fill="none" stroke={BOX_COLOR} strokeWidth={0.6}
+          />
+          <text x={b.bbox_norm[0] * 100} y={Math.max(4, b.bbox_norm[1] * 100 - 1)}
+            fontSize={4} fill={BOX_COLOR}>
+            {t('live.trackId').replace('{n}', String(b.id))}
+          </text>
+        </g>
+      ))}
+    </svg>
+  )}
+
 export default function LiveViewPage() {
   const { t } = useT()
   const [cams, setCams] = useState<Camera[]>([])
   const [lives, setLives] = useState<Record<number, LiveInfo>>({})
-  const [focusId, setFocusId] = useState<number | null>(null)
+  const [debugCam, setDebugCam] = useState<Camera | null>(null)
+  const [showZones, setShowZones] = useState(true)
+  const [showBbox, setShowBbox] = useState(true)
+  const [boxes, setBoxes] = useState<DetBox[]>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [cols, setCols] = useState<Cols>(initialCols)
   const [loc, setLoc] = useState<{ id: string; label: string } | null>(null)
-  const focusRef = useRef<HTMLDivElement>(null)
+
+  // deteksi realtime (debugger modal): WS type:"detections"
+  useLiveEvents((e) => {
+    const m = e as { type?: string; camera_id?: number; boxes?: DetBox[] }
+    if (m?.type === 'detections') {
+      setBoxes((prev) => (m.camera_id === debugCam?.id ? (m.boxes ?? []) : prev))
+    }
+  })
 
   const refresh = useCallback(async () => {
     try {
@@ -206,22 +277,9 @@ export default function LiveViewPage() {
     return () => clearInterval(timer)
   }, [refresh])
 
-  // dblclick tile fokus → fullscreen elemen tile
-  useEffect(() => {
-    const el = focusRef.current
-    if (!el) return
-    const onDbl = () => {
-      if (document.fullscreenElement) document.exitFullscreen()
-      else el.requestFullscreen?.()
-    }
-    el.addEventListener('dblclick', onDbl)
-    return () => el.removeEventListener('dblclick', onDbl)
-  }, [focusId])
-
   // Kamera nonaktif tidak punya stream di go2rtc (sync_camera(delete=True) saat
   // disable) → tile-nya selalu 502 dengan badge LIVE yang menyesatkan.
   const active = cams.filter((c) => c.enabled)
-  const focused = focusId != null ? active.find((c) => c.id === focusId) : null
   // lokasi kamera unik; item "semua" di depan supaya filter bisa direset
   const allItem = { id: '__all__', label: t('live.allLocations') }
   const locOptions = [
@@ -229,7 +287,6 @@ export default function LiveViewPage() {
     ...[...new Set(active.map((c) => c.location).filter((l): l is string => !!l))].map((l) => ({ id: l, label: l })),
   ]
   const shown = loc && loc.id !== '__all__' ? active.filter((c) => c.location === loc.label) : active
-  const others = focusId != null ? shown.filter((c) => c.id !== focusId) : shown
 
   const pickCols = (n: Cols) => {
     localStorage.setItem(COLS_KEY, String(n))
@@ -284,25 +341,33 @@ export default function LiveViewPage() {
       {shown.length === 0 ? (
         <p style={{ color: '#8d8d8d' }}>{cams.length === 0 ? t('live.noCameras') : t('live.noActiveCameras')}</p>
       ) : (
-        <>
-          {focused && (
-            <div
-              ref={focusRef}
-              onClick={() => setFocusId(null)}
-              style={{ marginBottom: 12, border: '1px solid #393939' }}
-              title={t('live.clickUnfocus')}
-            >
-              <CameraTile cam={focused} live={lives[focused.id] ?? null} big />
+        <div className="lv-grid" style={{ '--lv-cols': cols } as React.CSSProperties}>
+          {shown.map((cam) => (
+            <div key={cam.id} onClick={() => { setBoxes([]); setDebugCam(cam) }} title={t('live.openDebug')}>
+              <CameraTile cam={cam} live={lives[cam.id] ?? null} />
             </div>
-          )}
-          <div className="lv-grid" style={{ '--lv-cols': cols } as React.CSSProperties}>
-            {others.map((cam) => (
-              <div key={cam.id} onClick={() => setFocusId(cam.id)} title={t('live.clickFocus')}>
-                <CameraTile cam={cam} live={lives[cam.id] ?? null} />
-              </div>
-            ))}
+          ))}
+        </div>
+      )}
+      {debugCam && (
+        <Modal
+          open
+          modalHeading={`${t('live.debugTitle')} — ${debugCam.name}`}
+          passiveModal
+          onRequestClose={() => setDebugCam(null)}
+          data-testid="live-modal"
+        >
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8 }}>
+            <Toggle id="lv-zones" size="sm" labelText={t('live.showZones')}
+              toggled={showZones} onToggle={(v) => setShowZones(v)} />
+            <Toggle id="lv-bbox" size="sm" labelText={t('live.showBbox')}
+              toggled={showBbox} onToggle={(v) => setShowBbox(v)} />
           </div>
-        </>
+          <div style={{ position: 'relative', background: '#000', aspectRatio: '16/9' }}>
+            <CameraTile cam={debugCam} live={lives[debugCam.id] ?? null} big />
+            <DebugOverlay camId={debugCam.id} showZones={showZones} showBbox={showBbox} boxes={boxes} />
+          </div>
+        </Modal>
       )}
     </div>
   )
