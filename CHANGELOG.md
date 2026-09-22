@@ -92,6 +92,18 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   frame diambil) — dwell menahan orang di frame hingga crop+snapshot diambil.
 - Bukti: `pytest vision/tests -m "not gpu"` 118 passed.
 
+### Events detail tabstrip — revisi: Snapshot | Clip | Face crop (Task 4 review)
+
+- Review user: tab **Detail dihapus** dari tabstrip. Sekarang 3 tab media —
+  **Snapshot | Clip | Face crop** (crop hanya untuk event `attendance`, disabled
+  bila `payload.crop_path` kosong), default **Snapshot**. Metadata grid
+  (**Details**) dikembalikan tampil **di bawah media** untuk semua tab, seperti
+  layout awal — bukan lagi tab terpisah.
+- `frontend/src/features/events/EventsPage.tsx`, `frontend/src/app/theme.scss`
+  (CSS tabstrip tetap), `frontend/src/app/i18n.tsx` (kunci `events.tab.detail`
+  dihapus, jadi 2 bahasa). Bukti: `npx vitest run` 81 passed (15 di
+  events.test.tsx), `npm run build` ok.
+
 ### Events detail tabstrip per mockup 03 (Task 4)
 
 - `frontend/src/features/events/EventsPage.tsx`: panel detail kini tabstrip

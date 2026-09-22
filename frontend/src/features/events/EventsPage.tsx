@@ -36,13 +36,13 @@ const RANGE_IDS = ['all', '24h', '7d', '30d'] as const
 type RangeId = (typeof RANGE_IDS)[number]
 const RANGE_HOURS: Partial<Record<RangeId, number>> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 
-// Tabstrip detail (mockup 03): media dipisah per tab; crop wajah hanya untuk
-// event attendance (satu-satunya tipe yang mengirim payload.crop_path).
-type DetailTab = 'detail' | 'clip' | 'snapshot' | 'crop'
+// Tabstrip detail (mockup 03): media dipisah per tab, metadata grid (Details)
+// selalu di bawah media. Crop wajah hanya untuk event attendance — satu-satunya
+// tipe yang mengirim payload.crop_path.
+type DetailTab = 'snapshot' | 'clip' | 'crop'
 const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
-  { id: 'detail', key: 'events.tab.detail' },
-  { id: 'clip', key: 'events.tab.clip' },
   { id: 'snapshot', key: 'events.tab.snapshot' },
+  { id: 'clip', key: 'events.tab.clip' },
   { id: 'crop', key: 'events.tab.crop' },
 ]
 
@@ -124,9 +124,9 @@ export default function EventsPage() {
   const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
   const isAttendance = selected?.type === 'attendance'
 
-  // tab aktif ikut event terpilih: event berganti → kembali ke Detail (derived,
+  // tab aktif ikut event terpilih: event berganti → kembali ke Snapshot (derived,
   // tanpa effect yang memicu render kedua)
-  const tab: DetailTab = selected && tabState?.id === selected.id ? tabState.tab : 'detail'
+  const tab: DetailTab = selected && tabState?.id === selected.id ? tabState.tab : 'snapshot'
 
   // badge alert list: satu request by-events untuk 50 event pertama (hindari N+1)
   useEffect(() => {
@@ -366,7 +366,6 @@ export default function EventsPage() {
                   </div>
                 ))}
 
-              {tab === 'detail' && (
               <dl className="ev-meta-grid">
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.time')}</dt>
@@ -399,7 +398,6 @@ export default function EventsPage() {
                   <dd className="ev-meta__v">{detailAlert ? t(ALERT_KEY[detailAlert]) : '—'}</dd>
                 </div>
               </dl>
-              )}
             </div>
           )}
         </div>
