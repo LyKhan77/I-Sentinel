@@ -98,3 +98,14 @@ def test_heartbeat_reports_pinned_device(fake_nvml):
     node.run()
     hb = node.transport.heartbeats[0]
     assert hb["modules"]["detector"]["device"] == "cuda:1"
+
+
+def test_heartbeat_reports_detector_call_count(fake_nvml):
+    """detect_n = jumlah pemanggilan detektor — instrumen untuk mengukur motion gate."""
+    fake_nvml([("NVIDIA GeForce RTX 4090", 9000, 24564, 12, [])])
+    cfg = NodeSettings(node_id="n1", heartbeat_s=100.0, cameras_json="[]")
+    node = VisionNode(cfg=cfg, transport=FakeTransport())
+    PersonDetector.detect_n = 7
+    PersonDetector.detect_ms_total = 140.0
+
+    assert node._detector_module_info()["detect_n"] == 7

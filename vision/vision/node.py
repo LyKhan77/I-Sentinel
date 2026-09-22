@@ -520,7 +520,8 @@ class VisionNode:
         if self._default_detector and PersonDetector.detect_n:
             ms = round(PersonDetector.detect_ms_total / PersonDetector.detect_n, 1)
         return {"device": self.cfg.detector_device or "auto",
-                "model": os.path.basename(model), "ms_per_frame": ms}
+                "model": os.path.basename(model), "ms_per_frame": ms,
+                "detect_n": PersonDetector.detect_n}
 
     def _heartbeat_loop(self):
         while not self.stop_event.is_set():
