@@ -28,6 +28,10 @@ export type Camera = {
   status: string
   probe_main: ProbeStream | null
   probe_sub: ProbeStream | null
+  ai_fps: number | null
+  confidence: number | null
+  analyzers: string[] | null
+  motion_enabled: boolean | null
 }
 
 export type GpuProcess = { pid: number; name: string; user: string | null; mem_mb: number | null }
@@ -83,6 +87,10 @@ export type CameraPayload = {
   probe_main?: ProbeStream | null
   probe_sub?: ProbeStream | null
   status?: string
+  ai_fps?: number | null
+  confidence?: number | null
+  analyzers?: string[] | null
+  motion_enabled?: boolean | null
 }
 
 export type CameraImportEntry = {
