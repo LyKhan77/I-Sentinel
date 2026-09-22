@@ -64,7 +64,7 @@ export default function GatesPage() {
 
   const camName = (id: number) => cams.find((c) => c.id === id)?.name ?? zones.find((z) => z.camera_id === id)?.camera_name ?? `#${id}`
 
-  const patch = async (zone: Zone, body: { direction?: 'entry' | 'exit'; snapshot?: boolean; active?: boolean }) => {
+  const patch = async (zone: Zone, body: { direction?: 'entry' | 'exit'; snapshot?: boolean; clip?: boolean; active?: boolean }) => {
     try {
       const updated = await updateZone(zone.id, body)
       setZones((cur) => cur.map((z) => (z.id === zone.id ? updated : z)))
@@ -100,7 +100,7 @@ export default function GatesPage() {
     }
   }
 
-  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.active']
+  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
 
   return (
     <>
@@ -171,6 +171,17 @@ export default function GatesPage() {
                         disabled={!isAdmin}
                         toggled={z.snapshot}
                         onToggle={(v) => patch(z, { snapshot: v })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Toggle
+                        id={`gate-clip-${z.id}`}
+                        labelText={t('gates.col.clip')}
+                        hideLabel
+                        size="sm"
+                        disabled={!isAdmin}
+                        toggled={z.clip}
+                        onToggle={(v) => patch(z, { clip: v })}
                       />
                     </TableCell>
                     <TableCell>
