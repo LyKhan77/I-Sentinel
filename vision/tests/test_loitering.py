@@ -21,8 +21,15 @@ def zone(**kw):
     return z
 
 
-def one_track(tid, centroid, bbox=(0.0, 0.0, 0.1, 0.1)):
-    return [FakeTrack(tid, bbox, centroid)]
+def _bbox_standing_at(centroid):
+    """bbox yang titik pijaknya TEPAT di `centroid` — analyzer zona memakai titik pijak,
+    jadi 'track di titik P' pada tes lama tetap berarti P."""
+    cx, cy = centroid
+    return (cx - 0.05, cy - 0.1, cx + 0.05, cy)
+
+
+def one_track(tid, centroid, bbox=None):
+    return [FakeTrack(tid, bbox or _bbox_standing_at(centroid), centroid)]
 
 
 def test_registry_has_loitering():
@@ -52,7 +59,7 @@ def test_dwell_below_threshold_silent_then_emit_once():
     assert p["track_id"] == 1
     assert p["dwell_s"] >= 15
     assert p["confidence"] is None
-    assert p["bbox_norm"] == [0.0, 0.0, 0.1, 0.1]
+    assert p["bbox_norm"] == list(_bbox_standing_at(INSIDE))
     # (c) keep loitering 30 more seconds -> still exactly one emit
     for i in range(1, 16):
         assert az.on_frame(ts + 16 + i * 2, one_track(1, INSIDE), 640, 480) == []

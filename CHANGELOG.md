@@ -1010,3 +1010,13 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
   dan bisa diisi admin dari tab yang sama — membuat track objek diam mati tiap gap,
   sehingga `trigger_seconds` loitering/intrusion tidak pernah terpicu. Didokumentasi
   di `docs/detection-behavior-inventory.md` §10 dan dijaga test invarian.
+- Task 10 (perbaikan inti): keanggotaan zona diukur dari **titik pijak** (bottom-center
+  bbox) lewat helper baru `ground_point()`, bukan centroid badan. Zona digambar di
+  lantai sementara centroid melayang setengah tinggi badan di atasnya — makin jauh
+  subjek dari kamera makin besar selisihnya, sehingga orang yang jelas berdiri di dalam
+  zona terbaca di luar. Dipakai seragam oleh `intrusion`, `loitering`, `running`, dan
+  `face_gate` (kecepatan `running` tetap dari centroid). Bukti lapangan cam 357: satu
+  lintasan memberi centroid di dalam polygon hanya ~3 detik (17:16:11→13) sementara
+  `trigger_seconds=5`, jadi analyzer benar tidak emit — kaki masih di dalam zona jauh
+  lebih lama. Test: `pytest vision/tests -m "not gpu"` **140 passed** (dari 136),
+  backend **309 passed**, frontend **88 passed**, build exit 0.

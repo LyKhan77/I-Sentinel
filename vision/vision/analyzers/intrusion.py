@@ -1,4 +1,4 @@
-"""Intrusion analyzer: ray-casting point-in-polygon on track centroids, schedule-gated."""
+"""Intrusion analyzer: ray-casting point-in-polygon on track ground points, schedule-gated."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -19,6 +19,18 @@ def point_in_polygon(pt: tuple[float, float], poly: list) -> bool:
             if x < xin:
                 inside = not inside
     return inside
+
+
+def ground_point(track) -> tuple[float, float]:
+    """Titik pijak track: tengah sisi bawah bbox (ternormalisasi 0-1).
+
+    Zona digambar orang di atas LANTAI, sedangkan centroid melayang setengah tinggi
+    badan di atasnya — makin jauh subjek dari kamera makin besar selisihnya, sehingga
+    orang yang jelas berdiri di dalam zona terbaca di luar. Semua analyzer zona
+    memakai titik ini supaya "di dalam zona" berarti sama di seluruh sistem.
+    """
+    x1, _, x2, y2 = track.bbox
+    return ((x1 + x2) / 2, y2)
 
 
 def _schedule_active(schedule: dict | None, ts: float) -> bool:
@@ -57,8 +69,7 @@ class IntrusionAnalyzer(Analyzer):
         present: set[int] = set()
         for tr in tracks:
             present.add(tr.id)
-            # centroid already normalized 0-1 (tracker bboxes are normalized xyxy)
-            in_poly = point_in_polygon(tr.centroid, self.polygon)
+            in_poly = point_in_polygon(ground_point(tr), self.polygon)
             if in_poly and tr.id not in self._inside:
                 self._first_seen[tr.id] = ts
                 self._done.discard(tr.id)

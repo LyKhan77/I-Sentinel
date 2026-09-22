@@ -73,8 +73,15 @@ def zone(**kw):
     return z
 
 
-def one_track(tid, centroid, bbox=(0.4, 0.4, 0.5, 0.6)):
-    return [FakeTrack(tid, bbox, centroid)]
+def _bbox_standing_at(centroid):
+    """bbox yang titik pijaknya TEPAT di `centroid` — analyzer zona memakai titik pijak,
+    jadi 'track di titik P' pada tes lama tetap berarti P."""
+    cx, cy = centroid
+    return (cx - 0.05, cy - 0.1, cx + 0.05, cy)
+
+
+def one_track(tid, centroid, bbox=None):
+    return [FakeTrack(tid, bbox or _bbox_standing_at(centroid), centroid)]
 
 
 def frame():
@@ -100,7 +107,7 @@ def test_enter_emits_attendance_with_needs_crop():
     assert evs == [{
         "zone_id": 11, "type": "attendance", "severity": "info",
         "payload": {"direction": "entry", "track_id": 1,
-                    "bbox_norm": [0.4, 0.4, 0.5, 0.6], "needs_crop": True},
+                    "bbox_norm": list(_bbox_standing_at((0.5, 0.5))), "needs_crop": True},
     }]
 
 

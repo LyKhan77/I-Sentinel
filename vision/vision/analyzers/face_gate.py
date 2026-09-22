@@ -10,7 +10,7 @@ from the frame and uploads it as the attendance best-shot.
 from __future__ import annotations
 
 from .base import Analyzer
-from .intrusion import point_in_polygon
+from .intrusion import ground_point, point_in_polygon
 
 VALID_DIRECTIONS = {"entry", "exit", "in", "out"}
 COOLDOWN_S = 10.0
@@ -59,7 +59,7 @@ class FaceGateAnalyzer(Analyzer):
         events = []
         present_inside: set[int] = set()
         for tr in tracks:
-            if not point_in_polygon(tr.centroid, self.polygon):
+            if not point_in_polygon(ground_point(tr), self.polygon):
                 continue
             present_inside.add(tr.id)
             if tr.id not in self._inside:
