@@ -42,6 +42,7 @@ def build_node_config(db: Session, node: Node) -> dict:
                 "severity": z.severity,
                 "rate_limit_min": z.rate_limit_min,
                 "loiter_seconds": z.loiter_seconds,
+                "dwell_seconds": z.dwell_seconds,
                 "speed_limit_mps": z.speed_limit_mps,
                 "snapshot": z.snapshot,
                 "clip": z.clip,

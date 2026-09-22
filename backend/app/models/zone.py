@@ -15,6 +15,7 @@ class Zone(Base):
     severity: Mapped[str] = mapped_column(String(16), default="warning")
     rate_limit_min: Mapped[int] = mapped_column(Integer, default=5)
     loiter_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = off
+    dwell_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = emit langsung
     speed_limit_mps: Mapped[float] = mapped_column(Float, default=0)  # 0 = off
     snapshot: Mapped[bool] = mapped_column(Boolean, default=True)
     clip: Mapped[bool] = mapped_column(Boolean, default=True)  # toggle rekam clip per zona

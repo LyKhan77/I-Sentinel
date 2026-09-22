@@ -69,6 +69,17 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   broadcast; tanpa cookie/token dan cookie rusak → 1008; query token lama tetap.
 - Bukti: backend `pytest -m "not gpu"` 279 passed.
 
+### zone.dwell_seconds — trigger setelah N detik di zona (Task 2)
+
+- Migration `0013_zone_dwell_seconds` (expand-only, `Integer NULL=false
+  server_default '0'`), kolom model `backend/app/models/zone.py`, dan 3 kelas
+  schema (`ZoneIn`/`ZonePatch`/`ZoneOut`, `ge=0`) di `backend/app/schemas/zone.py`.
+- `config_push.build_node_config` mengirim `dwell_seconds` di payload zona —
+  node memakainya untuk menahan emit event (Task 3). `0` = perilaku lama.
+- Bukti: backend `pytest -m "not gpu"` 284 passed; migration round-trip
+  `upgrade 0013 → downgrade 0012 → upgrade 0013` pd DB scratch ok, kolom
+  `dwell_seconds INTEGER NOT NULL DEFAULT '0'`.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime

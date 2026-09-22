@@ -102,3 +102,25 @@ def test_patch_to_absensi_without_direction_rejected(client):
     z = client.post("/api/v1/zones", headers=h, json={"name": "z", "type": "restricted", "camera_id": cam["id"], "polygon": [[0,0],[1,0],[1,1]]}).json()
     r = client.patch(f"/api/v1/zones/{z['id']}", headers=h, json={"type": "absensi"})
     assert r.status_code == 422
+
+
+def test_zone_dwell_seconds_default_zero(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    z = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()
+    assert z["dwell_seconds"] == 0
+
+
+def test_patch_zone_dwell_seconds(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
+    r = client.patch(f"/api/v1/zones/{zid}", json={"dwell_seconds": 3}, headers=h)
+    assert r.status_code == 200 and r.json()["dwell_seconds"] == 3
+
+
+def test_patch_zone_dwell_seconds_negative_422(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
+    assert client.patch(f"/api/v1/zones/{zid}", json={"dwell_seconds": -1}, headers=h).status_code == 422

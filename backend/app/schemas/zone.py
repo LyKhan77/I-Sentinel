@@ -43,6 +43,7 @@ class ZoneIn(BaseModel):
     severity: str = "warning"
     rate_limit_min: int = 5
     loiter_seconds: int = Field(default=0, ge=0)
+    dwell_seconds: int = Field(default=0, ge=0)
     speed_limit_mps: float = Field(default=0, ge=0)
     snapshot: bool = True
     clip: bool = True
@@ -83,6 +84,7 @@ class ZonePatch(BaseModel):
     severity: str | None = None
     rate_limit_min: int | None = None
     loiter_seconds: int | None = Field(default=None, ge=0)
+    dwell_seconds: int | None = Field(default=None, ge=0)
     speed_limit_mps: float | None = Field(default=None, ge=0)
     snapshot: bool | None = None
     clip: bool | None = None
@@ -118,6 +120,7 @@ class ZoneOut(BaseModel):
     severity: str
     rate_limit_min: int
     loiter_seconds: int
+    dwell_seconds: int
     speed_limit_mps: float
     snapshot: bool
     clip: bool
