@@ -196,6 +196,26 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   endpoint admin-only); frontend `npx vitest run` **82 passed**; `npm run build` ok;
   `npm run lint` 22 warning (tidak bertambah).
 
+### R5 Task 1 — migration 0014: zone.behaviors + setelan deteksi per kamera
+
+- `backend/alembic/versions/0014_zone_behaviors.py`: tambah `zone.behaviors` (JSON),
+  `zone.trigger_seconds`, `camera.ai_fps/confidence/analyzers/motion_enabled`
+  (expand-only; kolom lama tetap ada). Backfill memetakan data lama → behaviors:
+  `absensi`→`attendance` `[{kind:attendance,trigger:dwell}]`;
+  `restricted`→`behavior` `[intrusion(trigger=dwell)]` + `loitering(trigger=loiter_seconds)`
+  + `running(trigger=dwell,speed_limit_mps)`; `free`→`behavior` `[]`. `downgrade`
+  mengembalikan `type` ke kosakata lama (`absensi`/`restricted`) supaya kode pra-R5
+  tetap jalan.
+- Model + schema: `backend/app/models/{zone,camera}.py`,
+  `backend/app/schemas/zone.py` (validator `behaviors`: kind ∈
+  intrusion|loitering|running|attendance, `trigger_seconds` int ≥ 0,
+  `speed_limit_mps` opsional ≥ 0), `ZoneOut` membawa `behaviors`/`trigger_seconds`.
+  `backend/app/api/zones.py`: PATCH type `attendance` wajib `direction`.
+- Bukti: backend `pytest -m "not gpu"` **301 passed**; migration round-trip di
+  scratch DB: backfill benar (`attendance [{'kind':'attendance','trigger_seconds':3}]`,
+  `behavior [intrusion 2, loitering 30, running 2/1.5]`, `free []`), downgrade
+  mengembalikan type + drop kolom, upgrade ulang jalan lagi.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime

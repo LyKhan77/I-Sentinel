@@ -1,8 +1,27 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-VALID_TYPES = {"free", "restricted", "absensi"}
+VALID_TYPES = {"free", "restricted", "absensi", "behavior", "attendance"}
+VALID_BEHAVIOR_KINDS = {"intrusion", "loitering", "running", "attendance"}
 VALID_DIRECTIONS = {"entry", "exit"}
 VALID_DAYS = set(range(1, 8))
+
+
+def _validate_behaviors(v: list | None) -> list | None:
+    """behaviors = [{"kind": ..., "trigger_seconds": int, [speed_limit_mps]}]."""
+    if v is None:
+        return v
+    if not isinstance(v, list):
+        raise ValueError("behaviors must be a list")
+    for b in v:
+        if not isinstance(b, dict) or b.get("kind") not in VALID_BEHAVIOR_KINDS:
+            raise ValueError(f"behavior kind must be one of {sorted(VALID_BEHAVIOR_KINDS)}")
+        trig = b.get("trigger_seconds", 0)
+        if not isinstance(trig, int) or isinstance(trig, bool) or trig < 0:
+            raise ValueError("trigger_seconds must be an int >= 0")
+        speed = b.get("speed_limit_mps")
+        if speed is not None and (not isinstance(speed, (int, float)) or isinstance(speed, bool) or speed < 0):
+            raise ValueError("speed_limit_mps must be a number >= 0")
+    return v
 
 
 def _validate_polygon(v: list) -> list:
@@ -44,6 +63,8 @@ class ZoneIn(BaseModel):
     rate_limit_min: int = 5
     loiter_seconds: int = Field(default=0, ge=0)
     dwell_seconds: int = Field(default=0, ge=0)
+    trigger_seconds: int = Field(default=0, ge=0)
+    behaviors: list = Field(default_factory=list)
     speed_limit_mps: float = Field(default=0, ge=0)
     snapshot: bool = True
     clip: bool = True
@@ -52,6 +73,7 @@ class ZoneIn(BaseModel):
 
     _validate_polygon = field_validator("polygon")(_validate_polygon)
     _validate_schedule = field_validator("schedule")(_validate_schedule)
+    _validate_behaviors = field_validator("behaviors")(_validate_behaviors)
 
     @field_validator("type")
     @classmethod
@@ -69,7 +91,7 @@ class ZoneIn(BaseModel):
 
     @model_validator(mode="after")
     def direction_iff_absensi(self):
-        if self.type == "absensi" and self.direction is None:
+        if self.type in ("absensi", "attendance") and self.direction is None:
             raise ValueError("direction is required when type is absensi")
         return self
 
@@ -85,6 +107,8 @@ class ZonePatch(BaseModel):
     rate_limit_min: int | None = None
     loiter_seconds: int | None = Field(default=None, ge=0)
     dwell_seconds: int | None = Field(default=None, ge=0)
+    trigger_seconds: int | None = Field(default=None, ge=0)
+    behaviors: list | None = None
     speed_limit_mps: float | None = Field(default=None, ge=0)
     snapshot: bool | None = None
     clip: bool | None = None
@@ -93,6 +117,7 @@ class ZonePatch(BaseModel):
 
     _validate_polygon = field_validator("polygon")(_validate_polygon)
     _validate_schedule = field_validator("schedule")(_validate_schedule)
+    _validate_behaviors = field_validator("behaviors")(_validate_behaviors)
 
     @field_validator("type")
     @classmethod
@@ -121,6 +146,8 @@ class ZoneOut(BaseModel):
     rate_limit_min: int
     loiter_seconds: int
     dwell_seconds: int
+    trigger_seconds: int
+    behaviors: list
     speed_limit_mps: float
     snapshot: bool
     clip: bool

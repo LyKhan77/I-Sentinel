@@ -124,3 +124,67 @@ def test_patch_zone_dwell_seconds_negative_422(client):
     cam = _camera(client, h)
     zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
     assert client.patch(f"/api/v1/zones/{zid}", json={"dwell_seconds": -1}, headers=h).status_code == 422
+
+
+def test_zone_behaviors_roundtrip(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    behaviors = [{"kind": "intrusion", "trigger_seconds": 0},
+                 {"kind": "loitering", "trigger_seconds": 30}]
+    r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"],
+                                           "type": "behavior", "behaviors": behaviors}, headers=h)
+    assert r.status_code == 200, r.text
+    z = r.json()
+    assert z["behaviors"] == behaviors
+    assert z["type"] == "behavior"
+    assert client.get(f"/api/v1/zones/{z['id']}", headers=h).json()["behaviors"] == behaviors
+
+
+def test_zone_attendance_trigger_seconds_roundtrip(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "attendance",
+                                           "direction": "entry", "trigger_seconds": 3}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["trigger_seconds"] == 3
+
+
+def test_zone_behaviors_default_empty(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    z = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()
+    assert z["behaviors"] == [] and z["trigger_seconds"] == 0
+
+
+def test_zone_behavior_invalid_kind_422(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                           "behaviors": [{"kind": "dance", "trigger_seconds": 0}]}, headers=h)
+    assert r.status_code == 422
+
+
+def test_zone_behavior_negative_trigger_422(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                           "behaviors": [{"kind": "intrusion", "trigger_seconds": -1}]}, headers=h)
+    assert r.status_code == 422
+
+
+def test_patch_zone_behaviors(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
+    behaviors = [{"kind": "running", "trigger_seconds": 0, "speed_limit_mps": 1.2}]
+    r = client.patch(f"/api/v1/zones/{zid}", json={"behaviors": behaviors}, headers=h)
+    assert r.status_code == 200 and r.json()["behaviors"] == behaviors
+
+
+def test_patch_zone_to_attendance_without_direction_rejected(client):
+    """Type baru `attendance` wajib direction, sama seperti `absensi` lama."""
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
+    r = client.patch(f"/api/v1/zones/{zid}", json={"type": "attendance"}, headers=h)
+    assert r.status_code == 422

@@ -38,6 +38,12 @@ class Camera(Base):
     probe_sub: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(8), default="unknown")
     meters_per_pixel: Mapped[float | None] = mapped_column(Float, nullable=True)  # null = belum dikalibrasi
+    # R5 "Detection & Model": override per kamera (null = pakai nilai global).
+    ai_fps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Daftar analyzer aktif utk kamera ini; null = semua, [] = tanpa analitik (hemat GPU).
+    analyzers: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    motion_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     node: Mapped["Node"] = relationship()

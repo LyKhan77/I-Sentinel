@@ -14,8 +14,14 @@ class Zone(Base):
     schedule: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), default="warning")
     rate_limit_min: Mapped[int] = mapped_column(Integer, default=5)
-    loiter_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = off
-    dwell_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = emit langsung
+    loiter_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = off (deprecated: pindah ke behaviors)
+    dwell_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = emit langsung (deprecated)
+    # R5: sumber kebenaran baru — daftar behavior + trigger_seconds masing-masing.
+    # kind: intrusion | loitering | running | attendance; running menambah
+    # speed_limit_mps. Zona "visual saja" = behaviors kosong.
+    behaviors: Mapped[list] = mapped_column(JSON, default=list)
+    # attendance: lama (detik) wajah di zona sebelum event terbit; 0 = langsung.
+    trigger_seconds: Mapped[int] = mapped_column(Integer, default=0)
     speed_limit_mps: Mapped[float] = mapped_column(Float, default=0)  # 0 = off
     snapshot: Mapped[bool] = mapped_column(Boolean, default=True)
     clip: Mapped[bool] = mapped_column(Boolean, default=True)  # toggle rekam clip per zona
