@@ -329,6 +329,40 @@ tanpa person, 0 event) — dicatat di laporan sebagai kandidat uji lanjutan.
 
 ---
 
+## R5a — Detection & Model redesign — **DONE (2026-09-22)**
+
+Plan: `docs/superpowers/plans/2026-09-22-detection-model-r5a.md`
+Spec: `docs/superpowers/specs/2026-09-22-detection-model-redesign.md`
+
+**Kriteria selesai:**
+- [x] Kosakata zona baru: `type = attendance | behavior`, `behaviors[].trigger_seconds`
+      per behavior (migration 0014, UI zona + gate)
+- [x] Tab **Deteksi & Model**: tile global, override per kamera, chip analyzer,
+      blok Advanced (tabel `detector_setting` + API admin, migration 0015)
+- [x] Motion gate menyala dari UI (bukan `.env`) — precedence **DB > env** terbukti
+- [x] Hemat inferensi terukur: **2,41 & 4,13 panggilan/detik (gate ON) vs 25,00/detik
+      (OFF)** = plafon 5 kamera × 5 fps → hemat ≈84–90%
+- [x] Trigger behavior terbukti di lapangan: event `intrusion` id=4664 zona 6 cam 357
+      terbit tepat setelah 5 detik titik pijak di dalam zona, dengan snapshot (72 KB)
+      + clip (221 KB) tersimpan dan tampil di UI Events
+
+**Bukti:** `docs/evidence/r5a-task10-detection-tab.png`,
+`r5a-task10-intrusion-event.png`, `r5a-task9-*.png`; CHANGELOG bagian R5a.
+
+**Catatan jujur:**
+- Verifikasi **rekap attendance belum dilakukan** — 4 zona attendance (7/8/9/11)
+  `active=False` di DB atas keputusan user, jadi tidak dikirim ke node.
+- **Track churn pada subjek jauh**: pada y≈0,3 id berganti tiap ~15–25 detik karena
+  deteksi putus beberapa detik (orang kecil di frame, `confidence 0.4`). Tidak
+  berdampak di zona 6 (dekat kamera), tapi akan merusak `trigger_seconds` untuk zona
+  jauh. Belum ditangani.
+- **`ByteTracker.max_age` berbasis frame (15)** vs gap motion gate
+  (`force_interval_s × ai_fps`): aman di 5 fps (10 ≤ 15), rusak diam-diam pada
+  `ai_fps ≥ 8` yang diizinkan schema. Detail di
+  `docs/detection-behavior-inventory.md` §10.
+
+---
+
 ## Fase E — Edge Jetson (opsional/nanti)
 
 Plan: `docs/plans/07-edge-jetson.md`

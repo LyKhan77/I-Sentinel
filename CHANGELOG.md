@@ -1020,3 +1020,10 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
   `trigger_seconds=5`, jadi analyzer benar tidak emit — kaki masih di dalam zona jauh
   lebih lama. Test: `pytest vision/tests -m "not gpu"` **140 passed** (dari 136),
   backend **309 passed**, frontend **88 passed**, build exit 0.
+- Task 10 (verifikasi lapangan, TUNTAS): trigger behavior terbukti di cam 357 —
+  titik pijak masuk zona 17:32:00, bertahan 5 detik, event `intrusion` id=4664
+  zona 6 terbit 17:32:05 dengan `clip_path` (221 KB) + `snapshot_path` (72 KB)
+  keduanya ada di disk dan tampil di UI Events. Pembuktian bahwa perbaikan titik
+  pijak yang menentukan: `bbox_norm` event itu `[0.402, 0.335, 0.532, 0.992]` →
+  centroid y=0,663 **di luar** polygon (0,718–0,998), jadi logika centroid lama tidak
+  akan pernah menerbitkannya. Bukti: `docs/evidence/r5a-task10-intrusion-event.png`.
