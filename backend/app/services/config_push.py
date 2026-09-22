@@ -8,16 +8,24 @@ from app.core.config import settings
 from app.models.camera import Camera
 from app.models.node import Node
 from app.models.zone import Zone
+from app.models.detector_setting import DetectorSetting
 from app.services.stream_endpoint import StreamEndpointError, build_rtsp_url, resolve_camera_stream
 
 logger = logging.getLogger(__name__)
 
 
 def build_node_config(db: Session, node: Node) -> dict:
+    global_settings = db.get(DetectorSetting, 1)
+    default_ai_fps = global_settings.default_ai_fps if global_settings else settings.default_ai_fps
+    default_confidence = global_settings.default_confidence if global_settings else settings.detector_conf
+    motion_enabled = global_settings.motion_enabled if global_settings else settings.motion_enabled
+    motion_threshold = global_settings.motion_threshold if global_settings else settings.motion_threshold
+    motion_min_area = global_settings.motion_min_area if global_settings else settings.motion_min_area
+    motion_force_interval_s = global_settings.motion_force_interval_s if global_settings else settings.motion_force_interval_s
     detector = {
         "model": settings.detector_model,
         "nms": settings.detector_nms,
-        "conf": settings.detector_conf,
+        "conf": default_confidence,
         "imgsz": settings.detector_imgsz,
         "device": node.detector_device or "",  # "" = node pakai env/auto
     }
@@ -67,14 +75,14 @@ def build_node_config(db: Session, node: Node) -> dict:
         cameras.append({
             "camera_id": cam.id,
             "source_url": source_url,
-            "ai_fps": cam.ai_fps or settings.default_ai_fps,
-            "confidence": cam.confidence or settings.detector_conf,
+            "ai_fps": cam.ai_fps or default_ai_fps,
+            "confidence": cam.confidence or default_confidence,
             "analyzers": cam.analyzers,          # None = semua analyzer aktif
             "motion": {
-                "enabled": settings.motion_enabled if cam.motion_enabled is None else cam.motion_enabled,
-                "threshold": settings.motion_threshold,
-                "min_area": settings.motion_min_area,
-                "force_interval_s": settings.motion_force_interval_s,
+                "enabled": motion_enabled if cam.motion_enabled is None else cam.motion_enabled,
+                "threshold": motion_threshold,
+                "min_area": motion_min_area,
+                "force_interval_s": motion_force_interval_s,
             },
             "meters_per_pixel": cam.meters_per_pixel,
         } | {"zones": zones})
