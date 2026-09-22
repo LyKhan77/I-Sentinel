@@ -260,6 +260,12 @@ export default function ZonesPage() {
                   toggled={selected.snapshot}
                   onToggle={(v) => patchSelected({ snapshot: v })}
                 />
+                <Toggle
+                  id="zone-clip"
+                  labelText={t('zones.clip')}
+                  toggled={selected.clip}
+                  onToggle={(v) => patchSelected({ clip: v })}
+                />
                 <div>
                   <Toggle id="zone-telegram" labelText={t('zones.telegram')} toggled={false} onToggle={() => {}} disabled />
                   <div style={{ fontSize: 12, color: 'var(--cds-text-helper)', marginTop: 4 }}>{t('zones.telegramFase3')}</div>

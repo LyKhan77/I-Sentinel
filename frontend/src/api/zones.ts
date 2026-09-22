@@ -15,6 +15,7 @@ export type Zone = {
   severity: 'critical' | 'warning'
   rate_limit_min: number
   snapshot: boolean
+  clip: boolean
   telegram: boolean
   active: boolean
   camera_name?: string | null
@@ -28,6 +29,7 @@ export type ZonePayload = {
   schedule?: Schedule | null
   severity?: 'critical' | 'warning'
   snapshot?: boolean
+  clip?: boolean
   telegram?: boolean
   active?: boolean
 }

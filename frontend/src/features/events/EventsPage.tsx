@@ -295,6 +295,12 @@ export default function EventsPage() {
                 <img className="ev-snapshot" src={`/api/v1/media/${selected.snapshot_path}`} alt={t('events.snapshot')} />
               )}
 
+              {selected.payload?.crop_path && (
+                <div className="ev-crop" data-testid="event-crop">
+                  <img src={`/api/v1/media/${selected.payload.crop_path}`} alt={t('events.crop')} />
+                </div>
+              )}
+
               <dl className="ev-meta-grid">
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.time')}</dt>

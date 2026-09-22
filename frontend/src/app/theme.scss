@@ -780,6 +780,16 @@ html {
   margin-block-start: 12px;
 }
 
+.ev-crop img {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 240px;
+  max-block-size: 320px;
+  object-fit: contain;
+  margin-block-start: 12px;
+  border: 1px solid var(--cds-border-subtle);
+}
+
 /* Grid metadata bergaris 1px ala mockup; auto-fit supaya tetap 1 kolom di
    panel sempit tanpa media query terpisah. */
 .ev-meta-grid {

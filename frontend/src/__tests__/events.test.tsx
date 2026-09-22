@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { act } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -182,4 +182,21 @@ test('range selector sends since for a finite range, plain limit for all', async
   await userEvent.selectOptions(screen.getByLabelText('Rentang'), 'all')
   await waitFor(() => expect(listQuery().length).toBeGreaterThan(before))
   expect(listQuery()[listQuery().length - 1]).not.toContain('since=')
+})
+
+test('detail event attendance menampilkan crop beranotasi dari payload', async () => {
+  const events: EventOut[] = [
+    { id: 1, event_id: 'ev-1', type: 'attendance', camera_id: 1, zone_id: 2, severity: 'info',
+      ts_event: '2026-09-21T07:00:00+07:00', clip_path: 'clips/x.mp4',
+      snapshot_path: 'snapshots/x.jpg',
+      payload: { crop_path: 'crops/x.jpg', face_quality: 0.9 } },
+  ]
+  vi.stubGlobal('fetch', stubFetch(events))
+  renderPage()
+
+  const item = (await screen.findAllByTestId('event-item-1'))[0]
+  await userEvent.click(item)
+  expect(await screen.findByTestId('event-crop')).toBeInTheDocument()
+  const img = screen.getByTestId('event-crop').querySelector('img')
+  expect(img?.getAttribute('src')).toBe('/api/v1/media/crops/x.jpg')
 })
