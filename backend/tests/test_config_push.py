@@ -57,6 +57,7 @@ def test_build_node_config_server_includes_active_cam_and_zones_excludes_disable
         "direction": None, "polygon": z_on.polygon, "schedule": None,
         "severity": "warning", "rate_limit_min": 5,
         "loiter_seconds": 0, "dwell_seconds": 0, "speed_limit_mps": 0,
+        "behaviors": [], "trigger_seconds": 0,
         "snapshot": True, "clip": True, "telegram": False,
     }]
 
@@ -245,3 +246,63 @@ def test_build_node_config_zone_dwell_defaults_zero(db):
     db.commit()
     from app.services.config_push import build_node_config as bnc
     assert bnc(db, n)["cameras"][0]["zones"][0]["dwell_seconds"] == 0
+
+
+# --- R5: behaviors zona + setelan deteksi per kamera -------------------------
+
+def test_build_node_config_zone_includes_behaviors_and_trigger(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    from app.models.zone import Zone
+    n = Node(name="r5", type="server")
+    db.add(n); db.commit()
+    cam = Camera(name="CamR5", host="127.0.0.1", node_id=n.id)
+    db.add(cam); db.commit(); db.refresh(cam)
+    db.add(Zone(camera_id=cam.id, name="Gate", type="attendance", direction="entry",
+                polygon=[[0, 0], [1, 0], [1, 1]], trigger_seconds=3,
+                behaviors=[{"kind": "attendance", "trigger_seconds": 3}]))
+    db.add(Zone(camera_id=cam.id, name="Lorong", type="behavior",
+                polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[{"kind": "intrusion", "trigger_seconds": 0},
+                           {"kind": "loitering", "trigger_seconds": 30}]))
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    zones = {z["id"]: z for z in bnc(db, n)["cameras"][0]["zones"]}
+    gate = next(z for z in zones.values() if z["name"] == "Gate")
+    lorong = next(z for z in zones.values() if z["name"] == "Lorong")
+    assert gate["trigger_seconds"] == 3
+    assert gate["behaviors"] == [{"kind": "attendance", "trigger_seconds": 3}]
+    assert lorong["behaviors"] == [{"kind": "intrusion", "trigger_seconds": 0},
+                                   {"kind": "loitering", "trigger_seconds": 30}]
+
+
+def test_build_node_config_camera_detection_overrides(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    n = Node(name="r5b", type="server")
+    db.add(n); db.commit()
+    db.add(Camera(name="Cfg", host="127.0.0.1", node_id=n.id, ai_fps=8.0, confidence=0.45,
+                  analyzers=["intrusion"], motion_enabled=False))
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    cam = bnc(db, n)["cameras"][0]
+    assert cam["ai_fps"] == 8.0
+    assert cam["confidence"] == 0.45
+    assert cam["analyzers"] == ["intrusion"]
+    assert cam["motion"]["enabled"] is False
+    assert cam["motion"]["threshold"] == settings.motion_threshold
+
+
+def test_build_node_config_camera_uses_global_defaults(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    n = Node(name="r5c", type="server")
+    db.add(n); db.commit()
+    db.add(Camera(name="Def", host="127.0.0.1", node_id=n.id))
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    cam = bnc(db, n)["cameras"][0]
+    assert cam["ai_fps"] == settings.default_ai_fps
+    assert cam["confidence"] == settings.detector_conf
+    assert cam["analyzers"] is None          # None = semua analyzer aktif
+    assert cam["motion"]["enabled"] is True

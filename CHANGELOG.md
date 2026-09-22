@@ -216,6 +216,21 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   `behavior [intrusion 2, loitering 30, running 2/1.5]`, `free []`), downgrade
   mengembalikan type + drop kolom, upgrade ulang jalan lagi.
 
+### R5 Task 2 — config push: behaviors zona + setelan deteksi kamera
+
+- `backend/app/services/config_push.py`: payload kamera kini membawa `ai_fps`
+  (override kamera atau `settings.default_ai_fps`), `confidence` (override atau
+  `detector_conf`), `analyzers` (`None` = semua, `[]` = tanpa analitik),
+  `motion{enabled,threshold,min_area,force_interval_s}` dan tetap
+  `meters_per_pixel` (dipakai analyzer running). Payload zona membawa `behaviors`
+  + `trigger_seconds`; kolom lama (`dwell_seconds`,`loiter_seconds`,
+  `speed_limit_mps`) tetap dikirim sebagai deprecated sampai node R5 terpasang.
+- `backend/app/core/config.py`: setelan baru `default_ai_fps`, `motion_enabled`,
+  `motion_threshold`, `motion_min_area`, `motion_force_interval_s` (nilai awal;
+  nanti bisa dioverride dari DB di Task 6).
+- Bukti: backend `pytest -m "not gpu"` **305 passed** (4 test baru: behaviors zona,
+  override kamera, default global, `meters_per_pixel` tetap ada).
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime

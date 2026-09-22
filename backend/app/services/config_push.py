@@ -13,9 +13,6 @@ from app.services.stream_endpoint import StreamEndpointError, build_rtsp_url, re
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_FPS = 5.0
-
-
 def build_node_config(db: Session, node: Node) -> dict:
     detector = {
         "model": settings.detector_model,
@@ -41,6 +38,9 @@ def build_node_config(db: Session, node: Node) -> dict:
                 "schedule": z.schedule,
                 "severity": z.severity,
                 "rate_limit_min": z.rate_limit_min,
+                "behaviors": z.behaviors or [],
+                "trigger_seconds": z.trigger_seconds,
+                # deprecated: tetap dikirim sampai node R5 terpasang, lalu dihapus
                 "loiter_seconds": z.loiter_seconds,
                 "dwell_seconds": z.dwell_seconds,
                 "speed_limit_mps": z.speed_limit_mps,
@@ -67,7 +67,15 @@ def build_node_config(db: Session, node: Node) -> dict:
         cameras.append({
             "camera_id": cam.id,
             "source_url": source_url,
-            "ai_fps": DEFAULT_FPS,
+            "ai_fps": cam.ai_fps or settings.default_ai_fps,
+            "confidence": cam.confidence or settings.detector_conf,
+            "analyzers": cam.analyzers,          # None = semua analyzer aktif
+            "motion": {
+                "enabled": settings.motion_enabled if cam.motion_enabled is None else cam.motion_enabled,
+                "threshold": settings.motion_threshold,
+                "min_area": settings.motion_min_area,
+                "force_interval_s": settings.motion_force_interval_s,
+            },
             "meters_per_pixel": cam.meters_per_pixel,
         } | {"zones": zones})
     return {"node_id": node.name, "detector": detector, "face": face, "cameras": cameras}
