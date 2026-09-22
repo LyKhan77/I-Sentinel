@@ -57,7 +57,7 @@ def test_build_node_config_server_includes_active_cam_and_zones_excludes_disable
         "direction": None, "polygon": z_on.polygon, "schedule": None,
         "severity": "warning", "rate_limit_min": 5,
         "loiter_seconds": 0, "speed_limit_mps": 0,
-        "snapshot": True, "telegram": False,
+        "snapshot": True, "clip": True, "telegram": False,
     }]
 
 def test_build_node_config_edge_uses_resolved_exact_substream(db, monkeypatch):
@@ -180,3 +180,27 @@ def test_build_node_config_device_empty_when_unset(db):
     db.commit()
     cfg = build_node_config(db, node)
     assert cfg["detector"]["device"] == ""
+
+
+# --- R2: toggle clip per zona -----------------------------------------------
+
+def test_build_node_config_zone_includes_clip_toggle(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    from app.models.zone import Zone
+    n = Node(name="n1", type="server")
+    db.add(n)
+    db.commit()
+    cam = Camera(name="CamX", host="127.0.0.1", node_id=n.id)
+    db.add(cam)
+    db.commit()
+    db.refresh(cam)
+    z = Zone(camera_id=cam.id, name="Gate", type="absensi",
+             polygon=[[0, 0], [1, 0], [1, 1], [0, 1]], snapshot=False, clip=False)
+    db.add(z)
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    payload = bnc(db, n)
+    zcfg = payload["cameras"][0]["zones"][0]
+    assert zcfg["snapshot"] is False
+    assert zcfg["clip"] is False

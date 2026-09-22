@@ -44,6 +44,7 @@ def build_node_config(db: Session, node: Node) -> dict:
                 "loiter_seconds": z.loiter_seconds,
                 "speed_limit_mps": z.speed_limit_mps,
                 "snapshot": z.snapshot,
+                "clip": z.clip,
                 "telegram": z.telegram,
             }
             for z in db.query(Zone)

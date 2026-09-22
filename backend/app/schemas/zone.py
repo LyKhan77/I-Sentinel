@@ -45,6 +45,7 @@ class ZoneIn(BaseModel):
     loiter_seconds: int = Field(default=0, ge=0)
     speed_limit_mps: float = Field(default=0, ge=0)
     snapshot: bool = True
+    clip: bool = True
     telegram: bool = False
     active: bool = True
 
@@ -84,6 +85,7 @@ class ZonePatch(BaseModel):
     loiter_seconds: int | None = Field(default=None, ge=0)
     speed_limit_mps: float | None = Field(default=None, ge=0)
     snapshot: bool | None = None
+    clip: bool | None = None
     telegram: bool | None = None
     active: bool | None = None
 
@@ -118,6 +120,7 @@ class ZoneOut(BaseModel):
     loiter_seconds: int
     speed_limit_mps: float
     snapshot: bool
+    clip: bool
     telegram: bool
     active: bool
     camera_name: str | None = None

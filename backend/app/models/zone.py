@@ -17,6 +17,7 @@ class Zone(Base):
     loiter_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = off
     speed_limit_mps: Mapped[float] = mapped_column(Float, default=0)  # 0 = off
     snapshot: Mapped[bool] = mapped_column(Boolean, default=True)
+    clip: Mapped[bool] = mapped_column(Boolean, default=True)  # toggle rekam clip per zona
     telegram: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
