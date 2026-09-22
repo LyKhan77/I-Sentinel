@@ -57,6 +57,22 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 
+## [Unreleased] — R3 Live View debugger
+
+### Modal debugger kamera — overlay zona & bbox person realtime
+
+- Vision node publish deteksi per frame ke MQTT `isentinel/detections/{node}`
+  (QoS 0 fire-and-forget, drop saat broker putus — data deteksi lama tak berguna).
+- Backend `events_consumer` subscribe topic itu → broadcast WS
+  `{type: "detections", camera_id, boxes}` melalui hub yang sudah ada.
+- Live View: klik tile → **modal debugger** (menggantikan big-on-top lama):
+  stream kamera + overlay SVG — toggle **Tampilkan zona** (semua zona kamera,
+  label nama+type: absensi hijau, restricted merah) dan **Tampilkan bbox person**
+  (kotak + `ID n` oranye, realtime ~0.2s). Tile grid tetap hidup saat modal terbuka.
+- person_detect = flag debug (`VISION_EMIT_PERSON_DETECT`, default false) —
+  tidak pernah masuk produksi; 88 event debug terhapus dari DB + blob.
+- Bukti: vision 113, backend 275, frontend 72, build ok.
+
 ## [Unreleased] — R2 Media capture toggles
 
 ### Snapshot bawa identitas track + toggle snapshot/clip per zona
