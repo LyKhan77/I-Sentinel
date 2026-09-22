@@ -141,3 +141,13 @@ def test_will_set_and_heartbeat(transport):
     topic, payload, qos, retain = transport._client.published[-1]
     assert topic == "isentinel/nodes/test-node/heartbeat"
     assert qos == 0 and retain is False
+
+
+def test_publish_detections_qos0_topic(transport):
+    transport.publish_detections(7, [{"id": 1, "bbox_norm": [0.1, 0.1, 0.5, 0.6], "conf": 0.9}])
+    topic, payload, qos, retain = transport._client.published[-1]
+    assert topic == "isentinel/detections/test-node"
+    assert qos == 0 and retain is False
+    data = json.loads(payload)
+    assert data["camera_id"] == 7
+    assert data["boxes"][0]["id"] == 1

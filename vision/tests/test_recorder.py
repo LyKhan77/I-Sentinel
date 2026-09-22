@@ -33,9 +33,13 @@ class FakeTransport:
     def __init__(self):
         self.events = []
         self.media = []
+        self.detections = []
 
     def publish_event(self, ev):
         self.events.append(ev)
+
+    def publish_detections(self, camera_id, boxes):
+        self.detections.append((camera_id, boxes))
 
     def publish_media(self, payload):
         self.media.append(payload)

@@ -30,6 +30,10 @@ class FakeTransport:
     def publish_heartbeat(self, hb):
         pass
 
+    def publish_detections(self, camera_id, boxes):
+        self.detections = getattr(self, 'detections', [])
+        self.detections.append((camera_id, boxes))
+
     def close(self):
         pass
 

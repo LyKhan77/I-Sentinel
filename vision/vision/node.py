@@ -121,6 +121,11 @@ class CameraWorker(threading.Thread):
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if tracks and self.transport is not None:
+                    self.transport.publish_detections(cam_id, [
+                        {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox]}
+                        for t in tracks
+                    ])
                 if self.recorder is not None:
                     if detections and frame.data is not None:
                         try:
