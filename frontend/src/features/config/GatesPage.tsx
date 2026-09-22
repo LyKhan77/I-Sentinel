@@ -4,6 +4,7 @@ import {
   Button,
   InlineLoading,
   InlineNotification,
+  NumberInput,
   Select,
   SelectItem,
   Table,
@@ -64,7 +65,7 @@ export default function GatesPage() {
 
   const camName = (id: number) => cams.find((c) => c.id === id)?.name ?? zones.find((z) => z.camera_id === id)?.camera_name ?? `#${id}`
 
-  const patch = async (zone: Zone, body: { direction?: 'entry' | 'exit'; snapshot?: boolean; clip?: boolean; active?: boolean }) => {
+  const patch = async (zone: Zone, body: { direction?: 'entry' | 'exit'; dwell_seconds?: number; snapshot?: boolean; clip?: boolean; active?: boolean }) => {
     try {
       const updated = await updateZone(zone.id, body)
       setZones((cur) => cur.map((z) => (z.id === zone.id ? updated : z)))
@@ -100,7 +101,7 @@ export default function GatesPage() {
     }
   }
 
-  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
+  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.dwell', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
 
   return (
     <>
@@ -161,6 +162,23 @@ export default function GatesPage() {
                         <SelectItem value="entry" text={t('gates.dir.entry')} />
                         <SelectItem value="exit" text={t('gates.dir.exit')} />
                       </Select>
+                    </TableCell>
+                    <TableCell>
+                      <NumberInput
+                        id={`gate-dwell-${z.id}`}
+                        data-testid={`gate-dwell-${z.id}`}
+                        label={t('gates.col.dwell')}
+                        hideLabel
+                        size="sm"
+                        min={0}
+                        step={1}
+                        disabled={!isAdmin}
+                        value={z.dwell_seconds ?? 0}
+                        onChange={(_, state) => {
+                          const n = Number(state.value)
+                          if (Number.isInteger(n) && n >= 0) patch(z, { dwell_seconds: n })
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <Toggle

@@ -5,6 +5,7 @@ import {
   Dropdown,
   InlineLoading,
   InlineNotification,
+  NumberInput,
   RadioButton,
   RadioButtonGroup,
   Tag,
@@ -265,6 +266,19 @@ export default function ZonesPage() {
                   labelText={t('zones.clip')}
                   toggled={selected.clip}
                   onToggle={(v) => patchSelected({ clip: v })}
+                />
+                <NumberInput
+                  id="zone-dwell"
+                  data-testid="zone-dwell"
+                  label={t('zones.dwell')}
+                  helperText={t('zones.dwellHint')}
+                  min={0}
+                  step={1}
+                  value={selected.dwell_seconds ?? 0}
+                  onChange={(_, state) => {
+                    const n = Number(state.value)
+                    if (Number.isInteger(n) && n >= 0) patchSelected({ dwell_seconds: n })
+                  }}
                 />
                 <div>
                   <Toggle id="zone-telegram" labelText={t('zones.telegram')} toggled={false} onToggle={() => {}} disabled />

@@ -14,6 +14,7 @@ export type Zone = {
   schedule: Schedule | null
   severity: 'critical' | 'warning'
   rate_limit_min: number
+  dwell_seconds: number
   snapshot: boolean
   clip: boolean
   telegram: boolean
@@ -28,6 +29,7 @@ export type ZonePayload = {
   polygon?: [number, number][]
   schedule?: Schedule | null
   severity?: 'critical' | 'warning'
+  dwell_seconds?: number
   snapshot?: boolean
   clip?: boolean
   telegram?: boolean

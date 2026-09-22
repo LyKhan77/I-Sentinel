@@ -39,6 +39,7 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     schedule: null,
     severity: 'warning',
     rate_limit_min: 5,
+    dwell_seconds: 0,
     snapshot: true, clip: true,
     telegram: false,
     active: true,

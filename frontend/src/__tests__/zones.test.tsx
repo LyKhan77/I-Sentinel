@@ -20,8 +20,12 @@ function stubFetch(opts: { zones?: Zone[]; created?: Zone } = {}) {
         json: () => Promise.resolve({ camera_id: 1, streams: { sub: 'cam_1' }, snapshot: 'http://192.168.2.10:1984/api/frame.jpeg?src=cam_1' }),
       }
     }
-    if (u.endsWith('/zones') && (init?.method ?? 'GET') === 'GET') {
+    if (u.includes('/zones') && (init?.method ?? 'GET') === 'GET') {
       return { ok: true, status: 200, json: () => Promise.resolve(zones) }
+    }
+    if (u.includes('/zones/') && init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body))
+      return { ok: true, status: 200, json: () => Promise.resolve({ ...zones[0], ...body }) }
     }
     if (u.endsWith('/zones') && init?.method === 'POST') {
       const body = JSON.parse(String(init.body))
@@ -71,7 +75,7 @@ test('click 3 points shows green start ring, click ring closes polygon', async (
 })
 
 test('save calls createZone with normalized polygon', async () => {
-  const created: Zone = { id: 10, camera_id: 1, name: 'Zona 1', type: 'restricted', direction: null, polygon: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]], schedule: null, severity: 'warning', rate_limit_min: 5, snapshot: true, clip: true, telegram: false, active: true }
+  const created: Zone = { id: 10, camera_id: 1, name: 'Zona 1', type: 'restricted', direction: null, polygon: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]], schedule: null, severity: 'warning', rate_limit_min: 5, dwell_seconds: 0, snapshot: true, clip: true, telegram: false, active: true }
   const fetchMock = stubFetch({ created })
   vi.stubGlobal('fetch', fetchMock)
   render(<I18nProvider><ZonesPage /></I18nProvider>)
@@ -114,7 +118,7 @@ test('draw mode cancel resets points', async () => {
 })
 
 test('right-click handle deletes point, min 3 enforced', async () => {
-  const zone: Zone = { id: 1, camera_id: 1, name: 'z', type: 'free', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, snapshot: true, clip: true, telegram: false, active: true }
+  const zone: Zone = { id: 1, camera_id: 1, name: 'z', type: 'free', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, dwell_seconds: 0, snapshot: true, clip: true, telegram: false, active: true }
   vi.stubGlobal('fetch', stubFetch({ zones: [zone] }))
   let zones: Zone[] = [zone]
   // parent-nya ZonesPage yg pegang selectedId — bungkus dgn state, pola sama dgn page asli
@@ -134,4 +138,30 @@ test('right-click handle deletes point, min 3 enforced', async () => {
   fireEvent.contextMenu(screen.getByTestId('zone-handle-0-0'))
   // 3 titik = minimum → tidak berubah
   expect(zones[0].polygon).toHaveLength(3)
+})
+
+test('zona punya field dwell detik (0 = langsung) dan tersimpan via PATCH', async () => {
+  const existing: Zone = {
+    id: 10, camera_id: 1, name: 'Gate Entry', type: 'absensi', direction: 'entry',
+    polygon: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9]], schedule: null, severity: 'warning',
+    rate_limit_min: 5, snapshot: true, clip: true, telegram: false, active: true, dwell_seconds: 0,
+  }
+  const fetchMock = stubFetch({ zones: [existing] })
+  vi.stubGlobal('fetch', fetchMock)
+  render(<I18nProvider><ZonesPage /></I18nProvider>)
+
+  await waitFor(() => expect(screen.getByTestId('zone-item-10')).toBeInTheDocument())
+  fireEvent.click(screen.getByTestId('zone-item-10'))
+
+  const dwell = await screen.findByTestId('zone-dwell')
+  expect(dwell).toHaveValue(0)
+  expect(screen.getByText('0 = langsung')).toBeInTheDocument()
+  fireEvent.change(dwell, { target: { value: '3' } })
+  fireEvent.click(screen.getByTestId('zone-save'))
+
+  await waitFor(() => {
+    const patch = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith('/zones/10') && i?.method === 'PATCH')
+    expect(patch).toBeTruthy()
+    expect(JSON.parse(String(patch![1]!.body)).dwell_seconds).toBe(3)
+  })
 })

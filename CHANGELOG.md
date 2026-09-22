@@ -105,6 +105,17 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 - Bukti: `npx vitest run` 77 passed (14 di events.test.tsx), `npm run build` ok,
   `npm run lint` tanpa warning baru.
 
+### Setting dwell di UI zona + gate (Task 5)
+
+- `frontend/src/features/config/ZonesPage.tsx`: NumberInput **Dwell (detik)** di
+  panel properti zona (semua tipe), helper "0 = langsung";
+  `GatesPage.tsx`: kolom **DWELL (S)** per gate (PATCH langsung, disabled untuk
+  non-admin). `frontend/src/api/zones.ts`: `dwell_seconds` di `Zone`/`ZonePayload`;
+  `ZoneEditor.tsx` ikut menulis `dwell_seconds: 0` untuk zona baru.
+- i18n EN+ID: `zones.dwell`, `zones.dwellHint`, `gates.col.dwell`.
+- Bukti: `npx vitest run` 80 passed (3× berturut stabil), `npm run build` ok,
+  `npm run lint` tanpa warning baru.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime
