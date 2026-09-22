@@ -837,6 +837,7 @@ diperbaiki di akarnya (offset konten, token tema, pemuatan font).
 
 - Task 5: Live View debugger menerima payload deteksi `kind` (`person`/`face`) dan `label`; toggle menjadi **Tampilkan deteksi**, dengan bbox person oranye dan wajah biru.
 - Task 6: `detector_setting` singleton dan API admin menyimpan override global FPS/confidence/motion; `config_push` mendahulukan DB daripada `.env` dan menerbitkan ulang konfigurasi node.
+- Task 7: PATCH kamera menerima override AI FPS, confidence, analyzer, dan motion; perubahan memicu config push node terkait.
 
 - `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
 - `3ec0d3a` feat: zone editor (click-to-draw polygon) + events master-detail inbox

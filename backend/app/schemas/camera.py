@@ -101,6 +101,10 @@ class CameraOut(BaseModel):
     probe_main: dict | None
     probe_sub: dict | None
     meters_per_pixel: float | None
+    ai_fps: float | None
+    confidence: float | None
+    analyzers: list[str] | None
+    motion_enabled: bool | None
 
     model_config = {"from_attributes": True}
 
@@ -149,6 +153,17 @@ class CameraPatch(BaseModel):
     probe_sub: dict | None = None
     status: str | None = None
     meters_per_pixel: float | None = Field(default=None, gt=0)
+    ai_fps: float | None = Field(default=None, ge=0.5, le=25)
+    confidence: float | None = Field(default=None, ge=0.05, le=0.95)
+    analyzers: list[str] | None = None
+    motion_enabled: bool | None = None
+
+    @field_validator("analyzers")
+    @classmethod
+    def valid_analyzers(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and not set(value) <= {"intrusion", "loitering", "running", "attendance"}:
+            raise ValueError("invalid analyzer")
+        return value
 
 
 class CameraImportEntry(BaseModel):
