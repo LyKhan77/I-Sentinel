@@ -150,6 +150,17 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   media per event, dedup + rate limit + alerting, rantai attendance, plus 10
   temuan inkonsistensi untuk pembahasan penataan arsitektur.
 
+### fix(dev): proxy Vite teruskan WebSocket — overlay deteksi akhirnya sampai
+
+- `frontend/vite.config.ts`: proxy `/api` diubah dari string ke objek dengan
+  **`ws: true`**. Tanpa ini browser (UI di port 5173) tidak pernah berhasil
+  handshake `ws://<host>:5173/api/v1/ws/events` — terbukti: `ws://localhost:5173/...`
+  timeout, `ws://localhost:8000/...` connect OK. Akibatnya overlay bbox detection
+  di modal debugger Live View tak pernah terisi (zona tetap tampil karena dari REST).
+- Jalur backend sudah benar dan diverifikasi: pesan disuntik ke MQTT
+  `isentinel/detections/server` → diterima klien WS (cookie auth) sebagai
+  `{"type":"detections",...}`.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime
