@@ -171,7 +171,7 @@ function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo |
 
 // Overlay debugger di modal: SVG koordinat normalisasi (viewBox 0 0 100 100)
 // sehingga zona/bbox tidak butuh tahu ukuran video. Polygon zona + deteksi realtime.
-const ZONE_COLORS: Record<string, string> = { absensi: '#42be65', restricted: '#fa4d56' }
+const ZONE_COLORS: Record<string, string> = { attendance: '#42be65', behavior: '#fa4d56' }
 const BOX_COLORS = { person: '#ff832b', face: '#78a9ff' } as const
 
 type DetectionKind = keyof typeof BOX_COLORS

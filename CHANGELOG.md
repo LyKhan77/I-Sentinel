@@ -839,6 +839,19 @@ diperbaiki di akarnya (offset konten, token tema, pemuatan font).
 - Task 6: `detector_setting` singleton dan API admin menyimpan override global FPS/confidence/motion; `config_push` mendahulukan DB daripada `.env` dan menerbitkan ulang konfigurasi node.
 - Task 7: PATCH kamera menerima override AI FPS, confidence, analyzer, dan motion; perubahan memicu config push node terkait.
 - Task 8: tab **Deteksi & Model** menampilkan nilai global efektif, override per kamera, chip analyzer, dan Advanced untuk motion gate.
+- Task 9: editor zona memakai kosakata baru — tipe **Attendance | Behavior**, multi-select behavior
+  (`intrusion`/`loitering`/`running`) dengan **Trigger threshold (detik)** per behavior dan
+  `speed_limit_mps` khusus `running`; zona Attendance punya arah + satu trigger; `behaviors=[]`
+  tetap valid sebagai zona visual. Field lama level-zona (`dwell_seconds`) hilang dari UI dan
+  dari `frontend/src/api/zones.ts`; GatesPage menyaring `type='attendance'` dan menulis
+  `{trigger_seconds, behaviors:[{kind:'attendance',trigger_seconds}]}`; `LiveViewPage` memakai
+  warna zona `attendance`/`behavior`; i18n EN/ID diganti (`zones.trigger`, `zones.behaviors`,
+  `zones.behavior.*`, `zones.speedLimit`, `zones.type.attendance|behavior`, `gates.col.trigger`;
+  kunci `zones.dwell*`, `zones.type.{restricted,absensi,free}`, `gates.col.dwell` dihapus).
+  Bukti: vitest zona+gate **RED 10 failed | 4 passed → GREEN 14 passed**, full `npx vitest run`
+  **86 passed**, `npm run build` exit 0, `npm run lint` tanpa warning baru, backend
+  `pytest -m "not gpu"` **308 passed**, vision **134 passed, 2 deselected**.
+  Rollback: `git revert` commit `feat(zones-ui): ...` (perubahan murni frontend; skema DB tetap).
 
 - `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
 - `3ec0d3a` feat: zone editor (click-to-draw polygon) + events master-detail inbox

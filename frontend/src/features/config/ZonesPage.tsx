@@ -15,8 +15,21 @@ import {
 import { Delete, Save } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
-import { createZone, deleteZone, listZones, updateZone, type Zone, type ZoneType as ZT } from '../../api/zones'
+import {
+  createZone,
+  deleteZone,
+  listZones,
+  updateZone,
+  type Behavior,
+  type BehaviorKind,
+  type Zone,
+  type ZoneType,
+} from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
+
+const BEHAVIOR_KINDS: BehaviorKind[] = ['intrusion', 'loitering', 'running']
+// ponytail: node melewati analyzer running bila speed_limit_mps = 0 → default masuk akal saat dicentang
+const DEFAULT_SPEED_MPS = 2
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] // 1=Senin .. 7=Minggu (backend VALID_DAYS)
 const DAY_LABEL: Record<number, TKey> = {
@@ -64,6 +77,28 @@ export default function ZonesPage() {
     setZones(zones.map((z) => (z.id === selected.id ? { ...z, ...patch } : z)))
   }
 
+  /** Tambah/ubah/hapus satu behavior; urutan payload mengikuti BEHAVIOR_KINDS. */
+  const setBehavior = (kind: BehaviorKind, patch: Partial<Behavior> | null) => {
+    if (!selected) return
+    const entry = (k: BehaviorKind): Behavior | null => {
+      const current = selected.behaviors.find((b) => b.kind === k) ?? null
+      if (k !== kind) return current
+      if (patch === null) return null
+      return {
+        kind,
+        trigger_seconds: 0,
+        ...(kind === 'running' ? { speed_limit_mps: DEFAULT_SPEED_MPS } : {}),
+        ...current,
+        ...patch,
+      }
+    }
+    patchSelected({ behaviors: BEHAVIOR_KINDS.map(entry).filter((b): b is Behavior => b !== null) })
+  }
+
+  // attendance: satu threshold — kolom zona dan entry behavior dijaga sinkron
+  const setAttendanceTrigger = (n: number) =>
+    patchSelected({ trigger_seconds: n, behaviors: [{ kind: 'attendance', trigger_seconds: n }] })
+
   const save = async () => {
     if (!selected || !cam) return
     setError(null)
@@ -92,7 +127,7 @@ export default function ZonesPage() {
     }
   }
 
-  const typeItems: { id: ZT; label: string }[] = (['restricted', 'absensi', 'free'] as ZT[]).map((id) => ({
+  const typeItems: { id: ZoneType; label: string }[] = (['attendance', 'behavior'] as ZoneType[]).map((id) => ({
     id,
     label: t(`zones.type.${id}` as TKey),
   }))
@@ -175,11 +210,23 @@ export default function ZonesPage() {
                   label={t('events.filterAll')}
                   items={typeItems}
                   selectedItem={typeItems.find((i) => i.id === selected.type)}
-                  onChange={({ selectedItem }) =>
-                    selectedItem && patchSelected({ type: selectedItem.id, direction: selectedItem.id === 'absensi' ? selected.direction : null })
-                  }
+                  onChange={({ selectedItem }) => {
+                    if (!selectedItem) return
+                    if (selectedItem.id === 'attendance')
+                      patchSelected({
+                        type: 'attendance',
+                        direction: selected.direction ?? 'entry',
+                        behaviors: [{ kind: 'attendance', trigger_seconds: selected.trigger_seconds }],
+                      })
+                    else
+                      patchSelected({
+                        type: 'behavior',
+                        direction: null,
+                        behaviors: selected.behaviors.filter((b) => b.kind !== 'attendance'),
+                      })
+                  }}
                 />
-                {selected.type === 'absensi' && (
+                {selected.type === 'attendance' && (
                   <RadioButtonGroup
                     legendText={t('zones.direction')}
                     name="zone-direction"
@@ -267,19 +314,72 @@ export default function ZonesPage() {
                   toggled={selected.clip}
                   onToggle={(v) => patchSelected({ clip: v })}
                 />
-                <NumberInput
-                  id="zone-dwell"
-                  data-testid="zone-dwell"
-                  label={t('zones.dwell')}
-                  helperText={t('zones.dwellHint')}
-                  min={0}
-                  step={1}
-                  value={selected.dwell_seconds ?? 0}
-                  onChange={(_, state) => {
-                    const n = Number(state.value)
-                    if (Number.isInteger(n) && n >= 0) patchSelected({ dwell_seconds: n })
-                  }}
-                />
+                {selected.type === 'attendance' ? (
+                  <NumberInput
+                    id="zone-trigger"
+                    data-testid="zone-trigger"
+                    label={t('zones.trigger')}
+                    helperText={t('zones.triggerHint')}
+                    min={0}
+                    step={1}
+                    value={selected.trigger_seconds ?? 0}
+                    onChange={(_, state) => {
+                      const n = Number(state.value)
+                      if (Number.isInteger(n) && n >= 0) setAttendanceTrigger(n)
+                    }}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{t('zones.behaviors')}</span>
+                    {BEHAVIOR_KINDS.map((kind) => {
+                      const b = selected.behaviors.find((x) => x.kind === kind)
+                      return (
+                        <div key={kind} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <Checkbox
+                            id={`zone-behavior-${kind}`}
+                            data-testid={`zone-behavior-${kind}`}
+                            labelText={t(`zones.behavior.${kind}` as TKey)}
+                            checked={b != null}
+                            onChange={(_, { checked }) => setBehavior(kind, checked ? {} : null)}
+                          />
+                          {b && (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingLeft: 24 }}>
+                              <NumberInput
+                                id={`zone-trigger-${kind}`}
+                                data-testid={`zone-trigger-${kind}`}
+                                size="sm"
+                                label={t('zones.trigger')}
+                                helperText={t('zones.triggerHint')}
+                                min={0}
+                                step={1}
+                                value={b.trigger_seconds}
+                                onChange={(_, state) => {
+                                  const n = Number(state.value)
+                                  if (Number.isInteger(n) && n >= 0) setBehavior(kind, { trigger_seconds: n })
+                                }}
+                              />
+                              {kind === 'running' && (
+                                <NumberInput
+                                  id="zone-speed-running"
+                                  data-testid="zone-speed-running"
+                                  size="sm"
+                                  label={t('zones.speedLimit')}
+                                  min={0}
+                                  step={0.5}
+                                  value={b.speed_limit_mps ?? DEFAULT_SPEED_MPS}
+                                  onChange={(_, state) => {
+                                    const n = Number(state.value)
+                                    if (n >= 0) setBehavior('running', { speed_limit_mps: n })
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
                 <div>
                   <Toggle id="zone-telegram" labelText={t('zones.telegram')} toggled={false} onToggle={() => {}} disabled />
                   <div style={{ fontSize: 12, color: 'var(--cds-text-helper)', marginTop: 4 }}>{t('zones.telegramFase3')}</div>

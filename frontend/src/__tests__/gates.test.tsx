@@ -13,7 +13,7 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     id,
     camera_id: 1,
     name: direction === 'entry' ? 'Gate Entry' : 'Gate Exit',
-    type: 'absensi',
+    type: 'attendance',
     direction,
     polygon: [
       [0.1, 0.1],
@@ -26,7 +26,8 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     snapshot: true, clip: true,
     telegram: false,
     active: true,
-    dwell_seconds: 0,
+    trigger_seconds: 0,
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
     camera_name: 'CAM-01',
   }
 }
@@ -100,26 +101,29 @@ test('admin can add a gate zone', async () => {
   expect(screen.getAllByRole('combobox')[1]).toBeEnabled()
 })
 
-test('admin ubah dwell detik per gate (PATCH dwell_seconds)', async () => {
+test('admin ubah trigger threshold per gate (PATCH trigger_seconds + behaviors)', async () => {
   const fetchMock = stubFetch([gate(1, 'entry')])
   renderPage()
 
   await screen.findByTestId('gate-row-1')
-  const dwell = screen.getByTestId('gate-dwell-1')
-  expect(dwell).toHaveValue(0)
-  fireEvent.change(dwell, { target: { value: '3' } })
+  const trigger = screen.getByTestId('gate-trigger-1')
+  expect(trigger).toHaveValue(0)
+  fireEvent.change(trigger, { target: { value: '3' } })
 
   await waitFor(() => {
     const patch = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith('/zones/1') && i?.method === 'PATCH')
     expect(patch).toBeTruthy()
-    expect(JSON.parse(String(patch![1]!.body))).toEqual({ dwell_seconds: 3 })
+    expect(JSON.parse(String(patch![1]!.body))).toEqual({
+      trigger_seconds: 3,
+      behaviors: [{ kind: 'attendance', trigger_seconds: 3 }],
+    })
   })
 })
 
-test('viewer tidak bisa ubah dwell detik', async () => {
+test('viewer tidak bisa ubah trigger threshold', async () => {
   stubFetch([gate(1, 'entry')], VIEWER)
   renderPage()
 
   await screen.findByTestId('gate-row-1')
-  expect(screen.getByTestId('gate-dwell-1')).toBeDisabled()
+  expect(screen.getByTestId('gate-trigger-1')).toBeDisabled()
 })

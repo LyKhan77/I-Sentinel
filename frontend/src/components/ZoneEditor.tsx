@@ -7,9 +7,8 @@ import type { Zone, ZoneType } from '../api/zones'
 
 // warna fill per tipe zone (mockup 06)
 export const ZONE_COLOR: Record<ZoneType, string> = {
-  restricted: '#fa4d56',
-  absensi: '#4589ff',
-  free: '#42be65',
+  behavior: '#fa4d56',
+  attendance: '#4589ff',
 }
 
 type Props = {
@@ -83,13 +82,14 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
       id: -Date.now(), // ponytail: id sementara negatif sampai POST; backend assign id asli
       camera_id: cameraId,
       name: `${t('zones.defaultName')} ${initialZones.length + 1}`,
-      type: 'restricted',
+      type: 'behavior',
       direction: null,
       polygon: points,
       schedule: null,
       severity: 'warning',
       rate_limit_min: 5,
-      dwell_seconds: 0,
+      trigger_seconds: 0,
+      behaviors: [],
       snapshot: true,
       clip: true,
       telegram: false,

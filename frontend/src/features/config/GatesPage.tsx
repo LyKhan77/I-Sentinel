@@ -20,7 +20,7 @@ import {
 import { useT, type TKey } from '../../app/i18n'
 import { getMe, type Me } from '../../api/client'
 import { listCameras, type Camera } from '../../api/cameras'
-import { createZone, listZones, updateZone, type Zone } from '../../api/zones'
+import { createZone, listZones, updateZone, type Zone, type ZonePayload } from '../../api/zones'
 
 // ponytail: default polygon kotak — admin menggambar ulang di editor zona
 const DEFAULT_POLYGON: [number, number][] = [
@@ -49,7 +49,7 @@ export default function GatesPage() {
       const [zs, cs] = await Promise.all([listZones(), listCameras()])
       const enabled = cs.filter((c) => c.enabled)
       setCams(enabled)
-      setZones(zs.filter((z) => z.type === 'absensi'))
+      setZones(zs.filter((z) => z.type === 'attendance'))
       if (enabled.length > 0) setNewCamId((prev) => prev ?? enabled[0].id)
     } catch {
       setError(t('gates.loadError'))
@@ -65,7 +65,7 @@ export default function GatesPage() {
 
   const camName = (id: number) => cams.find((c) => c.id === id)?.name ?? zones.find((z) => z.camera_id === id)?.camera_name ?? `#${id}`
 
-  const patch = async (zone: Zone, body: { direction?: 'entry' | 'exit'; dwell_seconds?: number; snapshot?: boolean; clip?: boolean; active?: boolean }) => {
+  const patch = async (zone: Zone, body: ZonePayload) => {
     try {
       const updated = await updateZone(zone.id, body)
       setZones((cur) => cur.map((z) => (z.id === zone.id ? updated : z)))
@@ -89,7 +89,8 @@ export default function GatesPage() {
     try {
       await createZone(newCamId, {
         name: `Gate ${camName(newCamId)}`,
-        type: 'absensi',
+        type: 'attendance',
+        behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
         direction: 'entry',
         polygon: DEFAULT_POLYGON,
         snapshot: true,
@@ -101,7 +102,7 @@ export default function GatesPage() {
     }
   }
 
-  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.dwell', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
+  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.trigger', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
 
   return (
     <>
@@ -165,18 +166,20 @@ export default function GatesPage() {
                     </TableCell>
                     <TableCell>
                       <NumberInput
-                        id={`gate-dwell-${z.id}`}
-                        data-testid={`gate-dwell-${z.id}`}
-                        label={t('gates.col.dwell')}
+                        id={`gate-trigger-${z.id}`}
+                        data-testid={`gate-trigger-${z.id}`}
+                        label={t('gates.col.trigger')}
                         hideLabel
                         size="sm"
                         min={0}
                         step={1}
                         disabled={!isAdmin}
-                        value={z.dwell_seconds ?? 0}
+                        value={z.trigger_seconds ?? 0}
                         onChange={(_, state) => {
                           const n = Number(state.value)
-                          if (Number.isInteger(n) && n >= 0) patch(z, { dwell_seconds: n })
+                          // gate attendance: kolom zona dan entry behavior dijaga sinkron
+                          if (Number.isInteger(n) && n >= 0)
+                            patch(z, { trigger_seconds: n, behaviors: [{ kind: 'attendance', trigger_seconds: n }] })
                         }}
                       />
                     </TableCell>

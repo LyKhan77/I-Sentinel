@@ -29,7 +29,7 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     id,
     camera_id: 1,
     name: direction === 'entry' ? 'Gate Entry' : 'Gate Exit',
-    type: 'absensi',
+    type: 'attendance',
     direction,
     polygon: [
       [0.1, 0.1],
@@ -39,7 +39,8 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     schedule: null,
     severity: 'warning',
     rate_limit_min: 5,
-    dwell_seconds: 0,
+    trigger_seconds: 0,
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
     snapshot: true, clip: true,
     telegram: false,
     active: true,

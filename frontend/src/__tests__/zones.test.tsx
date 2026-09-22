@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest'
 import { useState } from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
@@ -75,7 +76,7 @@ test('click 3 points shows green start ring, click ring closes polygon', async (
 })
 
 test('save calls createZone with normalized polygon', async () => {
-  const created: Zone = { id: 10, camera_id: 1, name: 'Zona 1', type: 'restricted', direction: null, polygon: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]], schedule: null, severity: 'warning', rate_limit_min: 5, dwell_seconds: 0, snapshot: true, clip: true, telegram: false, active: true }
+  const created: Zone = { id: 10, camera_id: 1, name: 'Zona 1', type: 'behavior', direction: null, polygon: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]], schedule: null, severity: 'warning', rate_limit_min: 5, trigger_seconds: 0, behaviors: [], snapshot: true, clip: true, telegram: false, active: true }
   const fetchMock = stubFetch({ created })
   vi.stubGlobal('fetch', fetchMock)
   render(<I18nProvider><ZonesPage /></I18nProvider>)
@@ -118,7 +119,7 @@ test('draw mode cancel resets points', async () => {
 })
 
 test('right-click handle deletes point, min 3 enforced', async () => {
-  const zone: Zone = { id: 1, camera_id: 1, name: 'z', type: 'free', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, dwell_seconds: 0, snapshot: true, clip: true, telegram: false, active: true }
+  const zone: Zone = { id: 1, camera_id: 1, name: 'z', type: 'behavior', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, trigger_seconds: 0, behaviors: [], snapshot: true, clip: true, telegram: false, active: true }
   vi.stubGlobal('fetch', stubFetch({ zones: [zone] }))
   let zones: Zone[] = [zone]
   // parent-nya ZonesPage yg pegang selectedId — bungkus dgn state, pola sama dgn page asli
@@ -140,28 +141,81 @@ test('right-click handle deletes point, min 3 enforced', async () => {
   expect(zones[0].polygon).toHaveLength(3)
 })
 
-test('zona punya field dwell detik (0 = langsung) dan tersimpan via PATCH', async () => {
-  const existing: Zone = {
-    id: 10, camera_id: 1, name: 'Gate Entry', type: 'absensi', direction: 'entry',
-    polygon: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9]], schedule: null, severity: 'warning',
-    rate_limit_min: 5, snapshot: true, clip: true, telegram: false, active: true, dwell_seconds: 0,
-  }
-  const fetchMock = stubFetch({ zones: [existing] })
+const zoneFix = (over: Partial<Zone> = {}): Zone => ({
+  id: 10, camera_id: 1, name: 'Zona 1', type: 'behavior', direction: null,
+  polygon: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9]], schedule: null, severity: 'warning',
+  rate_limit_min: 5, trigger_seconds: 0, behaviors: [], snapshot: true, clip: true,
+  telegram: false, active: true, ...over,
+})
+
+async function selectZone(zones: Zone[]) {
+  const fetchMock = stubFetch({ zones })
   vi.stubGlobal('fetch', fetchMock)
   render(<I18nProvider><ZonesPage /></I18nProvider>)
+  fireEvent.click(await screen.findByTestId('zone-item-10'))
+  return fetchMock
+}
 
-  await waitFor(() => expect(screen.getByTestId('zone-item-10')).toBeInTheDocument())
-  fireEvent.click(screen.getByTestId('zone-item-10'))
+function patchBody(fetchMock: Mock) {
+  const patch = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith('/zones/10') && i?.method === 'PATCH')
+  expect(patch).toBeTruthy()
+  return JSON.parse(String(patch![1]!.body))
+}
 
-  const dwell = await screen.findByTestId('zone-dwell')
-  expect(dwell).toHaveValue(0)
-  expect(screen.getByText('0 = langsung')).toBeInTheDocument()
-  fireEvent.change(dwell, { target: { value: '3' } })
+test('tipe Behavior: tiap behavior terpilih punya trigger sendiri, dikirim sebagai behaviors', async () => {
+  const fetchMock = await selectZone([zoneFix()])
+
+  // field lama level-zona tidak boleh muncul lagi
+  expect(screen.queryByTestId('zone-dwell')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByTestId('zone-behavior-intrusion'))
+  fireEvent.click(screen.getByTestId('zone-behavior-loitering'))
+  expect(await screen.findByTestId('zone-trigger-intrusion')).toHaveValue(0)
+  fireEvent.change(screen.getByTestId('zone-trigger-loitering'), { target: { value: '30' } })
+  fireEvent.click(screen.getByTestId('zone-save'))
+
+  await waitFor(() =>
+    expect(patchBody(fetchMock).behaviors).toEqual([
+      { kind: 'intrusion', trigger_seconds: 0 },
+      { kind: 'loitering', trigger_seconds: 30 },
+    ]),
+  )
+})
+
+test('behavior running membawa speed_limit_mps sendiri', async () => {
+  const fetchMock = await selectZone([zoneFix()])
+
+  fireEvent.click(screen.getByTestId('zone-behavior-running'))
+  fireEvent.change(await screen.findByTestId('zone-speed-running'), { target: { value: '2.5' } })
+  fireEvent.click(screen.getByTestId('zone-save'))
+
+  await waitFor(() =>
+    expect(patchBody(fetchMock).behaviors).toEqual([{ kind: 'running', trigger_seconds: 0, speed_limit_mps: 2.5 }]),
+  )
+})
+
+test('tipe Attendance: arah + satu trigger threshold, tanpa daftar behavior', async () => {
+  const fetchMock = await selectZone([
+    zoneFix({ type: 'attendance', direction: 'entry', behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] }),
+  ])
+
+  expect(screen.getByLabelText('Masuk')).toBeInTheDocument()
+  expect(screen.queryByTestId('zone-behavior-intrusion')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByTestId('zone-trigger'), { target: { value: '3' } })
   fireEvent.click(screen.getByTestId('zone-save'))
 
   await waitFor(() => {
-    const patch = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith('/zones/10') && i?.method === 'PATCH')
-    expect(patch).toBeTruthy()
-    expect(JSON.parse(String(patch![1]!.body)).dwell_seconds).toBe(3)
+    const body = patchBody(fetchMock)
+    expect(body.trigger_seconds).toBe(3)
+    expect(body.behaviors).toEqual([{ kind: 'attendance', trigger_seconds: 3 }])
   })
+})
+
+test('zona Behavior tanpa behavior terpilih tetap tersimpan (zona visual)', async () => {
+  const fetchMock = await selectZone([zoneFix()])
+
+  expect(screen.getByTestId('zone-behavior-intrusion')).not.toBeChecked()
+  fireEvent.click(screen.getByTestId('zone-save'))
+
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([]))
 })
