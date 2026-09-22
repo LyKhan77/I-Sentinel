@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 EVENTS_TOPIC = "isentinel/events"
 MEDIA_TOPIC = "isentinel/events/media"
+DETECTIONS_PREFIX = "isentinel/detections/"
 LWT_TOPIC = "isentinel/nodes/+/lwt"
 HEARTBEAT_TOPIC = "isentinel/nodes/+/heartbeat"
 
@@ -30,6 +31,13 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             data = json.loads(payload)
         except (ValueError, UnicodeDecodeError):
             logger.warning("Malformed JSON on %s", topic)
+            return
+
+        if topic.startswith(DETECTIONS_PREFIX):
+            try:
+                asyncio.run(hub.broadcast({"type": "detections", **data}))
+            except Exception:
+                logger.exception("detections broadcast failed")
             return
 
         if topic == EVENTS_TOPIC:
@@ -132,7 +140,8 @@ class EventConsumer:
                 time.sleep(5)
 
     def _subscriptions(self):
-        return [(EVENTS_TOPIC, 1), (MEDIA_TOPIC, 1), (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
+        return [(EVENTS_TOPIC, 1), (MEDIA_TOPIC, 1), ("isentinel/detections/+", 0),
+                (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         client.subscribe(self._subscriptions())

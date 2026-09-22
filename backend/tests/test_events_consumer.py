@@ -101,3 +101,23 @@ def test_heartbeat_bad_hw_shape_ignored(db, broadcast):
                    json.dumps({"ts": "x", "hw": "junk"}).encode())
     node = db.query(Node).filter_by(name="vision-1").one()
     assert node.hw is None and node.status == "online"
+
+
+# --- R3: relay detections topic → WS -----------------------------------------
+
+DETECTIONS_TOPIC = "isentinel/detections/test-node"
+
+
+def test_detections_relayed_to_hub(db, broadcast):
+    payload = json.dumps({"camera_id": 7, "boxes": [
+        {"id": 1, "bbox_norm": [0.1, 0.1, 0.5, 0.6]}]}).encode()
+    handle_message(db, DETECTIONS_TOPIC, payload)
+    assert broadcast == [{
+        "type": "detections", "camera_id": 7,
+        "boxes": [{"id": 1, "bbox_norm": [0.1, 0.1, 0.5, 0.6]}],
+    }]
+
+
+def test_detections_malformed_no_raise_no_broadcast(db, broadcast):
+    handle_message(db, DETECTIONS_TOPIC, b"not-json")
+    assert broadcast == []
