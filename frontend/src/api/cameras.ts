@@ -158,6 +158,13 @@ export async function deleteCamera(id: number): Promise<void> {
   if (!res.ok) throw new Error(`delete camera failed: ${res.status}`)
 }
 
+export type Go2rtcSyncResult = { added: string[]; removed: string[]; kept: number }
+
+export async function syncGo2rtc(): Promise<Go2rtcSyncResult> {
+  const res = await apiFetch('/cameras/sync-go2rtc', { method: 'POST' })
+  return expectOk(res, 'sync go2rtc')
+}
+
 export async function probeCamera(host: string, cameraId?: number): Promise<ProbeResult>
 export async function probeCamera(payload: ProbePayload): Promise<ProbeResult>
 export async function probeCamera(hostOrPayload: string | ProbePayload, cameraId?: number): Promise<ProbeResult> {

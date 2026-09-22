@@ -192,3 +192,119 @@ def test_snapshot_returns_502_when_go2rtc_unreachable(client, monkeypatch):
     r = client.get(f"/api/v1/cameras/{cid}/snapshot", headers=h)
     assert r.status_code == 502
     assert "go2rtc unreachable" in r.json()["detail"]
+
+
+# --- R5 Task 0: alias kamera single-stream + sync_all ------------------------
+
+def _params(calls):
+    from urllib.parse import parse_qsl, urlparse
+    return [dict(parse_qsl(urlparse(url).query)) for _, url in calls]
+
+
+def test_sync_camera_single_stream_aliases_sub_to_main(monkeypatch):
+    """ZKteco cam 364: rtsp_sub kosong → cam_364 harus memakai URL main."""
+    calls = []
+    def handler(request):
+        calls.append((request.method, str(request.url)))
+        return httpx.Response(200)
+    monkeypatch.setattr(go2rtc, "_client", _fake_transport(handler))
+    monkeypatch.setattr(settings, "cam_username", "u")
+    monkeypatch.setattr(settings, "cam_password", "p")
+    cam = type("Cam", (), {"id": 364, "host": "10.0.0.9:8554", "rtsp_sub": None, "rtsp_main": "/stream"})()
+    go2rtc.sync_camera(cam)
+
+    sent = {p["name"]: p["src"] for p in _params(calls) if p.get("name")}
+    assert set(sent) == {"cam_364", "cam_364_main"}
+    assert all("/stream" in src for src in sent.values())
+
+
+def test_sync_camera_sub_only_aliases_main_to_sub(monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append((request.method, str(request.url)))
+        return httpx.Response(200)
+    monkeypatch.setattr(go2rtc, "_client", _fake_transport(handler))
+    monkeypatch.setattr(settings, "cam_username", "u")
+    monkeypatch.setattr(settings, "cam_password", "p")
+    cam = type("Cam", (), {"id": 8, "host": "10.0.0.9", "rtsp_sub": "/sub", "rtsp_main": None})()
+    go2rtc.sync_camera(cam)
+
+    sent = {p["name"]: p["src"] for p in _params(calls) if p.get("name")}
+    assert set(sent) == {"cam_8", "cam_8_main"}
+    assert all(src.endswith("/sub") for src in sent.values())
+
+
+def test_sync_camera_without_any_path_is_skipped(monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append((request.method, str(request.url)))
+        return httpx.Response(200)
+    monkeypatch.setattr(go2rtc, "_client", _fake_transport(handler))
+    cam = type("Cam", (), {"id": 9, "host": "10.0.0.9", "rtsp_sub": None, "rtsp_main": None})()
+    go2rtc.sync_camera(cam)
+    assert calls == []
+
+
+class _FakeGo2rtc:
+    """MockTransport stateful: PUT menambah, DELETE menghapus, GET mengembalikan dict."""
+
+    def __init__(self, initial=None):
+        self.streams = dict(initial or {})
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        q = dict(request.url.params)
+        if request.method == "GET":
+            return httpx.Response(200, json={n: {"producers": [{"url": s}]} for n, s in self.streams.items()})
+        if request.method == "PUT":
+            self.streams[q["name"]] = q["src"]
+            return httpx.Response(200, json={})
+        if request.method == "DELETE":
+            self.streams.pop(q["src"], None)
+            return httpx.Response(200, json={})
+        return httpx.Response(405)
+
+
+def _stateful(state: _FakeGo2rtc):
+    return lambda: httpx.Client(transport=httpx.MockTransport(state.handler),
+                                base_url=settings.go2rtc_url, timeout=5.0)
+
+
+def _cam(db, cid, name, enabled=True, sub="/sub", main="/main"):
+    from app.models.camera import Camera
+    c = Camera(id=cid, name=name, host="192.168.2.184", enabled=enabled,
+               rtsp_sub=sub, rtsp_main=main)
+    db.add(c)
+    db.commit()
+    return c
+
+
+def test_sync_all_reconciles_and_is_idempotent(db, monkeypatch):
+    from app.models.node import Node
+    db.add(Node(id=1, name="server", type="server")); db.commit()
+    _cam(db, 1, "cam1", enabled=True, sub="/s1", main="/m1")
+    _cam(db, 2, "cam2", enabled=False, sub="/s2", main="/m2")
+    _cam(db, 3, "cam3", enabled=True, sub=None, main="/stream")   # single-stream
+    state = _FakeGo2rtc({"cam_1": "rtsp://x/s1", "cam_9": "rtsp://x/old", "nvr_main": "rtsp://x/nvr"})
+    monkeypatch.setattr(go2rtc, "_client", _stateful(state))
+    monkeypatch.setattr(settings, "cam_username", "u")
+    monkeypatch.setattr(settings, "cam_password", "p")
+
+    first = go2rtc.sync_all(db)
+    assert sorted(first["added"]) == ["cam_1_main", "cam_3", "cam_3_main"]
+    assert first["removed"] == ["cam_9"]          # kamera 2 disabled, cam_9 tidak dikenal
+    assert "nvr_main" in state.streams            # stream asing tidak disentuh
+    assert "cam_9" not in state.streams
+
+    second = go2rtc.sync_all(db)
+    assert second["added"] == [] and second["removed"] == []
+    assert second["kept"] == 4                    # cam_1, cam_1_main, cam_3, cam_3_main
+    assert state.streams["cam_3"] == state.streams["cam_3_main"]  # alias main
+
+
+def test_sync_go2rtc_endpoint_admin_only(client, db, monkeypatch):
+    from app.api import cameras as cameras_mod
+    monkeypatch.setattr(cameras_mod, "sync_all", lambda db: {"added": ["cam_1"], "removed": [], "kept": 1})
+    r = client.post("/api/v1/cameras/sync-go2rtc", headers=_admin_headers(client))
+    assert r.status_code == 200 and r.json() == {"added": ["cam_1"], "removed": [], "kept": 1}
+    client.cookies.clear()  # login di atas menaruh cookie httpOnly — tanpa ini tetap terautentikasi
+    assert client.post("/api/v1/cameras/sync-go2rtc").status_code == 401

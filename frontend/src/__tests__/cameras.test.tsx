@@ -372,3 +372,24 @@ test('viewer cannot edit cameras', async () => {
   await userEvent.click(editBtn)
   expect(screen.queryByText('Ubah kamera')).not.toBeInTheDocument()
 })
+
+test('tombol Sync go2rtc memanggil endpoint dan menampilkan hasil', async () => {
+  const calls = stubFetch((call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras/sync-go2rtc') && call.init?.method === 'POST') {
+      return { status: 200, body: { added: ['cam_364', 'cam_364_main'], removed: ['cam_9'], kept: 4 } }
+    }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: CAMS }
+    return { status: 404 }
+  })
+  renderPage()
+
+  await waitFor(() => expect(screen.getByText('CAM-01')).toBeInTheDocument())
+  await userEvent.click(screen.getByTestId('go2rtc-sync'))
+
+  await waitFor(() => expect(screen.getByTestId('go2rtc-sync-result')).toBeInTheDocument())
+  expect(calls.some((c) => c.url.endsWith('/cameras/sync-go2rtc') && c.init?.method === 'POST')).toBe(true)
+  // pesan hasil: jumlah added/removed, bukan daftar mentah
+  expect(screen.getByTestId('go2rtc-sync-result')).toHaveTextContent('+2')
+  expect(screen.getByTestId('go2rtc-sync-result').textContent).toContain('1')
+})

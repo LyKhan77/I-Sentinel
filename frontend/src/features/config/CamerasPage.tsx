@@ -22,6 +22,7 @@ import {
   deleteCamera,
   probeCamera,
   importCameras,
+  syncGo2rtc,
   type Camera,
   type CameraImportEntry,
   type CameraImportItem,
@@ -101,6 +102,8 @@ export default function CamerasPage() {
   const [importPlan, setImportPlan] = useState<CameraImportResult | null>(null)
   const isAdmin = me?.role === 'admin'
   const [importBusy, setImportBusy] = useState(false)
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -112,6 +115,24 @@ export default function CamerasPage() {
       setLoading(false)
     }
   }, [t])
+
+  const syncStreams = async () => {
+    setSyncBusy(true)
+    setSyncMsg(null)
+    try {
+      const r = await syncGo2rtc()
+      setSyncMsg(
+        t('cameras.sync.done')
+          .replace('{added}', String(r.added.length))
+          .replace('{removed}', String(r.removed.length)),
+      )
+      await refresh()
+    } catch {
+      setError(t('cameras.sync.error'))
+    } finally {
+      setSyncBusy(false)
+    }
+  }
 
   const refreshReferences = useCallback(async () => {
     try {
@@ -244,6 +265,15 @@ export default function CamerasPage() {
           <Button kind="ghost" disabled={importBusy} data-testid="camera-import-btn" onClick={() => importInput.current?.click()}>
             {t('cameras.import.button')}
           </Button>
+          <Button
+            kind="ghost"
+            disabled={syncBusy}
+            data-testid="go2rtc-sync"
+            onClick={syncStreams}
+            title={t('cameras.sync.hint')}
+          >
+            {t('cameras.sync.btn')}
+          </Button>
           <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>
         </div>
       )}
@@ -262,6 +292,17 @@ export default function CamerasPage() {
           title={t('common.error')}
           subtitle={error}
           onCloseButtonClick={() => setError(null)}
+        />
+      )}
+
+      {syncMsg && (
+        <InlineNotification
+          kind="success"
+          lowContrast
+          title={t('cameras.sync.btn')}
+          subtitle={syncMsg}
+          data-testid="go2rtc-sync-result"
+          onCloseButtonClick={() => setSyncMsg(null)}
         />
       )}
 

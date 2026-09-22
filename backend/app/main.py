@@ -52,6 +52,13 @@ async def lifespan(app: FastAPI):
             refresh_gallery(db)
         except Exception:
             logger.warning("gallery refresh at startup failed", exc_info=True)
+        # Rekonsiliasi stream go2rtc (kamera enabled vs cam_* yang terdaftar).
+        # Best-effort: go2rtc belum tentu siap saat API start.
+        try:
+            from app.services.go2rtc import sync_all
+            logger.info("go2rtc sync at startup: %s", sync_all(db))
+        except Exception:
+            logger.warning("go2rtc sync at startup failed", exc_info=True)
     except Exception:
         logger.warning("republish_all at startup failed", exc_info=True)
     finally:

@@ -13,7 +13,7 @@ from app.models.location_group import LocationGroup
 from app.models.node import Node
 from app.models.stream_source import StreamSource
 from app.schemas.camera import CameraImportIn, CameraOut, CameraIn, CameraPatch
-from app.services.go2rtc import remove_stream, sync_camera
+from app.services.go2rtc import remove_stream, sync_all, sync_camera
 from app.services.stream_endpoint import path_only, split_host_port
 
 
@@ -350,6 +350,12 @@ def _import_fields(item: dict) -> dict:
         "location_group_id": after["location_group_id"],
         "credential_override_id": after["credential_override_id"],
     }
+
+
+@router.post("/sync-go2rtc")
+def sync_go2rtc(admin=Depends(require_admin), db: Session = Depends(get_db)):
+    """Rekonsiliasi stream cam_* go2rtc dengan kamera enabled di DB (idempotent)."""
+    return sync_all(db)
 
 
 @router.post("", response_model=CameraOut)

@@ -176,6 +176,26 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   akan gagal; sumber kameranya sendiri sehat (`h264 1920x1080 25fps`). Sync ke
   go2rtc hanya dipicu mutasi lewat API — tidak ada rekonsiliasi saat drift.
 
+### R5 Task 0 — sync go2rtc: alias kamera single-stream + endpoint/tombol
+
+- `backend/app/services/go2rtc.py`: `sync_camera` kini membangun `cam_<id>` dari
+  `sub_src or main_src` dan `cam_<id>_main` dari `main_src or sub_src` — kamera
+  yang hanya punya satu stream (mis. ZKteco `cam 364`, `rtsp_sub` kosong) tetap
+  punya kedua nama, sehingga konsumen (`config_push` node server, `recorder`
+  klip, snapshot) tidak lagi menunjuk stream yang tidak ada. Fungsi baru
+  `sync_all(db)`: rekonsiliasi `cam_*` go2rtc vs kamera enabled (PUT yang hilang /
+  sudah ada, DELETE yang tidak dimiliki, stream non-`cam_*` tidak disentuh).
+- `backend/app/api/cameras.py`: `POST /api/v1/cameras/sync-go2rtc` (admin) →
+  `{added, removed, kept}`. `backend/app/main.py`: sync best-effort saat startup
+  (go2rtc belum tentu siap; gagal = warning, bukan crash).
+- Frontend: tombol **Sync go2rtc** di tab Kamera (`data-testid="go2rtc-sync"`) +
+  notification hasil `+n / −n stream`; `frontend/src/api/cameras.ts:syncGo2rtc()`;
+  i18n EN/ID (`cameras.sync.*`).
+- Bukti: backend `pytest -m "not gpu"` **289 passed** (5 test baru: alias sub→main,
+  alias main→sub, skip tanpa path, `sync_all` idempotent + stream asing aman,
+  endpoint admin-only); frontend `npx vitest run` **82 passed**; `npm run build` ok;
+  `npm run lint` 22 warning (tidak bertambah).
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime
