@@ -130,6 +130,26 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 - Bukti: `npx vitest run` 80 passed (3× berturut stabil), `npm run build` ok,
   `npm run lint` tanpa warning baru.
 
+### Deploy Task 6 + inventaris behavior deteksi
+
+- Deploy `gspe-ai3`: branch `feat/events-dwell-crop` (1c4d9dc → 541cca3),
+  **alembic 0013** (0012 → 0013 head, dari `backend/` dgn `.env` root), event
+  debug **#4625 dihapus** (`person_detect` tersisa 0), API restart (health ok),
+  vision restart (`kill -9`; SIGTERM hang, 4 camera worker naik).
+- Config push diverifikasi di retained MQTT `isentinel/config/server`:
+  `cam 363 zones=[(9,'entry',3)]`, `detector cuda:1`, `face cuda:2` — **pin device
+  tidak diubah** sesuai keputusan user (zona dwell 3 hanya zona 9 `Absence Server`).
+- Bukti lapangan: 6 event attendance pasca-deploy dgn `crop_path`; snapshot
+  berisi orang + bbox `ID n` terbakar (diunduh & diperiksa). **Temuan: crop wajah
+  masih bisa berisi lantai** — bbox dari frame substream (waktu deteksi) dipetakan
+  ke snapshot main stream yang *live* (keyframe bisa 2–4 s basi); crop `#4647`
+  benar (face_quality 0.78), `#4650` salah. `attendance_event=0` karena belum ada
+  wajah yang match ke karyawan ter-enroll (1 employee, 5 embedding).
+- Dokumen baru `docs/detection-behavior-inventory.md`: peta alur, daftar analyzer
+  + kondisi trigger persis (intrusion/loitering/running/face_gate/person_detect),
+  media per event, dedup + rate limit + alerting, rantai attendance, plus 10
+  temuan inkonsistensi untuk pembahasan penataan arsitektur.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime
