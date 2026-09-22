@@ -80,6 +80,16 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   `upgrade 0013 → downgrade 0012 → upgrade 0013` pd DB scratch ok, kolom
   `dwell_seconds INTEGER NOT NULL DEFAULT '0'`.
 
+### Vision face_gate hormati dwell zona (Task 3)
+
+- `vision/vision/analyzers/face_gate.py`: `dwell_seconds` > 0 menahan emit
+  sampai track sudah di dalam polygon selama itu (jam mulai saat masuk zona,
+  reset saat keluar). Cooldown 10s tetap; kunjungan yang tersedot cooldown tetap
+  tidak emit. `0` = perilaku lama (emit saat masuk).
+- Alasan: crop attendance sering berisi lantai/dinding (orang sudah lewat saat
+  frame diambil) — dwell menahan orang di frame hingga crop+snapshot diambil.
+- Bukti: `pytest vision/tests -m "not gpu"` 118 passed.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime

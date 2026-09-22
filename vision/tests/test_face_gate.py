@@ -136,6 +136,58 @@ def test_cooldown_suppressed_reentry_stays_suppressed_while_inside():
     assert len(az.on_frame(1055.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
 
 
+def test_dwell_zero_emits_immediately():
+    az = FaceGateAnalyzer(zone(dwell_seconds=0))
+    assert len(az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+
+
+def test_dwell_holds_emit_until_track_stays_n_seconds():
+    az = FaceGateAnalyzer(zone(dwell_seconds=3))
+    # masuk zona -> belum cukup lama
+    assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    # masih di dalam, baru 2.9s
+    assert az.on_frame(1002.9, one_track(1, (0.55, 0.5)), 640, 480) == []
+    # tepat 3s -> emit sekali
+    assert len(az.on_frame(1003.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+    # tetap di dalam -> tidak emit lagi
+    assert az.on_frame(1004.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+
+
+def test_dwell_restarts_when_track_leaves_before_emit():
+    az = FaceGateAnalyzer(zone(dwell_seconds=3))
+    assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    assert az.on_frame(1002.0, one_track(1, (1.5, 0.5)), 640, 480) == []  # keluar
+    assert az.on_frame(1002.5, one_track(1, (0.5, 0.5)), 640, 480) == []  # masuk lagi
+    assert az.on_frame(1005.4, one_track(1, (0.5, 0.5)), 640, 480) == []  # 2.9s sejak masuk
+    assert len(az.on_frame(1005.5, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+
+
+def test_dwell_respects_cooldown_after_emit():
+    az = FaceGateAnalyzer(zone(dwell_seconds=3))
+    assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []    # masuk
+    assert len(az.on_frame(1003.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1  # 3s -> emit
+    assert az.on_frame(1004.0, one_track(1, (1.5, 0.5)), 640, 480) == []   # keluar
+    # masuk lagi dalam cooldown (1003+7) -> kunjungan tersedot: diam walau dwell lewat
+    assert az.on_frame(1010.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    assert az.on_frame(1030.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    # keluar, tunggu lewat cooldown, masuk lagi -> jam dwell mulai dari nol
+    assert az.on_frame(1040.0, one_track(1, (1.5, 0.5)), 640, 480) == []
+    assert az.on_frame(1055.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    assert len(az.on_frame(1058.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+
+
+def test_dwell_new_track_has_own_clock():
+    az = FaceGateAnalyzer(zone(dwell_seconds=3))
+    assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    # track 2 baru masuk di 1002 -> jam sendiri; track 1 sudah 2s -> belum emit
+    both = one_track(1, (0.5, 0.5)) + one_track(2, (0.6, 0.6))
+    assert az.on_frame(1002.0, both, 640, 480) == []
+    # 1003: track 1 sudah 3s -> emit; track 2 baru 1s
+    evs = az.on_frame(1003.0, both, 640, 480)
+    assert [e["payload"]["track_id"] for e in evs] == [1]
+    assert len(az.on_frame(1005.0, one_track(2, (0.6, 0.6)), 640, 480)) == 1
+
+
 # --- worker crop + upload ---
 
 def test_worker_uploads_crop_and_sets_crop_path():
