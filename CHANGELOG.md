@@ -67,7 +67,9 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   realtime tak pernah sampai Live View debugger.
 - Test baru `backend/tests/test_events_ws.py`: cookie valid → konek + terima
   broadcast; tanpa cookie/token dan cookie rusak → 1008; query token lama tetap.
-- Bukti: backend `pytest -m "not gpu"` 279 passed.
+- Bukti: backend `pytest -m "not gpu"` 279 passed. Klien (`frontend/src/api/useWs.ts`)
+  menghubung tanpa `?token` (cookie httpOnly saja) — komentar basi di file itu
+  ikut dikoreksi agar kontraknya jelas.
 
 ### zone.dwell_seconds — trigger setelah N detik di zona (Task 2)
 
