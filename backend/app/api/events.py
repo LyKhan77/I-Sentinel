@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, W
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from app.core.db import get_db
-from app.api.deps import get_current_user
+from app.api.deps import COOKIE, get_current_user
 from app.core.security import decode_token
 from app.core.config import settings
 from app.models.event import Event
@@ -116,7 +116,8 @@ def stats_today(user=Depends(get_current_user), db=Depends(get_db)):
 
 @router.websocket("/api/v1/ws/events")
 async def ws_events(ws: WebSocket):
-    token = ws.query_params.get("token", "")
+    # UI memakai cookie httpOnly — token query hanya fallback (klien non-browser).
+    token = ws.query_params.get("token", "") or ws.cookies.get(COOKIE, "")
     if not decode_token(token):
         await ws.close(code=1008)
         return

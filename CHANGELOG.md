@@ -57,6 +57,18 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 
+## [Unreleased] — R4 Dwell trigger + WS cookie auth + events tabstrip
+
+### WS events auth fallback cookie (Task 1)
+
+- `backend/app/api/events.py`: `ws_events` menerima JWT dari query `?token=`
+  **atau** cookie `isentinel_token` (`app.api.deps.COOKIE`). Sebelum ini UI selalu
+  ditolak 1008 (JWT httpOnly tak bisa ditaruh di query) sehingga bbox person
+  realtime tak pernah sampai Live View debugger.
+- Test baru `backend/tests/test_events_ws.py`: cookie valid → konek + terima
+  broadcast; tanpa cookie/token dan cookie rusak → 1008; query token lama tetap.
+- Bukti: backend `pytest -m "not gpu"` 279 passed.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime
