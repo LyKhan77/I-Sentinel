@@ -231,6 +231,47 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 - Bukti: backend `pytest -m "not gpu"` **305 passed** (4 test baru: behaviors zona,
   override kamera, default global, `meters_per_pixel` tetap ada).
 
+### R5 Task 3 — analyzer dibangun dari `behaviors` + master per kamera
+
+- `vision/vision/node.py`: `behaviors_of(z)` (fallback kolom lama bila config
+  pra-R5) + `_make_analyzers` membuat analyzer per entry behavior
+  (`intrusion`/`attendance`/`loitering`/`running`), dengan `trigger_seconds` dan
+  `speed_limit_mps` dari entry. Master `cam.analyzers` menyaring: `None` = semua,
+  `[]` = tanpa analitik (hanya live view). `CameraCfg` menerima
+  `analyzers`/`confidence`/`motion`.
+- `vision/vision/analyzers/intrusion.py`: **trigger threshold** — zona dengan
+  `trigger_seconds > 0` menahan emit sampai track bertahan selama itu di polygon
+  (jam mulai saat masuk, reset saat keluar); `0` = perilaku lama.
+- `confidence` per kamera kini benar-benar dipakai `PersonDetector` (sebelumnya
+  field mati): `VisionNode._camera_conf` diisi saat config apply, factory detektor
+  memakai `_camera_conf.get(cam_id) or detector_conf`.
+- Bukti: `pytest vision/tests -m "not gpu"` **133 passed**.
+
+### R5 Task 4 — motion gate (inferensi hanya saat ada gerakan)
+
+- `vision/vision/motion.py` (baru): `FrameMotionGate` — frame di-downscale 64×36
+  grayscale, `absdiff` + threshold piksel (default 25) + blob terbesar via
+  `connectedComponentsWithStats`; gerak ≥ `min_area` (default 1%) → inferensi.
+  `force_interval_s` (default 2 s) memaksa inferensi berkala agar objek diam tetap
+  terdeteksi dan id ByteTrack tidak hilang (jarak frame < `max_age`).
+- `CameraWorker` (node.py): gate dipasang dari config kamera; saat tertahan,
+  inferensi dilewati dan `tracker.update([], ts)` dipanggil supaya track lama
+  expire alami. **Config tanpa `motion` (pra-R5) → gate OFF** (perilaku lama).
+- `backend/app/core/config.py`: `motion_threshold` = selisih intensitas piksel
+  (0–255, default 25), `motion_min_area` = rasio blob minimum (default 0.01).
+- Bukti: `pytest vision/tests -m "not gpu"` **133 passed** (8 test motion baru:
+  frame statis tertahan, blok bergerak lolos, interval paksa, noise kecil ditolak,
+  worker: 10 frame statis → 1 inferensi vs 10 tanpa gate vs 3 pra-R5).
+
+### Perbaikan tes (flake) — isolasi fake MQTT
+
+- `backend/tests/test_config_push.py`: patch `paho.mqtt.Client` bersifat global
+  (modul paho dipakai bersama `events_consumer`), sehingga klien latar ikut
+  tercatat di `FakeClient.calls` → `ValueError: too many values to unpack`. Kini
+  assertion hanya menghitung klien yang benar-benar `publish`, plus stub
+  `reconnect_delay_set`. Bukti: backend `pytest -m "not gpu"` **305 passed** 3×
+  berturut (sebelumnya flaky 1 gagal per run).
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime

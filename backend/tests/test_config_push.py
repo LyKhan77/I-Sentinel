@@ -97,6 +97,7 @@ class FakeClient:
         self.published = []
 
     def username_pw_set(self, *a): pass
+    def reconnect_delay_set(self, *a): pass   # dipanggil events_consumer saat reconnect
     def connect(self, *a, **k): pass
     def loop_start(self): pass
     def loop_stop(self): pass
@@ -121,7 +122,7 @@ def test_publish_node_config_retained_qos1(db, fake_mqtt):
     ok = config_push.publish_node_config(None, db, node.name)
 
     assert ok is True
-    (client,) = fake_mqtt.calls
+    (client,) = [c for c in fake_mqtt.calls if c.published]
     (topic, payload, qos, retain) = client.published[0]
     assert topic == f"isentinel/config/{node.name}"
     assert qos == 1 and retain is True
@@ -150,7 +151,7 @@ def test_publish_node_config_for_camera_resolves_node(db, fake_mqtt):
     cam = _cam(db, node.id)
 
     assert config_push.publish_node_config_for_camera(db, cam.id) is True
-    (client,) = fake_mqtt.calls
+    (client,) = [c for c in fake_mqtt.calls if c.published]
     assert client.published[0][0] == f"isentinel/config/{node.name}"
 
 
@@ -159,7 +160,7 @@ def test_republish_all_iterates_nodes(db, fake_mqtt):
     _node(db, name="n2")
 
     assert config_push.republish_all(db) is True
-    topics = [c.published[0][0] for c in fake_mqtt.calls for _ in c.published]
+    topics = [p[0] for c in fake_mqtt.calls for p in c.published]
     assert topics == ["isentinel/config/n1", "isentinel/config/n2"]
 
 

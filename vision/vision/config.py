@@ -11,8 +11,11 @@ class CameraCfg(BaseModel):
     camera_id: int
     source_url: str
     ai_fps: float = 5.0
+    confidence: float | None = None        # override detector conf (None = env/model)
+    analyzers: list | None = None          # None = semua, [] = tanpa analitik (hemat GPU)
+    motion: dict = {}                      # {enabled,threshold,min_area,force_interval_s}
     meters_per_pixel: float | None = None  # calibration for speed (m/s)
-    zones: list = []  # restricted zones w/ schedule+polygon (from config apply)
+    zones: list = []  # zones w/ polygon + behaviors (from config apply)
 
 
 class NodeSettings(BaseSettings):

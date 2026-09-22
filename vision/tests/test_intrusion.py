@@ -93,3 +93,31 @@ def test_lost_track_state_cleaned():
     az.on_frame(ts + 1, [], 640, 480)
     assert az._inside == set()
     assert len(az.on_frame(ts + 2, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+
+
+# --- R5: trigger threshold (lama di zona sebelum emit) -----------------------
+
+def test_trigger_threshold_holds_emit_until_track_stays():
+    from vision.analyzers.intrusion import IntrusionAnalyzer
+    zone = {"id": 1, "name": "Z", "severity": "warning",
+            "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            "trigger_seconds": 2}
+    az = IntrusionAnalyzer(zone)
+    assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []       # baru masuk
+    assert az.on_frame(1001.9, one_track(1, (0.5, 0.5)), 640, 480) == []       # belum 2s
+    evs = az.on_frame(1002.0, one_track(1, (0.5, 0.5)), 640, 480)              # tepat 2s
+    assert len(evs) == 1 and evs[0]["type"] == "intrusion"
+    assert az.on_frame(1003.0, one_track(1, (0.5, 0.5)), 640, 480) == []       # tidak dobel
+
+
+def test_trigger_threshold_restarts_after_leaving():
+    from vision.analyzers.intrusion import IntrusionAnalyzer
+    zone = {"id": 1, "name": "Z", "severity": "warning",
+            "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            "trigger_seconds": 2}
+    az = IntrusionAnalyzer(zone)
+    assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    assert az.on_frame(1001.0, one_track(1, (1.5, 0.5)), 640, 480) == []       # keluar
+    assert az.on_frame(1001.5, one_track(1, (0.5, 0.5)), 640, 480) == []       # masuk lagi
+    assert az.on_frame(1003.4, one_track(1, (0.5, 0.5)), 640, 480) == []       # 1.9s
+    assert len(az.on_frame(1003.5, one_track(1, (0.5, 0.5)), 640, 480)) == 1   # 2s sejak masuk

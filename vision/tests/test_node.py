@@ -121,3 +121,71 @@ def test_camera_worker_stop_event(tmp_path):
     stop.set()
     w.join(timeout=3)
     assert not w.is_alive()
+
+
+# --- R5: analyzer dibangun dari behaviors + master per kamera -----------------
+
+BEHAVIOR_ZONE = {
+    "id": 21, "name": "Lorong", "type": "behavior", "direction": None,
+    "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+    "behaviors": [{"kind": "intrusion", "trigger_seconds": 0},
+                  {"kind": "loitering", "trigger_seconds": 30}],
+    "snapshot": True, "clip": True,
+}
+
+
+def _node_with(cam: dict):
+    import json
+    from vision.config import NodeSettings
+    from vision.node import VisionNode
+    cfg = NodeSettings(node_id="n", cameras_json=json.dumps([cam]))
+    return VisionNode(cfg=cfg, transport=object(), source_factory=lambda c: None)
+
+
+def test_make_analyzers_from_behaviors_master_filters():
+    cam = {"camera_id": 1, "source_url": "test://1", "zones": [BEHAVIOR_ZONE],
+           "analyzers": ["intrusion"]}
+    node = _node_with(cam)
+    cams = node._cameras_from_config({"cameras": [cam]})
+    assert [type(a).__name__ for a in node._make_analyzers(cams[0])] == ["IntrusionAnalyzer"]
+
+
+def test_make_analyzers_all_behaviors_when_master_none():
+    cam = {"camera_id": 1, "source_url": "test://1", "zones": [BEHAVIOR_ZONE]}
+    node = _node_with(cam)
+    cams = node._cameras_from_config({"cameras": [cam]})
+    kinds = sorted(type(a).__name__ for a in node._make_analyzers(cams[0]))
+    assert kinds == ["IntrusionAnalyzer", "LoiteringAnalyzer"]
+
+
+def test_make_analyzers_empty_master_means_no_analyzer():
+    cam = {"camera_id": 1, "source_url": "test://1", "zones": [BEHAVIOR_ZONE],
+           "analyzers": []}
+    node = _node_with(cam)
+    cams = node._cameras_from_config({"cameras": [cam]})
+    assert node._make_analyzers(cams[0]) == []
+
+
+def test_legacy_zone_without_behaviors_still_builds_analyzers():
+    """Config pra-R5 (type + loiter_seconds) tetap jalan selama transisi."""
+    legacy = {"id": 22, "name": "Legacy", "type": "restricted",
+              "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+              "loiter_seconds": 30}
+    cam = {"camera_id": 1, "source_url": "test://1", "zones": [legacy]}
+    node = _node_with(cam)
+    cams = node._cameras_from_config({"cameras": [cam]})
+    kinds = sorted(type(a).__name__ for a in node._make_analyzers(cams[0]))
+    assert kinds == ["IntrusionAnalyzer", "LoiteringAnalyzer"]
+
+
+def test_camera_confidence_overrides_global():
+    """confidence per kamera dari config R5 benar-benar dipakai detektor."""
+    from vision.config import NodeSettings
+    from vision.node import VisionNode
+    import json
+    cam = {"camera_id": 5, "source_url": "test://1", "confidence": 0.45, "zones": []}
+    cfg = NodeSettings(node_id="n", cameras_json=json.dumps([cam]))
+    node = VisionNode(cfg=cfg, transport=object(), source_factory=lambda c: None)
+    node._cameras_from_config({"cameras": [cam]})
+    assert node.detector_factory(5).conf == 0.45
+    assert node.detector_factory(99).conf == node.cfg.detector_conf   # tanpa override

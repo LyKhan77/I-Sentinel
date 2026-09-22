@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # R5 "Detection & Model": default global untuk kamera tanpa override.
     default_ai_fps: float = 5.0
     motion_enabled: bool = True           # motion gate: inferensi hanya saat ada gerakan
-    motion_threshold: float = 0.02        # rasio piksel berubah minimum
+    motion_threshold: float = 25.0        # selisih intensitas piksel (0-255)
     motion_min_area: float = 0.01         # area gerak minimum (rasio frame)
     motion_force_interval_s: float = 2.0  # paksa inferensi berkala (objek diam)
     retention_days: int = 30

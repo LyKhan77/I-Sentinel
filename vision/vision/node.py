@@ -18,6 +18,7 @@ from . import hardware
 from .pipeline.detector import PersonDetector
 from .pipeline.source import FrameSource
 from .pipeline.tracker import ByteTracker
+from .motion import FrameMotionGate
 from .transport import MqttTransport
 
 log = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class _PartialTrack:
 class CameraWorker(threading.Thread):
     def __init__(self, camera_cfg, detector_factory, transport, stop_event, node_id,
                  analyzers: list[Analyzer] | None = None, recorder=None,
-                 emit_person_detect: bool = False):
+                 emit_person_detect: bool = False, motion: dict | None = None):
         super().__init__(daemon=True, name=f"cam-{camera_cfg.camera_id}")
         self.camera_cfg = camera_cfg
         self.detector_factory = detector_factory
@@ -102,6 +103,15 @@ class CameraWorker(threading.Thread):
         self.analyzers = analyzers or []
         self.recorder = recorder
         self.emit_person_detect = emit_person_detect
+        motion = motion or {}
+        # Config pra-R5 tidak mengirim `motion` → gate OFF (perilaku lama). R5 selalu
+        # mengirim dict berisi `enabled`, jadi default-nya ON kecuali dimatikan.
+        self.motion_gate = (
+            FrameMotionGate(threshold=motion.get("threshold", 25.0),
+                            min_area=motion.get("min_area", 0.01),
+                            force_interval_s=motion.get("force_interval_s", 2.0))
+            if (motion and motion.get("enabled", True)) else None
+        )
         self.face = None  # FaceEmbedder (Opsi B), di-set oleh VisionNode
         self.events: list[dict] = []  # test hook
         self.source = None
@@ -115,6 +125,12 @@ class CameraWorker(threading.Thread):
             for frame in self.source:
                 if self.stop_event.is_set():
                     break
+                if self.motion_gate is not None and not self.motion_gate.update(frame.data, frame.ts):
+                    # Tanpa gerak: lewati inferensi (hemat GPU), tapi tracker tetap
+                    # diberi update kosong supaya track lama expire secara alami —
+                    # objek diam tetap terdeteksi via force_interval_s gate.
+                    tracker.update([], frame.ts)
+                    continue
                 try:
                     detections = detector.detect(frame.data, ts=frame.ts)
                 except Exception:
@@ -265,13 +281,38 @@ class CameraWorker(threading.Thread):
             self.source.close()
 
 
+def behaviors_of(z: dict) -> list[dict]:
+    """Daftar behavior zona; fallback kolom lama bila config pra-R5 terpasang."""
+    bs = z.get("behaviors")
+    if bs:
+        return list(bs)
+    legacy: list[dict] = []
+    ztype = z.get("type")
+    dwell = z.get("dwell_seconds", 0) or 0
+    if ztype in ("restricted", "free"):
+        legacy.append({"kind": "intrusion", "trigger_seconds": dwell,
+                       "enabled": ztype == "restricted"})
+    if ztype in ("absensi", "attendance"):
+        legacy.append({"kind": "attendance",
+                       "trigger_seconds": z.get("trigger_seconds", dwell) or 0})
+    if (z.get("loiter_seconds", 0) or 0) > 0:
+        legacy.append({"kind": "loitering", "trigger_seconds": z.get("loiter_seconds", 0)})
+    if (z.get("speed_limit_mps", 0) or 0) > 0:
+        legacy.append({"kind": "running", "trigger_seconds": dwell,
+                       "speed_limit_mps": z.get("speed_limit_mps", 0)})
+    return [b for b in legacy if b.get("enabled", True)]
+
+
 class VisionNode:
     def __init__(self, cfg: NodeSettings | None = None, detector_factory=None, source_factory=None,
                  transport=None):
         self.cfg = cfg or NodeSettings()
+        # confidence per kamera (config R5) menimpa conf global; diisi saat config apply
+        self._camera_conf: dict[int, float] = {}
         self.detector_factory = detector_factory or (
             lambda cam_id: PersonDetector(self.cfg.detector_model, nms=self.cfg.detector_nms,
-                                          conf=self.cfg.detector_conf, imgsz=self.cfg.detector_imgsz,
+                                          conf=self._camera_conf.get(cam_id) or self.cfg.detector_conf,
+                                          imgsz=self.cfg.detector_imgsz,
                                           device=self.cfg.detector_device)
         )
         self.source_factory = source_factory or (
@@ -293,40 +334,57 @@ class VisionNode:
     def _cameras_from_config(self, cfg_dict: dict) -> list[CameraCfg]:
         cams = []
         for c in cfg_dict.get("cameras", []):
+            if c.get("confidence"):
+                self._camera_conf[c["camera_id"]] = float(c["confidence"])
             cam = CameraCfg(camera_id=c["camera_id"], source_url=c["source_url"],
                             ai_fps=c.get("ai_fps", 5.0),
+                            confidence=c.get("confidence"),
+                            analyzers=c.get("analyzers"),
+                            motion=c.get("motion") or {},
                             meters_per_pixel=c.get("meters_per_pixel"),
                             zones=[z for z in c.get("zones", [])
                                    if z.get("active", True)
-                                   and (z.get("type") == "restricted"
-                                        or z.get("type") == "absensi"
-                                        or z.get("loiter_seconds", 0) > 0
-                                        or z.get("speed_limit_mps", 0) > 0)])
+                                   and (z.get("behaviors") or behaviors_of(z))])
             cams.append(cam)
         return cams
 
     def _make_analyzers(self, cam: CameraCfg) -> list[Analyzer]:
+        """Satu zona bisa membawa beberapa behavior; master `analyzers` kamera menyaring.
+
+        `cam.analyzers = None` → semua behavior aktif; `[]` → kamera tanpa analitik
+        (hanya live view, hemat GPU). Parameter tiap behavior (`trigger_seconds`,
+        `speed_limit_mps`) ditempel ke spec zona sebelum analyzer dibuat.
+        """
         out = []
         for z in cam.zones:
-            # a zone can carry more than one analyzer: restricted zones get
-            # intrusion, loiter_seconds > 0 gets loitering, and speed_limit_mps > 0
-            # gets running (only when the camera has a calibration)
             media = {"snapshot": z.get("snapshot", True), "clip": z.get("clip", True)}
-            if z.get("type") == "restricted":
-                out.append(self._with_media(ANALYZERS["intrusion"](z), media))
-            if z.get("type") == "absensi":
-                out.append(self._with_media(ANALYZERS["face_gate"](z), media))
-            if z.get("loiter_seconds", 0) > 0:
-                out.append(self._with_media(ANALYZERS["loitering"](z), media))
-            if z.get("speed_limit_mps", 0) > 0:
-                if cam.meters_per_pixel is None:
-                    if cam.camera_id not in self._calib_warned:
-                        self._calib_warned.add(cam.camera_id)
-                        log.info("running analyzer skipped camera %s (no calibration)",
-                                 cam.camera_id)
-                else:
-                    out.append(self._with_media(
-                        ANALYZERS["running"](z, cam.meters_per_pixel), media))
+            for b in behaviors_of(z):
+                kind = b.get("kind")
+                if cam.analyzers is not None and kind not in cam.analyzers:
+                    continue
+                spec = dict(z)
+                spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
+                if kind == "intrusion":
+                    out.append(self._with_media(ANALYZERS["intrusion"](spec), media))
+                elif kind == "attendance":
+                    out.append(self._with_media(ANALYZERS["face_gate"](spec), media))
+                elif kind == "loitering":
+                    # loitering: dwell = trigger behavior (legacy: loiter_seconds)
+                    spec["loiter_seconds"] = spec["trigger_seconds"]
+                    out.append(self._with_media(ANALYZERS["loitering"](spec), media))
+                elif kind == "running":
+                    if b.get("speed_limit_mps") is not None:
+                        spec["speed_limit_mps"] = b["speed_limit_mps"]
+                    if not spec.get("speed_limit_mps", 0):
+                        continue
+                    if cam.meters_per_pixel is None:
+                        if cam.camera_id not in self._calib_warned:
+                            self._calib_warned.add(cam.camera_id)
+                            log.info("running analyzer skipped camera %s (no calibration)",
+                                     cam.camera_id)
+                    else:
+                        out.append(self._with_media(
+                            ANALYZERS["running"](spec, cam.meters_per_pixel), media))
         return out
 
     @staticmethod
@@ -370,7 +428,8 @@ class VisionNode:
             if self._default_detector:
                 s = self._detector_settings
                 self.detector_factory = lambda cam_id: PersonDetector(
-                    s["model"], nms=s["nms"], conf=s["conf"], imgsz=s["imgsz"],
+                    s["model"], nms=s["nms"],
+                    conf=self._camera_conf.get(cam_id) or s["conf"], imgsz=s["imgsz"],
                     device=self.cfg.detector_device
                 )
         face = cfg_dict.get("face")
@@ -399,7 +458,8 @@ class VisionNode:
             w = CameraWorker(cam, self.detector_factory, self.transport,
                              threading.Event(), self.cfg.node_id,
                              analyzers=self._make_analyzers(cam), recorder=recorder,
-                             emit_person_detect=self.cfg.emit_person_detect)
+                             emit_person_detect=self.cfg.emit_person_detect,
+                             motion=cam.motion)
             w.face = self.face
             w.source = self.source_factory(cam)
             w.start()
