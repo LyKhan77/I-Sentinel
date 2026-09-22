@@ -90,6 +90,21 @@ Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
   frame diambil) — dwell menahan orang di frame hingga crop+snapshot diambil.
 - Bukti: `pytest vision/tests -m "not gpu"` 118 passed.
 
+### Events detail tabstrip per mockup 03 (Task 4)
+
+- `frontend/src/features/events/EventsPage.tsx`: panel detail kini tabstrip
+  **Detail | Clip | Snapshot | Face crop** (mockup `mockup-ui/03-events.html`).
+  Media tidak lagi ditumpuk: Clip = player + unduh, Snapshot = img beranotasi
+  bbox/ID, Face crop = crop wajah beranotasi. Metadata grid tetap di Detail.
+  Tab Face crop hanya muncul untuk event `attendance` dan **disabled** bila
+  `payload.crop_path` kosong; ganti event → tab kembali ke Detail (derived state,
+  tanpa effect).
+- `frontend/src/app/theme.scss`: `.ev-tabstrip` / `.ev-tab` (+`.on` biru
+  `#4589ff`, `:disabled` abu) persis nilai mockup. `frontend/src/app/i18n.tsx`:
+  kunci `events.tab.*` + placeholder snapshot/crop, EN+ID.
+- Bukti: `npx vitest run` 77 passed (14 di events.test.tsx), `npm run build` ok,
+  `npm run lint` tanpa warning baru.
+
 ## [Unreleased] — R3 Live View debugger
 
 ### Modal debugger kamera — overlay zona & bbox person realtime

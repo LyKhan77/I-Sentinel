@@ -758,6 +758,34 @@ html {
   }
 }
 
+/* Tabstrip detail event (mockup 03): media dipisah per tab, tab aktif biru. */
+.ev-tabstrip {
+  display: flex;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  margin-block-end: 14px;
+}
+
+.ev-tab {
+  font-size: 13px;
+  padding: 8px 14px;
+  color: var(--cds-text-helper);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+
+  &.on {
+    color: var(--cds-text-primary);
+    border-bottom-color: #4589ff;
+    font-weight: 600;
+  }
+
+  &:disabled {
+    color: var(--cds-text-disabled, #525252);
+    cursor: not-allowed;
+  }
+}
+
 .ev-player {
   display: block;
   inline-size: 100%;
