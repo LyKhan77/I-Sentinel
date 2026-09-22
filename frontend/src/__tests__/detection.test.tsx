@@ -26,3 +26,19 @@ test('detection tab updates analyzer and global motion settings', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Simpan setelan global' }))
   await waitFor(() => expect(calls.some((c) => c.url.endsWith('/detector-settings') && c.init?.method === 'PUT')).toBe(true))
 })
+
+test('kolom override kosong bukan keadaan invalid — kosong berarti pakai nilai global', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const body = url.endsWith('/detector-settings') ? settings : url.endsWith('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
+    return { ok: true, status: 200, json: async () => body }
+  }))
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+
+  expect(await screen.findByText('Deteksi & Model')).toBeInTheDocument()
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  const fps = document.querySelector('#fps-1') as HTMLInputElement
+
+  expect(fps.value).toBe('')
+  expect(fps.getAttribute('data-invalid')).toBeNull()
+  expect(fps.closest('.cds--number')?.className ?? '').not.toContain('invalid')
+})
