@@ -283,3 +283,23 @@ def test_detector_model_relative_resolved_to_env_dir(tmp_path, monkeypatch):
     node._default_detector = True
     node.apply_config({"detector": {"model": "yolo26s.engine"}, "cameras": []})
     assert node._detector_settings["model"] == str(engine_dir / "yolo26s.engine")
+
+
+# --- R2: flag snapshot/clip zona ikut ke event envelope ----------------------
+
+def test_zone_media_flags_on_events():
+    from vision.config import CameraCfg, NodeSettings
+    from vision.node import CameraWorker, VisionNode
+    from vision.pipeline.detector import MockDetector
+    import threading, numpy as np
+
+    zone = {"id": 5, "type": "absensi", "direction": "entry", "active": True,
+            "polygon": [[0, 0], [1, 0], [1, 1], [0, 1]],
+            "snapshot": False, "clip": False}
+    cfg = NodeSettings(node_id="n1", cameras_json="")
+    node = VisionNode(cfg=cfg, transport=type("T", (), {
+        "close": staticmethod(lambda: None),
+        "publish_event": staticmethod(lambda ev: None),
+        "publish_heartbeat": staticmethod(lambda hb: None)})())
+    azs = node._make_analyzers(CameraCfg(camera_id=1, source_url="t", zones=[zone]))
+    assert azs and azs[0].media == {"snapshot": False, "clip": False}

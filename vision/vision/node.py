@@ -150,6 +150,10 @@ class CameraWorker(threading.Thread):
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
                         self._attach_crop(partial, frame)
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
+                        media = getattr(az, "media", None)
+                        if media is not None:
+                            ev["snapshot"] = media.get("snapshot", True)
+                            ev["clip"] = media.get("clip", True)
                         self.events.append(ev)
                         self.transport.publish_event(ev)
                         if self.recorder is not None:
@@ -302,12 +306,13 @@ class VisionNode:
             # a zone can carry more than one analyzer: restricted zones get
             # intrusion, loiter_seconds > 0 gets loitering, and speed_limit_mps > 0
             # gets running (only when the camera has a calibration)
+            media = {"snapshot": z.get("snapshot", True), "clip": z.get("clip", True)}
             if z.get("type") == "restricted":
-                out.append(ANALYZERS["intrusion"](z))
+                out.append(self._with_media(ANALYZERS["intrusion"](z), media))
             if z.get("type") == "absensi":
-                out.append(ANALYZERS["face_gate"](z))
+                out.append(self._with_media(ANALYZERS["face_gate"](z), media))
             if z.get("loiter_seconds", 0) > 0:
-                out.append(ANALYZERS["loitering"](z))
+                out.append(self._with_media(ANALYZERS["loitering"](z), media))
             if z.get("speed_limit_mps", 0) > 0:
                 if cam.meters_per_pixel is None:
                     if cam.camera_id not in self._calib_warned:
@@ -315,8 +320,15 @@ class VisionNode:
                         log.info("running analyzer skipped camera %s (no calibration)",
                                  cam.camera_id)
                 else:
-                    out.append(ANALYZERS["running"](z, cam.meters_per_pixel))
+                    out.append(self._with_media(
+                        ANALYZERS["running"](z, cam.meters_per_pixel), media))
         return out
+
+    @staticmethod
+    def _with_media(analyzer, media: dict):
+        """Tempel flag snapshot/clip zona ke analyzer — dibawa worker ke event."""
+        analyzer.media = media
+        return analyzer
 
     def apply_config(self, cfg_dict: dict) -> None:
         """Hot-reload: stop current workers, start new ones from cfg_dict."""

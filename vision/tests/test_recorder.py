@@ -238,3 +238,81 @@ def test_recorder_queue_drop_oldest(tmp_path):
         rec.enqueue(make_event(f"ev-{i}"))
     rec.close()
     assert rec._q.qsize() <= 50
+
+
+# --- R2: toggle snapshot/clip per event + bbox/ID pada snapshot ---------------
+
+def _ev(snapshot=None, clip=None, tid=7):
+    ev = {"event_id": "ev-x", "type": "intrusion", "severity": "warning",
+          "payload": {"track_id": tid, "bbox_norm": [0.1, 0.1, 0.5, 0.6]}}
+    if snapshot is not None:
+        ev["snapshot"] = snapshot
+    if clip is not None:
+        ev["clip"] = clip
+    return ev
+
+
+def _recorder(tmp_path, cfg):
+    import cv2
+    import numpy as np
+    rec = Recorder(1, cfg, transport=None)
+    ok, buf = cv2.imencode(".jpg", np.full((480, 640, 3), 255, np.uint8))
+    assert ok
+    rec.push_jpeg(1.0, buf.tobytes())
+    return rec
+
+
+def _fake_urlopen(mp, data=b"mp4-bytes", calls=None):
+    class R:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return data
+    def _open(url, timeout=0):
+        if calls is not None:
+            calls.append(url)
+        return R()
+    mp.setattr("vision.recorder.urlopen", _open)
+
+
+def test_event_flags_skip_snapshot_or_clip(tmp_path, monkeypatch):
+    cfg = type("C", (), {"data_dir": str(tmp_path), "go2rtc_url": "http://x",
+                         "record_clip_s": 30})()
+    rec = _recorder(tmp_path, cfg)
+    _fake_urlopen(monkeypatch)
+    local = rec.capture(_ev(snapshot=False))
+    assert local["snapshot_local"] is None and local["clip_local"].endswith(".mp4")
+    local = rec.capture(_ev(clip=False))
+    assert local["clip_local"] is None and local["snapshot_local"].endswith(".jpg")
+    assert rec.capture(_ev(snapshot=False, clip=False)) is None
+
+
+def test_capture_defaults_true_without_flags(tmp_path, monkeypatch):
+    cfg = type("C", (), {"data_dir": str(tmp_path), "go2rtc_url": "http://x",
+                         "record_clip_s": 30})()
+    rec = _recorder(tmp_path, cfg)
+    _fake_urlopen(monkeypatch)
+    local = rec.capture(_ev())
+    assert local["snapshot_local"] and local["clip_local"]
+
+
+def test_snapshot_draws_bbox_and_track_id(tmp_path):
+    import cv2
+    import numpy as np
+    cfg = type("C", (), {"data_dir": str(tmp_path), "go2rtc_url": "http://x",
+                         "record_clip_s": 30})()
+    rec = Recorder(1, cfg)
+    ok, buf = cv2.imencode(".jpg", np.full((480, 640, 3), 255, np.uint8))
+    rec.push_jpeg(1.0, buf.tobytes())
+    outbox = tmp_path / "outbox"
+    outbox.mkdir()
+    path = rec._save_snapshot("ev-x", str(outbox), _ev(tid=7))
+    img = cv2.imread(path)
+    assert img is not None
+    x1, y1, x2, y2 = [int(v * s) for v, s in zip([0.1, 0.1, 0.5, 0.6], (640, 480, 640, 480))]
+    region = img[y1:y2, x1:x2]
+    region = img[y1:y2, x1:x2]
+    border = np.concatenate([region[0:3].reshape(-1, 3), region[-3:].reshape(-1, 3)])
+    # rect severity-warning (oranye) di atas background putih — cukup buktikan
+    # border sudah bukan putih murni
+    drawn = (border.sum(axis=1) < 720).sum()
+    assert drawn > 20, "rect track tidak tergambar pada snapshot"
