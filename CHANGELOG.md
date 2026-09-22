@@ -992,3 +992,21 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
   `test_get_without_row_returns_env_defaults` RED (`datetime_type ... input None`) → GREEN;
   backend `pytest -m "not gpu"` **309 passed**, vision **134 passed, 2 deselected**,
   `npx vitest run` **86 passed**, `npm run build` exit 0, lint tanpa warning baru.
+- Task 10 (deploy + lapangan): motion gate dinyalakan lewat tab **Deteksi & Model →
+  Advanced** (bukan `.env`; `.env` server tetap `MOTION_ENABLED=false` → membuktikan
+  precedence **DB > env**). Retained `isentinel/config/server` berubah ke
+  `motion.enabled=true` untuk 5 kamera. Heartbeat node kini melaporkan `detect_n`
+  (jumlah pemanggilan detektor) — util GPU tidak bisa dipakai sebagai bukti karena
+  kartu jenuh ~90% di kedua keadaan. Hasil A/B di `gspe-ai3`: gate ON **2,41** dan
+  **4,13** panggilan/detik vs gate OFF **25,00**/detik (plafon teoretis 5 kamera ×
+  5 fps) → hemat ≈84–90% inferensi; `ms_per_frame` tetap dilaporkan (24,8 ms) dan
+  detektor tetap pin `cuda:1`.
+- Task 10 (perbaikan UI): kolom override AI FPS/confidence di tab Deteksi & Model
+  tampil merah "invalid" saat kosong, padahal kosong berarti "pakai nilai global" —
+  `allowEmpty` pada Carbon NumberInput.
+- Task 10 (temuan, BELUM diperbaiki): `ByteTracker.max_age` dihitung per frame (15),
+  sedangkan gap motion gate = `force_interval_s × ai_fps`. Aman pada setelan
+  terpasang (10 ≤ 15), tetapi `ai_fps ≥ 8` — nilai yang diizinkan schema (s/d 25)
+  dan bisa diisi admin dari tab yang sama — membuat track objek diam mati tiap gap,
+  sehingga `trigger_seconds` loitering/intrusion tidak pernah terpicu. Didokumentasi
+  di `docs/detection-behavior-inventory.md` §10 dan dijaga test invarian.

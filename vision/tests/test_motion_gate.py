@@ -89,3 +89,34 @@ def test_worker_without_gate_detects_every_frame():
 def test_worker_motion_missing_means_no_gate():
     frames = [np.zeros((180, 320, 3), dtype=np.uint8) for _ in range(3)]
     assert _run_worker(frames, None).calls == 3   # cfg pra-R5: tanpa motion = seperti dulu
+
+
+# --- gate tidak boleh membunuh track objek diam ------------------------------
+
+def test_static_track_survives_the_gated_gap_at_deployed_settings():
+    """Objek diam: gate menahan inferensi selama force_interval_s, dan tiap frame
+    tertahan memanggil tracker.update([]) → misses bertambah. Track harus masih
+    hidup saat inferensi paksa berikutnya, jika tidak id-nya berganti dan event
+    dwell/loitering ter-reset terus.
+
+    Invarian: force_interval_s * ai_fps <= ByteTracker.max_age.
+    Setelan terpasang di gspe-ai3: force_interval_s=2.0, ai_fps=5 → 10 <= 15.
+    """
+    from vision.pipeline.detector import Detection
+    from vision.pipeline.tracker import ByteTracker
+
+    force_interval_s, ai_fps = 2.0, 5.0
+    gated_frames = int(force_interval_s * ai_fps)
+
+    tracker = ByteTracker()
+    det = Detection(bbox=(0.4, 0.4, 0.5, 0.6), conf=0.9)
+    track_id = tracker.update([det], ts=0.0)[0].id
+
+    for i in range(gated_frames):                      # frame-frame yang ditahan gate
+        tracker.update([], ts=(i + 1) / ai_fps)
+
+    survivors = tracker.update([det], ts=force_interval_s)   # inferensi paksa
+    assert [t.id for t in survivors] == [track_id], (
+        f"track mati setelah {gated_frames} frame tertahan; "
+        f"max_age={ByteTracker.max_age} terlalu kecil untuk force_interval_s={force_interval_s} @ {ai_fps} fps"
+    )

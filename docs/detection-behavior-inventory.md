@@ -192,3 +192,51 @@ Konsekuensi yang mudah terlewat:
    padahal resminya debug-only (flag `VISION_EMIT_PERSON_DETECT`, default false).
 10. **`ai_fps` seragam 5 fps** untuk semua kamera; tidak ada override per
    kamera, padahal beban deteksi bergantung kamera (LORONG vs TANGGA).
+
+## 10. Terminologi R5a + motion gate (terpasang 2026-09-22)
+
+Kosakata zona yang berlaku sekarang (menggantikan `restricted`/`free`/`absensi`):
+
+| Lama | Sekarang |
+|---|---|
+| `zone.type = restricted \| free` | `zone.type = behavior` |
+| `zone.type = absensi` | `zone.type = attendance` |
+| `zone.dwell_seconds` (satu per zona) | `behaviors[].trigger_seconds` (satu per behavior) |
+| `zone.loiter_seconds` | dilebur ke `trigger_seconds` behavior `loitering` |
+| analyzer implisit dari tipe zona | `camera.analyzers` (master) × `zone.behaviors` (area + threshold) |
+
+**Motion gate** (`vision/vision/motion.py`): inferensi YOLO hanya jalan saat frame
+bergerak; objek diam tetap dicek tiap `force_interval_s`. Setelan global ada di
+tabel `detector_setting` dan ditala lewat tab **Deteksi & Model → Advanced**,
+bukan `.env` — precedence **DB > env**.
+
+Terukur di `gspe-ai3` (5 kamera, `ai_fps=5`, 2026-09-22), dari `detect_n` di
+heartbeat node:
+
+| Keadaan | Pemanggilan detektor |
+|---|---|
+| gate ON | 2,41 /detik dan 4,13 /detik (dua sampel 60 s) |
+| gate OFF | 25,00 /detik (= 5 kamera × 5 fps, plafon teoretis) |
+
+Hemat ≈ 84–90% inferensi. Saat diam, laju turun ke ≈ `1/force_interval_s` per
+kamera (0,5/detik) — yaitu jalur force-interval, bukan gate yang macet.
+
+### Batas yang diketahui: `force_interval_s × ai_fps ≤ ByteTracker.max_age`
+
+`max_age = 15` dihitung **per frame**, sementara gap gate = `force_interval_s ×
+ai_fps`. Pada setelan terpasang aman (2,0 × 5 = 10 ≤ 15), tapi menaikkan AI FPS
+lewat tab Deteksi & Model merusak deteksi perilaku secara diam-diam:
+
+| `ai_fps` | gap (frame) | track objek diam |
+|---|---|---|
+| 5 | 10 | hidup |
+| 8 | 16 | **mati — id berganti tiap gap** |
+| 10 | 20 | **mati** |
+| 15 | 30 | **mati** |
+
+Akibatnya timer `trigger_seconds` (loitering/intrusion) ter-reset terus dan
+event tidak pernah terbit untuk orang yang berdiri diam. Schema API mengizinkan
+`ai_fps` s/d 25, jadi ini bisa dipicu admin tanpa peringatan. Perbaikan yang
+disarankan: ubah `ByteTracker.max_age` menjadi berbasis waktu (detik), bukan
+hitungan frame. Dijaga oleh
+`vision/tests/test_motion_gate.py::test_static_track_survives_the_gated_gap_at_deployed_settings`.
