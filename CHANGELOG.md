@@ -57,6 +57,25 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
 
+## [Unreleased] — R2 Media capture toggles
+
+### Snapshot bawa identitas track + toggle snapshot/clip per zona
+
+- Vision: snapshot event kini **dibakar bbox track + label `ID n`** (warna per
+  severity: critical merah, warning oranye, info hijau) — mengikat visual
+  orang-pemicu ke snapshot; menjawab laporan "miss" (snapshot vs clip beda orang).
+- Zona kini punya **toggle clip** (migration `0012` `zone.clip`, default true)
+  di samping toggle snapshot yang sudah ada; recorder akhirnya **menghormati
+  keduanya** (sebelumnya toggle snapshot diabaikan — selalu capture dua-duanya).
+  Flag zona dibawa ke event envelope oleh worker (`ev.snapshot`/`ev.clip`);
+  event tanpa flag (legacy) default capture. Clip tetap 30s post-event —
+  go2rtc 1.9.9 tidak mendukung pre-roll (`back` param → 404, terverifikasi).
+- UI: tab Zones/Attendance Gates — toggle "Rekam clip event (30 detik)";
+  detail Events menampilkan **crop wajah beranotasi** (payload `crop_path`)
+  untuk event attendance.
+- Bukti: vision 112 test (recorder flags + draw, config apply media), backend
+  273 (config push zone clip), frontend 71 + build.
+
 ## [Unreleased] — R1 Testing & Refining (anotasi wajah, device split, enrollment)
 
 ### Delegasi device per-analyzer (tab Node) + rebuild embedder
