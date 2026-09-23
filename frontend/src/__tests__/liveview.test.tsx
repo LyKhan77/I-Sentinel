@@ -153,7 +153,7 @@ test('WS detections renders kind-specific boxes and labels for the modal camera'
       boxes: [{ id: 9, bbox_norm: [0.1, 0.1, 0.5, 0.6], label: null }],
     }) })
   })
-  expect(screen.getByTestId('debug-box-9')).toHaveAttribute('stroke', '#ff832b')
+  expect(screen.getByTestId('debug-box-person-9')).toHaveAttribute('stroke', '#ff832b')
   expect(screen.getByTestId('debug-overlay')).toHaveTextContent('ID 9')
 
   await act(async () => {
@@ -162,8 +162,16 @@ test('WS detections renders kind-specific boxes and labels for the modal camera'
       boxes: [{ id: 4, bbox_norm: [0.2, 0.2, 0.4, 0.4], label: 'Angly' }],
     }) })
   })
-  expect(screen.getByTestId('debug-box-4')).toHaveAttribute('stroke', '#78a9ff')
+  expect(screen.getByTestId('debug-box-face-4')).toHaveAttribute('stroke', '#78a9ff')
   expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Angly')
+  // node mengirim person & face sebagai pesan terpisah: satu kind tak menghapus kind lain
+  expect(screen.getByTestId('debug-box-person-9')).toBeInTheDocument()
+
+  await act(async () => {
+    ws.onmessage?.({ data: JSON.stringify({ type: 'detections', camera_id: 1, kind: 'face', boxes: [] }) })
+  })
+  expect(screen.queryByTestId('debug-box-face-4')).not.toBeInTheDocument()
+  expect(screen.getByTestId('debug-box-person-9')).toBeInTheDocument()
 })
 
 test('kamera nonaktif tidak dirender di grid', async () => {

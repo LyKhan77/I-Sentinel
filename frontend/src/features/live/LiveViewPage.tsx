@@ -211,9 +211,9 @@ function DebugOverlay({ camId, showZones, showDetection, boxes }: {
         </g>
       ))}
       {showDetection && boxes.map((b) => b.bbox_norm?.length === 4 && (
-        <g key={b.id}>
+        <g key={`${b.kind}-${b.id}`}>
           <rect
-            data-testid={`debug-box-${b.id}`}
+            data-testid={`debug-box-${b.kind}-${b.id}`}
             x={b.bbox_norm[0] * 100} y={b.bbox_norm[1] * 100}
             width={(b.bbox_norm[2] - b.bbox_norm[0]) * 100}
             height={(b.bbox_norm[3] - b.bbox_norm[1]) * 100}
@@ -245,8 +245,10 @@ export default function LiveViewPage() {
   useLiveEvents((e) => {
     const m = e as { type?: string; camera_id?: number; kind?: DetectionKind; boxes?: Omit<DetBox, 'kind'>[] }
     if (m?.type === 'detections') {
+      // person & face tiba sebagai pesan terpisah: ganti hanya kotak kind yang sama
+      const kind = m.kind ?? 'person'
       setBoxes((prev) => (m.camera_id === debugCam?.id
-        ? (m.boxes ?? []).map((box) => ({ ...box, kind: m.kind ?? 'person' }))
+        ? [...prev.filter((b) => b.kind !== kind), ...(m.boxes ?? []).map((box) => ({ ...box, kind }))]
         : prev))
     }
   })
