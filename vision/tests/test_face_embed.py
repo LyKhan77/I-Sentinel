@@ -63,3 +63,29 @@ def test_embed_jpeg_bad_jpeg_returns_none():
     emb = FaceEmbedder(model_root="/tmp/x")
     emb._app = FakeApp()
     assert emb.embed_jpeg(b"notjpeg") is None
+
+
+@pytest.mark.parametrize("device, expected_first", [
+    ("cuda:2", ("CUDAExecutionProvider", {"device_id": 2})),
+    ("cpu", "CPUExecutionProvider"),
+])
+def test_device_pin_reaches_onnxruntime_session(monkeypatch, device, expected_first):
+    """insightface mengabaikan ctx_id >= 0: tanpa device_id di provider, sesi jatuh ke GPU 0
+    (terbukti di server — model wajah mendarat di RTX 4090, bukan cuda:2)."""
+    import sys
+    import types
+    seen = {}
+
+    class FakeFaceAnalysis:
+        def __init__(self, name, root, providers):
+            seen["providers"] = providers
+
+        def prepare(self, ctx_id, det_size):
+            pass
+
+    mod = types.ModuleType("insightface.app")
+    mod.FaceAnalysis = FakeFaceAnalysis
+    monkeypatch.setitem(sys.modules, "insightface", types.ModuleType("insightface"))
+    monkeypatch.setitem(sys.modules, "insightface.app", mod)
+    assert FaceEmbedder(model_root="/tmp/x", device=device).available() is True
+    assert seen["providers"][0] == expected_first

@@ -42,8 +42,9 @@ class FaceEmbedder:
         if self.device == "cpu":
             providers, ctx = ["CPUExecutionProvider"], 0
         elif self.device.startswith("cuda:"):
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             ctx = int(self.device.split(":", 1)[1])
+            # insightface mengabaikan ctx_id >= 0; tanpa device_id sesi jatuh ke GPU 0
+            providers = [("CUDAExecutionProvider", {"device_id": ctx}), "CPUExecutionProvider"]
         else:
             providers, ctx = ["CUDAExecutionProvider", "CPUExecutionProvider"], 0
         try:
