@@ -7,7 +7,9 @@ import ZoneEditor from '../components/ZoneEditor'
 import ZonesPage from '../features/config/ZonesPage'
 import type { Zone } from '../api/zones'
 
-const CAMS = [{ id: 1, name: 'CAM-01', location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null }]
+const CAM_BASE = { location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null }
+const CAMS = [{ id: 1, name: 'CAM-01', ...CAM_BASE }, { id: 2, name: 'CAM-02', ...CAM_BASE }]
+const ZONE_CAM1: Zone = { id: 5, camera_id: 1, camera_name: 'CAM-01', name: 'Zona A', type: 'behavior', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, trigger_seconds: 0, behaviors: [], snapshot: true, clip: true, telegram: false, active: true }
 
 function stubFetch(opts: { zones?: Zone[]; created?: Zone } = {}) {
   const zones = opts.zones ?? []
@@ -48,6 +50,17 @@ function renderEditor(onChange: (z: Zone[]) => void, zones: Zone[] = []) {
       <ZoneEditor cameraId={1} initialZones={zones} onChange={onChange} selectedId={null} onSelect={() => {}} />
     </I18nProvider>,
   )
+}
+
+/** Gambar segitiga lalu tunggu panel properti zona baru muncul. */
+async function drawTriangle() {
+  await waitFor(() => expect(screen.getByTestId('zone-draw-start')).toBeInTheDocument())
+  const svg = screen.getByTestId('zone-svg')
+  stubRect(svg)
+  fireEvent.click(screen.getByTestId('zone-draw-start'))
+  ;[[200, 100], [800, 100], [500, 400]].forEach(([x, y]) => fireEvent.click(svg, { clientX: x, clientY: y }))
+  fireEvent.click(screen.getByTestId('zone-start-ring'))
+  await waitFor(() => expect(screen.getByTestId('zone-save')).toBeInTheDocument())
 }
 
 test('click 3 points shows green start ring, click ring closes polygon', async () => {
@@ -218,4 +231,38 @@ test('zona Behavior tanpa behavior terpilih tetap tersimpan (zona visual)', asyn
   fireEvent.click(screen.getByTestId('zone-save'))
 
   await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([]))
+})
+
+test('simpan berhasil memunculkan notifikasi sukses', async () => {
+  const created: Zone = { id: 10, camera_id: 1, name: 'Zona 1', type: 'behavior', direction: null, polygon: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]], schedule: null, severity: 'warning', rate_limit_min: 5, trigger_seconds: 0, behaviors: [], snapshot: true, clip: true, telegram: false, active: true }
+  vi.stubGlobal('fetch', stubFetch({ created }))
+  render(<I18nProvider><ZonesPage /></I18nProvider>)
+  await drawTriangle()
+
+  fireEvent.click(screen.getByTestId('zone-save'))
+
+  expect(await screen.findByTestId('zone-toast')).toHaveTextContent(/tersimpan/i)
+})
+
+test('hapus meminta konfirmasi dulu, batal tidak memanggil DELETE', async () => {
+  const fetchMock = stubFetch({})
+  vi.stubGlobal('fetch', fetchMock)
+  render(<I18nProvider><ZonesPage /></I18nProvider>)
+  await drawTriangle()
+
+  fireEvent.click(screen.getByTestId('zone-delete'))
+
+  expect(await screen.findByTestId('zone-delete-confirm')).toBeInTheDocument()
+  expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'DELETE')).toBe(false)
+})
+
+test('rail kamera menampilkan jumlah zona per kamera dan menandai yang belum punya', async () => {
+  vi.stubGlobal('fetch', stubFetch({ zones: [ZONE_CAM1] }))
+  render(<I18nProvider><ZonesPage /></I18nProvider>)
+
+  const rail = await screen.findByTestId('zone-rail')
+  expect(rail).toBeInTheDocument()
+  // cam 1 punya 1 zona dari stub; kamera lain kosong dan diberi kelas redup
+  expect(screen.getByTestId('zone-rail-cam-1')).toHaveTextContent('1')
+  expect(screen.getByTestId('zone-rail-cam-2').className).toContain('zone-rail__item--empty')
 })

@@ -4,6 +4,7 @@ import {
   Button,
   InlineLoading,
   InlineNotification,
+  ToastNotification,
   NumberInput,
   Select,
   SelectItem,
@@ -39,6 +40,14 @@ export default function GatesPage() {
   const [me, setMe] = useState<Me | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  // toast hilang sendiri; perlakuan sama dengan halaman Zona Deteksi
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(id)
+  }, [toast])
 
   const isAdmin = me?.role === 'admin'
 
@@ -69,6 +78,7 @@ export default function GatesPage() {
     try {
       const updated = await updateZone(zone.id, body)
       setZones((cur) => cur.map((z) => (z.id === zone.id ? updated : z)))
+      setToast(t('gates.saved'))
     } catch {
       setError(t('gates.saveError'))
     }
@@ -107,6 +117,12 @@ export default function GatesPage() {
   return (
     <>
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />}
+
+      {toast && (
+        <div className="toast-stack" data-testid="gate-toast">
+          <ToastNotification kind="success" lowContrast title={toast} timeout={0} onCloseButtonClick={() => setToast(null)} />
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 14 }}>
         <div style={{ width: 260 }}>

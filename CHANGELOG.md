@@ -1027,3 +1027,24 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
   pijak yang menentukan: `bbox_norm` event itu `[0.402, 0.335, 0.532, 0.992]` →
   centroid y=0,663 **di luar** polygon (0,718–0,998), jadi logika centroid lama tidak
   akan pernah menerbitkannya. Bukti: `docs/evidence/r5a-task10-intrusion-event.png`.
+
+### R5a lanjutan — refining UI konfigurasi (2026-09-23)
+
+- **Chip `attendance` dihapus dari tab Deteksi & Model** (kini 3 chip, sesuai mockup 06).
+  Absensi diatur dari tab Gate Absensi saja. Chip itu sebelumnya saklar ketiga yang
+  nyata: `_make_analyzers` melewati behavior yang tidak ada di `camera.analyzers`,
+  jadi mematikannya membunuh seluruh gate kamera itu diam-diam dari tab lain.
+  Nilai `attendance` tetap dipertahankan saat chip lain di-toggle — dijaga test
+  `chip attendance tidak ditampilkan tapi tetap tersimpan saat chip lain di-toggle`,
+  tanpa itu regresi "mematikan intrusion ikut mematikan absensi" akan lolos.
+- **Rail kamera di tab Zona Deteksi** menggantikan dropdown: tiap kamera menampilkan
+  jumlah zona + badge tipe, kamera tanpa zona tampil redup — mana yang sudah
+  dikonfigurasi terlihat tanpa membuka satu per satu. **Menyimpang dari mockup 06**
+  (`<select id="zoneCam">`) atas permintaan user; berkas mockup sengaja tidak diubah.
+  Grid jadi `200px | editor | detail`, runtuh ke satu kolom + strip horizontal di ≤671px.
+- **Feedback Save/Delete**: `ToastNotification` sukses (auto-dismiss 4 s), `Modal`
+  konfirmasi sebelum hapus zona, dan tombol disabled + label "Menyimpan…"/"Menghapus…"
+  selama request. Diterapkan di ZonesPage dan GatesPage supaya perilakunya sama.
+- Bukti: frontend **93 passed** (dari 88), `npm run build` exit 0, lint tanpa warning
+  baru (1 warning `set-state-in-effect` yang sudah ada sebelumnya, diverifikasi dengan
+  membandingkan lint sebelum/sesudah). Backend **309 passed**, vision **140 passed**.

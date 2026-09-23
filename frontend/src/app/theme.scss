@@ -391,9 +391,71 @@ html {
 /* Editor zona + panel properti (mockup 06): dua kolom di desktop. Di layar
    sempit kolom panel cuma menyisakan kanvas yang tak terbaca, jadi keduanya
    ditumpuk satu kolom dan divider vertikal pindah jadi garis atas panel. */
+// toast mengambang di kanan atas, tidak mendorong layout saat muncul/hilang
+.toast-stack {
+  position: fixed;
+  inset-block-start: 56px;
+  inset-inline-end: 16px;
+  z-index: 9000;
+}
+
+@media (max-width: 671px) {
+  .toast-stack {
+    inset-inline: 16px;
+  }
+
+  .toast-stack .cds--toast-notification { inline-size: auto; }
+}
+
+// rail kamera: mana yang sudah punya zona terlihat tanpa membuka dropdown satu-satu
+.zone-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-block-size: 640px;
+  overflow-y: auto;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-border-subtle);
+}
+
+.zone-rail__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--cds-layer-01);
+  border: 0;
+  border-inline-start: 2px solid transparent;
+  color: var(--cds-text-primary);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.zone-rail__item:hover { background: var(--cds-layer-hover-01); }
+
+.zone-rail__item--sel {
+  border-inline-start-color: var(--cds-interactive);
+  background: var(--cds-layer-selected-01);
+}
+
+.zone-rail__item--empty { color: var(--cds-text-disabled); }
+
+.zone-rail__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.zone-rail__count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--cds-border-subtle);
+  color: var(--cds-text-secondary);
+}
+
+.zone-rail__types { grid-column: 1 / -1; display: flex; gap: 4px; flex-wrap: wrap; }
+
 .configuration-zones {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  grid-template-columns: 200px minmax(0, 1.4fr) minmax(280px, 1fr);
 
   > * {
     min-inline-size: 0;
@@ -409,6 +471,20 @@ html {
   .configuration-zones {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .zone-rail {
+    flex-direction: row;
+    max-block-size: none;
+    overflow-x: auto;
+  }
+
+  .zone-rail__item {
+    flex: 0 0 auto;
+    border-inline-start: 0;
+    border-block-end: 2px solid transparent;
+  }
+
+  .zone-rail__item--sel { border-block-end-color: var(--cds-interactive); }
 
   .configuration-zones__details {
     border-inline-start: 0;

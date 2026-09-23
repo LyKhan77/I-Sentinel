@@ -127,3 +127,13 @@ test('viewer tidak bisa ubah trigger threshold', async () => {
   await screen.findByTestId('gate-row-1')
   expect(screen.getByTestId('gate-trigger-1')).toBeDisabled()
 })
+
+test('perubahan gate yang tersimpan memunculkan notifikasi sukses', async () => {
+  stubFetch([gate(1, 'entry')])
+  renderPage()
+
+  await screen.findByTestId('gate-row-1')
+  fireEvent.change(screen.getByTestId('gate-trigger-1'), { target: { value: '3' } })
+
+  expect(await screen.findByTestId('gate-toast')).toHaveTextContent(/tersimpan/i)
+})

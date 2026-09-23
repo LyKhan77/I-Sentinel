@@ -66,6 +66,29 @@ test('tabel hanya memuat kamera yang punya zona, chip ringkas, override kosong m
   expect((document.querySelector('#confidence-1') as HTMLInputElement).placeholder).toBe('0.4')
 
   const chips = document.querySelectorAll('.det-chip')
-  expect(chips.length).toBe(4)
+  expect(chips.length).toBe(3)   // attendance diatur dari tab Gate Absensi
   expect(document.querySelectorAll('.det-table .cds--btn').length).toBe(0)
+})
+
+test('chip attendance tidak ditampilkan tapi tetap tersimpan saat chip lain di-toggle', async () => {
+  const calls: { url: string; init?: RequestInit }[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init })
+    const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone]
+      : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
+    return { ok: true, status: 200, json: async () => body }
+  }))
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'attendance' })).toBeNull()
+  expect(document.querySelectorAll('.det-chip')).toHaveLength(3)
+
+  await userEvent.click(screen.getByRole('button', { name: 'intrusion' }))
+
+  const patch = calls.find((c) => c.url.includes('/cameras/1') && c.init?.method === 'PATCH')
+  const sent = JSON.parse(String(patch?.init?.body)).analyzers
+  // mematikan intrusion tidak boleh ikut mematikan gate absensi kamera ini
+  expect(sent).toContain('attendance')
+  expect(sent).not.toContain('intrusion')
 })

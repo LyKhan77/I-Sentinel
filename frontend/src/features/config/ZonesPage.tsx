@@ -5,11 +5,13 @@ import {
   Dropdown,
   InlineLoading,
   InlineNotification,
+  Modal,
   NumberInput,
   RadioButton,
   RadioButtonGroup,
   Tag,
   TextInput,
+  ToastNotification,
   Toggle,
 } from '@carbon/react'
 import { Delete, Save } from '@carbon/icons-react'
@@ -47,14 +49,26 @@ export default function ZonesPage() {
   const [cams, setCams] = useState<Camera[]>([])
   const [cam, setCam] = useState<{ id: number; label: string } | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
+  const [allZones, setAllZones] = useState<Zone[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const [busy, setBusy] = useState<'save' | 'delete' | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // toast hilang sendiri; tanpa ini notifikasi menumpuk sampai halaman di-reload
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(id)
+  }, [toast])
 
   useEffect(() => {
-    listCameras()
-      .then((cs) => {
+    Promise.all([listCameras(), listZones().catch(() => [])])
+      .then(([cs, all]) => {
         setCams(cs)
+        setAllZones(all)
         if (cs.length > 0) setCam({ id: cs[0].id, label: cs[0].name })
       })
       .catch(() => setError(t('cameras.loadError')))
@@ -65,6 +79,7 @@ export default function ZonesPage() {
     setZones(await listZones(cameraId).catch(() => []))
     setSelectedId(null)
   }, [])
+
 
   useEffect(() => {
     if (cam) reload(cam.id)
@@ -102,6 +117,7 @@ export default function ZonesPage() {
   const save = async () => {
     if (!selected || !cam) return
     setError(null)
+    setBusy('save')
     const { id, camera_id, camera_name, ...payload } = selected
     try {
       if (id < 0) {
@@ -111,19 +127,29 @@ export default function ZonesPage() {
       } else {
         await updateZone(id, payload)
       }
+      setAllZones((prev) => [...prev.filter((z) => z.camera_id !== cam.id), ...zones.filter((z) => z.id > 0)])
+      setToast(t('zones.saved'))
     } catch {
       setError(t('zones.saveError'))
+    } finally {
+      setBusy(null)
     }
   }
 
   const remove = async () => {
     if (!selected) return
+    setConfirmDelete(false)
+    setBusy('delete')
     try {
       if (selected.id > 0) await deleteZone(selected.id)
       setZones(zones.filter((z) => z.id !== selected.id))
       setSelectedId(null)
+      setAllZones((prev) => prev.filter((z) => z.id !== selected.id))
+      setToast(t('zones.deleted'))
     } catch {
-      setError(t('zones.saveError'))
+      setError(t('zones.deleteError'))
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -140,19 +166,31 @@ export default function ZonesPage() {
 
   return (
     <>
-      <div style={{ maxWidth: 360, marginBottom: 16 }}>
-        <Dropdown
-          id="zone-camera"
-          titleText={t('zones.camera')}
-          label={t('events.filterAll')}
-          items={cams.map((c) => ({ id: c.id, label: c.name }))}
-          selectedItem={cam}
-          onChange={({ selectedItem }) => selectedItem && setCam(selectedItem)}
-        />
-      </div>
-
       {error && (
         <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />
+      )}
+
+      {toast && (
+        <div className="toast-stack" data-testid="zone-toast">
+          <ToastNotification
+            kind="success" lowContrast title={toast} timeout={0}
+            onCloseButtonClick={() => setToast(null)}
+          />
+        </div>
+      )}
+
+      {confirmDelete && selected && (
+        <Modal
+          open danger
+          data-testid="zone-delete-confirm"
+          modalHeading={t('zones.deleteTitle')}
+          primaryButtonText={t('cameras.delete')}
+          secondaryButtonText={t('common.cancel')}
+          onRequestSubmit={remove}
+          onRequestClose={() => setConfirmDelete(false)}
+        >
+          <p>{t('zones.deleteBody').replace('{name}', selected.name)}</p>
+        </Modal>
       )}
 
       {loading ? (
@@ -161,6 +199,40 @@ export default function ZonesPage() {
         <p style={{ color: '#8d8d8d' }}>{t('cameras.empty')}</p>
       ) : (
         <div className="configuration-zones">
+          {/* rail kamera: jumlah zona terlihat tanpa membuka kamera satu per satu */}
+          <div className="zone-rail" data-testid="zone-rail" role="listbox" aria-label={t('zones.camera')}>
+            {cams.map((c) => {
+              const mine = c.id === cam?.id
+                ? zones.filter((z) => z.id > 0)
+                : allZones.filter((z) => z.camera_id === c.id)
+              const types = [...new Set(mine.map((z) => z.type))]
+              const cls = ['zone-rail__item']
+              if (cam?.id === c.id) cls.push('zone-rail__item--sel')
+              if (mine.length === 0) cls.push('zone-rail__item--empty')
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="option"
+                  aria-selected={cam?.id === c.id}
+                  data-testid={`zone-rail-cam-${c.id}`}
+                  className={cls.join(' ')}
+                  onClick={() => setCam({ id: c.id, label: c.name })}
+                >
+                  <span className="zone-rail__name">{c.name}</span>
+                  <span className="zone-rail__count">{mine.length}</span>
+                  {types.length > 0 && (
+                    <span className="zone-rail__types">
+                      {types.map((tp) => (
+                        <span key={tp} className="zone-badge">{t(`zones.type.${tp}` as TKey).toUpperCase()}</span>
+                      ))}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
           <div style={{ minWidth: 0, paddingRight: 16 }}>
             <ZoneEditor
               cameraId={cam.id}
@@ -392,11 +464,14 @@ export default function ZonesPage() {
                 />
 
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" onClick={save}>
-                    {t('common.save')}
+                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" disabled={busy !== null} onClick={save}>
+                    {busy === 'save' ? t('common.saving') : t('common.save')}
                   </Button>
-                  <Button kind="danger--ghost" renderIcon={Delete} data-testid="zone-delete" onClick={remove}>
-                    {t('cameras.delete')}
+                  <Button
+                    kind="danger--ghost" renderIcon={Delete} data-testid="zone-delete"
+                    disabled={busy !== null} onClick={() => setConfirmDelete(true)}
+                  >
+                    {busy === 'delete' ? t('common.deleting') : t('cameras.delete')}
                   </Button>
                 </div>
               </div>

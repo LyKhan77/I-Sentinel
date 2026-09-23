@@ -6,6 +6,9 @@ import { listZones } from '../../api/zones'
 import { useT } from '../../app/i18n'
 
 const KINDS = ['intrusion', 'loitering', 'running', 'attendance'] as const
+// `attendance` diatur dari tab Gate Absensi, bukan di sini — tapi nilainya wajib
+// ikut tersimpan, kalau tidak mematikan chip lain akan membunuh gate diam-diam.
+const CHIP_KINDS = ['intrusion', 'loitering', 'running'] as const
 type DetectionPatch = Pick<CameraPayload, 'ai_fps' | 'confidence' | 'analyzers' | 'motion_enabled'>
 
 export default function DetectionPage() {
@@ -53,6 +56,7 @@ export default function DetectionPage() {
         <tbody>
           {cameras.map((camera) => {
             const active = camera.analyzers ?? [...KINDS]
+            const hidden = active.filter((kind) => !CHIP_KINDS.includes(kind as typeof CHIP_KINDS[number]))
             return (
               <tr key={camera.id}>
                 <td>{camera.name}</td>
@@ -71,13 +75,15 @@ export default function DetectionPage() {
                   />
                 </td>
                 <td>
-                  {KINDS.map((kind) => (
+                  {CHIP_KINDS.map((kind) => (
                     <button
                       key={kind} type="button" aria-pressed={active.includes(kind)}
                       className={active.includes(kind) ? 'det-chip on' : 'det-chip'}
-                      onClick={() => patch(camera, {
-                        analyzers: active.includes(kind) ? active.filter((item) => item !== kind) : [...active, kind],
-                      })}
+                      onClick={() => {
+                        const shown = CHIP_KINDS.filter((item) =>
+                          item === kind ? !active.includes(kind) : active.includes(item))
+                        patch(camera, { analyzers: [...shown, ...hidden] })
+                      }}
                     >{kind}</button>
                   ))}
                 </td>
