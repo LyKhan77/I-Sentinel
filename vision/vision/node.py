@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
 from .analyzers.base import Analyzer
-from .analyzers.face_gate import crop_upper_body
+from .analyzers.face_gate import FaceGateAnalyzer, crop_upper_body
 from .config import CameraCfg, NodeSettings
 from . import hardware
 from .pipeline.detector import PersonDetector
@@ -119,6 +119,9 @@ class CameraWorker(threading.Thread):
             if (motion and motion.get("enabled", True)) else None
         )
         self.face = None  # FaceEmbedder (Opsi B), di-set oleh VisionNode
+        # overlay wajah debugger hanya untuk kamera yang punya gate absensi
+        self._face_overlay = any(isinstance(a, FaceGateAnalyzer) for a in self.analyzers)
+        self._faces_shown = False  # publish kosong sekali saat wajah hilang
         self.events: list[dict] = []  # test hook
         self.source = None
 
@@ -148,6 +151,8 @@ class CameraWorker(threading.Thread):
                         {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox], "label": None}
                         for t in tracks
                     ], kind="person")
+                if self._face_overlay and self.face is not None and self.transport is not None:
+                    self._publish_faces(cam_id, frame, tracks)
                 if self.recorder is not None:
                     if detections and frame.data is not None:
                         try:
@@ -188,6 +193,29 @@ class CameraWorker(threading.Thread):
         except Exception:
             if not self.stop_event.is_set():
                 log.exception("camera %s worker died", cam_id)
+
+    def _publish_faces(self, cam_id: int, frame, tracks) -> None:
+        """Overlay debugger: kotak wajah SCRFD di frame substream, label = det_score.
+
+        Hanya saat ada track (tanpa orang tak ada wajah — hemat GPU face). Gagal
+        deteksi tidak boleh mematikan worker: frame ini tanpa kotak wajah saja.
+        """
+        faces = []
+        if tracks and frame.data is not None:
+            h, w = frame.data.shape[:2]
+            try:
+                found = self.face.detect(frame.data)
+            except Exception:
+                log.warning("camera %s: face detect gagal", cam_id, exc_info=True)
+                found = []
+            faces = [{"id": i,
+                      "bbox_norm": [round(x1 / w, 4), round(y1 / h, 4),
+                                    round(x2 / w, 4), round(y2 / h, 4)],
+                      "label": f"{score:.2f}"}
+                     for i, (x1, y1, x2, y2, score) in enumerate(found)]
+        if faces or self._faces_shown:
+            self.transport.publish_detections(cam_id, faces, kind="face")
+        self._faces_shown = bool(faces)
 
     def _attach_crop(self, partial: dict, frame) -> None:
         """Crop upper body for needs_crop partials and upload it inline.

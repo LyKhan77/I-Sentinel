@@ -7,6 +7,7 @@ kegagalan supaya tidak coba muat ulang tiap frame/event.
 from __future__ import annotations
 
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,17 @@ class FaceEmbedder:
         self.device = device  # ""=auto (CUDA→CPU), "cpu", "cuda:N"
         self._app = None
         self._failed = False
+        # worker kamera attendance memanggil detect() per frame secara paralel:
+        # tanpa lock, first-load bisa memuat FaceAnalysis dua kali di GPU
+        self._load_lock = threading.Lock()
 
     def _ensure_loaded(self):
+        if self._app is not None or self._failed:
+            return self._app
+        with self._load_lock:
+            return self._load()
+
+    def _load(self):
         if self._app is not None or self._failed:
             return self._app
         try:
@@ -50,6 +60,14 @@ class FaceEmbedder:
 
     def available(self) -> bool:
         return self._ensure_loaded() is not None
+
+    def detect(self, img) -> list[tuple[float, float, float, float, float]]:
+        """Deteksi saja (SCRFD, tanpa embedding) pada frame BGR -> [(x1,y1,x2,y2,score)] piksel."""
+        app = self._ensure_loaded()
+        if app is None:
+            return []
+        bboxes, _ = app.det_model.detect(img, max_num=0, metric="default")
+        return [tuple(float(v) for v in b[:5]) for b in bboxes]
 
     def embed_jpeg(self, jpeg: bytes) -> dict | None:
         """Deteksi + embedding wajah TERBESAR di jpeg. None bila gagal/tidak ada wajah."""

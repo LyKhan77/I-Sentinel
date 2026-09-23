@@ -88,11 +88,12 @@ def frame():
     return np.zeros((480, 640, 3), dtype=np.uint8)
 
 
-def run_worker(analyzers, detector, frames, recorder, source_url="test://1"):
+def run_worker(analyzers, detector, frames, recorder, source_url="test://1", face=None):
     cfg = CameraCfg(camera_id=1, source_url=source_url, ai_fps=5.0)
     t = FakeTransport()
     w = CameraWorker(cfg, lambda cid: detector, t, threading.Event(), "test-node",
                      analyzers=analyzers, recorder=recorder)
+    w.face = face
     w.source = FrameSource.from_frames(frames, fps=100.0)
     w.start()
     w.join(timeout=10)
@@ -326,3 +327,62 @@ def test_absensi_zone_passes_filter_and_builds_analyzer():
     cams = node._cameras_from_config({"cameras": json.loads(cfg.cameras_json)})
     assert [z["id"] for z in cams[0].zones] == [11]
     assert [type(a).__name__ for a in node._make_analyzers(cams[0])] == ["FaceGateAnalyzer"]
+
+
+# --- overlay wajah debugger (kind="face") ---
+
+class FakeFaceDetector:
+    """Hasil detect() per frame berurutan: list (x1,y1,x2,y2,score) piksel; habis -> []."""
+
+    def __init__(self, per_frame):
+        self.per_frame = list(per_frame)
+        self.calls = 0
+
+    def detect(self, img):
+        self.calls += 1
+        return self.per_frame.pop(0) if self.per_frame else []
+
+
+PERSON = [Detection(bbox=(0.2, 0.1, 0.4, 0.9), conf=0.9)]
+FACE_PX = (64.0, 48.0, 128.0, 144.0, 0.8)   # frame 640x480 -> (0.1, 0.1, 0.2, 0.3)
+
+
+def _face_boxes(t):
+    return [boxes for _, kind, boxes in getattr(t, "detections", []) if kind == "face"]
+
+
+def test_attendance_camera_publishes_normalized_face_boxes():
+    face = FakeFaceDetector([[FACE_PX]])
+    _, t = run_worker([FaceGateAnalyzer(zone())], MockDetector([PERSON]), [frame()], None,
+                      face=face)
+    assert _face_boxes(t) == [[{"id": 0, "bbox_norm": [0.1, 0.1, 0.2, 0.3], "label": "0.80"}]]
+
+
+def test_camera_without_attendance_zone_runs_no_face_detection():
+    face = FakeFaceDetector([[FACE_PX]])
+    _, t = run_worker([], MockDetector([PERSON]), [frame()], None, face=face)
+    assert face.calls == 0 and _face_boxes(t) == []
+
+
+def test_face_boxes_cleared_once_when_face_disappears():
+    face = FakeFaceDetector([[FACE_PX], [], []])
+    _, t = run_worker([FaceGateAnalyzer(zone())], MockDetector([PERSON] * 3), [frame()] * 3,
+                      None, face=face)
+    boxes = _face_boxes(t)
+    assert len(boxes) == 2 and boxes[1] == []   # satu publish kosong, lalu diam
+
+
+class BrokenFaceDetector:
+    def detect(self, img):
+        raise RuntimeError("onnxruntime error")
+
+    def embed_jpeg(self, jpeg):
+        return None
+
+
+def test_face_detector_error_does_not_kill_worker():
+    rec = FakeRecorder()
+    w, t = run_worker([FaceGateAnalyzer(zone())], MockDetector([PERSON] * 2), [frame()] * 2,
+                      rec, face=BrokenFaceDetector())
+    assert [e["type"] for e in t.events] == ["attendance"]   # frame berikutnya tetap diproses
+    assert len([k for _, k, _ in t.detections if k == "person"]) == 2
