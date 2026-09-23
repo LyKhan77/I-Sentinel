@@ -108,6 +108,16 @@ def _in_cooldown(db, employee_id: int, direction: str, ts: datetime) -> bool:
     return any(abs(_local(row.ts_event) - ts_local) <= window for row in rows)
 
 
+def _entered_earlier_today(db, employee_id: int, ts: datetime) -> bool:
+    """Sudah ada entry karyawan ini lebih awal di hari lokal yang sama. Entry yang lebih awal
+    tapi tiba belakangan (antrean disk node) tetap dicatat supaya jam masuk benar."""
+    ts_local = _local(ts)
+    rows = db.query(AttendanceEvent).filter(
+        AttendanceEvent.employee_id == employee_id, AttendanceEvent.direction == "entry")
+    return any(_local(r.ts_event).date() == ts_local.date() and _local(r.ts_event) <= ts_local
+               for r in rows)
+
+
 def handle_face_event(db, event, embedding: list[float] | None = None) -> AttendanceEvent | None:
     """Match attendance event, discard embedding, then update attendance day.
 
@@ -149,6 +159,10 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
 
     if _in_cooldown(db, res.employee_id, direction, event.ts_event):
         payload["match_reason"] = "cooldown"
+        return _save(db, event, payload, None)
+
+    if direction == "entry" and _entered_earlier_today(db, res.employee_id, event.ts_event):
+        payload["match_reason"] = "already_in"  # entry sekali per hari; exit boleh berulang
         return _save(db, event, payload, None)
 
     payload["match_reason"] = "matched"

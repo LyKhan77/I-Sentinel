@@ -383,12 +383,13 @@ def test_second_pass_within_cooldown_records_one_attendance(db, monkeypatch):
 
 
 def test_pass_after_cooldown_records_again(db, monkeypatch):
+    """Setelah cooldown lewat, exit dicatat lagi (entry dibatasi sekali per hari)."""
     _camera(db)
     e = _emp(db, _shift(db))
     monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
     monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
-    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
-    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 16), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 12, 0), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 12, 6), VEC))
     assert db.query(AttendanceEvent).count() == 2
 
 
@@ -470,3 +471,42 @@ def test_handle_face_event_annotation_failure_not_fatal(tmp_path, db, monkeypatc
                      "crop_path": "crops/nope.jpg"})
     row = attendance.handle_face_event(db, ev)
     assert row is not None
+
+
+def test_second_entry_same_day_after_cooldown_is_not_recorded(db, monkeypatch):
+    """Entry sekali per hari: lewat lagi di zona entry (> cooldown) tidak menggandakan absensi."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    assert attendance.handle_face_event(db, again) is None
+    assert db.query(AttendanceEvent).filter_by(direction="entry").count() == 1
+    db.refresh(again)
+    assert (again.payload["match_reason"], again.payload["employee_name"]) == ("already_in", "Budi")
+
+
+def test_earlier_entry_arriving_late_is_still_recorded(db, monkeypatch):
+    """Antrean disk node bisa mengirim entry pagi setelah entry siang: jam masuk harus yang pagi."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 9, 30), VEC))
+    assert attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC)) is not None
+    day = db.query(AttendanceDay).filter_by(employee_id=e.id).one()
+    assert attendance._local(day.first_entry).hour == 7
+
+
+def test_entry_next_day_and_repeated_exits_are_recorded(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 12, 0), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 16, 5), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(2025, 1, 7, 7, 5), VEC))
+    assert db.query(AttendanceEvent).filter_by(direction="entry").count() == 2
+    assert db.query(AttendanceEvent).filter_by(direction="exit").count() == 2
