@@ -3,6 +3,21 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 5 — FaceGateWorker (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` menambah worker wajah di frame main
+  stream (source disambung Task 6), motion gate, track per wajah, overlay sebelum
+  embedding, satu event attendance per track, crop/snapshot frame terbaik tanpa clip.
+  `vision/tests/test_face_worker.py` menguji gate, overlay, expiry, dua wajah,
+  outlier, galat mesin/upload, dan media. Pin detector `cuda:1`/face `cuda:2`
+  tidak berubah.
+- Bukti TDD: RED awal `1 error` (modul worker belum ada); GREEN awal `11 passed`;
+  tes tambahan ambang deteksi RED `1 failed, 12 passed`, kemudian GREEN `13 passed`.
+  Suite vision non-GPU `188 passed, 2 deselected, 2 warnings` (pynvml dan
+  mock heartbeat lama). Tidak ada tes GPU atau verifikasi lapangan.
+- Dampak: kontrak worker siap untuk integrasi node Task 6; belum dipakai produksi.
+  Rollback: `git revert` commit Task 5; tidak ada migrasi DB.
+
 ### R5b Task 4 — gerbang kualitas dan agregasi embedding (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/face_quality.py` menambah setelan default wajah,
