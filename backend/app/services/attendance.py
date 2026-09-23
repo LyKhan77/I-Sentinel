@@ -90,44 +90,67 @@ def recompute_day(db, employee_id: int, day, now: datetime | None = None) -> Att
     return row
 
 
-def handle_face_event(db, event) -> AttendanceEvent | None:
-    """Event tipe attendance + crop → match → AttendanceEvent + recompute_day.
+def _save(db, event, payload: dict, result):
+    """Reassign JSON payload for SQLAlchemy change tracking, then commit."""
+    event.payload = payload
+    db.commit()
+    return result
 
-    Selalu disaring lewat db.rollback() di caller (events_consumer); di sini
-    exception dibiarkan naik supaya caller yang memutuskan.
+
+def _in_cooldown(db, employee_id: int, direction: str, ts: datetime) -> bool:
+    """Check both directions in time: node media can delay newer events."""
+    window = timedelta(minutes=settings.attendance_cooldown_min)
+    ts_local = _local(ts)
+    rows = db.query(AttendanceEvent).filter(
+        AttendanceEvent.employee_id == employee_id, AttendanceEvent.direction == direction)
+    # ponytail: Python time comparison handles SQLite naive and Postgres aware timestamps;
+    # add a DB time window only if per-employee attendance history grows large.
+    return any(abs(_local(row.ts_event) - ts_local) <= window for row in rows)
+
+
+def handle_face_event(db, event) -> AttendanceEvent | None:
+    """Match attendance event, discard embedding, then update attendance day.
+
+    Exceptions propagate to events_consumer for rollback.
     """
     if event.type != "attendance":
         return None
 
     payload = dict(event.payload or {})
+    embedding = payload.pop("embedding", None)
     crop = payload.get("crop_path")
-    if not crop:
-        logger.info("attendance: event %s tanpa crop_path — skip", event.event_id)
-        return None
-
     direction = payload.get("direction")
     if direction not in VALID_DIRECTIONS:
         logger.warning("attendance: direction %r tidak valid pada event %s — skip", direction, event.event_id)
-        return None
+        return _save(db, event, payload, None)
 
-    if payload.get("embedding"):
-        res = face.match_vector(payload["embedding"], payload.get("face_quality"))
-    else:
+    if embedding:
+        res = face.match_vector(embedding, payload.get("face_quality"))
+    elif crop:
         res = face.match_crop(db, str(Path(settings.storage_root) / crop))
-    if res.employee_id is not None:
-        emp = db.get(Employee, res.employee_id)
-        if emp is not None:
-            annotate_face_crop(str(Path(settings.storage_root) / crop),
-                               emp.name, res.score or 0.0,
-                               payload.get("face_bbox"))
+    else:
+        logger.info("attendance: event %s tanpa embedding dan crop — skip", event.event_id)
+        return _save(db, event, payload, None)
+
     if res.employee_id is None:
         payload["employee_id"] = None
         payload["match_reason"] = res.reason
-        event.payload = payload
-        db.commit()
         logger.info("attendance: event %s tidak cocok (%s)", event.event_id, res.reason)
-        return None
+        return _save(db, event, payload, None)
 
+    emp = db.get(Employee, res.employee_id)
+    payload["employee_id"] = res.employee_id
+    payload["employee_name"] = emp.name if emp is not None else None
+    payload["face_score"] = res.score
+    if emp is not None and crop:
+        annotate_face_crop(str(Path(settings.storage_root) / crop),
+                           emp.name, res.score or 0.0, payload.get("face_bbox"))
+
+    if _in_cooldown(db, res.employee_id, direction, event.ts_event):
+        payload["match_reason"] = "cooldown"
+        return _save(db, event, payload, None)
+
+    payload["match_reason"] = "matched"
     row = AttendanceEvent(
         employee_id=res.employee_id,
         camera_id=event.camera_id,
@@ -139,7 +162,7 @@ def handle_face_event(db, event) -> AttendanceEvent | None:
         event_id=event.event_id,
     )
     db.add(row)
-    db.commit()
+    _save(db, event, payload, None)
     db.refresh(row)
     recompute_day(db, res.employee_id, _local(event.ts_event).date())
     return row

@@ -311,6 +311,123 @@ def test_handle_face_event_fallback_crop_without_embedding(db, monkeypatch):
     assert row.employee_id == e.id
 
 
+# --- R5b: cooldown dan sanitasi embedding -----------------------------------
+
+
+def _matched_vec(eid, score=0.8):
+    return lambda vector, quality=None: MatchResult(eid, score, quality, "matched")
+
+
+def _no_match_vec():
+    return lambda vector, quality=None: MatchResult(None, None, quality, "no_match")
+
+
+VEC = {"embedding": [0.1] * 512, "face_quality": 0.8}
+
+
+def test_embedding_never_stored_after_match(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), VEC)
+    assert attendance.handle_face_event(db, ev) is not None
+    db.refresh(ev)
+    assert "embedding" not in ev.payload
+    assert (ev.payload["employee_name"], ev.payload["match_reason"]) == ("Budi", "matched")
+
+
+def test_embedding_stripped_on_unmatched_and_invalid_paths(db, monkeypatch):
+    _camera(db)
+    _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _no_match_vec())
+    unmatched = _raw_event(db, "entry", _at(*MON, 7, 10), VEC)
+    invalid = _raw_event(db, "sideways", _at(*MON, 7, 11), VEC)
+    attendance.handle_face_event(db, unmatched)
+    attendance.handle_face_event(db, invalid)
+    for ev in (unmatched, invalid):
+        db.refresh(ev)
+        assert "embedding" not in ev.payload
+    assert unmatched.payload["match_reason"] == "no_match"
+
+
+def test_embedding_stripped_when_neither_vector_nor_crop_can_match(db):
+    _camera(db)
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [], "crop_path": None})
+    assert attendance.handle_face_event(db, ev) is None
+    db.refresh(ev)
+    assert "embedding" not in ev.payload
+
+
+def test_embedding_event_without_crop_is_still_matched(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), {**VEC, "crop_path": None})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None and row.snapshot_path is None
+
+
+def test_second_pass_within_cooldown_records_one_attendance(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    second = _raw_event(db, "entry", _at(*MON, 7, 13), VEC)
+    assert attendance.handle_face_event(db, second) is None
+    assert db.query(AttendanceEvent).count() == 1
+    db.refresh(second)
+    assert (second.payload["match_reason"], second.payload["employee_id"]) == ("cooldown", e.id)
+    assert "embedding" not in second.payload
+
+
+def test_pass_after_cooldown_records_again(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 16), VEC))
+    assert db.query(AttendanceEvent).count() == 2
+
+
+def test_cooldown_is_per_direction(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 7, 12), VEC))
+    assert db.query(AttendanceEvent).count() == 2
+
+
+def test_out_of_order_delivery_within_cooldown_records_once(db, monkeypatch):
+    """Antrean disk node bisa mengirim event lama setelah yang baru."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 8), VEC))
+    assert db.query(AttendanceEvent).count() == 1
+
+
+def test_cooldown_across_cameras_and_exact_boundary(db, monkeypatch):
+    first_camera = _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    second_camera = _camera(db)
+    assert first_camera.id != second_camera.id
+    at_boundary = _raw_event(db, "entry", _at(*MON, 7, 15), VEC)
+    at_boundary.camera_id = second_camera.id
+    db.commit()
+    assert attendance.handle_face_event(db, at_boundary) is None
+    assert db.query(AttendanceEvent).count() == 1
+
+
 # --- R1: anotasi identitas pada crop setelah match ---------------------------
 
 def test_handle_face_event_annotates_crop(tmp_path, db, monkeypatch):

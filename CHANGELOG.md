@@ -3,6 +3,22 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 8 — cooldown simetris dan sanitasi embedding (lokal, 2026-09-23)
+
+- Konteks/path: `backend/app/services/attendance.py` mencocokkan embedding meski crop
+  absen, membuang embedding dari `event.payload` pada semua jalur attendance normal,
+  dan menolak baris attendance duplikat bagi karyawan+arah dalam ±5 menit waktu
+  event (konfigurabel lewat `ATTENDANCE_COOLDOWN_MIN`). Payload cocok/cooldown
+  mencatat identitas dan skor. `backend/tests/test_attendance_logic.py` mencakup
+  jalur match, no-match, skip, lintas kamera/arah, batas, dan urutan kirim terbalik.
+- Bukti TDD: RED terarah **7 failed, 20 passed**; GREEN **27 passed**; suite
+  backend non-GPU **324 passed, 299 warnings** (warning JWT test-key lama).
+- Dampak: event tanpa media tetap menghasilkan absensi bila embedding cocok;
+  pengiriman event tidak urut tidak membuat absensi duplikat; embedding event baru
+  tidak tersimpan setelah handler sukses. Rollback: `git revert` commit Task 8;
+  jika rollback seluruh R5b, ikuti urutan migration 0016 pada entri Task 7.
+  Belum deploy/GPU/field verification; tidak ada operasi server.
+
 ### R5b Task 7 review — urutan rollback migration 0016 (lokal, 2026-09-23)
 
 - Konteks/path: `CHANGELOG.md`, spec R5b §12, dan plan R5b Task 11 Step 2
