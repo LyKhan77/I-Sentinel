@@ -3,6 +3,18 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 1 review — expiry sebelum matching (lokal, 2026-09-23)
+
+- Konteks: `vision/vision/pipeline/tracker.py` masih mencocokkan deteksi sebelum
+  menghapus track kedaluwarsa. Reconnect tanpa frame >3 s bisa menghidupkan ID lama
+  dengan `last_seen` baru; kini track expired dibuang sebelum matching, `lost_ids`
+  tetap berisi ID lama. `vision/tests/test_tracker.py` menguji gap tepat 3 s dan 4 s.
+- Bukti TDD: RED `1 failed, 1 passed` (gap 4 s mewarisi ID 1); GREEN `2 passed`;
+  tes terarah tracker+motion `22 passed`, suite vision non-GPU
+  `157 passed, 2 deselected, 2 warnings`. Tidak ada akses GPU/server.
+- Dampak: ID tidak bertahan melampaui `max_age_s` saat FrameSource reconnect;
+  behavior lain dan pin GPU tidak berubah. Rollback: `git revert` commit review Task 1.
+
 ### R5b Task 1 — ByteTracker expiration berbasis detik (lokal, 2026-09-23)
 
 - Konteks: `max_age=15` frame memutus track diam saat motion gate 2 s dan AI FPS ≥ 8.

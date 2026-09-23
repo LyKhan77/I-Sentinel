@@ -37,7 +37,8 @@ class ByteTracker:
 
     def update(self, detections: list, ts: float) -> list[Track]:
         """Match detections to tracks greedily by centroid distance; returns active tracks."""
-        self.lost_ids = set()
+        self.lost_ids = {tr.id for tr in self._tracks if ts - tr.last_seen > self.max_age_s}
+        self._tracks = [tr for tr in self._tracks if tr.id not in self.lost_ids]
         dets = [d for d in detections if d.conf >= self.min_conf]
         det_cents = np.array([_centroid(d.bbox) for d in dets], dtype=float).reshape(-1, 2)
         unmatched_dets = set(range(len(dets)))
@@ -77,14 +78,8 @@ class ByteTracker:
             )
             self._next_id += 1
 
-        # unmatched prior tracks -> misses+1; expire by elapsed time
-        active: list[Track] = []
+        # unmatched prior tracks -> misses+1; expiry happened before matching
         for ti, tr in enumerate(self._tracks):
             if ti < n_prior and ti not in used_t:
                 tr.misses += 1
-                if ts - tr.last_seen > self.max_age_s:
-                    self.lost_ids.add(tr.id)
-                    continue
-            active.append(tr)
-        self._tracks = active
-        return active
+        return self._tracks

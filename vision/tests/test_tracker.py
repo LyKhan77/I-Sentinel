@@ -70,6 +70,18 @@ def test_missed_track_still_active_until_max_age():
     assert tracks[0].misses == 2
 
 
+@pytest.mark.parametrize(
+    ("gap", "expected_id", "lost"),
+    [(3.0, 1, set()), (4.0, 2, {1})],
+)
+def test_detection_after_gap_only_matches_unexpired_track(gap, expected_id, lost):
+    tr = ByteTracker(max_age_s=3.0)
+    tr.update([D(0.5, 0.5)], ts=0.0)
+    tracks = tr.update([D(0.5, 0.5)], ts=gap)
+    assert [t.id for t in tracks] == [expected_id]
+    assert tr.lost_ids == lost
+
+
 def test_matched_track_resets_expiration_clock():
     tr = ByteTracker(max_age_s=3.0)
     tr.update([D(0.5, 0.5)], ts=0.0)
