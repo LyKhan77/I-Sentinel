@@ -1081,3 +1081,25 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
   ke `null` lewat `PATCH /api/v1/cameras/{id}` (retained config terverifikasi).
   `FaceEmbedder.detect()` diuji di insightface 2.0 server pada foto enrollment → 1 wajah,
   skor 0,69. **Tes lapangan attendance cam 363 belum dilakukan.**
+
+### R5a lanjutan — frame basi + pin GPU model wajah (2026-09-23)
+
+Konteks: tes attendance user di cam 363 menghasilkan overlay yang sangat lambat dan
+seluruh event `match_reason: no_face` (2 di cam 363, 6 di cam 364). Diukur dulu sebelum
+diperbaiki.
+
+- **`FrameSource` memberi frame terbaru, bukan antrean basi** (`ddf8599`). Lag terukur
+  +19,8 s setelah 30 s (cam 363, 15 fps dibaca 5 fps) dan terus naik. Reader thread
+  menguras stream pada fps asli. Test `test_live_source_returns_latest_frame_not_stale_buffer`
+  mereproduksi pola produksi (lag 8→35 frame, lalu ≤10 setelah perbaikan). Bukti di
+  stream nyata: selisih konstan −0,85 s selama 30 s. Error decode h264 36 → ≤8 per 5 menit.
+  Biaya: CPU vision-node ~23% → ~64% dari satu core.
+- **Pin `cuda:2` model wajah benar-benar berlaku** (`7127f94`). insightface mengabaikan
+  `ctx_id >= 0`, sehingga sesi CUDA tanpa `device_id` jatuh ke GPU 0 (RTX 4090 bersama
+  vLLM). Provider kini `("CUDAExecutionProvider", {"device_id": N})`. Bukti di server:
+  sesi dengan `device_id=2` → GPU index 2 (902 MiB). Setelah deploy, proses vision tidak
+  lagi memakai GPU 0.
+- Bukti: vision **151 passed, 2 deselected**. Deploy `ddf8599` pukul 10:13, 5 worker jalan.
+- Temuan (tidak dikerjakan): model wajah **backend** (enrollment/match_crop) memakai GPU 0
+  tanpa pin device, sengaja `ctx_id=0`.
+- Rollback: `git revert ddf8599 7127f94` lalu restart `vision-node`.

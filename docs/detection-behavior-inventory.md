@@ -240,3 +240,17 @@ event tidak pernah terbit untuk orang yang berdiri diam. Schema API mengizinkan
 disarankan: ubah `ByteTracker.max_age` menjadi berbasis waktu (detik), bukan
 hitungan frame. Dijaga oleh
 `vision/tests/test_motion_gate.py::test_static_track_survives_the_gated_gap_at_deployed_settings`.
+
+### Kesegaran frame (diperbaiki 2026-09-23, `ddf8599`)
+
+Sebelumnya `FrameSource` membaca satu frame tiap `1/ai_fps` dari stream yang lebih
+cepat, sehingga yang diproses adalah antrean buffer yang makin tua. Terukur di cam 363
+(substream 15 fps, dibaca 5 fps): lag **+19,8 s setelah 30 s** dan terus naik. cam 362
+dan 364 tidak punya substream (1080p 25 fps), jadi lebih parah. Semua analyzer, overlay
+debugger, dan timer `trigger_seconds` berjalan di atas video lama, sementara crop main
+stream diambil live. Akibatnya crop attendance meleset (lantai kosong → `no_face`).
+
+Kini reader thread per kamera menguras stream pada fps aslinya dan hanya menyimpan
+frame terbaru. Di stream nyata cam 363 selisih waktu tetap konstan selama 30 s.
+Biayanya CPU vision-node naik dari ~23% ke ~64% dari satu core, karena semua frame
+di-decode. Error `h264 error while decoding` turun dari 36 ke ≤8 per 5 menit.
