@@ -12,6 +12,7 @@ restart node wajah, dan verifikasi lapangan (spec R5b §11).
 ```bash
 ssh gspe-ai3
 cd /home/gspe-ai3/project_cv/I-Sentinel && git pull
+pg_dump "$DATABASE_URL" > "~/backup-pra-0016-$(date +%Y%m%d-%H%M).sql"   # purge 0016 tidak bisa dikembalikan
 /home/gspe-ai3/isentinel-venv/bin/alembic upgrade head     # 0015 → 0016 (face settings + purge embedding attendance)
 /home/gspe-ai3/isentinel-venv/bin/python -m alembic current  # expect: 0016
 # restart API: tanpa passwordless sudo, matikan cgroup proses; unit Restart=always
@@ -38,7 +39,7 @@ dengan label:
 
 - `di luar zona` — wajah terdeteksi di luar polygon zone;
 - `wajah terlalu kecil` — lebar wajah < `face_min_width_px`;
-- `skor rendah` — skor deteksi SCRFD < `face_min_score`;
+- `skor rendah` — skor deteksi SCRFD < `face_min_det_score`;
 - `menyamping` — yaw > `face_max_yaw`;
 - `buram` — blur < `face_blur_min`.
 

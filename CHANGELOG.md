@@ -8,10 +8,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - Konteks/path: `vision/tests/test_face_worker_gpu.py` baru bertanda `gpu`
   (SCRFD + ArcFace asli pada foto enrollment, konsistensi vektor >0,9 — hanya
   dijalankan di server, belum dieksekusi). `docs/runbooks/attendance-face-first.md`
-  baru: urutan deploy (pull → `alembic upgrade head` → restart API+vision),
-  gambar ulang zona attendance 7/8/9/11 di area kepala, cara baca label gerbang
-  debugger, kalibrasi `face_stats`, rollback dengan urutan
-  `alembic downgrade 0015` sebelum revert. `README.md` peta repo:
+  baru: urutan deploy (pull → **backup DB** → `alembic upgrade head` → restart
+  API+vision), gambar ulang zona attendance 7/8/9/11 di area kepala, cara baca
+  label gerbang debugger (kunci `face_min_det_score`), kalibrasi `face_stats`,
+  rollback dengan urutan `alembic downgrade 0015` sebelum revert. `README.md` peta repo:
   `face_gate.py` dihapus, wajah kini `face_worker.py` di `vision/vision/`.
   `ROADMAP.md`: bagian R5b status lokal/PENDING lapangan; temuan terbuka R5a #2
   (max_age per frame) ditandai selesai oleh R5b Task 1. `docs/detection-
