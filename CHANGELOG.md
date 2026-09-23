@@ -1076,5 +1076,8 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
   backend **309 passed**.
 - Dampak: kamera attendance kini memakai GPU face per frame saat ada orang.
 - Rollback: `git revert 51ba870 e508a97 b60c602 5711160` lalu restart `vision-node`.
-- **Deploy + reset `analyzers` kamera ke `null` + tes lapangan belum dilakukan**
-  (butuh izin user untuk push/tulis server).
+- Deploy 2026-09-23: server `9d459fb`, `vision-node` di-restart (5 worker, heartbeat
+  `detect_n` 100→148 dalam 10 s). `analyzers` kamera 357/358/362/363/364 dikembalikan
+  ke `null` lewat `PATCH /api/v1/cameras/{id}` (retained config terverifikasi).
+  `FaceEmbedder.detect()` diuji di insightface 2.0 server pada foto enrollment → 1 wajah,
+  skor 0,69. **Tes lapangan attendance cam 363 belum dilakukan.**
