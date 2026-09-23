@@ -3,6 +3,21 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 4 — gerbang kualitas dan agregasi embedding (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_quality.py` menambah setelan default wajah,
+  pemeriksaan zona/lebar/skor/yaw, skor blur/quality, crop box, dan agregasi berbobot
+  dengan filter outlier; `vision/tests/test_face_quality.py` menguji setiap gerbang,
+  fallback dan batas frame. Tidak ada perubahan pin detector `cuda:1` / face `cuda:2`.
+- Bukti TDD: RED `1 error` (`ModuleNotFoundError: vision.face_quality`); tes
+  rencana awal GREEN parsial `1 failed, 11 passed` karena pasangan vektor ortogonal
+  semestinya terbuang oleh filter cosine < 0,5. Setelah tes memakai vektor berdekatan:
+  `12 passed`; suite vision non-GPU `175 passed, 2 deselected, 2 warnings`
+  (pynvml dan mock heartbeat lama).
+- Dampak: fungsi murni siap dipakai FaceGateWorker di Task 5; belum ada pipeline
+  baru, tes GPU, atau verifikasi lapangan. Rollback: `git revert` commit Task 4;
+  tidak ada migrasi DB.
+
 ### R5b Task 3 — FaceEmbedder deteksi/align/embed terpisah (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/face.py` menambah `FaceDet`, SCRFD + landmark,
