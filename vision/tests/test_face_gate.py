@@ -160,6 +160,13 @@ def test_dwell_holds_emit_until_track_stays_n_seconds():
     assert az.on_frame(1004.0, one_track(1, (0.5, 0.5)), 640, 480) == []
 
 
+def test_trigger_seconds_wins_over_stale_legacy_dwell():
+    """UI hanya menulis trigger_seconds; dwell_seconds lama (0) tak boleh membuat gate emit langsung."""
+    az = FaceGateAnalyzer(zone(trigger_seconds=3, dwell_seconds=0))
+    assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+    assert len(az.on_frame(1003.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+
+
 def test_dwell_restarts_when_track_leaves_before_emit():
     az = FaceGateAnalyzer(zone(dwell_seconds=3))
     assert az.on_frame(1000.0, one_track(1, (0.5, 0.5)), 640, 480) == []

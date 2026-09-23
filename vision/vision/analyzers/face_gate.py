@@ -2,8 +2,8 @@
 
 Emits one event per visit (state until the track leaves the polygon), with a
 10s per-track cooldown so a jittery tracker does not double-emit. When the zone
-sets ``dwell_seconds`` > 0 the emit is held until the track has stayed inside
-the polygon that long — the person is still in frame when the node crops, so
+sets ``trigger_seconds`` (legacy ``dwell_seconds``) > 0 the emit is held until the
+track has stayed inside the polygon that long — the person is still in frame when the node crops, so
 the attendance crop is not an empty wall/floor. The node crops the upper body
 from the frame and uploads it as the attendance best-shot.
 """
@@ -47,7 +47,8 @@ class FaceGateAnalyzer(Analyzer):
         self.zone_id = zone["id"]
         self.direction = zone.get("direction")
         self.polygon = [tuple(p) for p in zone["polygon"]]
-        self.dwell = float(zone.get("dwell_seconds", 0) or 0)  # 0 = emit langsung
+        # R5: trigger_seconds (ditulis UI); dwell_seconds hanya fallback config pra-R5
+        self.dwell = float(zone.get("trigger_seconds", zone.get("dwell_seconds", 0)) or 0)  # 0 = emit langsung
         self._inside: set[int] = set()            # ids currently inside (from prev frame)
         self._last_emit: dict[int, float] = {}    # id -> last emit ts (cooldown)
         self._first_seen: dict[int, float] = {}   # id -> masuk zona pertama kali (visit ini)
