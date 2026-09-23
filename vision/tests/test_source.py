@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 
@@ -32,3 +34,52 @@ def test_target_fps_sampling_from_timestamps():
         assert dt == pytest.approx(0.2)
     assert len(out) == 10
 
+
+
+class BufferedLiveCapture:
+    """Kamera palsu 100 fps yang berperilaku seperti RTSP ber-buffer: read() mengembalikan
+    frame berikutnya di antrean (bisa sudah basi), data = nomor frame."""
+
+    FPS = 100.0
+
+    def __init__(self, url):
+        self.t0 = time.monotonic()
+        self.n = 0
+
+    def isOpened(self):
+        return True
+
+    def read(self):
+        self.n += 1
+        wait = self.t0 + self.n / self.FPS - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        return True, np.array([self.n])
+
+    def live_index(self):
+        return (time.monotonic() - self.t0) * self.FPS
+
+    def release(self):
+        pass
+
+
+def test_live_source_returns_latest_frame_not_stale_buffer():
+    """Terbukti di server: baca 5 fps dari stream 15 fps -> lag +0,67 s tiap detik."""
+    caps = []
+    src = FrameSource("fake://cam", target_fps=10.0,
+                      open_capture=lambda url: caps.append(BufferedLiveCapture(url)) or caps[-1])
+    lags = []
+    for _ in range(5):
+        frame = next(src)
+        lags.append(caps[0].live_index() - int(frame.data[0]))
+    src.close()
+    # antrean basi: frame ke-5 = frame #5 saat live ~#50 (lag ~45 frame = 450 ms dan terus naik)
+    assert max(lags[1:]) <= 10, lags
+
+
+def test_closed_live_source_stops_iteration():
+    src = FrameSource("fake://cam", target_fps=10.0, open_capture=BufferedLiveCapture)
+    next(src)
+    src.close()
+    with pytest.raises(StopIteration):
+        next(src)
