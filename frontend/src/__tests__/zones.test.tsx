@@ -266,3 +266,15 @@ test('rail kamera menampilkan jumlah zona per kamera dan menandai yang belum pun
   expect(screen.getByTestId('zone-rail-cam-1')).toHaveTextContent('1')
   expect(screen.getByTestId('zone-rail-cam-2').className).toContain('zone-rail__item--empty')
 })
+
+test('kamera terpilih awal adalah yang sudah punya zona, bukan kamera pertama', async () => {
+  // CAM-01 tanpa zona, CAM-02 punya satu → rail harus membuka CAM-02
+  const onCam2: Zone = { ...ZONE_CAM1, id: 6, camera_id: 2, camera_name: 'CAM-02' }
+  vi.stubGlobal('fetch', stubFetch({ zones: [onCam2] }))
+  render(<I18nProvider><ZonesPage /></I18nProvider>)
+
+  await screen.findByTestId('zone-rail')
+  await waitFor(() =>
+    expect(screen.getByTestId('zone-rail-cam-2').getAttribute('aria-selected')).toBe('true'))
+  expect(screen.getByTestId('zone-rail-cam-1').getAttribute('aria-selected')).toBe('false')
+})

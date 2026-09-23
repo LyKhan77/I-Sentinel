@@ -69,7 +69,10 @@ export default function ZonesPage() {
       .then(([cs, all]) => {
         setCams(cs)
         setAllZones(all)
-        if (cs.length > 0) setCam({ id: cs[0].id, label: cs[0].name })
+        // buka kamera yang sudah punya zona — membuka kamera kosong bikin editor
+        // langsung tampil hampa padahal ada zona lain yang siap disunting
+        const first = cs.find((c) => all.some((z) => z.camera_id === c.id)) ?? cs[0]
+        if (first) setCam({ id: first.id, label: first.name })
       })
       .catch(() => setError(t('cameras.loadError')))
       .finally(() => setLoading(false))
