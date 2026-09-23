@@ -106,6 +106,14 @@ export default function EventsPage() {
 
   const camName = (e: EventOut) => cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`
 
+  // Hasil pencocokan wajah attendance: nama + keterangan cooldown, atau Tidak dikenal.
+  const faceMatch = (p: Record<string, unknown> | null): string => {
+    const name = typeof p?.employee_name === 'string' ? p.employee_name : null
+    if (name) return p?.match_reason === 'cooldown' ? `${name} · ${t('events.face.cooldown')}` : name
+    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality') return t('events.face.unknown')
+    return '—'
+  }
+
   // semua filter (termasuk pencarian teks) client-side atas hasil listEvents
   const needle = query.trim().toLowerCase()
   const filtered = events.filter((e) => {
@@ -383,6 +391,12 @@ export default function EventsPage() {
                   <dt className="ev-meta__k">{t('events.col.type')}</dt>
                   <dd className="ev-meta__v">{selected.type}</dd>
                 </div>
+                {selected.type === 'attendance' && (
+                  <div className="ev-meta">
+                    <dt className="ev-meta__k">{t('events.col.face')}</dt>
+                    <dd className="ev-meta__v" data-testid="event-face-match">{faceMatch(selected.payload)}</dd>
+                  </div>
+                )}
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.severity')}</dt>
                   <dd className="ev-meta__v">

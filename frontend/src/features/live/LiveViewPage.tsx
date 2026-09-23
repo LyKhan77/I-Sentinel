@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Maximize, VideoOff } from '@carbon/icons-react'
 import { InlineLoading, InlineNotification, Dropdown, Modal, Toggle } from '@carbon/react'
-import { useT } from '../../app/i18n'
+import { useT, type TKey } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
 import { listZones, type Zone } from '../../api/zones'
 import { useLiveEvents } from '../../api/useWs'
+import { playerMode } from './playerMode'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
 
@@ -30,6 +31,7 @@ function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo |
   const [streamFailed, setStreamFailed] = useState(false)
   const [tick, setTick] = useState(0)
   const [imgFailed, setImgFailed] = useState(false)
+  const [mode, setMode] = useState<'WebRTC' | 'MSE' | null>(null)
   const elRef = useRef<StreamElement | null>(null)
 
   const ws = live?.webrtc
@@ -59,6 +61,13 @@ function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo |
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ws string stabil per kamera; retry lewat refresh /live
   }, [canStream, ws])
+
+  // Badge transport aktif (hanya tile besar): baca video srcObject/src tiap detik.
+  useEffect(() => {
+    if (!big || !streaming) return
+    const timer = setInterval(() => setMode(playerMode(elRef.current?.querySelector('video') ?? null)), 1000)
+    return () => clearInterval(timer)
+  }, [big, streaming])
 
   // Interval cache-busting hanya dipakai mode snapshot.
   const sep = live?.snapshot?.includes('?') ? '&' : '?'
@@ -129,6 +138,11 @@ function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo |
         </span>
       )}
 
+      {big && mode && (
+        <span data-testid="player-mode" style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 10,
+          color: '#c6c6c6', fontFamily: 'var(--cds-font-family-mono, monospace)' }}>{mode}</span>
+      )}
+
       <div
         style={{
           position: 'absolute',
@@ -175,12 +189,18 @@ const ZONE_COLORS: Record<string, string> = { attendance: '#42be65', behavior: '
 const BOX_COLORS = { person: '#ff832b', face: '#78a9ff' } as const
 
 type DetectionKind = keyof typeof BOX_COLORS
-type DetBox = { id: number; bbox_norm: number[]; label?: string | null; kind: DetectionKind }
+type DetBox = { id: number; bbox_norm: number[]; label?: string | null; kind: DetectionKind; at: number }
+const BOX_TTL_MS = 1000
+const FACE_GATE_CODES = ['zone', 'small', 'score', 'yaw', 'blur'] as const
 
 function DebugOverlay({ camId, showZones, showDetection, boxes }: {
   camId: number; showZones: boolean; showDetection: boolean; boxes: DetBox[]
 }) {
   const { t } = useT()
+  const boxLabel = (b: DetBox) =>
+    b.kind === 'face' && b.label && (FACE_GATE_CODES as readonly string[]).includes(b.label)
+      ? t(`live.faceGate.${b.label}` as TKey)
+      : b.label ?? t('live.trackId').replace('{n}', String(b.id))
   const [zones, setZones] = useState<Zone[]>([])
   useEffect(() => {
     if (!showZones) return
@@ -217,11 +237,12 @@ function DebugOverlay({ camId, showZones, showDetection, boxes }: {
             x={b.bbox_norm[0] * 100} y={b.bbox_norm[1] * 100}
             width={(b.bbox_norm[2] - b.bbox_norm[0]) * 100}
             height={(b.bbox_norm[3] - b.bbox_norm[1]) * 100}
+            style={{ transition: 'x 150ms linear, y 150ms linear, width 150ms linear, height 150ms linear' }}
             fill="none" stroke={BOX_COLORS[b.kind]} strokeWidth={0.6}
           />
           <text x={b.bbox_norm[0] * 100} y={Math.max(4, b.bbox_norm[1] * 100 - 1)}
             fontSize={4} fill={BOX_COLORS[b.kind]}>
-            {b.label ?? t('live.trackId').replace('{n}', String(b.id))}
+            {boxLabel(b)}
           </text>
         </g>
       ))}
@@ -247,11 +268,25 @@ export default function LiveViewPage() {
     if (m?.type === 'detections') {
       // person & face tiba sebagai pesan terpisah: ganti hanya kotak kind yang sama
       const kind = m.kind ?? 'person'
+      const at = Date.now()
       setBoxes((prev) => (m.camera_id === debugCam?.id
-        ? [...prev.filter((b) => b.kind !== kind), ...(m.boxes ?? []).map((box) => ({ ...box, kind }))]
+        ? [...prev.filter((b) => b.kind !== kind), ...(m.boxes ?? []).map((box) => ({ ...box, kind, at }))]
         : prev))
     }
   })
+
+  // Kotak basi (tanpa update WS >1 s) dihapus sendiri supaya overlay tidak menampilkan
+  // orang/wajah yang sudah keluar frame.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBoxes((prev) => {
+        const now = Date.now()
+        const fresh = prev.filter((b) => now - b.at < BOX_TTL_MS)
+        return fresh.length === prev.length ? prev : fresh
+      })
+    }, 250)
+    return () => clearInterval(timer)
+  }, [])
 
   const refresh = useCallback(async () => {
     try {

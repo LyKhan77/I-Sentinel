@@ -3,6 +3,26 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 10 — overlay halus + TTL, label gerbang, mode player, hasil wajah di Events (lokal, 2026-09-23)
+
+- Konteks/path: `frontend/src/features/live/playerMode.ts` baru (WebRTC via `srcObject`,
+  MSE via `blob:` URL). `LiveViewPage.tsx`: `DetBox.at` + `BOX_TTL_MS = 1000` dan sweep
+  interval 250 ms menghapus kotak basi tanpa update WS; transisi `x/y/width/height`
+  150 ms linear pada `<rect>` overlay; label kode gerbang wajah (`zone`, `small`,
+  `score`, `yaw`, `blur`) diterjemahkan via `live.faceGate.*`; tile besar menampilkan
+  badge transport `player-mode`. `EventsPage.tsx`: baris meta "Wajah" pada detail
+  event attendance menampilkan nama karyawan + keterangan cooldown atau
+  "Tidak dikenal" (payload `employee_name`/`match_reason` dari Task 8). `i18n.tsx`
+  menambah kunci `live.faceGate.*`, `events.col.face`, `events.face.*` (id+en).
+- Bukti TDD: RED terarah **liveview** import error modul `playerMode`, **events**
+  2 failed / 15 passed (testid `event-face-match` tidak ada); GREEN terarah
+  **26 passed / 2 files**; full frontend **99 passed / 14 files**, build hijau
+  (chunk warning lama), lint exit 0 (22 warning lama, baseline sama).
+- Dampak: overlay debugger tidak lagi menampilkan wajah/orang yang sudah keluar
+  frame, keterangan gerbang wajah terbaca admin, transport player terlihat,
+  hasil absensi terbaca di Events. Rollback: `git revert` commit Task 10. Belum
+  deploy/GPU/field verification; tidak ada operasi server.
+
 ### R5b Task 9 — editor UI setelan wajah, zona attendance tanpa trigger (lokal, 2026-09-23)
 
 - Konteks/path: `frontend/src/api/detection.ts` type `DetectorSettings` sudah memuat

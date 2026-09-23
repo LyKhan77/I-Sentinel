@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import LiveViewPage from '../features/live/LiveViewPage'
+import { playerMode } from '../features/live/playerMode'
 
 const CAMS = [
   { id: 1, name: 'CAM-01', location: null, host: '192.168.1.101', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null },
@@ -193,4 +194,67 @@ test('kamera nonaktif tidak dirender di grid', async () => {
   expect(await screen.findByText('CAM-01')).toBeInTheDocument()
   expect(screen.queryByText('CAM-OFF')).not.toBeInTheDocument()
   expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(2)
+})
+
+test('kotak deteksi hilang sendiri bila tidak diperbarui 1 detik', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
+  class FakeWS {
+    onmessage: ((ev: { data: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    constructor(_url: string) { handlers.push(this as { onmessage?: (ev: { data: string }) => void }) }
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetch())
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  renderPage()
+  await screen.findByText('CAM-01')
+  await user.click(screen.getByTestId('cam-tile-1'))
+  await act(async () => {
+    handlers[0].onmessage?.({ data: JSON.stringify({
+      type: 'detections', camera_id: 1, kind: 'person',
+      boxes: [{ id: 9, bbox_norm: [0.1, 0.1, 0.5, 0.6], label: null }],
+    }) })
+  })
+  expect(screen.getByTestId('debug-box-person-9')).toBeInTheDocument()
+  await act(async () => { vi.advanceTimersByTime(1300) })
+  expect(screen.queryByTestId('debug-box-person-9')).not.toBeInTheDocument()
+  vi.useRealTimers()
+})
+
+test('label kode gerbang wajah diterjemahkan', async () => {
+  const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
+  class FakeWS {
+    onmessage: ((ev: { data: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    constructor(_url: string) { handlers.push(this as { onmessage?: (ev: { data: string }) => void }) }
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+  await act(async () => {
+    handlers[0].onmessage?.({ data: JSON.stringify({
+      type: 'detections', camera_id: 1, kind: 'face',
+      boxes: [{ id: 2, bbox_norm: [0.2, 0.2, 0.3, 0.3], label: 'small' }],
+    }) })
+  })
+  expect(screen.getByTestId('debug-box-face-2')).toBeInTheDocument()
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('wajah terlalu kecil')
+})
+
+test('playerMode membaca transport aktif dari elemen video', () => {
+  expect(playerMode({ srcObject: {} as MediaStream, src: '' })).toBe('WebRTC')
+  expect(playerMode({ srcObject: null, src: 'blob:http://x/1' })).toBe('MSE')
+  expect(playerMode({ srcObject: null, src: '' })).toBeNull()
+  expect(playerMode(null)).toBeNull()
 })

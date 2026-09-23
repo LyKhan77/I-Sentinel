@@ -293,3 +293,21 @@ test('ganti event → tab kembali ke Snapshot', async () => {
   await waitFor(() => expect(screen.getByTestId('event-tab-snapshot')).toHaveClass('on'))
   expect(screen.queryByTestId('event-clip')).not.toBeInTheDocument()
 })
+
+test('detail event attendance menampilkan hasil pencocokan wajah', async () => {
+  const att: EventOut[] = [{ id: 3, event_id: 'ev-3', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'no_match', employee_id: null, crop_path: 'crops/x.jpg' },
+    clip_path: null, snapshot_path: null }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Tidak dikenal')
+})
+
+test('detail event attendance cooldown menampilkan nama + keterangan', async () => {
+  const att: EventOut[] = [{ id: 4, event_id: 'ev-4', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'cooldown', employee_id: 1, employee_name: 'Budi' },
+    clip_path: null, snapshot_path: null }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Budi · sudah tercatat (cooldown)')
+})
