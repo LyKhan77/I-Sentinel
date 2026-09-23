@@ -9,17 +9,40 @@ restart node wajah, dan verifikasi lapangan (spec R5b §11).
 
 ## 1. Urutan deploy
 
+Server berada di branch `feat/detection-model`; `git pull` saja **tidak** membawa R5b.
+Branch `feat/attendance-face-first` harus sudah di-push dulu (dari laptop).
+
 ```bash
 ssh gspe-ai3
-cd /home/gspe-ai3/project_cv/I-Sentinel && git pull
-pg_dump "$DATABASE_URL" > "~/backup-pra-0016-$(date +%Y%m%d-%H%M).sql"   # purge 0016 tidak bisa dikembalikan
-/home/gspe-ai3/isentinel-venv/bin/alembic upgrade head     # 0015 → 0016 (face settings + purge embedding attendance)
-/home/gspe-ai3/isentinel-venv/bin/python -m alembic current  # expect: 0016
-# restart API: tanpa passwordless sudo, matikan cgroup proses; unit Restart=always
+cd /home/gspe-ai3/project_cv/I-Sentinel
+git fetch origin && git checkout feat/attendance-face-first && git pull --ff-only
+git log --oneline -1                      # harus commit terbaru R5b
+
+# backup WAJIB berhasil sebelum migrasi: 0016 menghapus embedding lama permanen.
+# DATABASE_URL berskema SQLAlchemy (postgresql+psycopg://) -> buang "+psycopg" untuk pg_dump.
+set -a; . ./.env; set +a
+BACKUP="$HOME/backup-pra-0016-$(date +%Y%m%d-%H%M).sql"
+pg_dump "${DATABASE_URL/+psycopg/}" > "$BACKUP" && test -s "$BACKUP" \
+  && echo "BACKUP OK: $BACKUP ($(du -h "$BACKUP" | cut -f1))"
+# STOP di sini bila baris di atas tidak mencetak "BACKUP OK".
+
+# alembic.ini ada di backend/, bukan di root project
+cd backend
+/home/gspe-ai3/isentinel-venv/bin/alembic upgrade head   # 0015 -> 0016 (setelan wajah + purge embedding)
+/home/gspe-ai3/isentinel-venv/bin/alembic current        # harus: 0016 (head)
+cd ..
+
+# restart tanpa passwordless sudo: matikan cgroup proses; unit Restart=always
 kill $(cat /sys/fs/cgroup/system.slice/isentinel-api.service/cgroup.procs)
+sleep 5 && curl -s localhost:8000/api/v1/health            # {"status":"ok"}
 kill $(cat /sys/fs/cgroup/system.slice/vision-node.service/cgroup.procs)
-journalctl -u vision-node -f | grep -E "started .* worker"   # tunggu worker wajah siap
+timeout 150 bash -c 'until journalctl -u vision-node --since "-3 min" --no-pager | grep -q "started .* worker"; do sleep 3; done' \
+  && echo "vision-node siap"
 ```
+
+Frontend (`isentinel-web`, Vite dev) memuat kode baru langsung setelah checkout, tanpa restart.
+Setelah deploy, zona attendance 7/8/9/11 masih `active=False`: fitur wajah belum
+berjalan sampai zona digambar ulang (§2) lalu diaktifkan di tab Gate Absensi.
 
 Deploy frontend+backend dan vision harus bersamaan: PUT setelan wajah
 (Task 7) menolak payload tanpa lima field wajah, jadi frontend lama + backend
@@ -43,7 +66,8 @@ dengan label:
 - `menyamping` — yaw > `face_max_yaw`;
 - `buram` — blur < `face_blur_min`.
 
-Wajah tanpa label (atau `ID n`) = lolos gerbang dan sedang menghitung frame bagus.
+Label berupa angka (mis. `0.82`) = lolos gerbang; angkanya skor kualitas frame itu, dan
+worker sedang mengumpulkan frame bagus (default 3) sebelum menerbitkan satu event.
 
 ## 4. Kalibrasi `face_stats`
 
@@ -55,16 +79,22 @@ final dicatat di ROADMAP bagian R5b setelah kalibrasi lapangan.
 
 ## 5. Rollback
 
-Urutan penting — **downgrade sebelum revert** (revert dulu menghapus file
-migration 0016 dan Alembic tidak bisa menelusuri DB yang masih di 0016):
+Urutan penting — **downgrade sebelum pindah branch** (kode lama tidak punya file
+migration 0016, sehingga Alembic tidak bisa turun dari DB yang masih di 0016):
 
-1. Stop API + vision: `kill` cgroup procs kedua service (lihat §1).
-2. Backup DB.
-3. `alembic downgrade 0015` **saat file migration 0016 masih ada** (branch lama
-   belum dicheckout). `downgrade 0015` membuang kolom setelan wajah; embedding
-   lama yang ter-purge tidak kembali.
-4. `git revert` rentang R5b / checkout kode lama, deploy ulang.
-5. Restart API + vision.
+```bash
+cd /home/gspe-ai3/project_cv/I-Sentinel
+kill $(cat /sys/fs/cgroup/system.slice/vision-node.service/cgroup.procs)
+set -a; . ./.env; set +a
+pg_dump "${DATABASE_URL/+psycopg/}" > "$HOME/backup-pra-rollback-$(date +%Y%m%d-%H%M).sql"
+cd backend && /home/gspe-ai3/isentinel-venv/bin/alembic downgrade 0015 && cd ..   # buang kolom setelan wajah
+git checkout feat/detection-model                                                   # kode pra-R5b yang terakhir jalan
+kill $(cat /sys/fs/cgroup/system.slice/isentinel-api.service/cgroup.procs)
+kill $(cat /sys/fs/cgroup/system.slice/vision-node.service/cgroup.procs)
+```
+
+Embedding lama yang ter-purge oleh 0016 tidak kembali (disengaja); pulihkan dari
+backup pra-0016 hanya bila benar-benar diperlukan.
 
 ## 6. Verifikasi (setelah deploy)
 

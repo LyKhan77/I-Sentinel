@@ -3,6 +3,23 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b review pra-deploy — celah privasi embedding + runbook (lokal, 2026-09-23)
+
+- **Embedding tidak pernah tersimpan atau ter-broadcast** (`fa5d959`). Dulu `ingest_event`
+  commit payload ber-embedding lalu `handle_face_event` membuangnya; bila pencocokan melempar
+  error, rollback menyisakan embedding permanen di tabel `event` dan broadcast WS mengirimnya
+  ke browser. Consumer kini memisahkan embedding sebelum ingest dan meneruskannya ke matcher.
+  Test `test_attendance_embedding_never_persisted_or_broadcast_when_matching_fails` merah
+  sebelum perbaikan. Backend **325 passed**.
+- **Runbook deploy diperbaiki** (`docs/runbooks/attendance-face-first.md`): `git pull` saja tidak
+  membawa R5b (server di `feat/detection-model`) → `git checkout feat/attendance-face-first`;
+  `pg_dump "$DATABASE_URL"` gagal (skema `postgresql+psycopg`, variabel belum di-load, `~` di
+  dalam kutip) sehingga migrasi purge bisa jalan tanpa backup → backup dengan cek `BACKUP OK`;
+  `alembic` harus dari `backend/`. Perintah backup + `alembic current` diverifikasi baca-saja di
+  server. Rollback memakai `git checkout feat/detection-model` setelah `downgrade 0015`.
+- Review mandiri: vision 177/3 deselected, backend 324→325, frontend 99, build+lint (22 warning
+  lama) hijau; mutasi cooldown satu-arah membuat `test_out_of_order_...` merah.
+
 ### R5b Task 11 — tes GPU, runbook, docs (PENDING verifikasi lapangan, lokal 2026-09-23)
 
 - Konteks/path: `vision/tests/test_face_worker_gpu.py` baru bertanda `gpu`
