@@ -3,6 +3,24 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
+
+- **Deploy** `f22f2d6` ke gspe-ai3: backup `~/backup-pra-0016-20260923-1533.sql` (73 event, cocok
+  dengan DB), alembic `0015 → 0016`, restart API + vision; event ber-embedding di DB = 0; config push
+  membawa 6 kunci `face`; heartbeat `modules.face.device = cuda:2`.
+- **Tes lapangan user (Angly)**: entry cam 364 zona 12 `matched` skor 0,714 (wajah 217 px, 3 frame),
+  exit cam 365 zona 14 `matched` skor 0,65; `attendance_day` satu baris (masuk 15:45, pulang 15:59);
+  crop + snapshot ada di disk; model wajah di GPU 2 (1054 MiB). Dua event `no_match` 15:45:07 = orang
+  lain bermasker (benar tidak dikenal). User: flow dan overlay sudah halus.
+- **Entry sekali per hari** (`9723a54`, permintaan user): entry kedua di hari yang sama →
+  `match_reason: already_in` tanpa baris baru; entry lebih awal yang tiba belakangan tetap dicatat;
+  exit boleh berulang. Backend **328 passed**.
+- **Nama di overlay** (`89612ab`, permintaan user): label kotak wajah diganti nama / Tidak dikenal
+  dari event attendance yang dibroadcast backend (event < 30 s, nama disimpan 30 s). Frontend **103 passed**.
+- Klip attendance tidak ada: disengaja (spec §4 no.5, spec R5b §5.5).
+- Temuan (belum dikerjakan): proses vision juga memakai 386 MiB di GPU 0 setelah model wajah dimuat
+  (kemungkinan konteks CUDA default onnxruntime); model wajah sendiri di GPU 2.
+
 ### R5b review pra-deploy — celah privasi embedding + runbook (lokal, 2026-09-23)
 
 - **Embedding tidak pernah tersimpan atau ter-broadcast** (`fa5d959`). Dulu `ingest_event`
