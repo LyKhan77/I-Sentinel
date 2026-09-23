@@ -129,7 +129,7 @@ pada `max-width: 671px` (breakpoint yang sudah dipakai).
 - Non-admin: semua kontrol tulis tersembunyi/nonaktif (seperti sekarang).
 
 ### 5.4 Tab Shift
-- Carbon `DataTable`: Nama · Jam (`07:00–16:00`) · Toleransi (`15 mnt`) · Hari kerja
+- Tabel Carbon (`Table` primitives, seperti AttendancePage): Nama · Jam (`07:00–16:00`) · Toleransi (`15 mnt`) · Hari kerja
   (`Sen–Jum` atau daftar singkat) · Aksi (Edit, Hapus; admin).
 - Modal tambah/edit: Nama; Mulai/Selesai `TextInput type="time"`; Toleransi `NumberInput`
   0–120; Hari kerja 7 `Checkbox` (Sen..Min, ISO 1..7), minimal satu. Validasi klien: nama
