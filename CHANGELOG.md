@@ -3,6 +3,23 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 5 review — overlay tetap lancar saat upload media macet (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` memindahkan finalisasi event dan
+  tunggu media 1,1 s ke satu thread per kamera; loop frame/overlay tidak menunggu.
+  Saat motion gate melewati frame yang menghapus track terakhir, overlay kosong
+  diterbitkan sekali. `vision/tests/test_face_worker.py` menguji cadence overlay
+  dengan uploader macet dan force interval > usia track. Spec §5.5 dan plan Task 5
+  diselaraskan; kontrak timeout media/backend tidak berubah.
+- Bukti TDD: RED `2 failed, 18 deselected` (overlay berikut tertunda saat upload,
+  gate skip tidak menghapus kotak). GREEN tes worker `20 passed`; suite relevan
+  worker/source/recorder `40 passed`; full vision non-GPU
+  `196 passed, 2 deselected, 2 warnings` (pynvml + mock heartbeat lama).
+- Dampak: event/media tetap terikat saat upload selesai dalam batas; overlay
+  lanjut tanpa menunggu API. Satu finalizer event dan maksimum satu upload tertahan
+  per kamera. Rollback: `git revert` commit review ini; pin GPU tidak berubah,
+  tanpa migrasi atau verifikasi lapangan.
+
 ### R5b Task 5 review — deadline media absolut saat uploader macet (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/face_worker.py` menunggu upload media paling lama

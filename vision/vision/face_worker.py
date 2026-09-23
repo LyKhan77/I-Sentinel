@@ -6,6 +6,7 @@ See 2026-09-23-attendance-face-first-design.md §5.
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
 import uuid
@@ -81,9 +82,13 @@ class FaceGateWorker(threading.Thread):
         self._states: dict[int, _TrackState] = {}
         self._faces_shown = False
         self._media_busy = threading.Event()
+        self._pending_events: queue.SimpleQueue = queue.SimpleQueue()
 
     def run(self) -> None:
-        """Consume source until stopped; frame-level inference errors never stop worker."""
+        """Consume source until stopped; event/media finalization runs separately."""
+        finalizer = threading.Thread(target=self._finalize_events, daemon=True,
+                                     name=f"face-events-{self.camera_id}")
+        finalizer.start()
         try:
             while not self.stop_event.is_set():
                 try:
@@ -100,12 +105,17 @@ class FaceGateWorker(threading.Thread):
                     continue
                 if self.motion_gate is not None and not self.motion_gate.update(frame.data, frame.ts):
                     self._tracker.update([], frame.ts)
+                    if self._tracker.lost_ids:
+                        self._publish([])
                     self._expire()
                     continue
                 self._process(frame)
         except Exception:
             if not self.stop_event.is_set():
                 log.exception("camera %s: face worker died", self.camera_id)
+        finally:
+            self._pending_events.put(None)
+            finalizer.join()
 
     def stop(self) -> None:
         """Stop consuming frames and close capture without waiting for inference."""
@@ -187,9 +197,20 @@ class FaceGateWorker(threading.Thread):
                 self._emit(tid, st)
 
     def _emit(self, tid: int, st: _TrackState) -> None:
-        from .node import _iso  # lazy import: node imports this worker in Task 6
         st.done = True
-        best, st.best = st.best, None  # release full-resolution frame
+        best, st.best = st.best, None
+        self._pending_events.put((tid, st, best))
+
+    def _finalize_events(self) -> None:
+        """Publish queued events without holding frame reads or overlay updates."""
+        while (item := self._pending_events.get()) is not None:
+            try:
+                self._finalize_event(*item)
+            except Exception:
+                log.exception("camera %s: face event finalization failed", self.camera_id)
+
+    def _finalize_event(self, tid: int, st: _TrackState, best: dict) -> None:
+        from .node import _iso  # lazy import: node imports this worker in Task 6
         frame, bbox, ts = best["frame"], best["bbox"], best["ts"]
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = bbox
@@ -197,7 +218,7 @@ class FaceGateWorker(threading.Thread):
         if self.recorder is not None:
             cx1, cy1, cx2, cy2 = crop_box(bbox, w, h)
             face_bbox = [x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1]
-            if not self._media_busy.is_set():
+            if not self.stop_event.is_set() and not self._media_busy.is_set():
                 paths: dict[str, str | None] = {}
                 finished = threading.Event()
                 abandoned = threading.Event()

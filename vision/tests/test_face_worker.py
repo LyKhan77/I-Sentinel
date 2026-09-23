@@ -165,6 +165,57 @@ def test_short_pass_expires_while_stream_stalls():
     assert not w.is_alive()
 
 
+def test_motion_skipped_frames_clear_expired_overlay():
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[GOOD]]), t, "test-node",
+                       FaceSettings(), motion={"enabled": True, "force_interval_s": 10},
+                       max_age_s=0.25)
+    w.source = FrameSource.from_frames([FRAME] * 6, fps=10)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    overlays = [boxes for _, kind, boxes in t.detections if kind == "face"]
+    assert len(overlays) == 2 and len(overlays[0]) == 1 and overlays[1] == []
+
+
+def test_overlay_keeps_cadence_while_media_upload_stalls():
+    class BlockedRecorder(FakeRecorder):
+        def __init__(self):
+            super().__init__()
+            self.release = threading.Event()
+
+        def upload_bytes(self, data, kind, content_type="image/jpeg", **kwargs):
+            self.release.wait(2)
+            return super().upload_bytes(data, kind, content_type, **kwargs)
+
+    class TimedTransport(FakeTransport):
+        def __init__(self):
+            super().__init__()
+            self.overlay_times = []
+
+        def publish_detections(self, camera_id, boxes, kind="person"):
+            if kind == "face" and boxes:
+                self.overlay_times.append(time.monotonic())
+            super().publish_detections(camera_id, boxes, kind)
+
+    rec, t = BlockedRecorder(), TimedTransport()
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[GOOD]] * 5), t, "test-node",
+                       FaceSettings(), recorder=rec, max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 5, fps=10)
+    w.start()
+    try:
+        deadline = time.monotonic() + 0.6
+        while len(t.overlay_times) < 5 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(t.overlay_times) == 5
+        assert t.overlay_times[3] - t.overlay_times[2] < 0.2
+    finally:
+        rec.release.set()
+        w.join(timeout=10)
+    assert not w.is_alive()
+    assert len(t.events) == 1
+
+
 def test_overlay_published_before_embedding():
     t = FakeTransport()
 

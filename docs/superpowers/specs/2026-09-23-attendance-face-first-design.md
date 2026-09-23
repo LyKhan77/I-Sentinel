@@ -153,8 +153,9 @@ koordinat crop, dipakai `annotate_face_crop`), `crop_path`, dan baru `face_stats
 - **Clip** = tidak ada (`clip=False`).
 - Gagal upload crop → event tetap terkirim dengan embedding (bukti gambar hilang).
   Upload crop/snapshot independen: satu percobaan socket 0,5 s per gambar;
-  pekerja menunggu maksimal 1,1 s lalu menerbitkan event tanpa media bila masih
-  tertahan. Hanya satu upload media tertahan per kamera; blob yang berhasil sesudah
+  thread finalisasi event menunggu maksimal 1,1 s lalu menerbitkan event tanpa
+  media bila masih tertahan; pembacaan frame dan overlay tetap berjalan. Hanya
+  satu upload media tertahan per kamera; blob yang berhasil sesudah
   batas waktu tidak diasosiasikan ke event (tanpa kontrak update backend baru).
 
 ### 5.6 Heartbeat
