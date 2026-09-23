@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
 from .analyzers.base import Analyzer
-from .analyzers.face_gate import FaceGateAnalyzer, crop_upper_body
+from .face_quality import FaceSettings
+from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
 from . import hardware
 from .pipeline.detector import PersonDetector
@@ -44,6 +45,12 @@ def main_stream_name(source_url: str) -> str | None:
     """
     seg = (source_url or "").rstrip("/").rsplit("/", 1)[-1]
     return f"{seg}_main" if seg.startswith("cam_") else None
+
+
+def main_stream_url(source_url: str) -> str:
+    """Full-resolution go2rtc sibling for cam_* streams; preserve other URLs."""
+    name = main_stream_name(source_url)
+    return source_url.rstrip("/").rsplit("/", 1)[0] + "/" + name if name else source_url
 
 
 def _make_event(camera_id: int, track, ts: float) -> dict:
@@ -96,6 +103,7 @@ class CameraWorker(threading.Thread):
                  emit_person_detect: bool = False, motion: dict | None = None):
         super().__init__(daemon=True, name=f"cam-{camera_cfg.camera_id}")
         self.camera_cfg = camera_cfg
+        self.camera_id = camera_cfg.camera_id
         self.detector_factory = detector_factory
         self.transport = transport
         self.stop_event = stop_event
@@ -112,10 +120,6 @@ class CameraWorker(threading.Thread):
                             force_interval_s=motion.get("force_interval_s", 2.0))
             if (motion and motion.get("enabled", True)) else None
         )
-        self.face = None  # FaceEmbedder (Opsi B), di-set oleh VisionNode
-        # overlay wajah debugger hanya untuk kamera yang punya gate absensi
-        self._face_overlay = any(isinstance(a, FaceGateAnalyzer) for a in self.analyzers)
-        self._faces_shown = False  # publish kosong sekali saat wajah hilang
         self.events: list[dict] = []  # test hook
         self.source = None
 
@@ -145,8 +149,6 @@ class CameraWorker(threading.Thread):
                         {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox], "label": None}
                         for t in tracks
                     ], kind="person")
-                if self._face_overlay and self.face is not None and self.transport is not None:
-                    self._publish_faces(cam_id, frame, tracks)
                 if self.recorder is not None:
                     if detections and frame.data is not None:
                         try:
@@ -174,7 +176,6 @@ class CameraWorker(threading.Thread):
                                 self.recorder.enqueue(ev)
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
-                        self._attach_crop(partial, frame)
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
                         media = getattr(az, "media", None)
                         if media is not None:
@@ -188,125 +189,15 @@ class CameraWorker(threading.Thread):
             if not self.stop_event.is_set():
                 log.exception("camera %s worker died", cam_id)
 
-    def _publish_faces(self, cam_id: int, frame, tracks) -> None:
-        """Overlay debugger: kotak wajah SCRFD di frame substream, label = det_score.
-
-        Hanya saat ada track (tanpa orang tak ada wajah — hemat GPU face). Gagal
-        deteksi tidak boleh mematikan worker: frame ini tanpa kotak wajah saja.
-        """
-        faces = []
-        if tracks and frame.data is not None:
-            h, w = frame.data.shape[:2]
-            try:
-                found = self.face.detect(frame.data)
-            except Exception:
-                log.warning("camera %s: face detect gagal", cam_id, exc_info=True)
-                found = []
-            faces = [{"id": i,
-                      "bbox_norm": [round(x1 / w, 4), round(y1 / h, 4),
-                                    round(x2 / w, 4), round(y2 / h, 4)],
-                      "label": f"{score:.2f}"}
-                     for i, (x1, y1, x2, y2, score) in enumerate(found)]
-        if faces or self._faces_shown:
-            self.transport.publish_detections(cam_id, faces, kind="face")
-        self._faces_shown = bool(faces)
-
-    def _attach_crop(self, partial: dict, frame) -> None:
-        """Crop upper body for needs_crop partials and upload it inline.
-
-        Prefers the go2rtc MAIN stream snapshot (full resolution -> face is
-        recognisable); falls back to the local substream frame when the main
-        stream is unavailable. Blocking upload (<= retries*60s) is acceptable:
-        absensi gates are low-frequency. Missing recorder/frame/cv2/crop or
-        upload failure leaves the event without crop_path (graceful).
-        """
-        payload = partial.get("payload") or {}
-        if not payload.pop("needs_crop", False):
-            return
-        if self.recorder is None:
-            return
-        jpeg = self._mainstream_crop(payload["bbox_norm"])
-        if jpeg is None and frame.data is not None:
-            jpeg = self._frame_crop(frame.data, payload["bbox_norm"])
-        if jpeg is None:
-            return
-        res = self.face.embed_jpeg(jpeg) if self.face is not None else None
-        if res:
-            payload["embedding"] = res["vector"]
-            payload["face_quality"] = res["det_score"]
-            payload["face_bbox"] = [float(v) for v in res["bbox"]]
-            jpeg = self._draw_face_box(jpeg, res) or jpeg
-        try:
-            path = self.recorder.upload_bytes(jpeg, "crop")
-        except Exception:
-            log.warning("camera %s: crop upload failed", self.camera_cfg.camera_id,
-                        exc_info=True)
-            return
-        if path:
-            payload["crop_path"] = path
-
-    def _draw_face_box(self, jpeg: bytes, res: dict) -> bytes | None:
-        """Kembalikan jpeg dengan rect + label 'face <det>' di area bbox wajah.
-
-        Anotasi dilakukan SEBELUM upload sehingga crop yang tersimpan (dan
-        ditampilkan UI) sudah membawa bbox wajah. None/gagal = crop polos.
-        """
-        try:
-            import cv2
-            import numpy as np
-            img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
-            if img is None:
-                return None
-            x1, y1, x2, y2 = [int(v) for v in res["bbox"]]
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 200, 0), 2)
-            label = f"face {res['det_score']:.2f}"
-            cv2.putText(img, label, (x1, max(12, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (0, 200, 0), 1, cv2.LINE_AA)
-            ok, buf = cv2.imencode(".jpg", img)
-            return buf.tobytes() if ok else None
-        except Exception:
-            log.warning("face box draw gagal — crop polos", exc_info=True)
-            return None
-
-    def _mainstream_crop(self, bbox_norm) -> bytes | None:
-        """Crop from the full-res main stream; None on any failure (caller falls back)."""
-        name = main_stream_name(self.camera_cfg.source_url)
-        if name is None:
-            return None
-        try:
-            jpeg = self.recorder.fetch_frame(name)
-            if not jpeg:
-                return None
-            import cv2
-            import numpy as np
-            arr = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
-            if arr is None:
-                return None
-            return self._encode_crop(arr, bbox_norm)
-        except Exception:
-            log.warning("camera %s: mainstream crop failed, using substream",
-                        self.camera_cfg.camera_id, exc_info=True)
-            return None
-
-    def _frame_crop(self, data, bbox_norm) -> bytes | None:
-        try:
-            return self._encode_crop(data, bbox_norm)
-        except Exception:
-            log.exception("camera %s: crop encode failed", self.camera_cfg.camera_id)
-            return None
-
-    @staticmethod
-    def _encode_crop(frame_data, bbox_norm) -> bytes | None:
-        import cv2
-        crop = crop_upper_body(frame_data, bbox_norm)
-        if crop is None:
-            return None
-        ok, enc = cv2.imencode(".jpg", crop)
-        return enc.tobytes() if ok else None
-
     def stop(self):
         if self.source is not None:
             self.source.close()
+
+
+def attendance_zones(cam: CameraCfg) -> list[dict]:
+    """Active attendance gates, including legacy absensi, independent of camera master."""
+    return [z for z in cam.zones
+            if any(b.get("kind") == "attendance" for b in behaviors_of(z))]
 
 
 def behaviors_of(z: dict) -> list[dict]:
@@ -351,7 +242,8 @@ class VisionNode:
         self.transport = transport or MqttTransport(self.cfg, on_config=self._config_q.put)
         self._default_detector = detector_factory is None
         self.stop_event = threading.Event()
-        self._workers: list[CameraWorker] = []
+        self._workers: list[CameraWorker | FaceGateWorker] = []
+        self._face_settings = FaceSettings()
         self.events: list[dict] = []  # test hook: all worker events
         from .face import FaceEmbedder
         self.face = (FaceEmbedder(self.cfg.face_model_dir
@@ -377,27 +269,20 @@ class VisionNode:
         return cams
 
     def _make_analyzers(self, cam: CameraCfg) -> list[Analyzer]:
-        """Satu zona bisa membawa beberapa behavior; master `analyzers` kamera menyaring.
-
-        `cam.analyzers = None` → semua behavior aktif; `[]` → kamera tanpa analitik
-        perilaku (hemat GPU). `attendance` dikecualikan: absensi diatur dari tab Gate
-        Absensi (zona `active`), UI tak bisa menaruhnya di master, jadi master tak boleh
-        mematikannya. Parameter tiap behavior (`trigger_seconds`, `speed_limit_mps`)
-        ditempel ke spec zona sebelum analyzer dibuat.
-        """
+        """Build person behavior analyzers; FaceGateWorker handles attendance separately."""
         out = []
         for z in cam.zones:
             media = {"snapshot": z.get("snapshot", True), "clip": z.get("clip", True)}
             for b in behaviors_of(z):
                 kind = b.get("kind")
-                if kind != "attendance" and cam.analyzers is not None and kind not in cam.analyzers:
+                if kind == "attendance":
+                    continue  # FaceGateWorker owns this zone, regardless of camera master
+                if cam.analyzers is not None and kind not in cam.analyzers:
                     continue
                 spec = dict(z)
                 spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
                 if kind == "intrusion":
                     out.append(self._with_media(ANALYZERS["intrusion"](spec), media))
-                elif kind == "attendance":
-                    out.append(self._with_media(ANALYZERS["face_gate"](spec), media))
                 elif kind == "loitering":
                     # loitering: dwell = trigger behavior (legacy: loiter_seconds)
                     spec["loiter_seconds"] = spec["trigger_seconds"]
@@ -476,34 +361,50 @@ class VisionNode:
                                                                "faces_models")
                 self.face = FaceEmbedder(root, dev)
                 self.cfg.face_device = dev
+        self._face_settings = FaceSettings.from_config(cfg_dict.get("face"))
         self._start_workers(self._cameras_from_config(cfg_dict))
 
     def _start_workers(self, cameras: list[CameraCfg]) -> None:
         self._stop_workers()
         for cam in cameras:
+            analyzers = self._make_analyzers(cam)
+            gates = attendance_zones(cam)
+            if gates and not analyzers and self.face is None:
+                continue  # no worker to own a recorder when face support is disabled
             recorder = None
-            if self.cfg.api_key:  # produksi: upload blob ke backend
+            if self.cfg.api_key:  # production: upload blobs to backend
                 from .recorder import Recorder
                 recorder = Recorder(cam.camera_id, self.cfg, self.transport)
-            w = CameraWorker(cam, self.detector_factory, self.transport,
-                             threading.Event(), self.cfg.node_id,
-                             analyzers=self._make_analyzers(cam), recorder=recorder,
-                             emit_person_detect=self.cfg.emit_person_detect,
-                             motion=cam.motion)
-            w.face = self.face
-            w.source = self.source_factory(cam)
-            w.start()
-            self._workers.append(w)
-        log.info("started %d camera worker(s)", len(cameras))
+            if analyzers or not gates:
+                w = CameraWorker(cam, self.detector_factory, self.transport,
+                                 threading.Event(), self.cfg.node_id,
+                                 analyzers=analyzers, recorder=recorder,
+                                 emit_person_detect=self.cfg.emit_person_detect,
+                                 motion=cam.motion)
+                w.source = self.source_factory(cam)
+                w.start()
+                self._workers.append(w)
+            if gates and self.face is not None:
+                fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
+                                    self.cfg.node_id, self._face_settings,
+                                    recorder=recorder, motion=cam.motion)
+                fw.source = self.source_factory(
+                    cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
+                fw.start()
+                self._workers.append(fw)
+        log.info("started %d worker(s) for %d camera(s)", len(self._workers), len(cameras))
 
-    def _stop_workers(self) -> list[CameraWorker]:
+    def _stop_workers(self) -> list[CameraWorker | FaceGateWorker]:
         for w in self._workers:
             w.stop_event.set()
             w.stop()
+        recorders = {}
         for w in self._workers:
             w.join(timeout=5.0)
-            if getattr(w, "recorder", None) is not None:
-                w.recorder.close()
+            if w.recorder is not None:
+                recorders[id(w.recorder)] = w.recorder
+        for rec in recorders.values():
+            rec.close()
         stopped, self._workers = self._workers, []
         return stopped
 
@@ -553,9 +454,17 @@ class VisionNode:
                 "model": os.path.basename(model), "ms_per_frame": ms,
                 "detect_n": PersonDetector.detect_n}
 
+    def _face_module_info(self) -> dict:
+        """Report face model state and inference counters without forcing model load."""
+        f = self.face
+        return {"device": self.cfg.face_device or "auto",
+                "loaded": bool(f is not None and f.loaded()),
+                "detect_n": f.detect_n if f is not None else 0,
+                "embed_n": f.embed_n if f is not None else 0}
+
     def _heartbeat_loop(self):
         while not self.stop_event.is_set():
-            cam_ids = [w.camera_cfg.camera_id for w in getattr(self, "_workers", [])]
+            cam_ids = sorted({w.camera_id for w in getattr(self, "_workers", [])})
             try:
                 cpu = os.getloadavg()[0]
             except (AttributeError, OSError):
@@ -565,7 +474,8 @@ class VisionNode:
             hw = hardware.collect_gpu_info()
             if hw:
                 hb["hw"] = hw
-            hb["modules"] = {"detector": self._detector_module_info()}
+            hb["modules"] = {"detector": self._detector_module_info(),
+                             "face": self._face_module_info()}
             self.transport.publish_heartbeat(hb)
             self.stop_event.wait(self.cfg.heartbeat_s)
 

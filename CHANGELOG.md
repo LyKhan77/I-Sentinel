@@ -3,6 +3,26 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 6 — FaceGateWorker terpasang pada VisionNode (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/node.py` memisah zona attendance (termasuk legacy
+  `absensi`) dari analyzer person, membuka main stream untuk `FaceGateWorker`,
+  menghindari YOLO pada kamera hanya-attendance, berbagi satu recorder per kamera,
+  dan menambah heartbeat face. Jalur lama dihapus dari `vision/vision/face.py`,
+  `vision/vision/recorder.py`, dan `vision/vision/analyzers/face_gate.py`;
+  tes lama diganti di `vision/tests/test_node.py`, `test_config_apply.py`,
+  `test_node_face_embed.py`, `test_face_embed.py`, `test_recorder.py`,
+  `test_intrusion.py`; `vision/tests/test_face_gate.py` dihapus.
+- Bukti TDD: RED node 1 error collection (import `attendance_zones`), GREEN node
+  16 passed; RED orphan recorder 1 failed/16 deselected, GREEN 1 passed/16
+  deselected. Suite vision non-GPU **173 passed, 2 deselected, 2 warnings**
+  (pynvml deprecation dan mock heartbeat tanpa method lama); `git diff --check`
+  bersih. Pin detector `cuda:1` / face `cuda:2` tidak diubah.
+- Dampak: pipeline attendance memakai wajah main stream secara independen;
+  kamera campuran tetap menjalankan behavior di YOLO substream, attendance tidak
+  lagi memakai clip/crop person. GPU/server/field belum diuji. Rollback:
+  `git revert` commit Task 6; tanpa migrasi.
+
 ### R5b Task 5 review — burst event tidak menunggu antrean media (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/face_worker.py` mengirim event wajah berikut segera

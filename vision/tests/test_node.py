@@ -10,7 +10,7 @@ import pytest
 
 
 from vision.config import CameraCfg, NodeSettings
-from vision.node import CameraWorker, VisionNode
+from vision.node import CameraWorker, VisionNode, attendance_zones, main_stream_name, main_stream_url
 from vision.pipeline.detector import Detection, MockDetector
 from vision.pipeline.source import FrameSource
 
@@ -211,11 +211,133 @@ ATTENDANCE_ZONE = {
 
 
 @pytest.mark.parametrize("master", [["intrusion"], []])
-def test_attendance_gate_ignores_camera_analyzers_master(master):
-    """Absensi diatur dari tab Gate Absensi (zona active), bukan chip kamera —
-    master `analyzers` yang tak bisa memuat 'attendance' dari UI tak boleh mematikan gate."""
+def test_attendance_zone_not_filtered_by_camera_master(master):
     cam = {"camera_id": 1, "source_url": "test://1", "zones": [ATTENDANCE_ZONE],
            "analyzers": master}
     node = _node_with(cam)
-    cams = node._cameras_from_config({"cameras": [cam]})
-    assert [type(a).__name__ for a in node._make_analyzers(cams[0])] == ["FaceGateAnalyzer"]
+    camera = node._cameras_from_config({"cameras": [cam]})[0]
+    assert [z["id"] for z in attendance_zones(camera)] == [9]
+    assert node._make_analyzers(camera) == []
+
+
+def test_legacy_absensi_zone_is_attendance():
+    legacy = {"id": 11, "type": "absensi", "direction": "entry",
+              "polygon": ATTENDANCE_ZONE["polygon"], "dwell_seconds": 3}
+    cam = {"camera_id": 1, "source_url": "test://1", "zones": [legacy]}
+    node = _node_with(cam)
+    camera = node._cameras_from_config({"cameras": [cam]})[0]
+    assert [z["id"] for z in attendance_zones(camera)] == [11]
+
+
+def test_main_stream_url_and_name():
+    assert main_stream_name("rtsp://localhost:8554/cam_4") == "cam_4_main"
+    assert main_stream_name("rtsp://localhost:8554/cam_12/") == "cam_12_main"
+    assert main_stream_name("test://1") is None
+    assert main_stream_url("rtsp://h:8554/cam_363") == "rtsp://h:8554/cam_363_main"
+    assert main_stream_url("test://1") == "test://1"
+
+
+class _NoFaces:
+    detect_n = 0
+    embed_n = 0
+
+    def loaded(self):
+        return True
+
+    def detect_faces(self, img):
+        return []
+
+
+def _wired_node(tmp_path, zones, api_key="", analyzers=None):
+    urls, det_calls = [], []
+    frame = np.zeros((4, 4, 3), np.uint8)
+    cfg = NodeSettings(node_id="n", cameras_json="[]", api_key=api_key, data_dir=str(tmp_path))
+
+    def source_factory(cam):
+        urls.append(cam.source_url)
+        return FrameSource.from_frames([frame] * 2, fps=5.0)
+
+    def detector_factory(cid):
+        det_calls.append(cid)
+        return MockDetector([[], []])
+
+    node = VisionNode(cfg=cfg, detector_factory=detector_factory,
+                      source_factory=source_factory, transport=FakeTransport())
+    node.face = _NoFaces()
+    node.apply_config({"cameras": [{"camera_id": 363, "source_url": "rtsp://h:8554/cam_363",
+                                    "zones": zones, "analyzers": analyzers}],
+                       "face": {"device": "", "min_frames": 5}})
+    workers = list(node._workers)
+    node._stop_workers()
+    return node, workers, urls, det_calls
+
+
+def test_attendance_only_camera_runs_face_worker_without_yolo(tmp_path):
+    node, workers, urls, det_calls = _wired_node(tmp_path, [ATTENDANCE_ZONE])
+    assert [type(w).__name__ for w in workers] == ["FaceGateWorker"]
+    assert urls == ["rtsp://h:8554/cam_363_main"]
+    assert det_calls == []
+    assert node._face_settings.min_frames == 5 and node._face_settings.min_width_px == 80.0
+
+
+def test_mixed_camera_runs_both_workers_sharing_one_recorder(tmp_path, monkeypatch):
+    import vision.recorder as recorder
+    recorders, closes = [], []
+    original = recorder.Recorder
+
+    def make_recorder(*args):
+        rec = original(*args)
+        close = rec.close
+        def close_once():
+            closes.append(rec)
+            close()
+        rec.close = close_once
+        recorders.append(rec)
+        return rec
+
+    monkeypatch.setattr(recorder, "Recorder", make_recorder)
+    _, workers, urls, det_calls = _wired_node(tmp_path, [ATTENDANCE_ZONE, BEHAVIOR_ZONE],
+                                              api_key="k")
+    assert sorted(type(w).__name__ for w in workers) == ["CameraWorker", "FaceGateWorker"]
+    assert sorted(urls) == ["rtsp://h:8554/cam_363", "rtsp://h:8554/cam_363_main"]
+    assert workers[0].recorder is workers[1].recorder is recorders[0]
+    assert recorders == closes  # shared recorder closed only once
+    assert det_calls == [363]
+
+
+def test_legacy_absensi_runs_face_worker_without_yolo(tmp_path):
+    legacy = {"id": 11, "type": "absensi", "direction": "entry",
+              "polygon": ATTENDANCE_ZONE["polygon"]}
+    _, workers, urls, det_calls = _wired_node(tmp_path, [legacy])
+    assert [type(w).__name__ for w in workers] == ["FaceGateWorker"]
+    assert [z["id"] for z in workers[0].zones] == [11]
+    assert urls == ["rtsp://h:8554/cam_363_main"] and det_calls == []
+
+
+def test_disabled_face_does_not_start_orphan_recorder(tmp_path, monkeypatch):
+    import vision.recorder as recorder
+    created = []
+    monkeypatch.setattr(recorder, "Recorder", lambda *args: created.append(args))
+    cfg = NodeSettings(node_id="n", cameras_json="[]", face_embed=False,
+                       api_key="k", data_dir=str(tmp_path))
+    node = VisionNode(cfg, detector_factory=lambda _: pytest.fail("YOLO started"),
+                      source_factory=lambda _: pytest.fail("source opened"),
+                      transport=FakeTransport())
+    node.apply_config({"cameras": [{"camera_id": 363, "source_url": "test://363",
+                                    "zones": [ATTENDANCE_ZONE]}]})
+    assert node._workers == []
+    assert created == []
+
+
+def test_heartbeat_reports_face_module_and_distinct_cameras(tmp_path):
+    node, workers, *_ = _wired_node(tmp_path, [ATTENDANCE_ZONE, BEHAVIOR_ZONE])
+    assert node._face_module_info() == {"device": "auto", "loaded": True,
+                                        "detect_n": 0, "embed_n": 0}
+    node._workers = workers
+    def publish_once(hb):
+        node.transport.heartbeats.append(hb)
+        node.stop_event.set()
+    node.transport.publish_heartbeat = publish_once
+    node._heartbeat_loop()
+    assert node.transport.heartbeats[0]["cameras"] == [363]
+    assert node.transport.heartbeats[0]["modules"]["face"] == node._face_module_info()

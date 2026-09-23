@@ -1,8 +1,6 @@
-"""Face embedding at node (Opsi B): SCRFD deteksi + ArcFace embedding di GPU node.
+"""Optional node-side SCRFD face detection and ArcFace embeddings.
 
-Insightface = dependency opsional (extra `face`). Embedder absent/gagal → node
-kirim crop saja (backend embed, status quo Fase 5). `_failed` meng-cache
-kegagalan supaya tidak coba muat ulang tiap frame/event.
+Failed model loads are cached to avoid retrying every frame.
 """
 from __future__ import annotations
 
@@ -25,7 +23,7 @@ class FaceDet:
 
 
 class FaceEmbedder:
-    """Lazy InsightFace wrapper: embed_jpeg(jpeg) -> {vector, det_score, bbox} | None."""
+    """Lazy InsightFace wrapper: detect_faces / align / embed (R5b face-first)."""
 
     def __init__(self, model_root: str, device: str = ""):
         self.model_root = model_root
@@ -34,7 +32,7 @@ class FaceEmbedder:
         self._failed = False
         self.detect_n = 0
         self.embed_n = 0
-        # worker kamera attendance memanggil detect() per frame secara paralel:
+        # worker kamera attendance memanggil detect_faces() per frame secara paralel:
         # tanpa lock, first-load bisa memuat FaceAnalysis dua kali di GPU
         self._load_lock = threading.Lock()
 
@@ -50,7 +48,7 @@ class FaceEmbedder:
         try:
             from insightface.app import FaceAnalysis
         except ImportError:
-            logger.info("insightface tidak terpasang — node kirim crop saja")
+            logger.info("insightface tidak terpasang — face detection unavailable")
             self._failed = True
             return None
         if self.device == "cpu":
@@ -67,7 +65,7 @@ class FaceEmbedder:
                                allowed_modules=["detection", "recognition"])
             app.prepare(ctx_id=ctx, det_size=(640, 640))
         except Exception:
-            logger.warning("face embedder gagal dimuat — fallback crop saja",
+            logger.warning("face embedder gagal dimuat — face detection unavailable",
                            exc_info=True)
             self._failed = True
             return None
@@ -110,34 +108,3 @@ class FaceEmbedder:
             return None
         self.embed_n += 1
         return [float(v) / norm for v in feat]
-
-    def detect(self, img) -> list[tuple[float, float, float, float, float]]:
-        """Deteksi saja (SCRFD, tanpa embedding) pada frame BGR -> [(x1,y1,x2,y2,score)] piksel."""
-        app = self._ensure_loaded()
-        if app is None:
-            return []
-        bboxes, _ = app.det_model.detect(img, max_num=0, metric="default")
-        return [tuple(float(v) for v in b[:5]) for b in bboxes]
-
-    def embed_jpeg(self, jpeg: bytes) -> dict | None:
-        """Deteksi + embedding wajah TERBESAR di jpeg. None bila gagal/tidak ada wajah."""
-        app = self._ensure_loaded()
-        if app is None:
-            return None
-        import cv2
-        import numpy as np
-        img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
-        if img is None:
-            return None
-        faces = app.get(img)
-        if not faces:
-            return None
-        best = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        vec = getattr(best, "normed_embedding", None)
-        if vec is None:
-            return None
-        return {
-            "vector": [float(x) for x in vec],
-            "det_score": float(best.det_score),
-            "bbox": [float(x) for x in best.bbox],
-        }

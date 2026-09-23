@@ -103,40 +103,6 @@ def test_capture_go2rtc_fail_snapshot_still_saved(tmp_path, monkeypatch):
     assert local["event_id"] == "ev-1"
 
 
-def test_fetch_frame_returns_bytes_and_builds_url(tmp_path, monkeypatch):
-    import vision.recorder as rec_mod
-
-    calls = []
-
-    def fake_urlopen(target, timeout=None):
-        calls.append((target, timeout))
-        return FakeResp(b"main-jpeg")
-
-    monkeypatch.setattr(rec_mod, "urlopen", fake_urlopen)
-    rec = Recorder(4, make_cfg(tmp_path))
-    out = rec.fetch_frame("cam_4_main")
-    rec.close()
-    assert out == b"main-jpeg"
-    assert calls == [("http://go2rtc:1984/api/frame.jpeg?src=cam_4_main", 5)]
-
-
-def test_fetch_frame_none_on_error_and_empty(tmp_path, monkeypatch):
-    import vision.recorder as rec_mod
-
-    def boom(target, timeout=None):
-        raise RuntimeError("go2rtc down")
-
-    monkeypatch.setattr(rec_mod, "urlopen", boom)
-    rec = Recorder(4, make_cfg(tmp_path))
-    assert rec.fetch_frame("cam_4_main") is None
-    rec.close()
-
-    monkeypatch.setattr(rec_mod, "urlopen", lambda target, timeout=None: FakeResp(b""))
-    rec = Recorder(4, make_cfg(tmp_path))
-    assert rec.fetch_frame("cam_4_main") is None
-    rec.close()
-
-
 def test_capture_and_upload_success(tmp_path, monkeypatch):
     import vision.recorder as rec_mod
 

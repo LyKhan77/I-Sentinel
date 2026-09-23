@@ -297,7 +297,7 @@ def test_zone_media_flags_on_events():
     from vision.pipeline.detector import MockDetector
     import threading, numpy as np
 
-    zone = {"id": 5, "type": "absensi", "direction": "entry", "active": True,
+    zone = {"id": 5, "type": "restricted", "direction": "entry", "active": True,
             "polygon": [[0, 0], [1, 0], [1, 1], [0, 1]],
             "snapshot": False, "clip": False}
     cfg = NodeSettings(node_id="n1", cameras_json="")

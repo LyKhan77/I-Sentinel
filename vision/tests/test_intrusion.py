@@ -166,7 +166,7 @@ def test_person_walking_past_above_the_zone_stays_outside():
 
 
 def test_all_zone_analyzers_use_the_same_ground_point():
-    """intrusion/loitering/face_gate/running sepakat: orang berdiri DI ATAS zona
+    """intrusion/loitering/running sepakat: orang berdiri DI ATAS zona
     dihitung masuk, walau centroid-nya melayang di luar polygon."""
     on_zone = standing_person(feet_y=0.90, height=0.40)
     above_zone = standing_person(feet_y=0.60, height=0.30)
@@ -181,7 +181,7 @@ def test_all_zone_analyzers_use_the_same_ground_point():
         # dua frame: loitering perlu akumulasi dwell lintas frame
         return az.on_frame(0.0, [track], 1920, 1080) + az.on_frame(2.0, [track], 1920, 1080)
 
-    for name in ("intrusion", "loitering", "face_gate"):
+    for name in ("intrusion", "loitering"):
         assert emitted(name, on_zone), f"{name}: orang berdiri di atas zona tidak dianggap masuk"
         assert emitted(name, above_zone) == [], f"{name}: orang di luar zona malah memicu"
 
