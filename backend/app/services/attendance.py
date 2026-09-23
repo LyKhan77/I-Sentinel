@@ -108,7 +108,7 @@ def _in_cooldown(db, employee_id: int, direction: str, ts: datetime) -> bool:
     return any(abs(_local(row.ts_event) - ts_local) <= window for row in rows)
 
 
-def handle_face_event(db, event) -> AttendanceEvent | None:
+def handle_face_event(db, event, embedding: list[float] | None = None) -> AttendanceEvent | None:
     """Match attendance event, discard embedding, then update attendance day.
 
     Exceptions propagate to events_consumer for rollback.
@@ -117,7 +117,8 @@ def handle_face_event(db, event) -> AttendanceEvent | None:
         return None
 
     payload = dict(event.payload or {})
-    embedding = payload.pop("embedding", None)
+    # consumer memisahkan embedding sebelum ingest; pop tetap membersihkan payload lama
+    embedding = payload.pop("embedding", None) or embedding
     crop = payload.get("crop_path")
     direction = payload.get("direction")
     if direction not in VALID_DIRECTIONS:

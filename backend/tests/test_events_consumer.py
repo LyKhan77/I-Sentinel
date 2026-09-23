@@ -121,3 +121,25 @@ def test_detections_relayed_to_hub(db, broadcast):
 def test_detections_malformed_no_raise_no_broadcast(db, broadcast):
     handle_message(db, DETECTIONS_TOPIC, b"not-json")
     assert broadcast == []
+
+
+def test_attendance_embedding_never_persisted_or_broadcast_when_matching_fails(db, broadcast, monkeypatch):
+    """Embedding biometrik tidak boleh sampai ke tabel event/WS, bahkan saat match melempar error
+    (dulu: ingest commit payload ber-embedding, rollback menyisakannya permanen)."""
+    from app.models.event import Event
+    from app.services import attendance
+    seen = {}
+
+    def boom(vector, quality=None):
+        seen["len"] = len(vector)
+        raise RuntimeError("matcher down")
+
+    monkeypatch.setattr(attendance.face, "match_vector", boom)
+    ev = _event(type="attendance", severity="info",
+                payload={"direction": "entry", "embedding": [0.1] * 512, "face_quality": 0.8})
+    handle_message(db, "isentinel/events", json.dumps(ev).encode())
+
+    assert seen["len"] == 512                       # matcher tetap menerima embedding
+    row = db.query(Event).filter_by(event_id=ev["event_id"]).one()
+    assert "embedding" not in (row.payload or {})
+    assert all("embedding" not in (m.get("payload") or {}) for m in broadcast)

@@ -47,6 +47,12 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 logger.warning("Invalid event payload on %s", topic)
                 return
             data["ts_event"] = event.ts_event
+            # embedding biometrik tidak pernah masuk tabel event/WS: dipisah sebelum ingest
+            # commit, diteruskan langsung ke matcher (jalur error pun tak menyisakannya)
+            embedding = None
+            if isinstance(data.get("payload"), dict):
+                data["payload"] = dict(data["payload"])
+                embedding = data["payload"].pop("embedding", None)
             status, ev = ingest_event(db, data)
             if status == "created" and ev is not None:
                 try:
@@ -55,7 +61,7 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                     db.rollback()
                     logger.exception("alerting failed for event %s", ev.event_id)
                 try:
-                    attendance.handle_face_event(db, ev)
+                    attendance.handle_face_event(db, ev, embedding=embedding)
                 except Exception:
                     db.rollback()
                     logger.exception("attendance failed for event %s", ev.event_id)
