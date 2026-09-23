@@ -269,6 +269,47 @@ def test_upload_timeout_does_not_hold_event_or_next_overlay(monkeypatch, tmp_pat
         rec.close()
 
 
+def test_blocked_uploader_cannot_hold_event_or_overlay():
+    class BlockingRecorder(FakeRecorder):
+        def upload_bytes(self, data, kind, content_type="image/jpeg", **kwargs):
+            time.sleep(2)  # ignores socket timeout; event must still be sent
+            return super().upload_bytes(data, kind, content_type, **kwargs)
+
+    start = time.monotonic()
+    _, t, _ = run_worker([[GOOD]] * 5, recorder=BlockingRecorder())
+    assert time.monotonic() - start < 1.5
+    assert len(t.events) == 1 and len(t.detections) == 5
+    assert t.events[0]["payload"]["crop_path"] is None
+    assert t.events[0]["snapshot_path"] is None
+
+
+def test_stalled_media_allows_second_face_without_spawning_another_upload():
+    class BlockedRecorder(FakeRecorder):
+        def __init__(self):
+            super().__init__()
+            self.started = threading.Event()
+            self.release = threading.Event()
+            self.calls = 0
+
+        def upload_bytes(self, data, kind, content_type="image/jpeg", **kwargs):
+            self.calls += 1
+            self.started.set()
+            self.release.wait(3)
+            return super().upload_bytes(data, kind, content_type, **kwargs)
+
+    rec = BlockedRecorder()
+    left, right = face(cx=700), face(cx=1220)
+    try:
+        start = time.monotonic()
+        _, t, _ = run_worker([[left, right]] * 3, recorder=rec)
+        assert time.monotonic() - start < 1.5
+        assert rec.started.is_set() and rec.calls == 1
+        assert len(t.events) == 2
+        assert all(e["payload"]["crop_path"] is None for e in t.events)
+    finally:
+        rec.release.set()
+
+
 def test_upload_failure_still_publishes_event():
     _, t, _ = run_worker([[GOOD]] * 3, recorder=FakeRecorder(fail=True))
     ev = t.events[0]

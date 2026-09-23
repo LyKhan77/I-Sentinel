@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 DEDUP_BUCKET_S = 10.0
 SNAPSHOT_W = 1280
 BOX_BGR = (255, 169, 120)  # #78a9ff
+MEDIA_WAIT_S = 1.1  # event deadline; slow upload falls back to event without media
 
 
 @dataclass
@@ -79,6 +80,7 @@ class FaceGateWorker(threading.Thread):
         self._tracker = ByteTracker(max_age_s=max_age_s, min_conf=0.5)
         self._states: dict[int, _TrackState] = {}
         self._faces_shown = False
+        self._media_busy = threading.Event()
 
     def run(self) -> None:
         """Consume source until stopped; frame-level inference errors never stop worker."""
@@ -195,17 +197,36 @@ class FaceGateWorker(threading.Thread):
         if self.recorder is not None:
             cx1, cy1, cx2, cy2 = crop_box(bbox, w, h)
             face_bbox = [x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1]
-            for kind, image in (("crop", lambda: _jpeg(frame[cy1:cy2, cx1:cx2])),
-                                ("snapshot", lambda: _snapshot_jpeg(frame, bbox))):
-                try:
-                    path = self.recorder.upload_bytes(image(), kind, timeout=0.5, retries=1)
-                    if kind == "crop":
-                        crop_path = path
-                    else:
-                        snapshot_path = path
-                except Exception:
-                    log.warning("camera %s: face %s upload failed", self.camera_id,
-                                kind, exc_info=True)
+            if not self._media_busy.is_set():
+                paths: dict[str, str | None] = {}
+                finished = threading.Event()
+                abandoned = threading.Event()
+                self._media_busy.set()
+
+                def upload_media() -> None:
+                    try:
+                        for kind, image in (("crop", lambda: _jpeg(frame[cy1:cy2, cx1:cx2])),
+                                            ("snapshot", lambda: _snapshot_jpeg(frame, bbox))):
+                            if abandoned.is_set():
+                                break
+                            try:
+                                paths[kind] = self.recorder.upload_bytes(
+                                    image(), kind, timeout=0.5, retries=1)
+                            except Exception:
+                                log.warning("camera %s: face %s upload failed", self.camera_id,
+                                            kind, exc_info=True)
+                    finally:
+                        self._media_busy.clear()
+                        finished.set()
+
+                threading.Thread(target=upload_media, daemon=True,
+                                 name=f"face-media-{self.camera_id}").start()
+                if finished.wait(MEDIA_WAIT_S):
+                    crop_path, snapshot_path = paths.get("crop"), paths.get("snapshot")
+                else:
+                    abandoned.set()
+                    log.warning("camera %s: face media timed out; event sent without media",
+                                self.camera_id)
         ev = {
             "event_id": str(uuid.uuid4()),
             "type": "attendance",

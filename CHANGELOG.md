@@ -3,6 +3,22 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 5 review — deadline media absolut saat uploader macet (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` menunggu upload media paling lama
+  1,1 s walau uploader mengabaikan timeout socket; hanya satu thread daemon upload
+  per worker dan event lain tetap terkirim tanpa media selama upload pertama
+  macet. `vision/tests/test_face_worker.py` menguji uploader macet 2 s, overlay
+  lanjut, dua wajah tetap punya dua event tanpa thread upload tak terbatas.
+  Ruling pilihan user dicatat di spec §2/§5.5, plan Task 5, ledger/checkpoint.
+- Bukti TDD: RED uploader macet `1 failed, 16 deselected` (event tertahan ~4 s);
+  GREEN regresi timeout `5 passed, 13 deselected`; full suite vision non-GPU
+  `194 passed, 2 deselected, 2 warnings` (pynvml dan mock heartbeat lama).
+- Dampak: batas tunggu pekerja nyata, tetapi short-pass saat API lambat dapat
+  terbit ~1,1 s (+ polling ≤0,1 s) setelah `max_age_s`; media yang selesai setelah
+  deadline tidak diasosiasikan, blob telat bisa orphan sampai retention.
+  Rollback: `git revert` commit review ini; pin GPU tidak berubah, tanpa migrasi.
+
 ### R5b Task 5 review — expiry saat stream idle dan upload wajah berbatas (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/pipeline/source.py` memberi `next_frame(timeout)` tanpa

@@ -39,7 +39,10 @@ Sukses (diuji di lapangan, §11):
 - Berjalan menuju kamera → 1 event `attendance` ≤ 2 s setelah wajah masuk zona, crop
   wajah ≥ 80 px, cocok ke karyawan, `attendance_event` tercatat, file ada di disk.
   (Batas 2 s berlaku bila lintasan menghasilkan ≥ K frame bagus; lintasan yang lebih
-  singkat terbit saat track kedaluwarsa, ≤ `max_age_s` setelah wajah terakhir terlihat.)
+  singkat terbit saat track kedaluwarsa, ≤ `max_age_s` setelah wajah terakhir terlihat
+  pada jaringan sehat. Ruling Task 5 review: bila upload media lambat, percobaan
+  dibatasi dan event tetap terbit tanpa media; batas ini dapat lewat ~1,1 s
+  ditambah jitter polling ≤0,1 s. Jangan klaim deadline keras saat API terganggu.)
 - Membelakangi kamera → tidak ada event.
 - Wajah tak ter-enroll → event berlabel tidak dikenal + crop.
 - Lewat dua kali dalam 5 menit → satu `attendance_event`.
@@ -149,6 +152,10 @@ koordinat crop, dipakai `annotate_face_crop`), `crop_path`, dan baru `face_stats
   wajah; bukan dari ring buffer substream.
 - **Clip** = tidak ada (`clip=False`).
 - Gagal upload crop → event tetap terkirim dengan embedding (bukti gambar hilang).
+  Upload crop/snapshot independen: satu percobaan socket 0,5 s per gambar;
+  pekerja menunggu maksimal 1,1 s lalu menerbitkan event tanpa media bila masih
+  tertahan. Hanya satu upload media tertahan per kamera; blob yang berhasil sesudah
+  batas waktu tidak diasosiasikan ke event (tanpa kontrak update backend baru).
 
 ### 5.6 Heartbeat
 

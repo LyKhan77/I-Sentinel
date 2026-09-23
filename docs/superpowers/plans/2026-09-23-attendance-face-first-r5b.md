@@ -693,6 +693,14 @@ git commit -m "feat(vision): gerbang kualitas dan penggabungan embedding wajah"
 
 ### Task 5: `FaceGateWorker`
 
+**Ruling review Task 5 (2026-09-23):** contoh implementasi sinkron di bawah diganti
+oleh idle polling `FrameSource.next_frame(timeout)` untuk expiry saat RTSP diam,
+serta upload media best-effort berbatas 1,1 s total sebelum event (satu percobaan
+socket 0,5 s per gambar). Bila upload melewati batas, event tanpa media; saat
+jaringan terganggu short-pass boleh terlambat ~1,1 s setelah `max_age_s` (+ jitter
+polling ≤0,1 s). Satu upload tertahan per worker; tidak ada update media/crop async
+ke backend. Lihat spec §2/§5.5 dan test final dalam commit Task 5 review.
+
 **Files:**
 - Create: `vision/vision/face_worker.py`
 - Test: `vision/tests/test_face_worker.py`
