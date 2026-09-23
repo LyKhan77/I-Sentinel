@@ -247,3 +247,99 @@ def test_integration_real_enroll(client, db, monkeypatch):
     s = client.get(f"/api/v1/employees/{e.id}/enrollment-status", headers=h).json()
     assert s == {"photos": 1, "active": False}
     assert face.gallery.size() == 1  # gallery ikut ter-refresh
+
+
+# --- R1: multi-upload batch + auto-crop + dup warn ---------------------------
+
+def _jpg_bytes(w=320, h=240):
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), (200, 200, 200)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def test_batch_upload_multi_files(client, db, monkeypatch, tmp_path):
+    """POST photos/batch 2 file ok + 1 no_face → hasil per file."""
+    h = _admin_headers(client)
+    e = _employee(db)
+    monkeypatch.setattr(face, "enroll_embedding", _fake_enroll(tmp_path))
+    files = [("files", (f"{i}.jpg", _jpg_bytes(), "image/jpeg")) for i in range(3)]
+    calls = {"n": 0}
+
+    def _embed(path):
+        calls["n"] += 1
+        if calls["n"] >= 3:
+            return []  # foto ke-3: tidak ada wajah
+        return [FaceResult(vector=[1.0, 0.0], det_score=0.9,
+                           bbox=[10.0, 10.0, 100.0, 100.0], quality=0.9)]
+
+    monkeypatch.setattr(FaceEngine, "embed", lambda self, path: _embed(path))
+    r = client.post(f"/api/v1/employees/{e.id}/photos/batch", files=files, headers=h)
+    assert r.status_code == 200
+    res = r.json()["results"]
+    assert len(res) == 3
+    assert [x["ok"] for x in res] == [True, True, False]
+    assert res[2]["reason"] == "no_face"
+
+
+def test_batch_upload_stores_cropped_face(client, db, monkeypatch, tmp_path):
+    """source_image_path mengarah ke file crop hasil SCRFD, bukan foto mentah."""
+    h = _admin_headers(client)
+    e = _employee(db)
+    monkeypatch.setattr(FaceEngine, "embed", lambda self, path: _fake_embed_with_bbox()(path))
+    r = client.post(
+        f"/api/v1/employees/{e.id}/photos/batch",
+        files=[("files", ("p.jpg", _jpg_bytes(), "image/jpeg"))],
+        headers=h,
+    )
+    assert r.status_code == 200
+    listed = client.get(f"/api/v1/employees/{e.id}/photos", headers=h).json()
+    p = tmp_path / listed[0]["path"]
+    assert p.is_file()
+    from PIL import Image
+    img = Image.open(p)
+    # crop lebih kecil dari foto sumber 320x240 (bbox + margin)
+    assert img.size[0] < 320 and img.size[1] < 240
+
+
+def test_batch_upload_duplicate_warns(client, db, monkeypatch, tmp_path):
+    """Vektor mirip embedding employee lain → warn, bukan reject."""
+    h = _admin_headers(client)
+    e1 = _employee(db, "E1")
+    e2 = _employee(db, "E2")
+    db.add(FaceEmbedding(employee_id=e2.id, vector=[1.0, 0.0], quality=0.9))
+    db.commit()
+    monkeypatch.setattr(face, "gallery", FaceGallery())
+    face.gallery.load(db)
+    monkeypatch.setattr(FaceEngine, "embed",
+                        lambda self, path: [FaceResult(vector=[1.0, 0.0], det_score=0.9,
+                                                       bbox=[10.0, 10.0, 100.0, 100.0], quality=0.9)])
+    r = client.post(
+        f"/api/v1/employees/{e1.id}/photos/batch",
+        files=[("files", ("p.jpg", _jpg_bytes(), "image/jpeg"))],
+        headers=h,
+    )
+    assert r.status_code == 200
+    res = r.json()["results"][0]
+    assert res["ok"] is True
+    assert res["duplicate_of"]["employee_id"] == e2.id
+    assert res["duplicate_of"]["score"] >= 0.6
+
+
+def _fake_enroll(tmp_path):
+    def _enroll(db, employee_id, image_path):
+        row = FaceEmbedding(employee_id=employee_id, vector=[1.0, 0.0, 0.0, 0.0], quality=0.9,
+                            source_image_path=image_path)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row
+    return _enroll
+
+
+def _fake_embed_with_bbox():
+    def _embed(path):
+        return [FaceResult(vector=[1.0, 0.0], det_score=0.9,
+                           bbox=[10.0, 10.0, 100.0, 100.0], quality=0.9)]
+    return _embed

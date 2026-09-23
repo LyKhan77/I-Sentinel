@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Maximize, VideoOff } from '@carbon/icons-react'
-import { InlineLoading, InlineNotification, Dropdown } from '@carbon/react'
-import { useT } from '../../app/i18n'
+import { InlineLoading, InlineNotification, Dropdown, Modal, Toggle } from '@carbon/react'
+import { useT, type TKey } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { getLive, type LiveInfo } from '../../api/events'
+import { listZones, type Zone } from '../../api/zones'
+import { useLiveEvents } from '../../api/useWs'
+import { playerMode } from './playerMode'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
 
@@ -23,11 +26,12 @@ function initialCols(): Cols {
 // Tile streaming: <video-stream> (player resmi go2rtc) mode webrtc,mse.
 // Kalau playing tidak terjadi dalam STREAM_TIMEOUT_MS → fallback ke snapshot
 // proxy 2 detik (jalur lama Fase 4e yang tetap berlaku).
-function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; big?: boolean }) {
+function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo | null; big?: boolean; onClick?: () => void }) {
   const { t } = useT()
   const [streamFailed, setStreamFailed] = useState(false)
   const [tick, setTick] = useState(0)
   const [imgFailed, setImgFailed] = useState(false)
+  const [mode, setMode] = useState<'WebRTC' | 'MSE' | null>(null)
   const elRef = useRef<StreamElement | null>(null)
 
   const ws = live?.webrtc
@@ -58,6 +62,13 @@ function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; bi
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ws string stabil per kamera; retry lewat refresh /live
   }, [canStream, ws])
 
+  // Badge transport aktif (hanya tile besar): baca video srcObject/src tiap detik.
+  useEffect(() => {
+    if (!big || !streaming) return
+    const timer = setInterval(() => setMode(playerMode(elRef.current?.querySelector('video') ?? null)), 1000)
+    return () => clearInterval(timer)
+  }, [big, streaming])
+
   // Interval cache-busting hanya dipakai mode snapshot.
   const sep = live?.snapshot?.includes('?') ? '&' : '?'
   const snapSrc = live?.snapshot && !imgFailed ? `${live.snapshot}${sep}_t=${tick}` : null
@@ -71,6 +82,7 @@ function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; bi
     <div
       data-testid={`cam-tile-${cam.id}`}
       data-big={big ? 'big' : undefined}
+      onClick={onClick}
       style={{
         position: 'relative',
         background: '#000',
@@ -126,6 +138,11 @@ function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; bi
         </span>
       )}
 
+      {big && mode && (
+        <span data-testid="player-mode" style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 10,
+          color: '#c6c6c6', fontFamily: 'var(--cds-font-family-mono, monospace)' }}>{mode}</span>
+      )}
+
       <div
         style={{
           position: 'absolute',
@@ -166,16 +183,130 @@ function CameraTile({ cam, live, big }: { cam: Camera; live: LiveInfo | null; bi
   )
 }
 
+// Overlay debugger di modal: SVG koordinat normalisasi (viewBox 0 0 100 100)
+// sehingga zona/bbox tidak butuh tahu ukuran video. Polygon zona + deteksi realtime.
+const ZONE_COLORS: Record<string, string> = { attendance: '#42be65', behavior: '#fa4d56' }
+const BOX_COLORS = { person: '#ff832b', face: '#78a9ff' } as const
+
+type DetectionKind = keyof typeof BOX_COLORS
+type DetBox = { id: number; bbox_norm: number[]; label?: string | null; kind: DetectionKind; at: number }
+const BOX_TTL_MS = 1000
+// Nama dari event attendance yang sudah dicocokkan backend. Hanya event segar yang dipakai
+// dan disimpan sebentar: id track wajah mulai dari 1 lagi setelah node restart.
+const NAME_TTL_MS = 30000
+type FaceName = { name: string; at: number }
+const FACE_GATE_CODES = ['zone', 'small', 'score', 'yaw', 'blur'] as const
+
+function DebugOverlay({ camId, showZones, showDetection, boxes, names }: {
+  camId: number; showZones: boolean; showDetection: boolean; boxes: DetBox[]; names: Record<string, FaceName>
+}) {
+  const { t } = useT()
+  const boxLabel = (b: DetBox) =>
+    b.kind === 'face' && names[`${camId}:${b.id}`]
+      ? names[`${camId}:${b.id}`].name
+      : b.kind === 'face' && b.label && (FACE_GATE_CODES as readonly string[]).includes(b.label)
+      ? t(`live.faceGate.${b.label}` as TKey)
+      : b.label ?? t('live.trackId').replace('{n}', String(b.id))
+  const [zones, setZones] = useState<Zone[]>([])
+  useEffect(() => {
+    if (!showZones) return
+    let alive = true
+    listZones().then((all) => { if (alive) setZones(all.filter((z) => z.camera_id === camId && z.active)) }).catch(() => {})
+    return () => { alive = false }
+  }, [camId, showZones])
+  if (!showZones && !showDetection) return null
+  return (
+    <svg
+      data-testid="debug-overlay"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+    >
+      {showZones && zones.map((z) => (
+        <g key={z.id}>
+          <polygon
+            points={z.polygon.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
+            fill={`${ZONE_COLORS[z.type] ?? '#8d8d8d'}22`}
+            stroke={ZONE_COLORS[z.type] ?? '#8d8d8d'}
+            strokeWidth={0.5}
+          />
+          <text x={z.polygon[0][0] * 100} y={z.polygon[0][1] * 100 - 1} fontSize={3.5}
+            fill={ZONE_COLORS[z.type] ?? '#8d8d8d'}>
+            {z.name} ({z.type})
+          </text>
+        </g>
+      ))}
+      {showDetection && boxes.map((b) => b.bbox_norm?.length === 4 && (
+        <g key={`${b.kind}-${b.id}`}>
+          <rect
+            data-testid={`debug-box-${b.kind}-${b.id}`}
+            x={b.bbox_norm[0] * 100} y={b.bbox_norm[1] * 100}
+            width={(b.bbox_norm[2] - b.bbox_norm[0]) * 100}
+            height={(b.bbox_norm[3] - b.bbox_norm[1]) * 100}
+            style={{ transition: 'x 150ms linear, y 150ms linear, width 150ms linear, height 150ms linear' }}
+            fill="none" stroke={BOX_COLORS[b.kind]} strokeWidth={0.6}
+          />
+          <text x={b.bbox_norm[0] * 100} y={Math.max(4, b.bbox_norm[1] * 100 - 1)}
+            fontSize={4} fill={BOX_COLORS[b.kind]}>
+            {boxLabel(b)}
+          </text>
+        </g>
+      ))}
+    </svg>
+  )}
+
 export default function LiveViewPage() {
   const { t } = useT()
   const [cams, setCams] = useState<Camera[]>([])
   const [lives, setLives] = useState<Record<number, LiveInfo>>({})
-  const [focusId, setFocusId] = useState<number | null>(null)
+  const [debugCam, setDebugCam] = useState<Camera | null>(null)
+  const [showZones, setShowZones] = useState(true)
+  const [showDetection, setShowDetection] = useState(true)
+  const [boxes, setBoxes] = useState<DetBox[]>([])
+  const [faceNames, setFaceNames] = useState<Record<string, FaceName>>({})
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [cols, setCols] = useState<Cols>(initialCols)
   const [loc, setLoc] = useState<{ id: string; label: string } | null>(null)
-  const focusRef = useRef<HTMLDivElement>(null)
+
+  // deteksi realtime (debugger modal): WS type:"detections"
+  useLiveEvents((e) => {
+    const m = e as { type?: string; camera_id?: number; kind?: DetectionKind; boxes?: Omit<DetBox, 'kind'>[] }
+    if (m?.type === 'detections') {
+      // person & face tiba sebagai pesan terpisah: ganti hanya kotak kind yang sama
+      const kind = m.kind ?? 'person'
+      const at = Date.now()
+      setBoxes((prev) => (m.camera_id === debugCam?.id
+        ? [...prev.filter((b) => b.kind !== kind), ...(m.boxes ?? []).map((box) => ({ ...box, kind, at }))]
+        : prev))
+    }
+    const ev = e as { type?: string; camera_id?: number; ts_event?: string; payload?: Record<string, unknown> | null }
+    const p = ev?.payload
+    if (ev?.type === 'attendance' && ev.camera_id != null && p && typeof p.track_id === 'number'
+      && ev.ts_event && Date.now() - Date.parse(ev.ts_event) < NAME_TTL_MS) {
+      const name = typeof p.employee_name === 'string' ? p.employee_name
+        : p.match_reason === 'no_match' || p.match_reason === 'low_quality' ? t('events.face.unknown') : null
+      if (name) setFaceNames((prev) => ({ ...prev, [`${ev.camera_id}:${p.track_id}`]: { name, at: Date.now() } }))
+    }
+  })
+
+  // Kotak basi (tanpa update WS >1 s) dihapus sendiri supaya overlay tidak menampilkan
+  // orang/wajah yang sudah keluar frame.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBoxes((prev) => {
+        const now = Date.now()
+        const fresh = prev.filter((b) => now - b.at < BOX_TTL_MS)
+        return fresh.length === prev.length ? prev : fresh
+      })
+      setFaceNames((prev) => {
+        const now = Date.now()
+        const keys = Object.keys(prev).filter((k) => now - prev[k].at < NAME_TTL_MS)
+        return keys.length === Object.keys(prev).length ? prev : Object.fromEntries(keys.map((k) => [k, prev[k]]))
+      })
+    }, 250)
+    return () => clearInterval(timer)
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -206,22 +337,9 @@ export default function LiveViewPage() {
     return () => clearInterval(timer)
   }, [refresh])
 
-  // dblclick tile fokus → fullscreen elemen tile
-  useEffect(() => {
-    const el = focusRef.current
-    if (!el) return
-    const onDbl = () => {
-      if (document.fullscreenElement) document.exitFullscreen()
-      else el.requestFullscreen?.()
-    }
-    el.addEventListener('dblclick', onDbl)
-    return () => el.removeEventListener('dblclick', onDbl)
-  }, [focusId])
-
   // Kamera nonaktif tidak punya stream di go2rtc (sync_camera(delete=True) saat
   // disable) → tile-nya selalu 502 dengan badge LIVE yang menyesatkan.
   const active = cams.filter((c) => c.enabled)
-  const focused = focusId != null ? active.find((c) => c.id === focusId) : null
   // lokasi kamera unik; item "semua" di depan supaya filter bisa direset
   const allItem = { id: '__all__', label: t('live.allLocations') }
   const locOptions = [
@@ -229,7 +347,6 @@ export default function LiveViewPage() {
     ...[...new Set(active.map((c) => c.location).filter((l): l is string => !!l))].map((l) => ({ id: l, label: l })),
   ]
   const shown = loc && loc.id !== '__all__' ? active.filter((c) => c.location === loc.label) : active
-  const others = focusId != null ? shown.filter((c) => c.id !== focusId) : shown
 
   const pickCols = (n: Cols) => {
     localStorage.setItem(COLS_KEY, String(n))
@@ -284,25 +401,33 @@ export default function LiveViewPage() {
       {shown.length === 0 ? (
         <p style={{ color: '#8d8d8d' }}>{cams.length === 0 ? t('live.noCameras') : t('live.noActiveCameras')}</p>
       ) : (
-        <>
-          {focused && (
-            <div
-              ref={focusRef}
-              onClick={() => setFocusId(null)}
-              style={{ marginBottom: 12, border: '1px solid #393939' }}
-              title={t('live.clickUnfocus')}
-            >
-              <CameraTile cam={focused} live={lives[focused.id] ?? null} big />
+        <div className="lv-grid" style={{ '--lv-cols': cols } as React.CSSProperties}>
+          {shown.map((cam) => (
+            <div key={cam.id} onClick={() => { setBoxes([]); setDebugCam(cam) }} title={t('live.openDebug')}>
+              <CameraTile cam={cam} live={lives[cam.id] ?? null} />
             </div>
-          )}
-          <div className="lv-grid" style={{ '--lv-cols': cols } as React.CSSProperties}>
-            {others.map((cam) => (
-              <div key={cam.id} onClick={() => setFocusId(cam.id)} title={t('live.clickFocus')}>
-                <CameraTile cam={cam} live={lives[cam.id] ?? null} />
-              </div>
-            ))}
+          ))}
+        </div>
+      )}
+      {debugCam && (
+        <Modal
+          open
+          modalHeading={`${t('live.debugTitle')} — ${debugCam.name}`}
+          passiveModal
+          onRequestClose={() => setDebugCam(null)}
+          data-testid="live-modal"
+        >
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 8 }}>
+            <Toggle id="lv-zones" size="sm" labelText={t('live.showZones')}
+              toggled={showZones} onToggle={(v) => setShowZones(v)} />
+            <Toggle id="lv-detection" size="sm" labelText={t('live.showDetection')}
+              toggled={showDetection} onToggle={(v) => setShowDetection(v)} />
           </div>
-        </>
+          <div style={{ position: 'relative', background: '#000', aspectRatio: '16/9' }}>
+            <CameraTile cam={debugCam} live={lives[debugCam.id] ?? null} big />
+            <DebugOverlay camId={debugCam.id} showZones={showZones} showDetection={showDetection} boxes={boxes} names={faceNames} />
+          </div>
+        </Modal>
       )}
     </div>
   )

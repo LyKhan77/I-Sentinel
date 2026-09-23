@@ -1,4 +1,4 @@
-"""Intrusion analyzer: ray-casting point-in-polygon on track centroids, schedule-gated."""
+"""Intrusion analyzer: ray-casting point-in-polygon on track ground points, schedule-gated."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -21,6 +21,18 @@ def point_in_polygon(pt: tuple[float, float], poly: list) -> bool:
     return inside
 
 
+def ground_point(track) -> tuple[float, float]:
+    """Titik pijak track: tengah sisi bawah bbox (ternormalisasi 0-1).
+
+    Zona digambar orang di atas LANTAI, sedangkan centroid melayang setengah tinggi
+    badan di atasnya — makin jauh subjek dari kamera makin besar selisihnya, sehingga
+    orang yang jelas berdiri di dalam zona terbaca di luar. Semua analyzer zona
+    memakai titik ini supaya "di dalam zona" berarti sama di seluruh sistem.
+    """
+    x1, _, x2, y2 = track.bbox
+    return ((x1 + x2) / 2, y2)
+
+
 def _schedule_active(schedule: dict | None, ts: float) -> bool:
     if not schedule:
         return True
@@ -41,7 +53,11 @@ class IntrusionAnalyzer(Analyzer):
         self.severity = zone.get("severity", "warning")
         self.schedule = zone.get("schedule")
         self.polygon = [tuple(p) for p in zone["polygon"]]
+        # R5: trigger_seconds = lama di zona sebelum event terbit (0 = saat masuk)
+        self.trigger = float(zone.get("trigger_seconds", 0) or 0)
         self._inside: set[int] = set()
+        self._first_seen: dict[int, float] = {}
+        self._done: set[int] = set()      # kunjungan ini sudah emit
 
     def on_frame(self, ts: float, tracks: list, frame_w: int, frame_h: int) -> list[dict]:
         if not _schedule_active(self.schedule, ts):
@@ -53,9 +69,17 @@ class IntrusionAnalyzer(Analyzer):
         present: set[int] = set()
         for tr in tracks:
             present.add(tr.id)
-            # centroid already normalized 0-1 (tracker bboxes are normalized xyxy)
-            in_poly = point_in_polygon(tr.centroid, self.polygon)
+            in_poly = point_in_polygon(ground_point(tr), self.polygon)
             if in_poly and tr.id not in self._inside:
+                self._first_seen[tr.id] = ts
+                self._done.discard(tr.id)
+            if in_poly:
+                new_inside.add(tr.id)
+                if tr.id in self._done:
+                    continue
+                if ts - self._first_seen.get(tr.id, ts) < self.trigger:
+                    continue  # belum cukup lama di zona — tahan emit
+                self._done.add(tr.id)
                 events.append({
                     "zone_id": self.zone_id,
                     "type": "intrusion",
@@ -67,9 +91,10 @@ class IntrusionAnalyzer(Analyzer):
                         "bbox_norm": list(tr.bbox),
                     },
                 })
-            if in_poly:
-                new_inside.add(tr.id)
         # state = ids currently inside; leaving or losing the track removes the id
         # (so re-entry re-emits)
         self._inside = new_inside
+        for tid in [t for t in self._first_seen if t not in present]:
+            del self._first_seen[tid]
+            self._done.discard(tid)
         return events

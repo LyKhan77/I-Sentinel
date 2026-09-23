@@ -5,17 +5,33 @@ import {
   Dropdown,
   InlineLoading,
   InlineNotification,
+  Modal,
+  NumberInput,
   RadioButton,
   RadioButtonGroup,
   Tag,
   TextInput,
+  ToastNotification,
   Toggle,
 } from '@carbon/react'
 import { Delete, Save } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
-import { createZone, deleteZone, listZones, updateZone, type Zone, type ZoneType as ZT } from '../../api/zones'
+import {
+  createZone,
+  deleteZone,
+  listZones,
+  updateZone,
+  type Behavior,
+  type BehaviorKind,
+  type Zone,
+  type ZoneType,
+} from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
+
+const BEHAVIOR_KINDS: BehaviorKind[] = ['intrusion', 'loitering', 'running']
+// ponytail: node melewati analyzer running bila speed_limit_mps = 0 → default masuk akal saat dicentang
+const DEFAULT_SPEED_MPS = 2
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] // 1=Senin .. 7=Minggu (backend VALID_DAYS)
 const DAY_LABEL: Record<number, TKey> = {
@@ -33,15 +49,30 @@ export default function ZonesPage() {
   const [cams, setCams] = useState<Camera[]>([])
   const [cam, setCam] = useState<{ id: number; label: string } | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
+  const [allZones, setAllZones] = useState<Zone[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const [busy, setBusy] = useState<'save' | 'delete' | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // toast hilang sendiri; tanpa ini notifikasi menumpuk sampai halaman di-reload
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(id)
+  }, [toast])
 
   useEffect(() => {
-    listCameras()
-      .then((cs) => {
+    Promise.all([listCameras(), listZones().catch(() => [])])
+      .then(([cs, all]) => {
         setCams(cs)
-        if (cs.length > 0) setCam({ id: cs[0].id, label: cs[0].name })
+        setAllZones(all)
+        // buka kamera yang sudah punya zona — membuka kamera kosong bikin editor
+        // langsung tampil hampa padahal ada zona lain yang siap disunting
+        const first = cs.find((c) => all.some((z) => z.camera_id === c.id)) ?? cs[0]
+        if (first) setCam({ id: first.id, label: first.name })
       })
       .catch(() => setError(t('cameras.loadError')))
       .finally(() => setLoading(false))
@@ -51,6 +82,7 @@ export default function ZonesPage() {
     setZones(await listZones(cameraId).catch(() => []))
     setSelectedId(null)
   }, [])
+
 
   useEffect(() => {
     if (cam) reload(cam.id)
@@ -63,9 +95,28 @@ export default function ZonesPage() {
     setZones(zones.map((z) => (z.id === selected.id ? { ...z, ...patch } : z)))
   }
 
+  /** Tambah/ubah/hapus satu behavior; urutan payload mengikuti BEHAVIOR_KINDS. */
+  const setBehavior = (kind: BehaviorKind, patch: Partial<Behavior> | null) => {
+    if (!selected) return
+    const entry = (k: BehaviorKind): Behavior | null => {
+      const current = selected.behaviors.find((b) => b.kind === k) ?? null
+      if (k !== kind) return current
+      if (patch === null) return null
+      return {
+        kind,
+        trigger_seconds: 0,
+        ...(kind === 'running' ? { speed_limit_mps: DEFAULT_SPEED_MPS } : {}),
+        ...current,
+        ...patch,
+      }
+    }
+    patchSelected({ behaviors: BEHAVIOR_KINDS.map(entry).filter((b): b is Behavior => b !== null) })
+  }
+
   const save = async () => {
     if (!selected || !cam) return
     setError(null)
+    setBusy('save')
     const { id, camera_id, camera_name, ...payload } = selected
     try {
       if (id < 0) {
@@ -75,23 +126,33 @@ export default function ZonesPage() {
       } else {
         await updateZone(id, payload)
       }
+      setAllZones((prev) => [...prev.filter((z) => z.camera_id !== cam.id), ...zones.filter((z) => z.id > 0)])
+      setToast(t('zones.saved'))
     } catch {
       setError(t('zones.saveError'))
+    } finally {
+      setBusy(null)
     }
   }
 
   const remove = async () => {
     if (!selected) return
+    setConfirmDelete(false)
+    setBusy('delete')
     try {
       if (selected.id > 0) await deleteZone(selected.id)
       setZones(zones.filter((z) => z.id !== selected.id))
       setSelectedId(null)
+      setAllZones((prev) => prev.filter((z) => z.id !== selected.id))
+      setToast(t('zones.deleted'))
     } catch {
-      setError(t('zones.saveError'))
+      setError(t('zones.deleteError'))
+    } finally {
+      setBusy(null)
     }
   }
 
-  const typeItems: { id: ZT; label: string }[] = (['restricted', 'absensi', 'free'] as ZT[]).map((id) => ({
+  const typeItems: { id: ZoneType; label: string }[] = (['attendance', 'behavior'] as ZoneType[]).map((id) => ({
     id,
     label: t(`zones.type.${id}` as TKey),
   }))
@@ -104,19 +165,31 @@ export default function ZonesPage() {
 
   return (
     <>
-      <div style={{ maxWidth: 360, marginBottom: 16 }}>
-        <Dropdown
-          id="zone-camera"
-          titleText={t('zones.camera')}
-          label={t('events.filterAll')}
-          items={cams.map((c) => ({ id: c.id, label: c.name }))}
-          selectedItem={cam}
-          onChange={({ selectedItem }) => selectedItem && setCam(selectedItem)}
-        />
-      </div>
-
       {error && (
         <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />
+      )}
+
+      {toast && (
+        <div className="toast-stack" data-testid="zone-toast">
+          <ToastNotification
+            kind="success" lowContrast title={toast} timeout={0}
+            onCloseButtonClick={() => setToast(null)}
+          />
+        </div>
+      )}
+
+      {confirmDelete && selected && (
+        <Modal
+          open danger
+          data-testid="zone-delete-confirm"
+          modalHeading={t('zones.deleteTitle')}
+          primaryButtonText={t('cameras.delete')}
+          secondaryButtonText={t('common.cancel')}
+          onRequestSubmit={remove}
+          onRequestClose={() => setConfirmDelete(false)}
+        >
+          <p>{t('zones.deleteBody').replace('{name}', selected.name)}</p>
+        </Modal>
       )}
 
       {loading ? (
@@ -125,6 +198,40 @@ export default function ZonesPage() {
         <p style={{ color: '#8d8d8d' }}>{t('cameras.empty')}</p>
       ) : (
         <div className="configuration-zones">
+          {/* rail kamera: jumlah zona terlihat tanpa membuka kamera satu per satu */}
+          <div className="zone-rail" data-testid="zone-rail" role="listbox" aria-label={t('zones.camera')}>
+            {cams.map((c) => {
+              const mine = c.id === cam?.id
+                ? zones.filter((z) => z.id > 0)
+                : allZones.filter((z) => z.camera_id === c.id)
+              const types = [...new Set(mine.map((z) => z.type))]
+              const cls = ['zone-rail__item']
+              if (cam?.id === c.id) cls.push('zone-rail__item--sel')
+              if (mine.length === 0) cls.push('zone-rail__item--empty')
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="option"
+                  aria-selected={cam?.id === c.id}
+                  data-testid={`zone-rail-cam-${c.id}`}
+                  className={cls.join(' ')}
+                  onClick={() => setCam({ id: c.id, label: c.name })}
+                >
+                  <span className="zone-rail__name">{c.name}</span>
+                  <span className="zone-rail__count">{mine.length}</span>
+                  {types.length > 0 && (
+                    <span className="zone-rail__types">
+                      {types.map((tp) => (
+                        <span key={tp} className="zone-badge">{t(`zones.type.${tp}` as TKey).toUpperCase()}</span>
+                      ))}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
           <div style={{ minWidth: 0, paddingRight: 16 }}>
             <ZoneEditor
               cameraId={cam.id}
@@ -174,11 +281,23 @@ export default function ZonesPage() {
                   label={t('events.filterAll')}
                   items={typeItems}
                   selectedItem={typeItems.find((i) => i.id === selected.type)}
-                  onChange={({ selectedItem }) =>
-                    selectedItem && patchSelected({ type: selectedItem.id, direction: selectedItem.id === 'absensi' ? selected.direction : null })
-                  }
+                  onChange={({ selectedItem }) => {
+                    if (!selectedItem) return
+                    if (selectedItem.id === 'attendance')
+                      patchSelected({
+                        type: 'attendance',
+                        direction: selected.direction ?? 'entry',
+                        behaviors: [{ kind: 'attendance', trigger_seconds: selected.trigger_seconds }],
+                      })
+                    else
+                      patchSelected({
+                        type: 'behavior',
+                        direction: null,
+                        behaviors: selected.behaviors.filter((b) => b.kind !== 'attendance'),
+                      })
+                  }}
                 />
-                {selected.type === 'absensi' && (
+                {selected.type === 'attendance' && (
                   <RadioButtonGroup
                     legendText={t('zones.direction')}
                     name="zone-direction"
@@ -260,6 +379,68 @@ export default function ZonesPage() {
                   toggled={selected.snapshot}
                   onToggle={(v) => patchSelected({ snapshot: v })}
                 />
+                <Toggle
+                  id="zone-clip"
+                  labelText={t('zones.clip')}
+                  toggled={selected.clip}
+                  onToggle={(v) => patchSelected({ clip: v })}
+                />
+                {selected.type === 'attendance' ? (
+                  <p data-testid="zone-attendance-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: 0 }}>
+                    {t('zones.attendanceHint')}
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{t('zones.behaviors')}</span>
+                    {BEHAVIOR_KINDS.map((kind) => {
+                      const b = selected.behaviors.find((x) => x.kind === kind)
+                      return (
+                        <div key={kind} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <Checkbox
+                            id={`zone-behavior-${kind}`}
+                            data-testid={`zone-behavior-${kind}`}
+                            labelText={t(`zones.behavior.${kind}` as TKey)}
+                            checked={b != null}
+                            onChange={(_, { checked }) => setBehavior(kind, checked ? {} : null)}
+                          />
+                          {b && (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingLeft: 24 }}>
+                              <NumberInput
+                                id={`zone-trigger-${kind}`}
+                                data-testid={`zone-trigger-${kind}`}
+                                size="sm"
+                                label={t('zones.trigger')}
+                                helperText={t('zones.triggerHint')}
+                                min={0}
+                                step={1}
+                                value={b.trigger_seconds}
+                                onChange={(_, state) => {
+                                  const n = Number(state.value)
+                                  if (Number.isInteger(n) && n >= 0) setBehavior(kind, { trigger_seconds: n })
+                                }}
+                              />
+                              {kind === 'running' && (
+                                <NumberInput
+                                  id="zone-speed-running"
+                                  data-testid="zone-speed-running"
+                                  size="sm"
+                                  label={t('zones.speedLimit')}
+                                  min={0}
+                                  step={0.5}
+                                  value={b.speed_limit_mps ?? DEFAULT_SPEED_MPS}
+                                  onChange={(_, state) => {
+                                    const n = Number(state.value)
+                                    if (n >= 0) setBehavior('running', { speed_limit_mps: n })
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
                 <div>
                   <Toggle id="zone-telegram" labelText={t('zones.telegram')} toggled={false} onToggle={() => {}} disabled />
                   <div style={{ fontSize: 12, color: 'var(--cds-text-helper)', marginTop: 4 }}>{t('zones.telegramFase3')}</div>
@@ -272,11 +453,14 @@ export default function ZonesPage() {
                 />
 
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" onClick={save}>
-                    {t('common.save')}
+                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" disabled={busy !== null} onClick={save}>
+                    {busy === 'save' ? t('common.saving') : t('common.save')}
                   </Button>
-                  <Button kind="danger--ghost" renderIcon={Delete} data-testid="zone-delete" onClick={remove}>
-                    {t('cameras.delete')}
+                  <Button
+                    kind="danger--ghost" renderIcon={Delete} data-testid="zone-delete"
+                    disabled={busy !== null} onClick={() => setConfirmDelete(true)}
+                  >
+                    {busy === 'delete' ? t('common.deleting') : t('cameras.delete')}
                   </Button>
                 </div>
               </div>

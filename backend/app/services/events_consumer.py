@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 EVENTS_TOPIC = "isentinel/events"
 MEDIA_TOPIC = "isentinel/events/media"
+DETECTIONS_PREFIX = "isentinel/detections/"
 LWT_TOPIC = "isentinel/nodes/+/lwt"
 HEARTBEAT_TOPIC = "isentinel/nodes/+/heartbeat"
 
@@ -32,6 +33,13 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             logger.warning("Malformed JSON on %s", topic)
             return
 
+        if topic.startswith(DETECTIONS_PREFIX):
+            try:
+                asyncio.run(hub.broadcast({"type": "detections", **data}))
+            except Exception:
+                logger.exception("detections broadcast failed")
+            return
+
         if topic == EVENTS_TOPIC:
             try:
                 event = EventIn.model_validate(data)
@@ -39,6 +47,12 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 logger.warning("Invalid event payload on %s", topic)
                 return
             data["ts_event"] = event.ts_event
+            # embedding biometrik tidak pernah masuk tabel event/WS: dipisah sebelum ingest
+            # commit, diteruskan langsung ke matcher (jalur error pun tak menyisakannya)
+            embedding = None
+            if isinstance(data.get("payload"), dict):
+                data["payload"] = dict(data["payload"])
+                embedding = data["payload"].pop("embedding", None)
             status, ev = ingest_event(db, data)
             if status == "created" and ev is not None:
                 try:
@@ -47,7 +61,7 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                     db.rollback()
                     logger.exception("alerting failed for event %s", ev.event_id)
                 try:
-                    attendance.handle_face_event(db, ev)
+                    attendance.handle_face_event(db, ev, embedding=embedding)
                 except Exception:
                     db.rollback()
                     logger.exception("attendance failed for event %s", ev.event_id)
@@ -132,7 +146,8 @@ class EventConsumer:
                 time.sleep(5)
 
     def _subscriptions(self):
-        return [(EVENTS_TOPIC, 1), (MEDIA_TOPIC, 1), (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
+        return [(EVENTS_TOPIC, 1), (MEDIA_TOPIC, 1), ("isentinel/detections/+", 0),
+                (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         client.subscribe(self._subscriptions())

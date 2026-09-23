@@ -12,3 +12,4 @@ from app.models.shift import Shift
 from app.models.employee import Employee
 from app.models.face_embedding import FaceEmbedding
 from app.models.attendance import AttendanceEvent, AttendanceDay
+from app.models.detector_setting import DetectorSetting

@@ -22,11 +22,13 @@ class Track:
     age: int
     velocity: tuple[float, float]
     misses: int = 0
+    last_seen: float = 0.0
 
 
 @dataclass
 class ByteTracker:
-    max_age: int = 15
+    # Detik sejak terakhir terlihat; setara 15 frame @ 5 fps, aman saat AI FPS berubah.
+    max_age_s: float = 3.0
     min_conf: float = 0.3
     dist_threshold: float = 0.15
     _tracks: list[Track] = field(default_factory=list, init=False, repr=False)
@@ -35,7 +37,8 @@ class ByteTracker:
 
     def update(self, detections: list, ts: float) -> list[Track]:
         """Match detections to tracks greedily by centroid distance; returns active tracks."""
-        self.lost_ids = set()
+        self.lost_ids = {tr.id for tr in self._tracks if ts - tr.last_seen > self.max_age_s}
+        self._tracks = [tr for tr in self._tracks if tr.id not in self.lost_ids]
         dets = [d for d in detections if d.conf >= self.min_conf]
         det_cents = np.array([_centroid(d.bbox) for d in dets], dtype=float).reshape(-1, 2)
         unmatched_dets = set(range(len(dets)))
@@ -60,6 +63,7 @@ class ByteTracker:
             tr.centroid = new_c
             tr.age += 1
             tr.misses = 0
+            tr.last_seen = ts
             tr.velocity = vel
             used_t.add(ti)
             unmatched_dets.discard(di)
@@ -69,18 +73,13 @@ class ByteTracker:
         for di in sorted(unmatched_dets):
             c = tuple(det_cents[di])
             self._tracks.append(
-                Track(id=self._next_id, bbox=dets[di].bbox, centroid=c, age=1, velocity=(0.0, 0.0))
+                Track(id=self._next_id, bbox=dets[di].bbox, centroid=c, age=1,
+                      velocity=(0.0, 0.0), last_seen=ts)
             )
             self._next_id += 1
 
-        # unmatched prior tracks -> misses+1; drop after max_age
-        active: list[Track] = []
+        # unmatched prior tracks -> misses+1; expiry happened before matching
         for ti, tr in enumerate(self._tracks):
             if ti < n_prior and ti not in used_t:
                 tr.misses += 1
-                if tr.misses > self.max_age:
-                    self.lost_ids.add(tr.id)
-                    continue
-            active.append(tr)
-        self._tracks = active
-        return active
+        return self._tracks

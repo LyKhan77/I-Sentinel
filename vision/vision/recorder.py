@@ -67,22 +67,6 @@ class Recorder:
         if ok:
             self.ring.push(ts, enc.tobytes())
 
-    def fetch_frame(self, stream_name: str) -> bytes | None:
-        """Single jpeg snapshot from go2rtc (main stream): raw bytes or None.
-
-        Used to crop attendance faces at full resolution instead of the
-        low-res substream the detector runs on.
-        """
-        url = f"{self.cfg.go2rtc_url}/api/frame.jpeg?src={stream_name}"
-        try:
-            with urlopen(url, timeout=5) as resp:
-                data = resp.read()
-        except Exception as e:
-            log.warning("recorder cam%s: frame fetch %s failed: %s",
-                        self.camera_id, stream_name, e)
-            return None
-        return data or None
-
     def enqueue(self, event: dict, track_bbox_norm=None) -> None:
         try:
             self._q.put_nowait((event, track_bbox_norm))
@@ -120,8 +104,10 @@ class Recorder:
     def capture(self, event: dict, track_bbox_norm=None) -> dict | None:
         event_id = event["event_id"]
         outbox = self._outbox_dir()
-        snapshot_path = self._save_snapshot(event_id, outbox)
-        clip_path = self._save_clip(event_id, outbox)
+        snapshot_path = None
+        if event.get("snapshot") is not False:  # default True (zona tanpa flag)
+            snapshot_path = self._save_snapshot(event_id, outbox, event)
+        clip_path = self._save_clip(event_id, outbox, event)
         if snapshot_path is None and clip_path is None:
             return None
         return {"event_id": event_id, "snapshot_local": snapshot_path, "clip_local": clip_path}
@@ -132,7 +118,7 @@ class Recorder:
         os.makedirs(d, exist_ok=True)
         return d
 
-    def _save_snapshot(self, event_id: str, outbox: str) -> str | None:
+    def _save_snapshot(self, event_id: str, outbox: str, event: dict | None = None) -> str | None:
         import os
         frames = self.ring.pre_clip()
         if not frames:
@@ -140,13 +126,48 @@ class Recorder:
             return None
         # ponytail: 'best' = latest frame; bbox-area scoring deferred until needed
         _, jpeg = frames[-1]
+        if event is not None:
+            jpeg = self._draw_track_box(jpeg, event) or jpeg
         path = os.path.join(outbox, f"{event_id}.jpg")
         with open(path, "wb") as f:
             f.write(jpeg)
         return path
 
-    def _save_clip(self, event_id: str, outbox: str) -> str | None:
+    _TRACK_COLORS = {"critical": (0, 0, 230), "warning": (0, 160, 230),
+                     "info": (0, 200, 0)}
+
+    def _draw_track_box(self, jpeg: bytes, event: dict) -> bytes | None:
+        """Bbox track + label 'ID n' pada jpeg ring (warna = severity event).
+
+        Mengikat visual orang-pemicu ke snapshot; bbox_norm = relatif frame.
+        """
+        payload = event.get("payload") or {}
+        bbox = payload.get("bbox_norm")
+        if not bbox or len(bbox) != 4:
+            return None
+        try:
+            import cv2
+            import numpy as np
+            img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                return None
+            h, w = img.shape[:2]
+            x1, y1, x2, y2 = [int(v * s) for v, s in zip(bbox, (w, h, w, h))]
+            color = self._TRACK_COLORS.get(event.get("severity", "info"), (0, 200, 0))
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+            label = f"ID {payload.get('track_id')}"
+            cv2.putText(img, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6, color, 2, cv2.LINE_AA)
+            ok, buf = cv2.imencode(".jpg", img)
+            return buf.tobytes() if ok else None
+        except Exception:
+            log.warning("track box draw gagal — snapshot polos", exc_info=True)
+            return None
+
+    def _save_clip(self, event_id: str, outbox: str, event: dict | None = None) -> str | None:
         import os
+        if event is not None and event.get("clip") is False:
+            return None
         url = (f"{self.cfg.go2rtc_url}/api/stream.mp4"
                f"?src=cam_{self.camera_id}&duration={self.cfg.record_clip_s}")
         try:
@@ -163,9 +184,9 @@ class Recorder:
             f.write(data)
         return path
 
-    def upload_bytes(self, data: bytes, kind: str,
-                     content_type: str = "image/jpeg") -> str | None:
-        """Upload raw bytes via a temp file in outbox. Returns backend path or None."""
+    def upload_bytes(self, data: bytes, kind: str, content_type: str = "image/jpeg",
+                     *, timeout: float = 60, retries: int = UPLOAD_RETRIES) -> str | None:
+        """Upload blob; latency-sensitive callers may limit socket wait and attempts."""
         import os
         import uuid
         if not self.cfg.api_url or not self.cfg.api_key:
@@ -174,18 +195,19 @@ class Recorder:
         try:
             with open(tmp, "wb") as f:
                 f.write(data)
-            return self._upload_one(tmp, kind, content_type)
+            return self._upload_one(tmp, kind, content_type, timeout=timeout, retries=retries)
         finally:
             try:
                 os.remove(tmp)
             except OSError:
                 pass
 
-    def _upload_one(self, path: str, kind: str, content_type: str) -> str | None:
+    def _upload_one(self, path: str, kind: str, content_type: str, *,
+                    timeout: float = 60, retries: int = UPLOAD_RETRIES) -> str | None:
         """POST raw bytes to blob endpoint. Returns backend path or None on final failure."""
         import os
         url = (f"{self.cfg.api_url}/internal/nodes/{self.cfg.node_id}/blobs?kind={kind}")
-        for attempt in range(UPLOAD_RETRIES):
+        for attempt in range(retries):
             if attempt:
                 time.sleep(2 ** (attempt - 1))
             try:
@@ -196,7 +218,7 @@ class Recorder:
                 )
                 with open(path, "rb") as f:
                     req.data = f.read()
-                with urlopen(req, timeout=60) as resp:
+                with urlopen(req, timeout=timeout) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                     return body.get("path")
             except Exception as e:

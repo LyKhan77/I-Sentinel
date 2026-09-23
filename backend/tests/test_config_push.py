@@ -56,8 +56,9 @@ def test_build_node_config_server_includes_active_cam_and_zones_excludes_disable
         "id": z_on.id, "name": "z_on", "type": "restricted",
         "direction": None, "polygon": z_on.polygon, "schedule": None,
         "severity": "warning", "rate_limit_min": 5,
-        "loiter_seconds": 0, "speed_limit_mps": 0,
-        "snapshot": True, "telegram": False,
+        "loiter_seconds": 0, "dwell_seconds": 0, "speed_limit_mps": 0,
+        "behaviors": [], "trigger_seconds": 0,
+        "snapshot": True, "clip": True, "telegram": False,
     }]
 
 def test_build_node_config_edge_uses_resolved_exact_substream(db, monkeypatch):
@@ -96,6 +97,7 @@ class FakeClient:
         self.published = []
 
     def username_pw_set(self, *a): pass
+    def reconnect_delay_set(self, *a): pass   # dipanggil events_consumer saat reconnect
     def connect(self, *a, **k): pass
     def loop_start(self): pass
     def loop_stop(self): pass
@@ -120,7 +122,7 @@ def test_publish_node_config_retained_qos1(db, fake_mqtt):
     ok = config_push.publish_node_config(None, db, node.name)
 
     assert ok is True
-    (client,) = fake_mqtt.calls
+    (client,) = [c for c in fake_mqtt.calls if c.published]
     (topic, payload, qos, retain) = client.published[0]
     assert topic == f"isentinel/config/{node.name}"
     assert qos == 1 and retain is True
@@ -149,7 +151,7 @@ def test_publish_node_config_for_camera_resolves_node(db, fake_mqtt):
     cam = _cam(db, node.id)
 
     assert config_push.publish_node_config_for_camera(db, cam.id) is True
-    (client,) = fake_mqtt.calls
+    (client,) = [c for c in fake_mqtt.calls if c.published]
     assert client.published[0][0] == f"isentinel/config/{node.name}"
 
 
@@ -158,7 +160,7 @@ def test_republish_all_iterates_nodes(db, fake_mqtt):
     _node(db, name="n2")
 
     assert config_push.republish_all(db) is True
-    topics = [c.published[0][0] for c in fake_mqtt.calls for _ in c.published]
+    topics = [p[0] for c in fake_mqtt.calls for p in c.published]
     assert topics == ["isentinel/config/n1", "isentinel/config/n2"]
 
 
@@ -172,6 +174,20 @@ def test_build_node_config_includes_detector_device(db):
     assert cfg["detector"]["device"] == "cuda:1"
 
 
+def test_build_node_config_face_defaults_keep_device_pins(db):
+    node = Node(name="pinned", detector_device="cuda:1", face_device="cuda:2")
+    db.add(node)
+    db.commit()
+
+    cfg = config_push.build_node_config(db, node)
+
+    assert cfg["detector"]["device"] == "cuda:1"
+    assert cfg["face"] == {
+        "device": "cuda:2", "min_width_px": 80.0, "min_det_score": 0.6,
+        "max_yaw": 0.35, "blur_min": 120.0, "min_frames": 3,
+    }
+
+
 def test_build_node_config_device_empty_when_unset(db):
     from app.models.node import Node
     from app.services.config_push import build_node_config
@@ -180,3 +196,128 @@ def test_build_node_config_device_empty_when_unset(db):
     db.commit()
     cfg = build_node_config(db, node)
     assert cfg["detector"]["device"] == ""
+
+
+# --- R2: toggle clip per zona -----------------------------------------------
+
+def test_build_node_config_zone_includes_clip_toggle(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    from app.models.zone import Zone
+    n = Node(name="n1", type="server")
+    db.add(n)
+    db.commit()
+    cam = Camera(name="CamX", host="127.0.0.1", node_id=n.id)
+    db.add(cam)
+    db.commit()
+    db.refresh(cam)
+    z = Zone(camera_id=cam.id, name="Gate", type="absensi",
+             polygon=[[0, 0], [1, 0], [1, 1], [0, 1]], snapshot=False, clip=False)
+    db.add(z)
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    payload = bnc(db, n)
+    zcfg = payload["cameras"][0]["zones"][0]
+    assert zcfg["snapshot"] is False
+    assert zcfg["clip"] is False
+
+
+# --- R4: dwell trigger per zona ---------------------------------------------
+
+def test_build_node_config_zone_includes_dwell_seconds(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    from app.models.zone import Zone
+    n = Node(name="n1", type="server")
+    db.add(n)
+    db.commit()
+    cam = Camera(name="CamX", host="127.0.0.1", node_id=n.id)
+    db.add(cam)
+    db.commit()
+    db.refresh(cam)
+    z = Zone(camera_id=cam.id, name="Gate", type="absensi", direction="entry",
+             polygon=[[0, 0], [1, 0], [1, 1], [0, 1]], dwell_seconds=3)
+    db.add(z)
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    zcfg = bnc(db, n)["cameras"][0]["zones"][0]
+    assert zcfg["dwell_seconds"] == 3
+
+
+def test_build_node_config_zone_dwell_defaults_zero(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    from app.models.zone import Zone
+    n = Node(name="n2", type="server")
+    db.add(n)
+    db.commit()
+    cam = Camera(name="CamY", host="127.0.0.1", node_id=n.id)
+    db.add(cam)
+    db.commit()
+    db.refresh(cam)
+    z = Zone(camera_id=cam.id, name="Z", type="restricted",
+             polygon=[[0, 0], [1, 0], [1, 1]])
+    db.add(z)
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    assert bnc(db, n)["cameras"][0]["zones"][0]["dwell_seconds"] == 0
+
+
+# --- R5: behaviors zona + setelan deteksi per kamera -------------------------
+
+def test_build_node_config_zone_includes_behaviors_and_trigger(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    from app.models.zone import Zone
+    n = Node(name="r5", type="server")
+    db.add(n); db.commit()
+    cam = Camera(name="CamR5", host="127.0.0.1", node_id=n.id)
+    db.add(cam); db.commit(); db.refresh(cam)
+    db.add(Zone(camera_id=cam.id, name="Gate", type="attendance", direction="entry",
+                polygon=[[0, 0], [1, 0], [1, 1]], trigger_seconds=3,
+                behaviors=[{"kind": "attendance", "trigger_seconds": 3}]))
+    db.add(Zone(camera_id=cam.id, name="Lorong", type="behavior",
+                polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[{"kind": "intrusion", "trigger_seconds": 0},
+                           {"kind": "loitering", "trigger_seconds": 30}]))
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    zones = {z["id"]: z for z in bnc(db, n)["cameras"][0]["zones"]}
+    gate = next(z for z in zones.values() if z["name"] == "Gate")
+    lorong = next(z for z in zones.values() if z["name"] == "Lorong")
+    assert gate["trigger_seconds"] == 3
+    assert gate["behaviors"] == [{"kind": "attendance", "trigger_seconds": 3}]
+    assert lorong["behaviors"] == [{"kind": "intrusion", "trigger_seconds": 0},
+                                   {"kind": "loitering", "trigger_seconds": 30}]
+
+
+def test_build_node_config_camera_detection_overrides(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    n = Node(name="r5b", type="server")
+    db.add(n); db.commit()
+    db.add(Camera(name="Cfg", host="127.0.0.1", node_id=n.id, ai_fps=8.0, confidence=0.45,
+                  analyzers=["intrusion"], motion_enabled=False))
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    cam = bnc(db, n)["cameras"][0]
+    assert cam["ai_fps"] == 8.0
+    assert cam["confidence"] == 0.45
+    assert cam["analyzers"] == ["intrusion"]
+    assert cam["motion"]["enabled"] is False
+    assert cam["motion"]["threshold"] == settings.motion_threshold
+
+
+def test_build_node_config_camera_uses_global_defaults(db):
+    from app.models.camera import Camera
+    from app.models.node import Node
+    n = Node(name="r5c", type="server")
+    db.add(n); db.commit()
+    db.add(Camera(name="Def", host="127.0.0.1", node_id=n.id))
+    db.commit()
+    from app.services.config_push import build_node_config as bnc
+    cam = bnc(db, n)["cameras"][0]
+    assert cam["ai_fps"] == settings.default_ai_fps
+    assert cam["confidence"] == settings.detector_conf
+    assert cam["analyzers"] is None          # None = semua analyzer aktif
+    assert cam["motion"]["enabled"] is True

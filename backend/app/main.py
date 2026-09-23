@@ -11,7 +11,7 @@ from app.api.credential_profiles import router as credential_profiles_router
 from app.core.config import settings
 from app.core.db import Base, get_db, SessionLocal
 from app.core.security import hash_password
-from app.models import user as _u, node as _n, camera as _c, setting as _s  # noqa: F401 — register tables
+from app.models import user as _u, node as _n, camera as _c, setting as _s, detector_setting as _ds  # noqa: F401 — register tables
 from app.services.events_consumer import EventConsumer
 from app.models.user import User
 from app.models.node import Node
@@ -52,6 +52,13 @@ async def lifespan(app: FastAPI):
             refresh_gallery(db)
         except Exception:
             logger.warning("gallery refresh at startup failed", exc_info=True)
+        # Rekonsiliasi stream go2rtc (kamera enabled vs cam_* yang terdaftar).
+        # Best-effort: go2rtc belum tentu siap saat API start.
+        try:
+            from app.services.go2rtc import sync_all
+            logger.info("go2rtc sync at startup: %s", sync_all(db))
+        except Exception:
+            logger.warning("go2rtc sync at startup failed", exc_info=True)
     except Exception:
         logger.warning("republish_all at startup failed", exc_info=True)
     finally:
@@ -103,3 +110,5 @@ app.include_router(employees_router)
 app.include_router(shifts_router)
 app.include_router(enrollment_router)
 app.include_router(attendance_router)
+from app.api.detector_settings import router as detector_settings_router
+app.include_router(detector_settings_router)

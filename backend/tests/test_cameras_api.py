@@ -562,3 +562,21 @@ def test_alert_camera_nullable_allows_camera_delete(client, db):
     db.commit()
     assert client.delete(f"/api/v1/cameras/{cam['id']}", headers=h).status_code == 200
     assert db.query(Alert).count() == 1 and db.query(Alert).first().camera_id is None
+
+def test_patch_camera_detection_settings_validates_and_pushes(client, monkeypatch):
+    h = _admin_headers(client)
+    camera = client.post("/api/v1/cameras", json={"name": "cam-ai", "host": "1.2.3.4"}, headers=h).json()
+    pushed = []
+    monkeypatch.setattr("app.api.cameras._config_push", lambda _db, camera_id: pushed.append(camera_id))
+
+    response = client.patch(f"/api/v1/cameras/{camera['id']}", json={
+        "ai_fps": 8, "confidence": 0.45, "analyzers": ["intrusion"], "motion_enabled": False,
+    }, headers=h)
+
+    assert response.status_code == 200
+    assert {key: response.json()[key] for key in ("ai_fps", "confidence", "analyzers", "motion_enabled")} == {
+        "ai_fps": 8.0, "confidence": 0.45, "analyzers": ["intrusion"], "motion_enabled": False,
+    }
+    assert pushed == [camera["id"]]
+    assert client.patch(f"/api/v1/cameras/{camera['id']}", json={"ai_fps": 0.4}, headers=h).status_code == 422
+    assert client.patch(f"/api/v1/cameras/{camera['id']}", json={"analyzers": ["bad"]}, headers=h).status_code == 422

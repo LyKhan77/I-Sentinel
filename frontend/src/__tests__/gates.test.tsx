@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
@@ -13,7 +13,7 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     id,
     camera_id: 1,
     name: direction === 'entry' ? 'Gate Entry' : 'Gate Exit',
-    type: 'absensi',
+    type: 'attendance',
     direction,
     polygon: [
       [0.1, 0.1],
@@ -23,9 +23,11 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
     schedule: null,
     severity: 'warning',
     rate_limit_min: 5,
-    snapshot: true,
+    snapshot: true, clip: true,
     telegram: false,
     active: true,
+    trigger_seconds: 0,
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
     camera_name: 'CAM-01',
   }
 }
@@ -37,14 +39,20 @@ const CAMS = [
 const resp = (status: number, body: unknown) => ({ ok: status < 400, status, json: () => Promise.resolve(body) })
 
 function stubFetch(zones: Zone[], me = ME) {
-  const fetchMock = vi.fn(async (url: string) => {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     if (u.endsWith('/auth/me')) return resp(200, me)
+    if (u.includes('/zones/') && init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body))
+      const z = zones.find((x) => u.endsWith(`/zones/${x.id}`))!
+      return resp(200, { ...z, ...body })
+    }
     if (u.endsWith('/zones')) return resp(200, zones)
     if (u.endsWith('/cameras')) return resp(200, CAMS)
     return resp(404, null)
   })
   vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
 
 function renderPage() {
@@ -91,4 +99,23 @@ test('admin can add a gate zone', async () => {
   await screen.findByTestId('gate-row-1')
   expect(screen.getByTestId('gate-add')).toBeEnabled()
   expect(screen.getAllByRole('combobox')[1]).toBeEnabled()
+})
+
+test('gate attendance tanpa kolom trigger, dengan petunjuk area wajah', async () => {
+  stubFetch([gate(1, 'entry')])
+  renderPage()
+
+  await screen.findByTestId('gate-row-1')
+  expect(screen.queryByTestId('gate-trigger-1')).not.toBeInTheDocument()
+  expect(screen.getByTestId('gates-face-hint')).toHaveTextContent(/wajah/i)
+})
+
+test('perubahan gate yang tersimpan memunculkan notifikasi sukses', async () => {
+  stubFetch([gate(1, 'entry')])
+  renderPage()
+
+  await screen.findByTestId('gate-row-1')
+  fireEvent.change(document.querySelector('#gate-dir-1')!, { target: { value: 'exit' } })
+
+  expect(await screen.findByTestId('gate-toast')).toHaveTextContent(/tersimpan/i)
 })

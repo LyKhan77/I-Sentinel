@@ -391,9 +391,71 @@ html {
 /* Editor zona + panel properti (mockup 06): dua kolom di desktop. Di layar
    sempit kolom panel cuma menyisakan kanvas yang tak terbaca, jadi keduanya
    ditumpuk satu kolom dan divider vertikal pindah jadi garis atas panel. */
+// toast mengambang di kanan atas, tidak mendorong layout saat muncul/hilang
+.toast-stack {
+  position: fixed;
+  inset-block-start: 56px;
+  inset-inline-end: 16px;
+  z-index: 9000;
+}
+
+@media (max-width: 671px) {
+  .toast-stack {
+    inset-inline: 16px;
+  }
+
+  .toast-stack .cds--toast-notification { inline-size: auto; }
+}
+
+// rail kamera: mana yang sudah punya zona terlihat tanpa membuka dropdown satu-satu
+.zone-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-block-size: 640px;
+  overflow-y: auto;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-border-subtle);
+}
+
+.zone-rail__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--cds-layer-01);
+  border: 0;
+  border-inline-start: 2px solid transparent;
+  color: var(--cds-text-primary);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.zone-rail__item:hover { background: var(--cds-layer-hover-01); }
+
+.zone-rail__item--sel {
+  border-inline-start-color: var(--cds-interactive);
+  background: var(--cds-layer-selected-01);
+}
+
+.zone-rail__item--empty { color: var(--cds-text-disabled); }
+
+.zone-rail__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.zone-rail__count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--cds-border-subtle);
+  color: var(--cds-text-secondary);
+}
+
+.zone-rail__types { grid-column: 1 / -1; display: flex; gap: 4px; flex-wrap: wrap; }
+
 .configuration-zones {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  grid-template-columns: 200px minmax(0, 1.4fr) minmax(280px, 1fr);
 
   > * {
     min-inline-size: 0;
@@ -409,6 +471,20 @@ html {
   .configuration-zones {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .zone-rail {
+    flex-direction: row;
+    max-block-size: none;
+    overflow-x: auto;
+  }
+
+  .zone-rail__item {
+    flex: 0 0 auto;
+    border-inline-start: 0;
+    border-block-end: 2px solid transparent;
+  }
+
+  .zone-rail__item--sel { border-block-end-color: var(--cds-interactive); }
 
   .configuration-zones__details {
     border-inline-start: 0;
@@ -758,6 +834,34 @@ html {
   }
 }
 
+/* Tabstrip detail event (mockup 03): media dipisah per tab, tab aktif biru. */
+.ev-tabstrip {
+  display: flex;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  margin-block-end: 14px;
+}
+
+.ev-tab {
+  font-size: 13px;
+  padding: 8px 14px;
+  color: var(--cds-text-helper);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+
+  &.on {
+    color: var(--cds-text-primary);
+    border-bottom-color: #4589ff;
+    font-weight: 600;
+  }
+
+  &:disabled {
+    color: var(--cds-text-disabled, #525252);
+    cursor: not-allowed;
+  }
+}
+
 .ev-player {
   display: block;
   inline-size: 100%;
@@ -778,6 +882,16 @@ html {
   max-block-size: 360px;
   object-fit: contain;
   margin-block-start: 12px;
+}
+
+.ev-crop img {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 240px;
+  max-block-size: 320px;
+  object-fit: contain;
+  margin-block-start: 12px;
+  border: 1px solid var(--cds-border-subtle);
 }
 
 /* Grid metadata bergaris 1px ala mockup; auto-fit supaya tetap 1 kolom di
@@ -839,3 +953,36 @@ html {
 .cds--toast-notification {
   border-radius: 0;
 }
+
+.det-global {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--cds-border-subtle);
+  border: 1px solid var(--cds-border-subtle);
+  margin-block-end: 16px;
+}
+.det-tile { background: var(--cds-layer-01); padding: 16px; display: grid; gap: 4px; }
+.det-tile small, .det-tile span, .det-page > p { color: var(--cds-text-secondary); font-size: 12px; }
+.det-tile strong { font-size: 18px; font-weight: 300; }
+.det-table { inline-size: 100%; border-collapse: collapse; }
+.det-table th, .det-table td { padding: 10px 12px; border-block-end: 1px solid var(--cds-border-subtle); text-align: start; vertical-align: middle; }
+.det-table th { color: var(--cds-text-secondary); font-size: 12px; font-weight: 400; }
+.det-table td { font-size: 14px; }
+.det-num {
+  inline-size: 72px; padding: 4px 8px; font-size: 12px;
+  background: var(--cds-field-01); color: var(--cds-text-primary);
+  border: 1px solid var(--cds-border-subtle); border-block-end-color: var(--cds-border-strong);
+}
+.det-num::placeholder { color: var(--cds-text-placeholder); }
+// chip ringkas sesuai mockup 06 — bukan tombol Carbon yang setinggi 32px
+.det-chip {
+  display: inline-block; font-size: 10px; letter-spacing: .32px; padding: 2px 7px;
+  margin-inline-end: 4px; background: none; cursor: pointer;
+  border: 1px solid var(--cds-border-subtle); color: var(--cds-text-secondary);
+}
+.det-chip.on { border-color: var(--cds-support-success); color: var(--cds-support-success); }
+.det-actions { text-align: end; }
+.det-link { background: none; border: 0; padding: 0; font-size: 12px; cursor: pointer; color: var(--cds-link-primary); }
+.det-advanced { display: grid; gap: 16px; max-inline-size: 320px; margin-block-start: 16px; }
+@media (max-width: 672px) { .det-global { grid-template-columns: 1fr 1fr; } .det-table { min-inline-size: 760px; } .det-page { overflow-x: auto; } }

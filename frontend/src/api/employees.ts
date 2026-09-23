@@ -69,6 +69,20 @@ export async function uploadPhoto(employeeId: number, file: File): Promise<{ emb
   return expectOk(await apiFetch(`/employees/${employeeId}/photos`, { method: 'POST', body: fd }), 'upload photo')
 }
 
+export type BatchPhotoResult = {
+  ok: boolean
+  reason?: string
+  quality?: number | null
+  path?: string | null
+  duplicate_of?: { employee_id: number; score: number } | null
+}
+
+export async function uploadPhotosBatch(employeeId: number, files: File[]): Promise<{ results: BatchPhotoResult[] }> {
+  const fd = new FormData()
+  files.forEach((f) => fd.append('files', f))
+  return expectOk(await apiFetch(`/employees/${employeeId}/photos/batch`, { method: 'POST', body: fd }), 'upload photos batch')
+}
+
 export async function deletePhoto(employeeId: number, embeddingId: number): Promise<void> {
   const res = await apiFetch(`/employees/${employeeId}/photos/${embeddingId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`delete photo failed: ${res.status}`)

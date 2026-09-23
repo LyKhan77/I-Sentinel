@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     detector_nms: bool = False
     detector_conf: float = 0.4
     detector_imgsz: int = 640
+    # R5 "Detection & Model": default global untuk kamera tanpa override.
+    default_ai_fps: float = 5.0
+    motion_enabled: bool = True           # motion gate: inferensi hanya saat ada gerakan
+    motion_threshold: float = 25.0        # selisih intensitas piksel (0-255)
+    motion_min_area: float = 0.01         # area gerak minimum (rasio frame)
+    motion_force_interval_s: float = 2.0  # paksa inferensi berkala (objek diam)
     retention_days: int = 30
     login_max_attempts: int = 5      # percobaan login gagal per (username, ip) sebelum dikunci
     login_lockout_min: int = 15      # lama kunci, menit
@@ -36,6 +42,14 @@ class Settings(BaseSettings):
     face_model_dir: str = "~/.isentinel/faces_models"
     face_match_threshold: float = 0.40
     face_min_quality: float = 0.5
+    face_dup_warn: float = 0.6  # warn enrollment bila cosine vs employee lain >= ini
+    # fallback gerbang wajah attendance bila baris detector_setting belum ada
+    face_min_width_px: float = 80.0
+    face_min_det_score: float = 0.6
+    face_max_yaw: float = 0.35
+    face_blur_min: float = 120.0
+    face_min_frames: int = 3
+    attendance_cooldown_min: int = 5
     no_exit_grace_min: int = 60  # toleransi setelah jam shift usai sebelum status jadi no_exit
     # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)
 

@@ -28,6 +28,10 @@ export type Camera = {
   status: string
   probe_main: ProbeStream | null
   probe_sub: ProbeStream | null
+  ai_fps: number | null
+  confidence: number | null
+  analyzers: string[] | null
+  motion_enabled: boolean | null
 }
 
 export type GpuProcess = { pid: number; name: string; user: string | null; mem_mb: number | null }
@@ -49,6 +53,7 @@ export type CameraNode = {
   hw?: NodeHw | null
   modules?: NodeModules | null
   detector_device?: string | null
+  face_device?: string | null
 }
 
 export type ProbeResult = {
@@ -82,6 +87,10 @@ export type CameraPayload = {
   probe_main?: ProbeStream | null
   probe_sub?: ProbeStream | null
   status?: string
+  ai_fps?: number | null
+  confidence?: number | null
+  analyzers?: string[] | null
+  motion_enabled?: boolean | null
 }
 
 export type CameraImportEntry = {
@@ -157,6 +166,13 @@ export async function deleteCamera(id: number): Promise<void> {
   if (!res.ok) throw new Error(`delete camera failed: ${res.status}`)
 }
 
+export type Go2rtcSyncResult = { added: string[]; removed: string[]; kept: number }
+
+export async function syncGo2rtc(): Promise<Go2rtcSyncResult> {
+  const res = await apiFetch('/cameras/sync-go2rtc', { method: 'POST' })
+  return expectOk(res, 'sync go2rtc')
+}
+
 export async function probeCamera(host: string, cameraId?: number): Promise<ProbeResult>
 export async function probeCamera(payload: ProbePayload): Promise<ProbeResult>
 export async function probeCamera(hostOrPayload: string | ProbePayload, cameraId?: number): Promise<ProbeResult> {
@@ -191,4 +207,12 @@ export async function setNodeDetectorDevice(nodeId: number, device: string): Pro
     body: JSON.stringify({ device }),
   })
   return expectOk(res, 'set detector device')
+}
+
+export async function setNodeFaceDevice(nodeId: number, device: string): Promise<CameraNode> {
+  const res = await apiFetch(`/nodes/${nodeId}/face-device`, {
+    method: 'PUT',
+    body: JSON.stringify({ device }),
+  })
+  return expectOk(res, 'set face device')
 }

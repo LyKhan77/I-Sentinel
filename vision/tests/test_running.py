@@ -30,8 +30,15 @@ def zone(**kw):
     return z
 
 
-def one_track(centroid, tid=1, bbox=(0.0, 0.0, 0.1, 0.1)):
-    return [FakeTrack(tid, bbox, centroid)]
+def _bbox_standing_at(centroid):
+    """bbox yang titik pijaknya TEPAT di `centroid` — analyzer zona memakai titik pijak,
+    jadi 'track di titik P' pada tes lama tetap berarti P."""
+    cx, cy = centroid
+    return (cx - 0.05, cy - 0.1, cx + 0.05, cy)
+
+
+def one_track(centroid, tid=1, bbox=None):
+    return [FakeTrack(tid, bbox or _bbox_standing_at(centroid), centroid)]
 
 
 def test_registry_has_running():
@@ -64,7 +71,7 @@ def test_fast_track_emits_with_speed():
     # 0.05*640*0.01/0.2 = 1.6 m/s exactly (EMA first sample = new_s)
     assert abs(p["speed_mps"] - 1.6) <= 0.05
     assert p["confidence"] is None
-    assert p["bbox_norm"] == [0.0, 0.0, 0.1, 0.1]
+    assert len(p["bbox_norm"]) == 4
 
 
 def test_fast_vertical_track_scales_by_frame_height():

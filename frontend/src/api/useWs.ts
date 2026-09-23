@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react'
 import { listEvents } from './events'
 
 // Sumber data live = polling 5s (default, selalu jalan).
-// WS /api/v1/ws/events dicoba sebagai enhancement: auth backend Task 1 hanya
-// menerima ?token=<jwt> sedangkan JWT kita httpOnly cookie (tidak bisa dibaca JS).
-// Bila handshake WS ditolak → onError/onClose membiarkan polling tetap jalan.
+// WS /api/v1/ws/events dicoba sebagai enhancement: backend menerima JWT dari
+// cookie httpOnly (fallback ?token= hanya utk klien non-browser), dan browser
+// ikut mengirim cookie di handshake — jadi bbox realtime sampai ke UI.
+// Bila handshake tetap ditolak → onError/onClose membiarkan polling jalan.
 export function useLiveEvents(onEvent: (e: unknown) => void) {
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
@@ -28,8 +29,8 @@ export function useLiveEvents(onEvent: (e: unknown) => void) {
     poll()
     const timer = setInterval(poll, 5000)
 
-    // WS enhancement — cookie ikut terkirim di handshake browser; jika backend
-    // menolak tanpa ?token, koneksi tutup dan polling di atas tetap sumber data.
+    // WS enhancement — cookie ikut terkirim di handshake browser; backend menerima
+    // keduanya (cookie / ?token). Polling di atas tetap sumber data utama.
     let ws: WebSocket | null = null
     try {
       const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/v1/ws/events`

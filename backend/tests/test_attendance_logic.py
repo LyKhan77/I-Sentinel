@@ -9,6 +9,7 @@ from app.models.event import Event
 from app.models.shift import Shift
 from app.services import attendance
 from app.services.attendance import LOCAL_TZ
+from app.core.config import settings
 from app.services.face import MatchResult
 
 MON = (2025, 1, 6)  # Senin — masuk workdays default
@@ -255,3 +256,257 @@ def test_recompute_keeps_override_note(db):
     attendance.recompute_day(db, e.id, _at(*MON, 7, 10).date())
     db.refresh(row)
     assert row.override_note == "izin telat"
+
+
+# --- Opsi B: payload embedding dari node -> match gallery langsung -----------
+
+def test_handle_face_event_with_node_embedding(db, monkeypatch):
+    """Payload bawa embedding -> match gallery langsung, tanpa engine backend."""
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    called = {"embed": 0}
+
+    def _spy_match_crop(db_, path):
+        called["embed"] += 1
+        return MatchResult(None, None, None, "not_configured")
+
+    monkeypatch.setattr(attendance.face, "match_crop", _spy_match_crop)
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.9})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None
+    assert row.employee_id == e.id
+    assert called["embed"] == 0  # backend TIDAK embed ulang
+
+
+def test_handle_face_event_low_quality_rejected(db, monkeypatch):
+    _shift(db)
+    _emp(db, _shift(db))
+    _camera(db)
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(None, None, q, "low_quality"))
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.1})
+    assert attendance.handle_face_event(db, ev) is None
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "low_quality"
+
+
+def test_handle_face_event_fallback_crop_without_embedding(db, monkeypatch):
+    """Tanpa embedding -> jalur lama (match_crop) — status quo terjaga."""
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    monkeypatch.setattr(attendance.face, "match_crop",
+                        lambda db_, path: MatchResult(e.id, 0.8, 0.9, "matched"))
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10))  # tanpa embedding
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None
+    assert row.employee_id == e.id
+
+
+# --- R5b: cooldown dan sanitasi embedding -----------------------------------
+
+
+def _matched_vec(eid, score=0.8):
+    return lambda vector, quality=None: MatchResult(eid, score, quality, "matched")
+
+
+def _no_match_vec():
+    return lambda vector, quality=None: MatchResult(None, None, quality, "no_match")
+
+
+VEC = {"embedding": [0.1] * 512, "face_quality": 0.8}
+
+
+def test_embedding_never_stored_after_match(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), VEC)
+    assert attendance.handle_face_event(db, ev) is not None
+    db.refresh(ev)
+    assert "embedding" not in ev.payload
+    assert (ev.payload["employee_name"], ev.payload["match_reason"]) == ("Budi", "matched")
+
+
+def test_embedding_stripped_on_unmatched_and_invalid_paths(db, monkeypatch):
+    _camera(db)
+    _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _no_match_vec())
+    unmatched = _raw_event(db, "entry", _at(*MON, 7, 10), VEC)
+    invalid = _raw_event(db, "sideways", _at(*MON, 7, 11), VEC)
+    attendance.handle_face_event(db, unmatched)
+    attendance.handle_face_event(db, invalid)
+    for ev in (unmatched, invalid):
+        db.refresh(ev)
+        assert "embedding" not in ev.payload
+    assert unmatched.payload["match_reason"] == "no_match"
+
+
+def test_embedding_stripped_when_neither_vector_nor_crop_can_match(db):
+    _camera(db)
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [], "crop_path": None})
+    assert attendance.handle_face_event(db, ev) is None
+    db.refresh(ev)
+    assert "embedding" not in ev.payload
+
+
+def test_embedding_event_without_crop_is_still_matched(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), {**VEC, "crop_path": None})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None and row.snapshot_path is None
+
+
+def test_second_pass_within_cooldown_records_one_attendance(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    second = _raw_event(db, "entry", _at(*MON, 7, 13), VEC)
+    assert attendance.handle_face_event(db, second) is None
+    assert db.query(AttendanceEvent).count() == 1
+    db.refresh(second)
+    assert (second.payload["match_reason"], second.payload["employee_id"]) == ("cooldown", e.id)
+    assert "embedding" not in second.payload
+
+
+def test_pass_after_cooldown_records_again(db, monkeypatch):
+    """Setelah cooldown lewat, exit dicatat lagi (entry dibatasi sekali per hari)."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 12, 0), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 12, 6), VEC))
+    assert db.query(AttendanceEvent).count() == 2
+
+
+def test_cooldown_is_per_direction(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 7, 12), VEC))
+    assert db.query(AttendanceEvent).count() == 2
+
+
+def test_out_of_order_delivery_within_cooldown_records_once(db, monkeypatch):
+    """Antrean disk node bisa mengirim event lama setelah yang baru."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 8), VEC))
+    assert db.query(AttendanceEvent).count() == 1
+
+
+def test_cooldown_across_cameras_and_exact_boundary(db, monkeypatch):
+    first_camera = _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    second_camera = _camera(db)
+    assert first_camera.id != second_camera.id
+    at_boundary = _raw_event(db, "entry", _at(*MON, 7, 15), VEC)
+    at_boundary.camera_id = second_camera.id
+    db.commit()
+    assert attendance.handle_face_event(db, at_boundary) is None
+    assert db.query(AttendanceEvent).count() == 1
+
+
+# --- R1: anotasi identitas pada crop setelah match ---------------------------
+
+def test_handle_face_event_annotates_crop(tmp_path, db, monkeypatch):
+    """Match sukses → file crop di-overwrite dengan nama + score (best-effort)."""
+    from PIL import Image
+    import numpy as np
+
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path))
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+
+    p = tmp_path / "crops" / "x.jpg"
+    p.parent.mkdir()
+    Image.new("RGB", (120, 120), (255, 255, 255)).save(p)
+    before = p.read_bytes()
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.9})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None
+    after = p.read_bytes()
+    assert after != before
+    img = Image.open(p)
+    assert img.size == (120, 120)
+
+
+def test_handle_face_event_annotation_failure_not_fatal(tmp_path, db, monkeypatch):
+    """Crop hilang/corrupt → attendance tetap jalan (anotasi best-effort)."""
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path))
+    monkeypatch.setattr(attendance.face, "match_vector",
+                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10),
+                    {"embedding": [0.1] * 512, "face_quality": 0.9,
+                     "crop_path": "crops/nope.jpg"})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None
+
+
+def test_second_entry_same_day_after_cooldown_is_not_recorded(db, monkeypatch):
+    """Entry sekali per hari: lewat lagi di zona entry (> cooldown) tidak menggandakan absensi."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    assert attendance.handle_face_event(db, again) is None
+    assert db.query(AttendanceEvent).filter_by(direction="entry").count() == 1
+    db.refresh(again)
+    assert (again.payload["match_reason"], again.payload["employee_name"]) == ("already_in", "Budi")
+
+
+def test_earlier_entry_arriving_late_is_still_recorded(db, monkeypatch):
+    """Antrean disk node bisa mengirim entry pagi setelah entry siang: jam masuk harus yang pagi."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 9, 30), VEC))
+    assert attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC)) is not None
+    day = db.query(AttendanceDay).filter_by(employee_id=e.id).one()
+    assert attendance._local(day.first_entry).hour == 7
+
+
+def test_entry_next_day_and_repeated_exits_are_recorded(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 12, 0), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "exit", _at(*MON, 16, 5), VEC))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(2025, 1, 7, 7, 5), VEC))
+    assert db.query(AttendanceEvent).filter_by(direction="entry").count() == 2
+    assert db.query(AttendanceEvent).filter_by(direction="exit").count() == 2

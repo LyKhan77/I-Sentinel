@@ -78,6 +78,16 @@ class MqttTransport:
             f"isentinel/nodes/{self.cfg.node_id}/heartbeat", json.dumps(hb), qos=0, retain=False
         )
 
+    def publish_detections(self, camera_id: int, boxes: list[dict], kind: str = "person") -> None:
+        """Deteksi realtime debugger, QoS 0 tanpa antrean saat broker putus."""
+        if not self._client.is_connected():
+            return
+        self._client.publish(
+            f"isentinel/detections/{self.cfg.node_id}",
+            json.dumps({"camera_id": camera_id, "kind": kind, "boxes": boxes}),
+            qos=0, retain=False,
+        )
+
     def close(self) -> None:
         # graceful: just disconnect. LWT only fires on ungraceful drop; backend
         # marks node offline via heartbeat timeout later.

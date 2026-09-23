@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from typing import List
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
@@ -69,6 +70,75 @@ def upload_photo(
     db.refresh(row)
     face.refresh_gallery(db)
     return {"embedding_id": row.id, "quality": row.quality}
+
+
+@router.post("/{employee_id}/photos/batch")
+def upload_photos_batch(
+    employee_id: int,
+    files: List[UploadFile] = File(...),
+    admin=Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Enrollment multi-foto: embed + auto-crop wajah + dup-warn per file.
+
+    Hasil per file (tidak fatal): ok=True → tersimpan (crop saja, bukan foto
+    mentah); ok=False → reason no_face|low_quality|too_large|max_photos.
+    duplicate_of = warning wajah mirip employee lain (bukan reject).
+    """
+    _employee(db, employee_id)
+    results = []
+    for f in files:
+        r = _enroll_one(db, employee_id, f)
+        results.append(r)
+    face.refresh_gallery(db)
+    return {"results": results}
+
+
+def _enroll_one(db, employee_id: int, f: UploadFile) -> dict:
+    """Proses satu file batch → dict hasil. Database error = raise (caller 500)."""
+    count = db.query(FaceEmbedding).filter(FaceEmbedding.employee_id == employee_id).count()
+    if count >= MAX_PHOTOS:
+        return {"ok": False, "reason": "max_photos"}
+
+    data = f.file.read(MAX_FACE_UPLOAD + 1)
+    if len(data) > MAX_FACE_UPLOAD:
+        return {"ok": False, "reason": "too_large"}
+
+    raw = Path(settings.storage_root) / f"faces/{employee_id}/{uuid.uuid4()}.jpg"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(data)
+    try:
+        faces = face.engine.embed(str(raw))
+    except RuntimeError:
+        raw.unlink(missing_ok=True)
+        return {"ok": False, "reason": "not_configured"}
+    except Exception:
+        raw.unlink(missing_ok=True)
+        raise
+    if not faces:
+        raw.unlink(missing_ok=True)
+        return {"ok": False, "reason": "no_face"}
+
+    best = face._best_face(faces)
+    if best.quality < settings.face_min_quality:
+        raw.unlink(missing_ok=True)
+        return {"ok": False, "reason": "low_quality", "quality": best.quality}
+
+    crop_abs = face.crop_face(str(raw), best.bbox)
+    raw.unlink(missing_ok=True)  # foto mentah tidak dipertahankan
+    if crop_abs is None:
+        return {"ok": False, "reason": "no_face"}
+
+    rel = str(Path(crop_abs).relative_to(settings.storage_root))
+    row = face._save_embedding(db, employee_id, best, rel)
+    dup = face.find_duplicate(best.vector, employee_id)
+    return {
+        "ok": True,
+        "embedding_id": row.id,
+        "quality": row.quality,
+        "path": rel,
+        "duplicate_of": ({"employee_id": dup[0], "score": round(dup[1], 3)} if dup else None),
+    }
 
 
 @router.get("/{employee_id}/photos")

@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 
 from .base import Analyzer
-from .intrusion import point_in_polygon
+from .intrusion import ground_point, point_in_polygon
 
 EMA_ALPHA = 0.4
 COOLDOWN_S = 5.0
@@ -53,7 +53,7 @@ class RunningAnalyzer(Analyzer):
             self._speed[tr.id] = s
             if s <= self.speed_limit_mps:
                 continue
-            if not point_in_polygon(tr.centroid, self.polygon):
+            if not point_in_polygon(ground_point(tr), self.polygon):
                 continue
             last_emit = self._last_emit.get(tr.id)
             if last_emit is not None and ts - last_emit < COOLDOWN_S:

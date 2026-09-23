@@ -11,8 +11,11 @@ class CameraCfg(BaseModel):
     camera_id: int
     source_url: str
     ai_fps: float = 5.0
+    confidence: float | None = None        # override detector conf (None = env/model)
+    analyzers: list | None = None          # None = semua, [] = tanpa analitik (hemat GPU)
+    motion: dict = {}                      # {enabled,threshold,min_area,force_interval_s}
     meters_per_pixel: float | None = None  # calibration for speed (m/s)
-    zones: list = []  # restricted zones w/ schedule+polygon (from config apply)
+    zones: list = []  # zones w/ polygon + behaviors (from config apply)
 
 
 class NodeSettings(BaseSettings):
@@ -33,6 +36,9 @@ class NodeSettings(BaseSettings):
     record_clip_s: int = 30
     log_level: str = "INFO"
     detector_device: str = ""  # ""=auto; "cuda:N" pin (Task 9, fail-fast if invalid)
+    face_embed: bool = True   # Opsi B: embed wajah di node; False = kirim crop saja
+    face_device: str = ""     # ""=auto, "cpu", "cuda:N"
+    face_model_dir: str = ""  # default: <data_dir>/faces_models
     cameras_json: str = ""  # JSON: [{"camera_id": int, "source_url": str, "ai_fps": float}]
 
     model_config = SettingsConfigDict(env_prefix="VISION_", env_file=".env", extra="ignore")

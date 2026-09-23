@@ -12,12 +12,14 @@ from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
 from .analyzers.base import Analyzer
-from .analyzers.face_gate import crop_upper_body
+from .face_quality import FaceSettings
+from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
 from . import hardware
 from .pipeline.detector import PersonDetector
 from .pipeline.source import FrameSource
 from .pipeline.tracker import ByteTracker
+from .motion import FrameMotionGate
 from .transport import MqttTransport
 
 log = logging.getLogger(__name__)
@@ -43,6 +45,12 @@ def main_stream_name(source_url: str) -> str | None:
     """
     seg = (source_url or "").rstrip("/").rsplit("/", 1)[-1]
     return f"{seg}_main" if seg.startswith("cam_") else None
+
+
+def main_stream_url(source_url: str) -> str:
+    """Full-resolution go2rtc sibling for cam_* streams; preserve other URLs."""
+    name = main_stream_name(source_url)
+    return source_url.rstrip("/").rsplit("/", 1)[0] + "/" + name if name else source_url
 
 
 def _make_event(camera_id: int, track, ts: float) -> dict:
@@ -92,9 +100,10 @@ class _PartialTrack:
 class CameraWorker(threading.Thread):
     def __init__(self, camera_cfg, detector_factory, transport, stop_event, node_id,
                  analyzers: list[Analyzer] | None = None, recorder=None,
-                 emit_person_detect: bool = False):
+                 emit_person_detect: bool = False, motion: dict | None = None):
         super().__init__(daemon=True, name=f"cam-{camera_cfg.camera_id}")
         self.camera_cfg = camera_cfg
+        self.camera_id = camera_cfg.camera_id
         self.detector_factory = detector_factory
         self.transport = transport
         self.stop_event = stop_event
@@ -102,6 +111,15 @@ class CameraWorker(threading.Thread):
         self.analyzers = analyzers or []
         self.recorder = recorder
         self.emit_person_detect = emit_person_detect
+        motion = motion or {}
+        # Config pra-R5 tidak mengirim `motion` → gate OFF (perilaku lama). R5 selalu
+        # mengirim dict berisi `enabled`, jadi default-nya ON kecuali dimatikan.
+        self.motion_gate = (
+            FrameMotionGate(threshold=motion.get("threshold", 25.0),
+                            min_area=motion.get("min_area", 0.01),
+                            force_interval_s=motion.get("force_interval_s", 2.0))
+            if (motion and motion.get("enabled", True)) else None
+        )
         self.events: list[dict] = []  # test hook
         self.source = None
 
@@ -114,12 +132,23 @@ class CameraWorker(threading.Thread):
             for frame in self.source:
                 if self.stop_event.is_set():
                     break
+                if self.motion_gate is not None and not self.motion_gate.update(frame.data, frame.ts):
+                    # Tanpa gerak: lewati inferensi (hemat GPU), tapi tracker tetap
+                    # diberi update kosong supaya track lama expire secara alami —
+                    # objek diam tetap terdeteksi via force_interval_s gate.
+                    tracker.update([], frame.ts)
+                    continue
                 try:
                     detections = detector.detect(frame.data, ts=frame.ts)
                 except Exception:
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if tracks and self.transport is not None:
+                    self.transport.publish_detections(cam_id, [
+                        {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox], "label": None}
+                        for t in tracks
+                    ], kind="person")
                 if self.recorder is not None:
                     if detections and frame.data is not None:
                         try:
@@ -147,8 +176,11 @@ class CameraWorker(threading.Thread):
                                 self.recorder.enqueue(ev)
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
-                        self._attach_crop(partial, frame)
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
+                        media = getattr(az, "media", None)
+                        if media is not None:
+                            ev["snapshot"] = media.get("snapshot", True)
+                            ev["clip"] = media.get("clip", True)
                         self.events.append(ev)
                         self.transport.publish_event(ev)
                         if self.recorder is not None:
@@ -157,82 +189,50 @@ class CameraWorker(threading.Thread):
             if not self.stop_event.is_set():
                 log.exception("camera %s worker died", cam_id)
 
-    def _attach_crop(self, partial: dict, frame) -> None:
-        """Crop upper body for needs_crop partials and upload it inline.
-
-        Prefers the go2rtc MAIN stream snapshot (full resolution -> face is
-        recognisable); falls back to the local substream frame when the main
-        stream is unavailable. Blocking upload (<= retries*60s) is acceptable:
-        absensi gates are low-frequency. Missing recorder/frame/cv2/crop or
-        upload failure leaves the event without crop_path (graceful).
-        """
-        payload = partial.get("payload") or {}
-        if not payload.pop("needs_crop", False):
-            return
-        if self.recorder is None:
-            return
-        jpeg = self._mainstream_crop(payload["bbox_norm"])
-        if jpeg is None and frame.data is not None:
-            jpeg = self._frame_crop(frame.data, payload["bbox_norm"])
-        if jpeg is None:
-            return
-        try:
-            path = self.recorder.upload_bytes(jpeg, "crop")
-        except Exception:
-            log.warning("camera %s: crop upload failed", self.camera_cfg.camera_id,
-                        exc_info=True)
-            return
-        if path:
-            payload["crop_path"] = path
-
-    def _mainstream_crop(self, bbox_norm) -> bytes | None:
-        """Crop from the full-res main stream; None on any failure (caller falls back)."""
-        name = main_stream_name(self.camera_cfg.source_url)
-        if name is None:
-            return None
-        try:
-            jpeg = self.recorder.fetch_frame(name)
-            if not jpeg:
-                return None
-            import cv2
-            import numpy as np
-            arr = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
-            if arr is None:
-                return None
-            return self._encode_crop(arr, bbox_norm)
-        except Exception:
-            log.warning("camera %s: mainstream crop failed, using substream",
-                        self.camera_cfg.camera_id, exc_info=True)
-            return None
-
-    def _frame_crop(self, data, bbox_norm) -> bytes | None:
-        try:
-            return self._encode_crop(data, bbox_norm)
-        except Exception:
-            log.exception("camera %s: crop encode failed", self.camera_cfg.camera_id)
-            return None
-
-    @staticmethod
-    def _encode_crop(frame_data, bbox_norm) -> bytes | None:
-        import cv2
-        crop = crop_upper_body(frame_data, bbox_norm)
-        if crop is None:
-            return None
-        ok, enc = cv2.imencode(".jpg", crop)
-        return enc.tobytes() if ok else None
-
     def stop(self):
         if self.source is not None:
             self.source.close()
+
+
+def attendance_zones(cam: CameraCfg) -> list[dict]:
+    """Active attendance gates with valid direction, including legacy absensi."""
+    return [z for z in cam.zones
+            if z.get("direction") in ("entry", "exit")
+            and any(b.get("kind") == "attendance" for b in behaviors_of(z))]
+
+
+def behaviors_of(z: dict) -> list[dict]:
+    """Daftar behavior zona; fallback kolom lama bila config pra-R5 terpasang."""
+    bs = z.get("behaviors")
+    if bs:
+        return list(bs)
+    legacy: list[dict] = []
+    ztype = z.get("type")
+    dwell = z.get("dwell_seconds", 0) or 0
+    if ztype in ("restricted", "free"):
+        legacy.append({"kind": "intrusion", "trigger_seconds": dwell,
+                       "enabled": ztype == "restricted"})
+    if ztype in ("absensi", "attendance"):
+        legacy.append({"kind": "attendance",
+                       "trigger_seconds": z.get("trigger_seconds", dwell) or 0})
+    if (z.get("loiter_seconds", 0) or 0) > 0:
+        legacy.append({"kind": "loitering", "trigger_seconds": z.get("loiter_seconds", 0)})
+    if (z.get("speed_limit_mps", 0) or 0) > 0:
+        legacy.append({"kind": "running", "trigger_seconds": dwell,
+                       "speed_limit_mps": z.get("speed_limit_mps", 0)})
+    return [b for b in legacy if b.get("enabled", True)]
 
 
 class VisionNode:
     def __init__(self, cfg: NodeSettings | None = None, detector_factory=None, source_factory=None,
                  transport=None):
         self.cfg = cfg or NodeSettings()
+        # confidence per kamera (config R5) menimpa conf global; diisi saat config apply
+        self._camera_conf: dict[int, float] = {}
         self.detector_factory = detector_factory or (
             lambda cam_id: PersonDetector(self.cfg.detector_model, nms=self.cfg.detector_nms,
-                                          conf=self.cfg.detector_conf, imgsz=self.cfg.detector_imgsz,
+                                          conf=self._camera_conf.get(cam_id) or self.cfg.detector_conf,
+                                          imgsz=self.cfg.detector_imgsz,
                                           device=self.cfg.detector_device)
         )
         self.source_factory = source_factory or (
@@ -243,45 +243,72 @@ class VisionNode:
         self.transport = transport or MqttTransport(self.cfg, on_config=self._config_q.put)
         self._default_detector = detector_factory is None
         self.stop_event = threading.Event()
-        self._workers: list[CameraWorker] = []
+        self._workers: list[CameraWorker | FaceGateWorker] = []
+        self._await_config = False  # a configured node must not exit with zero workers
+        self._face_settings = FaceSettings()
         self.events: list[dict] = []  # test hook: all worker events
+        from .face import FaceEmbedder
+        self.face = (FaceEmbedder(self.cfg.face_model_dir
+                                  or os.path.join(self.cfg.data_dir, "faces_models"),
+                                  self.cfg.face_device)
+                     if self.cfg.face_embed else None)
 
     def _cameras_from_config(self, cfg_dict: dict) -> list[CameraCfg]:
         cams = []
         for c in cfg_dict.get("cameras", []):
+            if c.get("confidence"):
+                self._camera_conf[c["camera_id"]] = float(c["confidence"])
             cam = CameraCfg(camera_id=c["camera_id"], source_url=c["source_url"],
                             ai_fps=c.get("ai_fps", 5.0),
+                            confidence=c.get("confidence"),
+                            analyzers=c.get("analyzers"),
+                            motion=c.get("motion") or {},
                             meters_per_pixel=c.get("meters_per_pixel"),
                             zones=[z for z in c.get("zones", [])
                                    if z.get("active", True)
-                                   and (z.get("type") == "restricted"
-                                        or z.get("type") == "absensi"
-                                        or z.get("loiter_seconds", 0) > 0
-                                        or z.get("speed_limit_mps", 0) > 0)])
+                                   and (z.get("behaviors") or behaviors_of(z))])
             cams.append(cam)
         return cams
 
     def _make_analyzers(self, cam: CameraCfg) -> list[Analyzer]:
+        """Build person behavior analyzers; FaceGateWorker handles attendance separately."""
         out = []
         for z in cam.zones:
-            # a zone can carry more than one analyzer: restricted zones get
-            # intrusion, loiter_seconds > 0 gets loitering, and speed_limit_mps > 0
-            # gets running (only when the camera has a calibration)
-            if z.get("type") == "restricted":
-                out.append(ANALYZERS["intrusion"](z))
-            if z.get("type") == "absensi":
-                out.append(ANALYZERS["face_gate"](z))
-            if z.get("loiter_seconds", 0) > 0:
-                out.append(ANALYZERS["loitering"](z))
-            if z.get("speed_limit_mps", 0) > 0:
-                if cam.meters_per_pixel is None:
-                    if cam.camera_id not in self._calib_warned:
-                        self._calib_warned.add(cam.camera_id)
-                        log.info("running analyzer skipped camera %s (no calibration)",
-                                 cam.camera_id)
-                else:
-                    out.append(ANALYZERS["running"](z, cam.meters_per_pixel))
+            media = {"snapshot": z.get("snapshot", True), "clip": z.get("clip", True)}
+            for b in behaviors_of(z):
+                kind = b.get("kind")
+                if kind == "attendance":
+                    continue  # FaceGateWorker owns this zone, regardless of camera master
+                if cam.analyzers is not None and kind not in cam.analyzers:
+                    continue
+                spec = dict(z)
+                spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
+                if kind == "intrusion":
+                    out.append(self._with_media(ANALYZERS["intrusion"](spec), media))
+                elif kind == "loitering":
+                    # loitering: dwell = trigger behavior (legacy: loiter_seconds)
+                    spec["loiter_seconds"] = spec["trigger_seconds"]
+                    out.append(self._with_media(ANALYZERS["loitering"](spec), media))
+                elif kind == "running":
+                    if b.get("speed_limit_mps") is not None:
+                        spec["speed_limit_mps"] = b["speed_limit_mps"]
+                    if not spec.get("speed_limit_mps", 0):
+                        continue
+                    if cam.meters_per_pixel is None:
+                        if cam.camera_id not in self._calib_warned:
+                            self._calib_warned.add(cam.camera_id)
+                            log.info("running analyzer skipped camera %s (no calibration)",
+                                     cam.camera_id)
+                    else:
+                        out.append(self._with_media(
+                            ANALYZERS["running"](spec, cam.meters_per_pixel), media))
         return out
+
+    @staticmethod
+    def _with_media(analyzer, media: dict):
+        """Tempel flag snapshot/clip zona ke analyzer — dibawa worker ke event."""
+        analyzer.media = media
+        return analyzer
 
     def apply_config(self, cfg_dict: dict) -> None:
         """Hot-reload: stop current workers, start new ones from cfg_dict."""
@@ -318,35 +345,70 @@ class VisionNode:
             if self._default_detector:
                 s = self._detector_settings
                 self.detector_factory = lambda cam_id: PersonDetector(
-                    s["model"], nms=s["nms"], conf=s["conf"], imgsz=s["imgsz"],
+                    s["model"], nms=s["nms"],
+                    conf=self._camera_conf.get(cam_id) or s["conf"], imgsz=s["imgsz"],
                     device=self.cfg.detector_device
                 )
+        face = cfg_dict.get("face")
+        if face and "device" in face and self.face is not None:
+            dev = (face.get("device") or "").strip()
+            err = hardware.validate_device_pin(dev)
+            if err:
+                log.error("config push rejected (face): %s", err)
+            elif dev != self.cfg.face_device:
+                # rebuild embedder dengan pin baru (InsightFace dibuat ulang,
+                # provider onnxruntime mengikuti device)
+                from .face import FaceEmbedder
+                root = self.cfg.face_model_dir or os.path.join(self.cfg.data_dir,
+                                                               "faces_models")
+                self.face = FaceEmbedder(root, dev)
+                self.cfg.face_device = dev
+        self._face_settings = FaceSettings.from_config(cfg_dict.get("face"))
+        self._await_config = True
         self._start_workers(self._cameras_from_config(cfg_dict))
 
     def _start_workers(self, cameras: list[CameraCfg]) -> None:
         self._stop_workers()
+        self._await_config |= bool(cameras)
         for cam in cameras:
+            analyzers = self._make_analyzers(cam)
+            gates = attendance_zones(cam)
+            if gates and not analyzers and self.face is None:
+                continue  # no worker to own a recorder when face support is disabled
             recorder = None
-            if self.cfg.api_key:  # produksi: upload blob ke backend
+            if self.cfg.api_key:  # production: upload blobs to backend
                 from .recorder import Recorder
                 recorder = Recorder(cam.camera_id, self.cfg, self.transport)
-            w = CameraWorker(cam, self.detector_factory, self.transport,
-                             threading.Event(), self.cfg.node_id,
-                             analyzers=self._make_analyzers(cam), recorder=recorder,
-                             emit_person_detect=self.cfg.emit_person_detect)
-            w.source = self.source_factory(cam)
-            w.start()
-            self._workers.append(w)
-        log.info("started %d camera worker(s)", len(cameras))
+            if analyzers or not gates:
+                w = CameraWorker(cam, self.detector_factory, self.transport,
+                                 threading.Event(), self.cfg.node_id,
+                                 analyzers=analyzers, recorder=recorder,
+                                 emit_person_detect=self.cfg.emit_person_detect,
+                                 motion=cam.motion)
+                w.source = self.source_factory(cam)
+                w.start()
+                self._workers.append(w)
+            if gates and self.face is not None:
+                fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
+                                    self.cfg.node_id, self._face_settings,
+                                    recorder=recorder, motion=cam.motion)
+                fw.source = self.source_factory(
+                    cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
+                fw.start()
+                self._workers.append(fw)
+        log.info("started %d worker(s) for %d camera(s)", len(self._workers), len(cameras))
 
-    def _stop_workers(self) -> list[CameraWorker]:
+    def _stop_workers(self) -> list[CameraWorker | FaceGateWorker]:
         for w in self._workers:
             w.stop_event.set()
             w.stop()
+        recorders = {}
         for w in self._workers:
             w.join(timeout=5.0)
-            if getattr(w, "recorder", None) is not None:
-                w.recorder.close()
+            if w.recorder is not None:
+                recorders[id(w.recorder)] = w.recorder
+        for rec in recorders.values():
+            rec.close()
         stopped, self._workers = self._workers, []
         return stopped
 
@@ -363,7 +425,7 @@ class VisionNode:
         hb = threading.Thread(target=self._heartbeat_loop, daemon=True)
         hb.start()
 
-        if not self._workers:
+        if not self._workers and not self._await_config:
             self._start_workers(self.cfg.cameras())
 
         # wait for stop, natural worker completion (test mode: sources end),
@@ -376,7 +438,9 @@ class VisionNode:
             if cfg_dict is not None:
                 self.apply_config(cfg_dict)
                 continue
-            if not any(w.is_alive() for w in self._workers):
+            if self._workers and not any(w.is_alive() for w in self._workers):
+                break
+            if not self._workers and not self._await_config:
                 break
         self.stop_event.set()
         stopped = self._stop_workers()
@@ -393,11 +457,20 @@ class VisionNode:
         if self._default_detector and PersonDetector.detect_n:
             ms = round(PersonDetector.detect_ms_total / PersonDetector.detect_n, 1)
         return {"device": self.cfg.detector_device or "auto",
-                "model": os.path.basename(model), "ms_per_frame": ms}
+                "model": os.path.basename(model), "ms_per_frame": ms,
+                "detect_n": PersonDetector.detect_n}
+
+    def _face_module_info(self) -> dict:
+        """Report face model state and inference counters without forcing model load."""
+        f = self.face
+        return {"device": self.cfg.face_device or "auto",
+                "loaded": bool(f is not None and f.loaded()),
+                "detect_n": f.detect_n if f is not None else 0,
+                "embed_n": f.embed_n if f is not None else 0}
 
     def _heartbeat_loop(self):
         while not self.stop_event.is_set():
-            cam_ids = [w.camera_cfg.camera_id for w in getattr(self, "_workers", [])]
+            cam_ids = sorted({w.camera_id for w in getattr(self, "_workers", [])})
             try:
                 cpu = os.getloadavg()[0]
             except (AttributeError, OSError):
@@ -407,7 +480,8 @@ class VisionNode:
             hw = hardware.collect_gpu_info()
             if hw:
                 hb["hw"] = hw
-            hb["modules"] = {"detector": self._detector_module_info()}
+            hb["modules"] = {"detector": self._detector_module_info(),
+                             "face": self._face_module_info()}
             self.transport.publish_heartbeat(hb)
             self.stop_event.wait(self.cfg.heartbeat_s)
 

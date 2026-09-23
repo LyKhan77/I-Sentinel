@@ -6,6 +6,7 @@ test memakai monkeypatch FaceEngine.embed.
 """
 import logging
 import os
+from pathlib import Path
 from dataclasses import dataclass
 
 from app.core.config import settings
@@ -181,6 +182,20 @@ def refresh_gallery(db) -> FaceGallery:
     return gallery
 
 
+def match_vector(vector, quality: float | None = None) -> MatchResult:
+    """Cocokkan embedding dari node (Opsi B) ke gallery. reason: low_quality|matched|no_match.
+
+    quality = det_score dari node; threshold sama dengan match_crop.
+    """
+    if quality is not None and quality < settings.face_min_quality:
+        return MatchResult(None, None, quality, "low_quality")
+    hit = gallery.match(list(vector))
+    if hit is None:
+        return MatchResult(None, None, quality, "no_match")
+    employee_id, score = hit
+    return MatchResult(employee_id, score, quality, "matched")
+
+
 def match_crop(db, image_path: str) -> MatchResult:
     """Embed satu crop lalu cocokkan ke gallery. reason: not_configured|no_face|low_quality|matched|no_match."""
     try:
@@ -213,17 +228,64 @@ def enroll_embedding(db, employee_id: int, image_path: str) -> FaceEmbedding:
     if not faces:
         raise ValueError("no_face")
 
-    face = _best_face(faces)
-    if face.quality < settings.face_min_quality:
+    best = _best_face(faces)
+    if best.quality < settings.face_min_quality:
         raise ValueError("low_quality")
+    return _save_embedding(db, employee_id, best, image_path)
 
+
+def _save_embedding(db, employee_id: int, best: FaceResult, source_path: str) -> FaceEmbedding:
+    """Simpan row embedding dari FaceResult (dipakai enroll_embedding + batch)."""
     row = FaceEmbedding(
         employee_id=employee_id,
-        vector=[float(x) for x in face.vector],
-        quality=face.quality,
-        source_image_path=image_path,
+        vector=[float(x) for x in best.vector],
+        quality=best.quality,
+        source_image_path=source_path,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
     return row
+
+
+def crop_face(image_path: str, bbox, margin: float = 0.3) -> str | None:
+    """Simpan crop wajah (bbox + margin %) sebagai jpg baru. Return path baru / None.
+
+    Dipakai enrollment batch: foto mentah tidak disimpan, hanya hasil crop.
+    """
+    try:
+        from PIL import Image
+        img = Image.open(image_path)
+        img.load()
+        w, h = img.size
+        x1, y1, x2, y2 = bbox
+        mx, my = (x2 - x1) * margin, (y2 - y1) * margin
+        box = (max(0, int(x1 - mx)), max(0, int(y1 - my)),
+               min(w, int(x2 + mx)), min(h, int(y2 + my)))
+        if box[2] <= box[0] or box[3] <= box[1]:
+            return None
+        out = Path(image_path).parent / f"{Path(image_path).stem}_crop.jpg"
+        img.crop(box).save(out, format="JPEG")
+        return str(out)
+    except Exception:
+        logger.warning("crop_face gagal untuk %s", image_path, exc_info=True)
+        return None
+
+
+def find_duplicate(vector, exclude_employee_id: int) -> tuple[int, float] | None:
+    """Skor cosine tertinggi vs embedding employee LAIN; None bila < face_dup_warn.
+
+    Dipakai enrollment sebagai warning (bukan reject) — wajah yang sama
+    terdaftar dua kali biasanya salah pilih employee.
+    """
+    best_id, best_score = None, -1.0
+    for employee_id, vectors in gallery._by_employee.items():
+        if employee_id == exclude_employee_id:
+            continue
+        for v in vectors:
+            s = cosine(vector, v)
+            if s > best_score:
+                best_id, best_score = employee_id, s
+    if best_id is None or best_score < settings.face_dup_warn:
+        return None
+    return best_id, best_score

@@ -36,6 +36,16 @@ const RANGE_IDS = ['all', '24h', '7d', '30d'] as const
 type RangeId = (typeof RANGE_IDS)[number]
 const RANGE_HOURS: Partial<Record<RangeId, number>> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 
+// Tabstrip detail (mockup 03): media dipisah per tab, metadata grid (Details)
+// selalu di bawah media. Crop wajah hanya untuk event attendance — satu-satunya
+// tipe yang mengirim payload.crop_path; attendance tidak merekam klip, jadi tanpa tab Clip.
+type DetailTab = 'snapshot' | 'clip' | 'crop'
+const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
+  { id: 'snapshot', key: 'events.tab.snapshot' },
+  { id: 'clip', key: 'events.tab.clip' },
+  { id: 'crop', key: 'events.tab.crop' },
+]
+
 function timeStr(ts: string): string {
   return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
 }
@@ -60,6 +70,7 @@ export default function EventsPage() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
   const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
+  const [tabState, setTabState] = useState<{ id: number; tab: DetailTab } | null>(null)
   const [tg, setTg] = useState<TelegramStatus | null>(null)
 
   const refresh = useCallback(async () => {
@@ -95,6 +106,16 @@ export default function EventsPage() {
 
   const camName = (e: EventOut) => cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`
 
+  // Hasil pencocokan wajah attendance: nama + keterangan cooldown, atau Tidak dikenal.
+  const faceMatch = (p: Record<string, unknown> | null): string => {
+    const name = typeof p?.employee_name === 'string' ? p.employee_name : null
+    if (name && p?.match_reason === 'cooldown') return `${name} · ${t('events.face.cooldown')}`
+    if (name && p?.match_reason === 'already_in') return `${name} · ${t('events.face.alreadyIn')}`
+    if (name) return name
+    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality') return t('events.face.unknown')
+    return '—'
+  }
+
   // semua filter (termasuk pencarian teks) client-side atas hasil listEvents
   const needle = query.trim().toLowerCase()
   const filtered = events.filter((e) => {
@@ -110,6 +131,12 @@ export default function EventsPage() {
 
   // pilihan ikut list ter-filter; default event pertama
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
+  const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
+  const isAttendance = selected?.type === 'attendance'
+
+  // tab aktif ikut event terpilih: event berganti → kembali ke Snapshot (derived,
+  // tanpa effect yang memicu render kedua)
+  const tab: DetailTab = selected && tabState?.id === selected.id ? tabState.tab : 'snapshot'
 
   // badge alert list: satu request by-events untuk 50 event pertama (hindari N+1)
   useEffect(() => {
@@ -283,17 +310,71 @@ export default function EventsPage() {
                 )}
               </div>
 
-              {selected.clip_path ? (
-                <video controls src={`/api/v1/media/${selected.clip_path}`} data-testid="event-clip" className="ev-player" />
-              ) : (
-                <div data-testid="event-clip-placeholder" className="ev-player ev-player--empty">
-                  {t('events.clipUnavailable')}
-                </div>
-              )}
+              <div className="ev-tabstrip" role="tablist">
+                {DETAIL_TABS.filter((tb) => (tb.id === 'crop' ? isAttendance : tb.id !== 'clip' || !isAttendance)).map((tb) => {
+                  const off = tb.id === 'crop' && !cropPath
+                  return (
+                    <button
+                      key={tb.id}
+                      type="button"
+                      role="tab"
+                      data-testid={`event-tab-${tb.id}`}
+                      aria-selected={tab === tb.id}
+                      disabled={off}
+                      onClick={() => setTabState({ id: selected.id, tab: tb.id })}
+                      className={`ev-tab${tab === tb.id ? ' on' : ''}${off ? ' ev-tab--off' : ''}`}
+                    >
+                      {t(tb.key)}
+                    </button>
+                  )
+                })}
+              </div>
 
-              {selected.snapshot_path && (
-                <img className="ev-snapshot" src={`/api/v1/media/${selected.snapshot_path}`} alt={t('events.snapshot')} />
-              )}
+              {tab === 'clip' &&
+                (selected.clip_path ? (
+                  <>
+                    <video controls src={`/api/v1/media/${selected.clip_path}`} data-testid="event-clip" className="ev-player" />
+                    <div className="ev-detail__actions">
+                      <a
+                        className="ev-detail__download"
+                        href={`/api/v1/media/${selected.clip_path}`}
+                        download
+                        data-testid="event-download"
+                      >
+                        <Download size={16} /> {t('events.download')}
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <div data-testid="event-clip-placeholder" className="ev-player ev-player--empty">
+                    {t('events.clipUnavailable')}
+                  </div>
+                ))}
+
+              {tab === 'snapshot' &&
+                (selected.snapshot_path ? (
+                  <img
+                    data-testid="event-snapshot"
+                    className="ev-snapshot"
+                    src={`/api/v1/media/${selected.snapshot_path}`}
+                    alt={t('events.snapshot')}
+                  />
+                ) : (
+                  <div data-testid="event-snapshot-placeholder" className="ev-player ev-player--empty">
+                    {t('events.snapshotUnavailable')}
+                  </div>
+                ))}
+
+              {tab === 'crop' &&
+                (cropPath ? (
+                  <div className="ev-crop" data-testid="event-crop">
+                    <img src={`/api/v1/media/${cropPath}`} alt={t('events.crop')} />
+                  </div>
+                ) : (
+                  <div data-testid="event-crop-placeholder" className="ev-player ev-player--empty">
+                    {t('events.cropUnavailable')}
+                  </div>
+                ))}
 
               <dl className="ev-meta-grid">
                 <div className="ev-meta">
@@ -312,6 +393,12 @@ export default function EventsPage() {
                   <dt className="ev-meta__k">{t('events.col.type')}</dt>
                   <dd className="ev-meta__v">{selected.type}</dd>
                 </div>
+                {selected.type === 'attendance' && (
+                  <div className="ev-meta">
+                    <dt className="ev-meta__k">{t('events.col.face')}</dt>
+                    <dd className="ev-meta__v" data-testid="event-face-match">{faceMatch(selected.payload)}</dd>
+                  </div>
+                )}
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.severity')}</dt>
                   <dd className="ev-meta__v">
@@ -327,19 +414,6 @@ export default function EventsPage() {
                   <dd className="ev-meta__v">{detailAlert ? t(ALERT_KEY[detailAlert]) : '—'}</dd>
                 </div>
               </dl>
-
-              {selected.clip_path && (
-                <div className="ev-detail__actions">
-                  <a
-                    className="ev-detail__download"
-                    href={`/api/v1/media/${selected.clip_path}`}
-                    download
-                    data-testid="event-download"
-                  >
-                    <Download size={16} /> {t('events.download')}
-                  </a>
-                </div>
-              )}
             </div>
           )}
         </div>

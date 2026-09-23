@@ -8,21 +8,35 @@ from app.core.config import settings
 from app.models.camera import Camera
 from app.models.node import Node
 from app.models.zone import Zone
+from app.models.detector_setting import DetectorSetting
 from app.services.stream_endpoint import StreamEndpointError, build_rtsp_url, resolve_camera_stream
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_FPS = 5.0
-
-
 def build_node_config(db: Session, node: Node) -> dict:
+    global_settings = db.get(DetectorSetting, 1)
+    default_ai_fps = global_settings.default_ai_fps if global_settings else settings.default_ai_fps
+    default_confidence = global_settings.default_confidence if global_settings else settings.detector_conf
+    motion_enabled = global_settings.motion_enabled if global_settings else settings.motion_enabled
+    motion_threshold = global_settings.motion_threshold if global_settings else settings.motion_threshold
+    motion_min_area = global_settings.motion_min_area if global_settings else settings.motion_min_area
+    motion_force_interval_s = global_settings.motion_force_interval_s if global_settings else settings.motion_force_interval_s
     detector = {
         "model": settings.detector_model,
         "nms": settings.detector_nms,
-        "conf": settings.detector_conf,
+        "conf": default_confidence,
         "imgsz": settings.detector_imgsz,
         "device": node.detector_device or "",  # "" = node pakai env/auto
+    }
+    gs = global_settings
+    face = {
+        "device": node.face_device or "",  # "" = node pakai env/auto
+        "min_width_px": gs.face_min_width_px if gs else settings.face_min_width_px,
+        "min_det_score": gs.face_min_det_score if gs else settings.face_min_det_score,
+        "max_yaw": gs.face_max_yaw if gs else settings.face_max_yaw,
+        "blur_min": gs.face_blur_min if gs else settings.face_blur_min,
+        "min_frames": gs.face_min_frames if gs else settings.face_min_frames,
     }
     cameras = []
     for cam in (
@@ -40,9 +54,14 @@ def build_node_config(db: Session, node: Node) -> dict:
                 "schedule": z.schedule,
                 "severity": z.severity,
                 "rate_limit_min": z.rate_limit_min,
+                "behaviors": z.behaviors or [],
+                "trigger_seconds": z.trigger_seconds,
+                # deprecated: tetap dikirim sampai node R5 terpasang, lalu dihapus
                 "loiter_seconds": z.loiter_seconds,
+                "dwell_seconds": z.dwell_seconds,
                 "speed_limit_mps": z.speed_limit_mps,
                 "snapshot": z.snapshot,
+                "clip": z.clip,
                 "telegram": z.telegram,
             }
             for z in db.query(Zone)
@@ -64,10 +83,18 @@ def build_node_config(db: Session, node: Node) -> dict:
         cameras.append({
             "camera_id": cam.id,
             "source_url": source_url,
-            "ai_fps": DEFAULT_FPS,
+            "ai_fps": cam.ai_fps or default_ai_fps,
+            "confidence": cam.confidence or default_confidence,
+            "analyzers": cam.analyzers,          # None = semua analyzer aktif
+            "motion": {
+                "enabled": motion_enabled if cam.motion_enabled is None else cam.motion_enabled,
+                "threshold": motion_threshold,
+                "min_area": motion_min_area,
+                "force_interval_s": motion_force_interval_s,
+            },
             "meters_per_pixel": cam.meters_per_pixel,
         } | {"zones": zones})
-    return {"node_id": node.name, "detector": detector, "cameras": cameras}
+    return {"node_id": node.name, "detector": detector, "face": face, "cameras": cameras}
 
 
 def publish_node_config(client_or_none, db: Session, node_name: str) -> bool:

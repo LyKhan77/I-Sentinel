@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .base import Analyzer
-from .intrusion import point_in_polygon
+from .intrusion import ground_point, point_in_polygon
 
 # Frame-to-frame gaps above this are treated as a tracking gap, not dwell time.
 MAX_DELTA_S = 10.0
@@ -28,7 +28,7 @@ class LoiteringAnalyzer(Analyzer):
         present: set[int] = set()
         for tr in tracks:
             present.add(tr.id)
-            if point_in_polygon(tr.centroid, self.polygon):
+            if point_in_polygon(ground_point(tr), self.polygon):
                 delta = 0.0
                 last = self._last_ts.get(tr.id)
                 if last is not None:

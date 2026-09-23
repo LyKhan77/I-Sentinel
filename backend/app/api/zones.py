@@ -46,9 +46,9 @@ def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db:
     changes = body.model_dump(exclude_unset=True)
     for k, v in changes.items():
         setattr(zone, k, v)
-    # absensi zone wajib direction — cek hasil gabungan patch + nilai lama
-    if zone.type == "absensi" and not zone.direction:
-        raise HTTPException(422, "direction (entry|exit) required for absensi zone")
+    # zona attendance (dulu absensi) wajib direction — cek hasil gabungan patch + nilai lama
+    if zone.type in ("absensi", "attendance") and not zone.direction:
+        raise HTTPException(422, "direction (entry|exit) required for attendance zone")
     db.commit(); db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone

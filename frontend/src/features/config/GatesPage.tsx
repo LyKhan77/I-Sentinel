@@ -4,6 +4,7 @@ import {
   Button,
   InlineLoading,
   InlineNotification,
+  ToastNotification,
   Select,
   SelectItem,
   Table,
@@ -19,7 +20,7 @@ import {
 import { useT, type TKey } from '../../app/i18n'
 import { getMe, type Me } from '../../api/client'
 import { listCameras, type Camera } from '../../api/cameras'
-import { createZone, listZones, updateZone, type Zone } from '../../api/zones'
+import { createZone, listZones, updateZone, type Zone, type ZonePayload } from '../../api/zones'
 
 // ponytail: default polygon kotak — admin menggambar ulang di editor zona
 const DEFAULT_POLYGON: [number, number][] = [
@@ -38,6 +39,14 @@ export default function GatesPage() {
   const [me, setMe] = useState<Me | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  // toast hilang sendiri; perlakuan sama dengan halaman Zona Deteksi
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(id)
+  }, [toast])
 
   const isAdmin = me?.role === 'admin'
 
@@ -48,7 +57,7 @@ export default function GatesPage() {
       const [zs, cs] = await Promise.all([listZones(), listCameras()])
       const enabled = cs.filter((c) => c.enabled)
       setCams(enabled)
-      setZones(zs.filter((z) => z.type === 'absensi'))
+      setZones(zs.filter((z) => z.type === 'attendance'))
       if (enabled.length > 0) setNewCamId((prev) => prev ?? enabled[0].id)
     } catch {
       setError(t('gates.loadError'))
@@ -64,10 +73,11 @@ export default function GatesPage() {
 
   const camName = (id: number) => cams.find((c) => c.id === id)?.name ?? zones.find((z) => z.camera_id === id)?.camera_name ?? `#${id}`
 
-  const patch = async (zone: Zone, body: { direction?: 'entry' | 'exit'; snapshot?: boolean; active?: boolean }) => {
+  const patch = async (zone: Zone, body: ZonePayload) => {
     try {
       const updated = await updateZone(zone.id, body)
       setZones((cur) => cur.map((z) => (z.id === zone.id ? updated : z)))
+      setToast(t('gates.saved'))
     } catch {
       setError(t('gates.saveError'))
     }
@@ -88,7 +98,8 @@ export default function GatesPage() {
     try {
       await createZone(newCamId, {
         name: `Gate ${camName(newCamId)}`,
-        type: 'absensi',
+        type: 'attendance',
+        behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
         direction: 'entry',
         polygon: DEFAULT_POLYGON,
         snapshot: true,
@@ -100,11 +111,17 @@ export default function GatesPage() {
     }
   }
 
-  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.active']
+  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
 
   return (
     <>
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />}
+
+      {toast && (
+        <div className="toast-stack" data-testid="gate-toast">
+          <ToastNotification kind="success" lowContrast title={toast} timeout={0} onCloseButtonClick={() => setToast(null)} />
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 14 }}>
         <div style={{ width: 260 }}>
@@ -129,6 +146,9 @@ export default function GatesPage() {
         <InlineLoading description={t('common.loading')} />
       ) : (
         <>
+          <p data-testid="gates-face-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: '0 0 8px' }}>
+            {t('gates.faceHint')}
+          </p>
           <TableContainer>
             <Table>
               <TableHead>
@@ -171,6 +191,17 @@ export default function GatesPage() {
                         disabled={!isAdmin}
                         toggled={z.snapshot}
                         onToggle={(v) => patch(z, { snapshot: v })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Toggle
+                        id={`gate-clip-${z.id}`}
+                        labelText={t('gates.col.clip')}
+                        hideLabel
+                        size="sm"
+                        disabled={!isAdmin}
+                        toggled={z.clip}
+                        onToggle={(v) => patch(z, { clip: v })}
                       />
                     </TableCell>
                     <TableCell>

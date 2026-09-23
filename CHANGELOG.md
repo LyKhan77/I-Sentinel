@@ -3,6 +3,373 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
+
+- **Deploy** `f22f2d6` ke gspe-ai3: backup `~/backup-pra-0016-20260923-1533.sql` (73 event, cocok
+  dengan DB), alembic `0015 → 0016`, restart API + vision; event ber-embedding di DB = 0; config push
+  membawa 6 kunci `face`; heartbeat `modules.face.device = cuda:2`.
+- **Tes lapangan user (Angly)**: entry cam 364 zona 12 `matched` skor 0,714 (wajah 217 px, 3 frame),
+  exit cam 365 zona 14 `matched` skor 0,65; `attendance_day` satu baris (masuk 15:45, pulang 15:59);
+  crop + snapshot ada di disk; model wajah di GPU 2 (1054 MiB). Dua event `no_match` 15:45:07 = orang
+  lain bermasker (benar tidak dikenal). User: flow dan overlay sudah halus.
+- **Entry sekali per hari** (`9723a54`, permintaan user): entry kedua di hari yang sama →
+  `match_reason: already_in` tanpa baris baru; entry lebih awal yang tiba belakangan tetap dicatat;
+  exit boleh berulang. Backend **328 passed**.
+- **Nama di overlay** (`89612ab`, permintaan user): label kotak wajah diganti nama / Tidak dikenal
+  dari event attendance yang dibroadcast backend (event < 30 s, nama disimpan 30 s). Frontend **103 passed**.
+- Klip attendance tidak ada: disengaja (spec §4 no.5, spec R5b §5.5).
+- Temuan (belum dikerjakan): proses vision juga memakai 386 MiB di GPU 0 setelah model wajah dimuat
+  (kemungkinan konteks CUDA default onnxruntime); model wajah sendiri di GPU 2.
+
+### R5b review pra-deploy — celah privasi embedding + runbook (lokal, 2026-09-23)
+
+- **Embedding tidak pernah tersimpan atau ter-broadcast** (`fa5d959`). Dulu `ingest_event`
+  commit payload ber-embedding lalu `handle_face_event` membuangnya; bila pencocokan melempar
+  error, rollback menyisakan embedding permanen di tabel `event` dan broadcast WS mengirimnya
+  ke browser. Consumer kini memisahkan embedding sebelum ingest dan meneruskannya ke matcher.
+  Test `test_attendance_embedding_never_persisted_or_broadcast_when_matching_fails` merah
+  sebelum perbaikan. Backend **325 passed**.
+- **Runbook deploy diperbaiki** (`docs/runbooks/attendance-face-first.md`): `git pull` saja tidak
+  membawa R5b (server di `feat/detection-model`) → `git checkout feat/attendance-face-first`;
+  `pg_dump "$DATABASE_URL"` gagal (skema `postgresql+psycopg`, variabel belum di-load, `~` di
+  dalam kutip) sehingga migrasi purge bisa jalan tanpa backup → backup dengan cek `BACKUP OK`;
+  `alembic` harus dari `backend/`. Perintah backup + `alembic current` diverifikasi baca-saja di
+  server. Rollback memakai `git checkout feat/detection-model` setelah `downgrade 0015`.
+- Review mandiri: vision 177/3 deselected, backend 324→325, frontend 99, build+lint (22 warning
+  lama) hijau; mutasi cooldown satu-arah membuat `test_out_of_order_...` merah.
+
+### R5b Task 11 — tes GPU, runbook, docs (PENDING verifikasi lapangan, lokal 2026-09-23)
+
+- Konteks/path: `vision/tests/test_face_worker_gpu.py` baru bertanda `gpu`
+  (SCRFD + ArcFace asli pada foto enrollment, konsistensi vektor >0,9 — hanya
+  dijalankan di server, belum dieksekusi). `docs/runbooks/attendance-face-first.md`
+  baru: urutan deploy (pull → **backup DB** → `alembic upgrade head` → restart
+  API+vision), gambar ulang zona attendance 7/8/9/11 di area kepala, cara baca
+  label gerbang debugger (kunci `face_min_det_score`), kalibrasi `face_stats`,
+  rollback dengan urutan `alembic downgrade 0015` sebelum revert. `README.md` peta repo:
+  `face_gate.py` dihapus, wajah kini `face_worker.py` di `vision/vision/`.
+  `ROADMAP.md`: bagian R5b status lokal/PENDING lapangan; temuan terbuka R5a #2
+  (max_age per frame) ditandai selesai oleh R5b Task 1. `docs/detection-
+  behavior-inventory.md` §6 + §10 diberi catatan status R5b.
+- Bukti: suite lengkap lokal (angka persis di bawah). **Tidak ada klaim GPU,
+  deploy, server, atau field** — semua PENDING sampai deploy diizinkan user.
+- Dampak: siap deploy; runbook menegaskan rollback perlu downgrade 0015 dulu.
+  Rollback Task 11: `git revert` commit docs.
+
+### R5b Task 10 — overlay halus + TTL, label gerbang, mode player, hasil wajah di Events (lokal, 2026-09-23)
+
+- Konteks/path: `frontend/src/features/live/playerMode.ts` baru (WebRTC via `srcObject`,
+  MSE via `blob:` URL). `LiveViewPage.tsx`: `DetBox.at` + `BOX_TTL_MS = 1000` dan sweep
+  interval 250 ms menghapus kotak basi tanpa update WS; transisi `x/y/width/height`
+  150 ms linear pada `<rect>` overlay; label kode gerbang wajah (`zone`, `small`,
+  `score`, `yaw`, `blur`) diterjemahkan via `live.faceGate.*`; tile besar menampilkan
+  badge transport `player-mode`. `EventsPage.tsx`: baris meta "Wajah" pada detail
+  event attendance menampilkan nama karyawan + keterangan cooldown atau
+  "Tidak dikenal" (payload `employee_name`/`match_reason` dari Task 8). `i18n.tsx`
+  menambah kunci `live.faceGate.*`, `events.col.face`, `events.face.*` (id+en).
+- Bukti TDD: RED terarah **liveview** import error modul `playerMode`, **events**
+  2 failed / 15 passed (testid `event-face-match` tidak ada); GREEN terarah
+  **26 passed / 2 files**; full frontend **99 passed / 14 files**, build hijau
+  (chunk warning lama), lint exit 0 (22 warning lama, baseline sama).
+- Dampak: overlay debugger tidak lagi menampilkan wajah/orang yang sudah keluar
+  frame, keterangan gerbang wajah terbaca admin, transport player terlihat,
+  hasil absensi terbaca di Events. Rollback: `git revert` commit Task 10. Belum
+  deploy/GPU/field verification; tidak ada operasi server.
+
+### R5b Task 9 — editor UI setelan wajah, zona attendance tanpa trigger (lokal, 2026-09-23)
+
+- Konteks/path: `frontend/src/api/detection.ts` type `DetectorSettings` sudah memuat
+  lima field wajah (Task 7); `DetectionPage.tsx` kini menampilkan grup Advanced
+  "Wajah attendance" (lebar min px, skor deteksi, yaw, blur, jumlah frame K)
+  dan mengirim kelima field saat simpan global. `ZonesPage.tsx` mengganti input
+  trigger zone attendance dengan petunjuk area wajah (`zone-attendance-hint`);
+  `setAttendanceTrigger` dihapus. `GatesPage.tsx` menghapus kolom trigger tabel
+  gate dan menambah petunjuk `gates-face-hint`. `i18n.tsx` menambah kunci
+  `detection.face*`, `zones.attendanceHint`, `gates.faceHint` (id+en) dan
+  menghapus `gates.col.trigger` dari kedua kamus.
+- Bukti TDD: RED terarah frontend **3 failed, 20 passed**; setelah implementasi
+  GREEN **94 passed / 14 files**, build hijau (chunk warning lama), lint exit 0
+  (22 warning lama, baseline sama sebelum/sesudah). Perintah Step 2/4 plan Task 9.
+- Dampak: admin mengatur kualitas wajah dari UI tanpa edit env; UI attendance
+  tidak lagi menjanjikan trigger detik yang tidak dipakai node wajah. Rollback:
+  `git revert` commit Task 9. Deploy frontend harus sinkron dengan backend
+  Task 7/8 (PUT wajib lima field). Belum deploy/GPU/field verification; tidak
+  ada operasi server.
+
+### R5b Task 8 — cooldown simetris dan sanitasi embedding (lokal, 2026-09-23)
+
+- Konteks/path: `backend/app/services/attendance.py` mencocokkan embedding meski crop
+  absen, membuang embedding dari `event.payload` pada semua jalur attendance normal,
+  dan menolak baris attendance duplikat bagi karyawan+arah dalam ±5 menit waktu
+  event (konfigurabel lewat `ATTENDANCE_COOLDOWN_MIN`). Payload cocok/cooldown
+  mencatat identitas dan skor. `backend/tests/test_attendance_logic.py` mencakup
+  jalur match, no-match, skip, lintas kamera/arah, batas, dan urutan kirim terbalik.
+- Bukti TDD: RED terarah **7 failed, 20 passed**; GREEN **27 passed**; suite
+  backend non-GPU **324 passed, 299 warnings** (warning JWT test-key lama).
+- Dampak: event tanpa media tetap menghasilkan absensi bila embedding cocok;
+  pengiriman event tidak urut tidak membuat absensi duplikat; embedding event baru
+  tidak tersimpan setelah handler sukses. Rollback: `git revert` commit Task 8;
+  jika rollback seluruh R5b, ikuti urutan migration 0016 pada entri Task 7.
+  Belum deploy/GPU/field verification; tidak ada operasi server.
+
+### R5b Task 7 review — urutan rollback migration 0016 (lokal, 2026-09-23)
+
+- Konteks/path: `CHANGELOG.md`, spec R5b §12, dan plan R5b Task 11 Step 2
+  sebelumnya menyuruh revert kode sebelum downgrade; Alembic tidak dapat
+  menelusuri revision 0016 bila berkas migrasinya sudah hilang. Instruksi kini
+  menghentikan layanan, backup DB, downgrade ke 0015 saat migration 0016 masih
+  ada, lalu revert/deploy kode lama dan restart. Runbook Task 11 belum dibuat.
+- Bukti: pemeriksaan urutan tiga dokumen RED (assertion CHANGELOG), GREEN
+  **3 bagian sesuai**; backend non-GPU **315 passed, 299 warnings**, vision
+  non-GPU **177 passed, 2 deselected, 2 warnings**, frontend **94 passed / 14 files**.
+- Dampak: rollback mendahulukan operasi Alembic selagi revision tersedia;
+  pembersihan embedding historis tetap irreversible. Rollback perubahan
+  dokumen ini: `git revert` commit review ini saja (tidak dianjurkan bila
+  rollback R5b masih dibutuhkan). Tidak ada migrasi/deploy/server/GPU lapangan.
+
+### R5b Task 7 review — simpan setelan deteksi tidak kehilangan field wajah (lokal, 2026-09-23)
+
+- Konteks/path: setelah API PUT mewajibkan lima setelan wajah baru, save lama di
+  `frontend/src/features/config/DetectionPage.tsx` mengirim enam field saja dan
+  selalu mendapat 422. `frontend/src/api/detection.ts` mengetik kontrak GET/PUT,
+  save mengirim kelima nilai wajah yang diterima lewat GET tanpa UI editor baru;
+  `frontend/src/__tests__/detection.test.tsx` memeriksa payload sebenarnya.
+- Bukti TDD: RED frontend terarah **1 failed, 3 passed** (lima field tidak dikirim),
+  GREEN **4 passed**; suite frontend **94 passed / 14 files**; build hijau
+  (951 modul, warning chunk besar), lint exit 0 (22 warning lama), backend
+  non-GPU **315 passed, 299 warnings**. Diff committed base Task 7 mencakup
+  seluruh patch implementasi dan review.
+- Dampak: tombol Simpan setelan global tetap bekerja sebelum editor wajah Task 9;
+  nilai wajah tidak berubah diam-diam. Rollback: `git revert` commit review ini
+  bersama Task 7, jangan rollback review saja selama schema PUT wajib masih aktif.
+  Tidak ada deploy/GPU/field verification.
+
+### R5b Task 7 — setelan wajah global + migration 0016 (lokal, 2026-09-23)
+
+- Konteks/path: `backend/app/core/config.py`, `models/detector_setting.py`,
+  `schemas/detector_setting.py`, `api/detector_settings.py`, dan
+  `services/config_push.py` menambah lima setelan kualitas wajah global pada
+  GET/PUT dan config push tanpa mengubah pin device. `.env.example` menambah
+  `ATTENDANCE_COOLDOWN_MIN=5` untuk Task 8. Migration
+  `backend/alembic/versions/0016_face_gate_settings.py` mengisi default kolom
+  dan membuang embedding payload event attendance lama; tes di
+  `backend/tests/test_migration_0016.py`, `test_detector_settings_api.py`,
+  `test_config_push.py` (fallback dan pin device).
+- Bukti TDD: RED migration **1 collection error** (file belum ada), RED API
+  **4 failed, 1 passed**; GREEN targeted migration/API/config push **23 passed**;
+  suite backend non-GPU **315 passed, 299 warnings**. Tes migrasi berjalan lokal
+  dengan SQLite; Postgres/server belum dijalankan.
+- Dampak: config gate wajah kini dapat disetel global; PUT butuh lima field baru,
+  UI pengaturannya masih Task 9. Pembersihan embedding historis tidak dapat
+  dipulihkan. Rollback jika sudah dimigrasi: hentikan API dan vision-node,
+  backup DB, jalankan `alembic downgrade 0015` saat berkas migrasi 0016 masih
+  tersedia, baru `git revert` rentang commit R5b/deploy kode lama dan restart
+  layanan. Payload embedding yang dibuang tidak dapat dikembalikan. Tidak ada
+  deploy/GPU/field verification.
+
+### R5b Task 6 review — node idle tetap hidup, arah attendance divalidasi (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/node.py` mempertahankan config/heartbeat loop saat
+  konfigurasi berisi kamera tetapi tidak ada worker (mis. `VISION_FACE_EMBED=false`
+  pada kamera hanya-attendance), termasuk konfigurasi hot-reload; tanpa kamera
+  dan tanpa config push tetap boleh berhenti seperti test mode sebelumnya.
+  Zona attendance tanpa arah `entry`/`exit` tidak diberikan ke `FaceGateWorker`.
+  `vision/tests/test_node.py` menguji startup maupun config push tanpa worker,
+  hot-reload setelah idle, dan zona behavior attendance tanpa arah valid.
+- Bukti TDD: RED arah invalid **2 failed, 1 passed, 18 deselected**; RED
+  node idle **1 failed, 20 deselected** setelah melewati polling 0,2 s;
+  GREEN tes terarah **3 passed, 18 deselected**, regresi node/config/worker/pin
+  **57 passed**. Suite vision non-GPU **177 passed, 2 deselected, 2 warnings**
+  lama (pynvml deprecated dan mock heartbeat tanpa `publish_heartbeat`).
+- Dampak: node tidak terputus saat gate tidak dapat dijalankan; event invalid
+  tidak memuat embedding yang akan dibuang backend. Rollback: `git revert`
+  commit review ini. Pin `cuda:1`/`cuda:2` tetap, GPU/field belum diuji.
+
+### R5b Task 6 — FaceGateWorker terpasang pada VisionNode (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/node.py` memisah zona attendance (termasuk legacy
+  `absensi`) dari analyzer person, membuka main stream untuk `FaceGateWorker`,
+  menghindari YOLO pada kamera hanya-attendance, berbagi satu recorder per kamera,
+  dan menambah heartbeat face. Jalur lama dihapus dari `vision/vision/face.py`,
+  `vision/vision/recorder.py`, dan `vision/vision/analyzers/face_gate.py`;
+  tes lama diganti di `vision/tests/test_node.py`, `test_config_apply.py`,
+  `test_node_face_embed.py`, `test_face_embed.py`, `test_recorder.py`,
+  `test_intrusion.py`; `vision/tests/test_face_gate.py` dihapus.
+- Bukti TDD: RED node 1 error collection (import `attendance_zones`), GREEN node
+  16 passed; RED orphan recorder 1 failed/16 deselected, GREEN 1 passed/16
+  deselected. Suite vision non-GPU **173 passed, 2 deselected, 2 warnings**
+  (pynvml deprecation dan mock heartbeat tanpa method lama); `git diff --check`
+  bersih. Pin detector `cuda:1` / face `cuda:2` tidak diubah.
+- Dampak: pipeline attendance memakai wajah main stream secara independen;
+  kamera campuran tetap menjalankan behavior di YOLO substream, attendance tidak
+  lagi memakai clip/crop person. GPU/server/field belum diuji. Rollback:
+  `git revert` commit Task 6; tanpa migrasi.
+
+### R5b Task 5 review — burst event tidak menunggu antrean media (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` mengirim event wajah berikut segera
+  tanpa media saat satu upload antre/berjalan, bukan mengantre 1,1 s per orang;
+  hanya satu finalisasi media per kamera dan riwayat `events` dibatasi 32 payload
+  biometrik (transport tetap menerima semua). `vision/tests/test_face_worker.py`
+  menguji tiga wajah dengan upload sukses 0,8 s per event dan 34 event untuk
+  batas memori. Ruling urutan terima bisa berbeda `ts_event` dicatat di spec §5.5/§6
+  dan plan Task 5; Task 8 harus uji cooldown simetris, belum diimplementasi.
+- Bukti TDD: RED `2 failed, 20 deselected` (event ketiga ~2,54 s; riwayat 34
+  tetap 34); GREEN worker `22 passed`; worker/source/recorder `42 passed`;
+  suite vision non-GPU `198 passed, 2 deselected, 2 warnings` (pynvml + mock
+  heartbeat lama). Pin detector `cuda:1` / face `cuda:2` tidak diubah.
+- Dampak: metadata burst cepat namun media wajah berikut sengaja hilang selama
+  kamera sibuk; event pertama masih dapat menyertakan crop/snapshot bila selesai
+  dalam 1,1 s. Rollback: `git revert` commit review ini; tidak ada migrasi/tes GPU.
+
+### R5b Task 5 review — overlay tetap lancar saat upload media macet (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` memindahkan finalisasi event dan
+  tunggu media 1,1 s ke satu thread per kamera; loop frame/overlay tidak menunggu.
+  Saat motion gate melewati frame yang menghapus track terakhir, overlay kosong
+  diterbitkan sekali. `vision/tests/test_face_worker.py` menguji cadence overlay
+  dengan uploader macet dan force interval > usia track. Spec §5.5 dan plan Task 5
+  diselaraskan; kontrak timeout media/backend tidak berubah.
+- Bukti TDD: RED `2 failed, 18 deselected` (overlay berikut tertunda saat upload,
+  gate skip tidak menghapus kotak). GREEN tes worker `20 passed`; suite relevan
+  worker/source/recorder `40 passed`; full vision non-GPU
+  `196 passed, 2 deselected, 2 warnings` (pynvml + mock heartbeat lama).
+- Dampak: event/media tetap terikat saat upload selesai dalam batas; overlay
+  lanjut tanpa menunggu API. Satu finalizer event dan maksimum satu upload tertahan
+  per kamera. Rollback: `git revert` commit review ini; pin GPU tidak berubah,
+  tanpa migrasi atau verifikasi lapangan.
+
+### R5b Task 5 review — deadline media absolut saat uploader macet (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` menunggu upload media paling lama
+  1,1 s walau uploader mengabaikan timeout socket; hanya satu thread daemon upload
+  per worker dan event lain tetap terkirim tanpa media selama upload pertama
+  macet. `vision/tests/test_face_worker.py` menguji uploader macet 2 s, overlay
+  lanjut, dua wajah tetap punya dua event tanpa thread upload tak terbatas.
+  Ruling pilihan user dicatat di spec §2/§5.5, plan Task 5, ledger/checkpoint.
+- Bukti TDD: RED uploader macet `1 failed, 16 deselected` (event tertahan ~4 s);
+  GREEN regresi timeout `5 passed, 13 deselected`; full suite vision non-GPU
+  `194 passed, 2 deselected, 2 warnings` (pynvml dan mock heartbeat lama).
+- Dampak: batas tunggu pekerja nyata, tetapi short-pass saat API lambat dapat
+  terbit ~1,1 s (+ polling ≤0,1 s) setelah `max_age_s`; media yang selesai setelah
+  deadline tidak diasosiasikan, blob telat bisa orphan sampai retention.
+  Rollback: `git revert` commit review ini; pin GPU tidak berubah, tanpa migrasi.
+
+### R5b Task 5 review — expiry saat stream idle dan upload wajah berbatas (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/pipeline/source.py` memberi `next_frame(timeout)` tanpa
+  menutup sumber saat idle; `vision/vision/face_worker.py` mengecek expiry walau
+  RTSP belum mengirim frame baru. Upload crop/snapshot independen, tiap gambar
+  satu percobaan socket 0,5 s agar event dan overlay tidak tertahan retry 60 s.
+  `vision/vision/recorder.py` menerima override timeout/retries hanya untuk
+  upload blob worker wajah; default recorder lain tetap. Tes di
+  `vision/tests/test_face_worker.py` dan `vision/tests/test_source.py`.
+- Bukti TDD: RED 3 failed, 13 deselected (idle stream, exception crop,
+  enam percobaan upload lambat); GREEN tes terarah worker/source/recorder
+  `36 passed`; suite vision non-GPU `192 passed, 2 deselected, 2 warnings`
+  (pynvml dan mock heartbeat lama). Tidak ada GPU/server/field verification.
+- Dampak: event short-pass bisa terbit setelah sumber diam; keterlambatan upload
+  normal dibatasi dua socket timeout 0,5 s. Media mungkin hilang bila API lebih
+  lambat; event embedding tetap terbit. Rollback: `git revert` commit review
+  Task 5; tidak ada migrasi DB. Pin GPU tidak berubah.
+
+### R5b Task 5 — FaceGateWorker (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` menambah worker wajah di frame main
+  stream (source disambung Task 6), motion gate, track per wajah, overlay sebelum
+  embedding, satu event attendance per track, crop/snapshot frame terbaik tanpa clip.
+  `vision/tests/test_face_worker.py` menguji gate, overlay, expiry, dua wajah,
+  outlier, galat mesin/upload, dan media. Pin detector `cuda:1`/face `cuda:2`
+  tidak berubah.
+- Bukti TDD: RED awal `1 error` (modul worker belum ada); GREEN awal `11 passed`;
+  tes tambahan ambang deteksi RED `1 failed, 12 passed`, kemudian GREEN `13 passed`.
+  Suite vision non-GPU `188 passed, 2 deselected, 2 warnings` (pynvml dan
+  mock heartbeat lama). Tidak ada tes GPU atau verifikasi lapangan.
+- Dampak: kontrak worker siap untuk integrasi node Task 6; belum dipakai produksi.
+  Rollback: `git revert` commit Task 5; tidak ada migrasi DB.
+
+### R5b Task 4 — gerbang kualitas dan agregasi embedding (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_quality.py` menambah setelan default wajah,
+  pemeriksaan zona/lebar/skor/yaw, skor blur/quality, crop box, dan agregasi berbobot
+  dengan filter outlier; `vision/tests/test_face_quality.py` menguji setiap gerbang,
+  fallback dan batas frame. Tidak ada perubahan pin detector `cuda:1` / face `cuda:2`.
+- Bukti TDD: RED `1 error` (`ModuleNotFoundError: vision.face_quality`); tes
+  rencana awal GREEN parsial `1 failed, 11 passed` karena pasangan vektor ortogonal
+  semestinya terbuang oleh filter cosine < 0,5. Setelah tes memakai vektor berdekatan:
+  `12 passed`; suite vision non-GPU `175 passed, 2 deselected, 2 warnings`
+  (pynvml dan mock heartbeat lama).
+- Dampak: fungsi murni siap dipakai FaceGateWorker di Task 5; belum ada pipeline
+  baru, tes GPU, atau verifikasi lapangan. Rollback: `git revert` commit Task 4;
+  tidak ada migrasi DB.
+
+### R5b Task 3 — FaceEmbedder deteksi/align/embed terpisah (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face.py` menambah `FaceDet`, SCRFD + landmark,
+  alignment ArcFace 112×112 dan embedding L2; model hanya memuat modul detection
+  dan recognition. `vision/tests/test_face_embed.py` menguji kontrak, pin GPU,
+  fallback tanpa insightface, dan lazy loading. API `detect`/`embed_jpeg` lama tetap.
+- Bukti TDD: RED `5 failed, 7 passed` (method baru belum ada); GREEN
+  `12 passed`; suite vision non-GPU `163 passed, 2 deselected, 2 warnings`
+  (pynvml dan mock heartbeat lama).
+- Dampak: kontrak wajah untuk worker face-first siap secara lokal; provider face
+  `cuda:2` tetap, detector `cuda:1` tidak diubah. Belum ada uji GPU/lapangan.
+  Rollback: `git revert` commit Task 3; tidak ada migrasi DB.
+
+### R5b Task 2 — FrameSource retry saat stream belum tersedia (lokal, 2026-09-23)
+
+- Konteks: `FrameSource.start()` sebelumnya melempar `RuntimeError` jika go2rtc belum
+  menyediakan stream saat worker mulai. `vision/vision/pipeline/source.py` kini
+  membiarkan reader mencoba ulang dengan backoff yang sudah ada (1, 2, 4 … 30 s);
+  `vision/tests/test_source.py` menguji stream muncul pada upaya kedua.
+- Bukti TDD: RED `1 failed, 5 deselected` (`RuntimeError: cannot open video source`);
+  GREEN `1 passed, 5 deselected`; suite vision non-GPU
+  `158 passed, 2 deselected, 2 warnings` (pynvml dan mock heartbeat lama).
+- Dampak: worker tetap hidup ketika stream belum siap saat startup; pin GPU detector
+  `cuda:1` dan face `cuda:2` tidak diubah. Belum diuji pada server/GPU.
+  Rollback: `git revert` commit Task 2; tidak ada migrasi DB.
+
+### R5b Task 1 review evidence — commit patches (lokal, 2026-09-23)
+
+- Konteks: reviewer hanya menerima diff working tree bersih, bukan dua patch commit
+  Task 1; tidak ada cacat kode baru. Path yang diperiksa: `vision/vision/pipeline/tracker.py`,
+  `vision/vision/node.py`, `vision/vision/motion.py`, `vision/tests/test_tracker.py`,
+  `vision/tests/test_motion_gate.py`, `CHANGELOG.md`. Patch lengkap tersedia lewat
+  `git show --format=fuller 0b5fcfa` dan `git show --format=fuller f9ee6be`.
+- Bukti: kedua patch terbaca lokal; `git diff 0b5fcfa^ 0b5fcfa --check` dan
+  `git diff f9ee6be^ f9ee6be --check` bersih; suite non-GPU diulang lokal:
+  `157 passed, 2 deselected, 2 warnings` (`backend/.venv/bin/python -m pytest
+  vision/tests -q -m 'not gpu'`). RED/GREEN historis tetap tercatat di bawah.
+- Dampak: hanya keterlacakan review, tidak ada perubahan runtime/test baru,
+  pin GPU tidak berubah. Rollback: `git revert` commit dokumentasi evidence.
+
+### R5b Task 1 review — expiry sebelum matching (lokal, 2026-09-23)
+
+- Konteks: `vision/vision/pipeline/tracker.py` masih mencocokkan deteksi sebelum
+  menghapus track kedaluwarsa. Reconnect tanpa frame >3 s bisa menghidupkan ID lama
+  dengan `last_seen` baru; kini track expired dibuang sebelum matching, `lost_ids`
+  tetap berisi ID lama. `vision/tests/test_tracker.py` menguji gap tepat 3 s dan 4 s.
+- Bukti TDD: RED `1 failed, 1 passed` (gap 4 s mewarisi ID 1); GREEN `2 passed`;
+  tes terarah tracker+motion `22 passed`, suite vision non-GPU
+  `157 passed, 2 deselected, 2 warnings`. Tidak ada akses GPU/server.
+- Dampak: ID tidak bertahan melampaui `max_age_s` saat FrameSource reconnect;
+  behavior lain dan pin GPU tidak berubah. Rollback: `git revert` commit review Task 1.
+
+### R5b Task 1 — ByteTracker expiration berbasis detik (lokal, 2026-09-23)
+
+- Konteks: `max_age=15` frame memutus track diam saat motion gate 2 s dan AI FPS ≥ 8.
+  `vision/vision/pipeline/tracker.py` kini memakai `max_age_s=3.0` sejak `last_seen`
+  untuk expiry; `misses`, `lost_ids`, dan matching tetap. Komentar lama di
+  `vision/vision/node.py` dan docstring `vision/vision/motion.py` diselaraskan.
+  Tes: `vision/tests/test_tracker.py`, `vision/tests/test_motion_gate.py`.
+- Bukti TDD: tes terarah RED 5 failed, 14 passed; tes tambahan reset jam RED 1 failed;
+  GREEN 20 passed; suite vision lokal `155 passed, 2 deselected, 2 warnings`
+  (`backend/.venv/bin/python -m pytest vision/tests -q -m "not gpu"`).
+- Dampak: track bertahan saat gap gate 2 s di 5/10/15 fps; kedaluwarsa setelah
+  >3 s tanpa match, sehingga timer behavior tidak reset akibat FPS tinggi.
+  Pin detector `cuda:1` / face `cuda:2` tidak diubah. Belum dideploy/diverifikasi GPU.
+- Rollback: `git revert` commit Task 1; tidak ada migrasi DB.
+
 ## [0.7.0] — 2026-09-21 · Fase 5: GPU hardware probe + device delegation + soak
 
 ### GPU hardware probe per node + detector device pin (Task 9)
@@ -56,6 +423,324 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   engine lama (dibangun untuk compute 12.0).
 
 Rollback semua: `git revert` + `alembic downgrade` per-migration (expand-only).
+
+## [Unreleased] — R4 Dwell trigger + WS cookie auth + events tabstrip
+
+### WS events auth fallback cookie (Task 1)
+
+- `backend/app/api/events.py`: `ws_events` menerima JWT dari query `?token=`
+  **atau** cookie `isentinel_token` (`app.api.deps.COOKIE`). Sebelum ini UI selalu
+  ditolak 1008 (JWT httpOnly tak bisa ditaruh di query) sehingga bbox person
+  realtime tak pernah sampai Live View debugger.
+- Test baru `backend/tests/test_events_ws.py`: cookie valid → konek + terima
+  broadcast; tanpa cookie/token dan cookie rusak → 1008; query token lama tetap.
+- Bukti: backend `pytest -m "not gpu"` 279 passed. Klien (`frontend/src/api/useWs.ts`)
+  menghubung tanpa `?token` (cookie httpOnly saja) — komentar basi di file itu
+  ikut dikoreksi agar kontraknya jelas.
+
+### zone.dwell_seconds — trigger setelah N detik di zona (Task 2)
+
+- Migration `0013_zone_dwell_seconds` (expand-only, `Integer NULL=false
+  server_default '0'`), kolom model `backend/app/models/zone.py`, dan 3 kelas
+  schema (`ZoneIn`/`ZonePatch`/`ZoneOut`, `ge=0`) di `backend/app/schemas/zone.py`.
+- `config_push.build_node_config` mengirim `dwell_seconds` di payload zona —
+  node memakainya untuk menahan emit event (Task 3). `0` = perilaku lama.
+- Bukti: backend `pytest -m "not gpu"` 284 passed; migration round-trip
+  `upgrade 0013 → downgrade 0012 → upgrade 0013` pd DB scratch ok, kolom
+  `dwell_seconds INTEGER NOT NULL DEFAULT '0'`.
+
+### Vision face_gate hormati dwell zona (Task 3)
+
+- `vision/vision/analyzers/face_gate.py`: `dwell_seconds` > 0 menahan emit
+  sampai track sudah di dalam polygon selama itu (jam mulai saat masuk zona,
+  reset saat keluar). Cooldown 10s tetap; kunjungan yang tersedot cooldown tetap
+  tidak emit. `0` = perilaku lama (emit saat masuk).
+- Alasan: crop attendance sering berisi lantai/dinding (orang sudah lewat saat
+  frame diambil) — dwell menahan orang di frame hingga crop+snapshot diambil.
+- Bukti: `pytest vision/tests -m "not gpu"` 118 passed.
+
+### Events detail tabstrip — revisi: Snapshot | Clip | Face crop (Task 4 review)
+
+- Review user: tab **Detail dihapus** dari tabstrip. Sekarang 3 tab media —
+  **Snapshot | Clip | Face crop** (crop hanya untuk event `attendance`, disabled
+  bila `payload.crop_path` kosong), default **Snapshot**. Metadata grid
+  (**Details**) dikembalikan tampil **di bawah media** untuk semua tab, seperti
+  layout awal — bukan lagi tab terpisah.
+- `frontend/src/features/events/EventsPage.tsx`, `frontend/src/app/theme.scss`
+  (CSS tabstrip tetap), `frontend/src/app/i18n.tsx` (kunci `events.tab.detail`
+  dihapus, jadi 2 bahasa). Bukti: `npx vitest run` 81 passed (15 di
+  events.test.tsx), `npm run build` ok.
+
+### Events detail tabstrip per mockup 03 (Task 4)
+
+- `frontend/src/features/events/EventsPage.tsx`: panel detail kini tabstrip
+  **Detail | Clip | Snapshot | Face crop** (mockup `mockup-ui/03-events.html`).
+  Media tidak lagi ditumpuk: Clip = player + unduh, Snapshot = img beranotasi
+  bbox/ID, Face crop = crop wajah beranotasi. Metadata grid tetap di Detail.
+  Tab Face crop hanya muncul untuk event `attendance` dan **disabled** bila
+  `payload.crop_path` kosong; ganti event → tab kembali ke Detail (derived state,
+  tanpa effect).
+- `frontend/src/app/theme.scss`: `.ev-tabstrip` / `.ev-tab` (+`.on` biru
+  `#4589ff`, `:disabled` abu) persis nilai mockup. `frontend/src/app/i18n.tsx`:
+  kunci `events.tab.*` + placeholder snapshot/crop, EN+ID.
+- Bukti: `npx vitest run` 77 passed (14 di events.test.tsx), `npm run build` ok,
+  `npm run lint` tanpa warning baru.
+
+### Setting dwell di UI zona + gate (Task 5)
+
+- `frontend/src/features/config/ZonesPage.tsx`: NumberInput **Dwell (detik)** di
+  panel properti zona (semua tipe), helper "0 = langsung";
+  `GatesPage.tsx`: kolom **DWELL (S)** per gate (PATCH langsung, disabled untuk
+  non-admin). `frontend/src/api/zones.ts`: `dwell_seconds` di `Zone`/`ZonePayload`;
+  `ZoneEditor.tsx` ikut menulis `dwell_seconds: 0` untuk zona baru.
+- i18n EN+ID: `zones.dwell`, `zones.dwellHint`, `gates.col.dwell`.
+- Bukti: `npx vitest run` 80 passed (3× berturut stabil), `npm run build` ok,
+  `npm run lint` tanpa warning baru.
+
+### Deploy Task 6 + inventaris behavior deteksi
+
+- Deploy `gspe-ai3`: branch `feat/events-dwell-crop` (1c4d9dc → 541cca3),
+  **alembic 0013** (0012 → 0013 head, dari `backend/` dgn `.env` root), event
+  debug **#4625 dihapus** (`person_detect` tersisa 0), API restart (health ok),
+  vision restart (`kill -9`; SIGTERM hang, 4 camera worker naik).
+- Config push diverifikasi di retained MQTT `isentinel/config/server`:
+  `cam 363 zones=[(9,'entry',3)]`, `detector cuda:1`, `face cuda:2` — **pin device
+  tidak diubah** sesuai keputusan user (zona dwell 3 hanya zona 9 `Absence Server`).
+- Bukti lapangan: 6 event attendance pasca-deploy dgn `crop_path`; snapshot
+  berisi orang + bbox `ID n` terbakar (diunduh & diperiksa). **Temuan: crop wajah
+  masih bisa berisi lantai** — bbox dari frame substream (waktu deteksi) dipetakan
+  ke snapshot main stream yang *live* (keyframe bisa 2–4 s basi); crop `#4647`
+  benar (face_quality 0.78), `#4650` salah. `attendance_event=0` karena belum ada
+  wajah yang match ke karyawan ter-enroll (1 employee, 5 embedding).
+- Dokumen baru `docs/detection-behavior-inventory.md`: peta alur, daftar analyzer
+  + kondisi trigger persis (intrusion/loitering/running/face_gate/person_detect),
+  media per event, dedup + rate limit + alerting, rantai attendance, plus 10
+  temuan inkonsistensi untuk pembahasan penataan arsitektur.
+
+### fix(dev): proxy Vite teruskan WebSocket — overlay deteksi akhirnya sampai
+
+- `frontend/vite.config.ts`: proxy `/api` diubah dari string ke objek dengan
+  **`ws: true`**. Tanpa ini browser (UI di port 5173) tidak pernah berhasil
+  handshake `ws://<host>:5173/api/v1/ws/events` — terbukti: `ws://localhost:5173/...`
+  timeout, `ws://localhost:8000/...` connect OK. Akibatnya overlay bbox detection
+  di modal debugger Live View tak pernah terisi (zona tetap tampil karena dari REST).
+- Jalur backend sudah benar dan diverifikasi: pesan disuntik ke MQTT
+  `isentinel/detections/server` → diterima klien WS (cookie auth) sebagai
+  `{"type":"detections",...}`.
+
+### Perencanaan R5 + temuan sync go2rtc (Task 0 disetujui)
+
+- Spec keputusan: `docs/superpowers/specs/2026-09-22-detection-model-redesign.md`
+  (8 keputusan user: behaviors per zona + master per kamera, `trigger_seconds`
+  per behavior, Advanced global, klip segment cache substream, attendance
+  face-first substream, motion gate on+override, alias kamera single-stream,
+  endpoint+tombol Sync go2rtc).
+- Plan eksekusi: `docs/superpowers/plans/2026-09-22-detection-model-r5a.md`
+  (Task 0–10; Task 0 = perbaikan sync go2rtc, R5b attendance & R5c klip menyusul).
+- Temuan: kamera tanpa substream (ZKteco cam 364) hanya terdaftar sebagai
+  `cam_364_main` di go2rtc → worker vision mati (`cannot open video source:
+  rtsp://localhost:8554/cam_364`) dan `_save_clip` (yang memakai `cam_<id>`)
+  akan gagal; sumber kameranya sendiri sehat (`h264 1920x1080 25fps`). Sync ke
+  go2rtc hanya dipicu mutasi lewat API — tidak ada rekonsiliasi saat drift.
+
+### R5 Task 0 — sync go2rtc: alias kamera single-stream + endpoint/tombol
+
+- `backend/app/services/go2rtc.py`: `sync_camera` kini membangun `cam_<id>` dari
+  `sub_src or main_src` dan `cam_<id>_main` dari `main_src or sub_src` — kamera
+  yang hanya punya satu stream (mis. ZKteco `cam 364`, `rtsp_sub` kosong) tetap
+  punya kedua nama, sehingga konsumen (`config_push` node server, `recorder`
+  klip, snapshot) tidak lagi menunjuk stream yang tidak ada. Fungsi baru
+  `sync_all(db)`: rekonsiliasi `cam_*` go2rtc vs kamera enabled (PUT yang hilang /
+  sudah ada, DELETE yang tidak dimiliki, stream non-`cam_*` tidak disentuh).
+- `backend/app/api/cameras.py`: `POST /api/v1/cameras/sync-go2rtc` (admin) →
+  `{added, removed, kept}`. `backend/app/main.py`: sync best-effort saat startup
+  (go2rtc belum tentu siap; gagal = warning, bukan crash).
+- Frontend: tombol **Sync go2rtc** di tab Kamera (`data-testid="go2rtc-sync"`) +
+  notification hasil `+n / −n stream`; `frontend/src/api/cameras.ts:syncGo2rtc()`;
+  i18n EN/ID (`cameras.sync.*`).
+- Bukti: backend `pytest -m "not gpu"` **289 passed** (5 test baru: alias sub→main,
+  alias main→sub, skip tanpa path, `sync_all` idempotent + stream asing aman,
+  endpoint admin-only); frontend `npx vitest run` **82 passed**; `npm run build` ok;
+  `npm run lint` 22 warning (tidak bertambah).
+
+### R5 Task 1 — migration 0014: zone.behaviors + setelan deteksi per kamera
+
+- `backend/alembic/versions/0014_zone_behaviors.py`: tambah `zone.behaviors` (JSON),
+  `zone.trigger_seconds`, `camera.ai_fps/confidence/analyzers/motion_enabled`
+  (expand-only; kolom lama tetap ada). Backfill memetakan data lama → behaviors:
+  `absensi`→`attendance` `[{kind:attendance,trigger:dwell}]`;
+  `restricted`→`behavior` `[intrusion(trigger=dwell)]` + `loitering(trigger=loiter_seconds)`
+  + `running(trigger=dwell,speed_limit_mps)`; `free`→`behavior` `[]`. `downgrade`
+  mengembalikan `type` ke kosakata lama (`absensi`/`restricted`) supaya kode pra-R5
+  tetap jalan.
+- Model + schema: `backend/app/models/{zone,camera}.py`,
+  `backend/app/schemas/zone.py` (validator `behaviors`: kind ∈
+  intrusion|loitering|running|attendance, `trigger_seconds` int ≥ 0,
+  `speed_limit_mps` opsional ≥ 0), `ZoneOut` membawa `behaviors`/`trigger_seconds`.
+  `backend/app/api/zones.py`: PATCH type `attendance` wajib `direction`.
+- Bukti: backend `pytest -m "not gpu"` **301 passed**; migration round-trip di
+  scratch DB: backfill benar (`attendance [{'kind':'attendance','trigger_seconds':3}]`,
+  `behavior [intrusion 2, loitering 30, running 2/1.5]`, `free []`), downgrade
+  mengembalikan type + drop kolom, upgrade ulang jalan lagi.
+
+### R5 Task 2 — config push: behaviors zona + setelan deteksi kamera
+
+- `backend/app/services/config_push.py`: payload kamera kini membawa `ai_fps`
+  (override kamera atau `settings.default_ai_fps`), `confidence` (override atau
+  `detector_conf`), `analyzers` (`None` = semua, `[]` = tanpa analitik),
+  `motion{enabled,threshold,min_area,force_interval_s}` dan tetap
+  `meters_per_pixel` (dipakai analyzer running). Payload zona membawa `behaviors`
+  + `trigger_seconds`; kolom lama (`dwell_seconds`,`loiter_seconds`,
+  `speed_limit_mps`) tetap dikirim sebagai deprecated sampai node R5 terpasang.
+- `backend/app/core/config.py`: setelan baru `default_ai_fps`, `motion_enabled`,
+  `motion_threshold`, `motion_min_area`, `motion_force_interval_s` (nilai awal;
+  nanti bisa dioverride dari DB di Task 6).
+- Bukti: backend `pytest -m "not gpu"` **305 passed** (4 test baru: behaviors zona,
+  override kamera, default global, `meters_per_pixel` tetap ada).
+
+### R5 Task 3 — analyzer dibangun dari `behaviors` + master per kamera
+
+- `vision/vision/node.py`: `behaviors_of(z)` (fallback kolom lama bila config
+  pra-R5) + `_make_analyzers` membuat analyzer per entry behavior
+  (`intrusion`/`attendance`/`loitering`/`running`), dengan `trigger_seconds` dan
+  `speed_limit_mps` dari entry. Master `cam.analyzers` menyaring: `None` = semua,
+  `[]` = tanpa analitik (hanya live view). `CameraCfg` menerima
+  `analyzers`/`confidence`/`motion`.
+- `vision/vision/analyzers/intrusion.py`: **trigger threshold** — zona dengan
+  `trigger_seconds > 0` menahan emit sampai track bertahan selama itu di polygon
+  (jam mulai saat masuk, reset saat keluar); `0` = perilaku lama.
+- `confidence` per kamera kini benar-benar dipakai `PersonDetector` (sebelumnya
+  field mati): `VisionNode._camera_conf` diisi saat config apply, factory detektor
+  memakai `_camera_conf.get(cam_id) or detector_conf`.
+- Bukti: `pytest vision/tests -m "not gpu"` **133 passed**.
+
+### R5 Task 4 — motion gate (inferensi hanya saat ada gerakan)
+
+- `vision/vision/motion.py` (baru): `FrameMotionGate` — frame di-downscale 64×36
+  grayscale, `absdiff` + threshold piksel (default 25) + blob terbesar via
+  `connectedComponentsWithStats`; gerak ≥ `min_area` (default 1%) → inferensi.
+  `force_interval_s` (default 2 s) memaksa inferensi berkala agar objek diam tetap
+  terdeteksi dan id ByteTrack tidak hilang (jarak frame < `max_age`).
+- `CameraWorker` (node.py): gate dipasang dari config kamera; saat tertahan,
+  inferensi dilewati dan `tracker.update([], ts)` dipanggil supaya track lama
+  expire alami. **Config tanpa `motion` (pra-R5) → gate OFF** (perilaku lama).
+- `backend/app/core/config.py`: `motion_threshold` = selisih intensitas piksel
+  (0–255, default 25), `motion_min_area` = rasio blob minimum (default 0.01).
+- Bukti: `pytest vision/tests -m "not gpu"` **133 passed** (8 test motion baru:
+  frame statis tertahan, blok bergerak lolos, interval paksa, noise kecil ditolak,
+  worker: 10 frame statis → 1 inferensi vs 10 tanpa gate vs 3 pra-R5).
+
+### Perbaikan tes (flake) — isolasi fake MQTT
+
+- `backend/tests/test_config_push.py`: patch `paho.mqtt.Client` bersifat global
+  (modul paho dipakai bersama `events_consumer`), sehingga klien latar ikut
+  tercatat di `FakeClient.calls` → `ValueError: too many values to unpack`. Kini
+  assertion hanya menghitung klien yang benar-benar `publish`, plus stub
+  `reconnect_delay_set`. Bukti: backend `pytest -m "not gpu"` **305 passed** 3×
+  berturut (sebelumnya flaky 1 gagal per run).
+
+## [Unreleased] — R3 Live View debugger
+
+### Modal debugger kamera — overlay zona & bbox person realtime
+
+- Vision node publish deteksi per frame ke MQTT `isentinel/detections/{node}`
+  (QoS 0 fire-and-forget, drop saat broker putus — data deteksi lama tak berguna).
+- Backend `events_consumer` subscribe topic itu → broadcast WS
+  `{type: "detections", camera_id, boxes}` melalui hub yang sudah ada.
+- Live View: klik tile → **modal debugger** (menggantikan big-on-top lama):
+  stream kamera + overlay SVG — toggle **Tampilkan zona** (semua zona kamera,
+  label nama+type: absensi hijau, restricted merah) dan **Tampilkan bbox person**
+  (kotak + `ID n` oranye, realtime ~0.2s). Tile grid tetap hidup saat modal terbuka.
+- person_detect = flag debug (`VISION_EMIT_PERSON_DETECT`, default false) —
+  tidak pernah masuk produksi; 88 event debug terhapus dari DB + blob.
+- Bukti: vision 113, backend 275, frontend 72, build ok.
+
+## [Unreleased] — R2 Media capture toggles
+
+### Snapshot bawa identitas track + toggle snapshot/clip per zona
+
+- Vision: snapshot event kini **dibakar bbox track + label `ID n`** (warna per
+  severity: critical merah, warning oranye, info hijau) — mengikat visual
+  orang-pemicu ke snapshot; menjawab laporan "miss" (snapshot vs clip beda orang).
+- Zona kini punya **toggle clip** (migration `0012` `zone.clip`, default true)
+  di samping toggle snapshot yang sudah ada; recorder akhirnya **menghormati
+  keduanya** (sebelumnya toggle snapshot diabaikan — selalu capture dua-duanya).
+  Flag zona dibawa ke event envelope oleh worker (`ev.snapshot`/`ev.clip`);
+  event tanpa flag (legacy) default capture. Clip tetap 30s post-event —
+  go2rtc 1.9.9 tidak mendukung pre-roll (`back` param → 404, terverifikasi).
+- UI: tab Zones/Attendance Gates — toggle "Rekam clip event (30 detik)";
+  detail Events menampilkan **crop wajah beranotasi** (payload `crop_path`)
+  untuk event attendance.
+- Bukti: vision 112 test (recorder flags + draw, config apply media), backend
+  273 (config push zone clip), frontend 71 + build.
+
+## [Unreleased] — R1 Testing & Refining (anotasi wajah, device split, enrollment)
+
+### Delegasi device per-analyzer (tab Node) + rebuild embedder
+
+- Delegasi GPU kini per-analyzer: **detector YOLO** dan **face recognition**
+  masing-masing punya pin sendiri. Backend: migration `0011` (`node.face_device`),
+  API `PUT /api/v1/nodes/{id}/face-device` (pola + validasi sama dengan
+  detector-device), config push kirim `face: {device}` berdampingan
+  `detector: {device}` — struktur map per-analyzer siap diperluas untuk
+  analyzer baru. Vision: device face dari config push menang atas env;
+  perubahan device → **FaceEmbedder di-rebuild** (provider onnxruntime ikut),
+  pin invalid → config ditolak, node tetap hidup.
+- UI tab Node: dua dropdown per node (Device detektor / Device face
+  recognition), i18n EN/ID; simpan hanya mengirim PUT untuk field yang berubah.
+
+### Anotasi wajah + identitas pada crop attendance
+
+- Vision node: bbox wajah (SCRFD) + label `face <det_score>` digambar pada
+  crop attendance **sebelum upload**; `payload.face_bbox` ikut di event.
+- Backend: setelah match sukses, crop di-overwrite dengan nama employee +
+  match_score (`app/services/annotate.py`, Pillow best-effort — gagal tidak
+  memblok attendance). Dep baru backend: `pillow`.
+
+### Enrollment multi-upload + auto-crop + gate
+
+- API baru `POST /employees/{id}/photos/batch` (≤5 foto): per-file hasil
+  `{ok, quality, reason, duplicate_of?}` — foto mentah tidak disimpan,
+  hanya hasil crop wajah (SCRFD bbox + margin 30%). Dup wajah employee lain
+  → warning cosine ≥ `FACE_DUP_WARN` (default 0.6, non-blocking).
+- UI Enrollment: input `multiple`, hasil per foto (ok/skor/duplikat/alasan
+  gagal), i18n EN/ID.
+
+### Operasional
+
+- Runbook baru `docs/runbooks/events-cleanup.md`; eksekusi 2026-09-21:
+  events 4491 → 5 (1 contoh per type dengan 2 media), blob disk terbersihkan.
+- Bukti: vision 108 test, backend 272, frontend 70, `npm run build` ok.
+
+## [Unreleased] — Face embed at node (Opsi B)
+
+### Face embedding pindah ke vision node — server hanya match gallery
+
+- **Delegasi wajah per-node**: vision node kini embed wajah sendiri (InsightFace
+  SCRFD + ArcFace `buffalo_l`) dari crop yang sudah di-produksi face gate, lalu
+  event MQTT attendance membawa `embedding` (512-d L2-normed) + `face_quality`
+  (det_score). Backend tidak lagi menjalankan inferensi wajah untuk match —
+  cukup cosine vs gallery terpusat (`match_vector`). Gallery tetap di server:
+  enroll baru langsung efektif tanpa sentuh edge (kriteria Fase E tetap terpenuhi).
+- Kompatibel mundur dua arah: payload tanpa `embedding` → backend embed crop
+  seperti sebelumnya (`match_crop`); node tanpa insightface → kirim crop saja.
+- File: `vision/vision/face.py` (FaceEmbedder, lazy import + cache gagal),
+  wiring `vision/vision/node.py` (`_attach_crop` menempel embedding, embedder
+  dibuat sekali per node dan dibagikan ke worker), config node
+  `VISION_FACE_EMBED` (default true), `VISION_FACE_DEVICE` (""/cpu/cuda:N),
+  `VISION_FACE_MODEL_DIR` (default `<data_dir>/faces_models`). Backend:
+  `match_vector()` di `app/services/face.py`, cabang embedding di
+  `handle_face_event` (`app/services/attendance.py`). Extra paket vision:
+  `face = [insightface>=0.7, onnxruntime-gpu>=1.19]`.
+- Bukti: vision 98→104 test (`tests/test_face_embed.py` 5, `tests/test_node_face_embed.py` 6), backend 16 test attendance logic baru (embedding match,
+  low_quality reject, fallback crop), full suite backend 265 passed.
+- Deploy server: `pip install -e "./vision[face]"` di venv, `VISION_FACE_MODEL_DIR`
+  mengarah ke `faces_models` di STORAGE_ROOT, restart `isentinel-vision`.
+  Catatan: dep insightface menarik `onnxruntime` (CPU) yang menutupi
+  `onnxruntime-gpu` → setelah install, uninstall `onnxruntime` polos atau
+  `pip install --force-reinstall --no-deps onnxruntime-gpu` supaya CUDA EP aktif.
+- Rollback: `VISION_FACE_EMBED=false` + restart node (kembali kirim crop saja);
+  backend menerima kedua bentuk payload tanpa perubahan.
 
 ## [Unreleased] — Fase E: Edge Jetson
 
@@ -515,6 +1200,26 @@ diperbaiki di akarnya (offset konten, token tema, pemuatan font).
 
 ## [Unreleased]
 
+### R5a — Detection & Model
+
+- Task 5: Live View debugger menerima payload deteksi `kind` (`person`/`face`) dan `label`; toggle menjadi **Tampilkan deteksi**, dengan bbox person oranye dan wajah biru.
+- Task 6: `detector_setting` singleton dan API admin menyimpan override global FPS/confidence/motion; `config_push` mendahulukan DB daripada `.env` dan menerbitkan ulang konfigurasi node.
+- Task 7: PATCH kamera menerima override AI FPS, confidence, analyzer, dan motion; perubahan memicu config push node terkait.
+- Task 8: tab **Deteksi & Model** menampilkan nilai global efektif, override per kamera, chip analyzer, dan Advanced untuk motion gate.
+- Task 9: editor zona memakai kosakata baru — tipe **Attendance | Behavior**, multi-select behavior
+  (`intrusion`/`loitering`/`running`) dengan **Trigger threshold (detik)** per behavior dan
+  `speed_limit_mps` khusus `running`; zona Attendance punya arah + satu trigger; `behaviors=[]`
+  tetap valid sebagai zona visual. Field lama level-zona (`dwell_seconds`) hilang dari UI dan
+  dari `frontend/src/api/zones.ts`; GatesPage menyaring `type='attendance'` dan menulis
+  `{trigger_seconds, behaviors:[{kind:'attendance',trigger_seconds}]}`; `LiveViewPage` memakai
+  warna zona `attendance`/`behavior`; i18n EN/ID diganti (`zones.trigger`, `zones.behaviors`,
+  `zones.behavior.*`, `zones.speedLimit`, `zones.type.attendance|behavior`, `gates.col.trigger`;
+  kunci `zones.dwell*`, `zones.type.{restricted,absensi,free}`, `gates.col.dwell` dihapus).
+  Bukti: vitest zona+gate **RED 10 failed | 4 passed → GREEN 14 passed**, full `npx vitest run`
+  **86 passed**, `npm run build` exit 0, `npm run lint` tanpa warning baru, backend
+  `pytest -m "not gpu"` **308 passed**, vision **134 passed, 2 deselected**.
+  Rollback: `git revert` commit `feat(zones-ui): ...` (perubahan murni frontend; skema DB tetap).
+
 - `9fcfbee` fix: live endpoint rewrites go2rtc host to request host
 - `3ec0d3a` feat: zone editor (click-to-draw polygon) + events master-detail inbox
 - feat: loitering analyzer (dwell per zone)
@@ -646,3 +1351,122 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 [0.3.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LyKhan77/I-Sentinel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/LyKhan77/I-Sentinel/commits/v0.1.0
+- Task 10 (fix): `GET /api/v1/detector-settings` 500 di server (`ResponseValidationError:
+  updated_at input None`). Akar masalah **bukan** baris DB NULL (kolom `nullable=False`)
+  melainkan objek fallback di `_effective()` yang tidak pernah di-flush — `default=` SQLAlchemy
+  hanya jalan saat INSERT, jadi `updated_at` tetap `None` saat tabel masih kosong. Fallback kini
+  mengisi `updated_at` sendiri; tanpa migration baru. Bukti: test baru
+  `test_get_without_row_returns_env_defaults` RED (`datetime_type ... input None`) → GREEN;
+  backend `pytest -m "not gpu"` **309 passed**, vision **134 passed, 2 deselected**,
+  `npx vitest run` **86 passed**, `npm run build` exit 0, lint tanpa warning baru.
+- Task 10 (deploy + lapangan): motion gate dinyalakan lewat tab **Deteksi & Model →
+  Advanced** (bukan `.env`; `.env` server tetap `MOTION_ENABLED=false` → membuktikan
+  precedence **DB > env**). Retained `isentinel/config/server` berubah ke
+  `motion.enabled=true` untuk 5 kamera. Heartbeat node kini melaporkan `detect_n`
+  (jumlah pemanggilan detektor) — util GPU tidak bisa dipakai sebagai bukti karena
+  kartu jenuh ~90% di kedua keadaan. Hasil A/B di `gspe-ai3`: gate ON **2,41** dan
+  **4,13** panggilan/detik vs gate OFF **25,00**/detik (plafon teoretis 5 kamera ×
+  5 fps) → hemat ≈84–90% inferensi; `ms_per_frame` tetap dilaporkan (24,8 ms) dan
+  detektor tetap pin `cuda:1`.
+- Task 10 (perbaikan UI): kolom override AI FPS/confidence di tab Deteksi & Model
+  tampil merah "invalid" saat kosong, padahal kosong berarti "pakai nilai global" —
+  `allowEmpty` pada Carbon NumberInput.
+- Task 10 (temuan, BELUM diperbaiki): `ByteTracker.max_age` dihitung per frame (15),
+  sedangkan gap motion gate = `force_interval_s × ai_fps`. Aman pada setelan
+  terpasang (10 ≤ 15), tetapi `ai_fps ≥ 8` — nilai yang diizinkan schema (s/d 25)
+  dan bisa diisi admin dari tab yang sama — membuat track objek diam mati tiap gap,
+  sehingga `trigger_seconds` loitering/intrusion tidak pernah terpicu. Didokumentasi
+  di `docs/detection-behavior-inventory.md` §10 dan dijaga test invarian.
+- Task 10 (perbaikan inti): keanggotaan zona diukur dari **titik pijak** (bottom-center
+  bbox) lewat helper baru `ground_point()`, bukan centroid badan. Zona digambar di
+  lantai sementara centroid melayang setengah tinggi badan di atasnya — makin jauh
+  subjek dari kamera makin besar selisihnya, sehingga orang yang jelas berdiri di dalam
+  zona terbaca di luar. Dipakai seragam oleh `intrusion`, `loitering`, `running`, dan
+  `face_gate` (kecepatan `running` tetap dari centroid). Bukti lapangan cam 357: satu
+  lintasan memberi centroid di dalam polygon hanya ~3 detik (17:16:11→13) sementara
+  `trigger_seconds=5`, jadi analyzer benar tidak emit — kaki masih di dalam zona jauh
+  lebih lama. Test: `pytest vision/tests -m "not gpu"` **140 passed** (dari 136),
+  backend **309 passed**, frontend **88 passed**, build exit 0.
+- Task 10 (verifikasi lapangan, TUNTAS): trigger behavior terbukti di cam 357 —
+  titik pijak masuk zona 17:32:00, bertahan 5 detik, event `intrusion` id=4664
+  zona 6 terbit 17:32:05 dengan `clip_path` (221 KB) + `snapshot_path` (72 KB)
+  keduanya ada di disk dan tampil di UI Events. Pembuktian bahwa perbaikan titik
+  pijak yang menentukan: `bbox_norm` event itu `[0.402, 0.335, 0.532, 0.992]` →
+  centroid y=0,663 **di luar** polygon (0,718–0,998), jadi logika centroid lama tidak
+  akan pernah menerbitkannya. Bukti: `docs/evidence/r5a-task10-intrusion-event.png`.
+
+### R5a lanjutan — refining UI konfigurasi (2026-09-23)
+
+- **Chip `attendance` dihapus dari tab Deteksi & Model** (kini 3 chip, sesuai mockup 06).
+  Absensi diatur dari tab Gate Absensi saja. Chip itu sebelumnya saklar ketiga yang
+  nyata: `_make_analyzers` melewati behavior yang tidak ada di `camera.analyzers`,
+  jadi mematikannya membunuh seluruh gate kamera itu diam-diam dari tab lain.
+  Nilai `attendance` tetap dipertahankan saat chip lain di-toggle — dijaga test
+  `chip attendance tidak ditampilkan tapi tetap tersimpan saat chip lain di-toggle`,
+  tanpa itu regresi "mematikan intrusion ikut mematikan absensi" akan lolos.
+- **Rail kamera di tab Zona Deteksi** menggantikan dropdown: tiap kamera menampilkan
+  jumlah zona + badge tipe, kamera tanpa zona tampil redup — mana yang sudah
+  dikonfigurasi terlihat tanpa membuka satu per satu. **Menyimpang dari mockup 06**
+  (`<select id="zoneCam">`) atas permintaan user; berkas mockup sengaja tidak diubah.
+  Grid jadi `200px | editor | detail`, runtuh ke satu kolom + strip horizontal di ≤671px.
+- **Feedback Save/Delete**: `ToastNotification` sukses (auto-dismiss 4 s), `Modal`
+  konfirmasi sebelum hapus zona, dan tombol disabled + label "Menyimpan…"/"Menghapus…"
+  selama request. Diterapkan di ZonesPage dan GatesPage supaya perilakunya sama.
+- Bukti: frontend **93 passed** (dari 88), `npm run build` exit 0, lint tanpa warning
+  baru (1 warning `set-state-in-effect` yang sudah ada sebelumnya, diverifikasi dengan
+  membandingkan lint sebelum/sesudah). Backend **309 passed**, vision **140 passed**.
+
+### R5a lanjutan — bloker attendance + overlay wajah debugger (2026-09-23)
+
+- **Gate absensi tidak lagi disaring master `camera.analyzers`** (`5711160`).
+  Kasus nyata: kelima kamera kini `analyzers=['intrusion','loitering','running']`
+  (tertulis dari klik chip), sehingga zona 9 cam 363 yang sudah aktif tidak pernah
+  membuat analyzer `face_gate`. `_make_analyzers` kini mengecualikan `attendance`
+  dari filter — absensi diatur dari tab Gate Absensi (zona `active`). Juga berlaku
+  untuk `analyzers: []`. Test: `test_attendance_gate_ignores_camera_analyzers_master`
+  (`['intrusion']` dan `[]`), merah sebelum perbaikan.
+- **`face_gate` memakai `trigger_seconds`** (`b60c602`). UI hanya menulis
+  `trigger_seconds`, analyzer membaca `dwell_seconds` → trigger yang diubah dari UI
+  atau zona attendance baru (dwell 0) tidak sampai ke gate. Zona 9 kebetulan aman
+  (keduanya 3). `dwell_seconds` tetap fallback config pra-R5.
+  Test: `test_trigger_seconds_wins_over_stale_legacy_dwell`.
+- **Produsen overlay wajah `kind="face"`** (`e508a97`). Kamera yang punya
+  `FaceGateAnalyzer` menjalankan `FaceEmbedder.detect()` (SCRFD saja, tanpa embedding,
+  `cuda:2`) pada frame substream yang lolos motion gate dan hanya saat ada track;
+  kotak dinormalisasi, label = `det_score`. Satu publish kosong saat wajah hilang.
+  Error deteksi tidak mematikan worker (test mutasi: tanpa `try` test merah).
+  Lazy-load `FaceEmbedder` dikunci supaya beberapa worker tidak memuat model dua kali.
+- **Overlay Live View**: pesan person dan face tidak lagi saling menimpa — hanya
+  kotak dengan `kind` sama yang diganti; key/testid memuat kind (`51ba870`).
+- Bukti lokal: vision **147 passed, 2 deselected** (dari 140), frontend **94 passed**,
+  build exit 0, lint: set warning identik sebelum/sesudah (dibandingkan via stash),
+  backend **309 passed**.
+- Dampak: kamera attendance kini memakai GPU face per frame saat ada orang.
+- Rollback: `git revert 51ba870 e508a97 b60c602 5711160` lalu restart `vision-node`.
+- Deploy 2026-09-23: server `9d459fb`, `vision-node` di-restart (5 worker, heartbeat
+  `detect_n` 100→148 dalam 10 s). `analyzers` kamera 357/358/362/363/364 dikembalikan
+  ke `null` lewat `PATCH /api/v1/cameras/{id}` (retained config terverifikasi).
+  `FaceEmbedder.detect()` diuji di insightface 2.0 server pada foto enrollment → 1 wajah,
+  skor 0,69. **Tes lapangan attendance cam 363 belum dilakukan.**
+
+### R5a lanjutan — frame basi + pin GPU model wajah (2026-09-23)
+
+Konteks: tes attendance user di cam 363 menghasilkan overlay yang sangat lambat dan
+seluruh event `match_reason: no_face` (2 di cam 363, 6 di cam 364). Diukur dulu sebelum
+diperbaiki.
+
+- **`FrameSource` memberi frame terbaru, bukan antrean basi** (`ddf8599`). Lag terukur
+  +19,8 s setelah 30 s (cam 363, 15 fps dibaca 5 fps) dan terus naik. Reader thread
+  menguras stream pada fps asli. Test `test_live_source_returns_latest_frame_not_stale_buffer`
+  mereproduksi pola produksi (lag 8→35 frame, lalu ≤10 setelah perbaikan). Bukti di
+  stream nyata: selisih konstan −0,85 s selama 30 s. Error decode h264 36 → ≤8 per 5 menit.
+  Biaya: CPU vision-node ~23% → ~64% dari satu core.
+- **Pin `cuda:2` model wajah benar-benar berlaku** (`7127f94`). insightface mengabaikan
+  `ctx_id >= 0`, sehingga sesi CUDA tanpa `device_id` jatuh ke GPU 0 (RTX 4090 bersama
+  vLLM). Provider kini `("CUDAExecutionProvider", {"device_id": N})`. Bukti di server:
+  sesi dengan `device_id=2` → GPU index 2 (902 MiB). Setelah deploy, proses vision tidak
+  lagi memakai GPU 0.
+- Bukti: vision **151 passed, 2 deselected**. Deploy `ddf8599` pukul 10:13, 5 worker jalan.
+- Temuan (tidak dikerjakan): model wajah **backend** (enrollment/match_crop) memakai GPU 0
+  tanpa pin device, sengaja `ctx_id=0`.
+- Rollback: `git revert ddf8599 7127f94` lalu restart `vision-node`.
