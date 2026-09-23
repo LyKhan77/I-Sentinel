@@ -3,6 +3,24 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 11 — tes GPU, runbook, docs (PENDING verifikasi lapangan, lokal 2026-09-23)
+
+- Konteks/path: `vision/tests/test_face_worker_gpu.py` baru bertanda `gpu`
+  (SCRFD + ArcFace asli pada foto enrollment, konsistensi vektor >0,9 — hanya
+  dijalankan di server, belum dieksekusi). `docs/runbooks/attendance-face-first.md`
+  baru: urutan deploy (pull → `alembic upgrade head` → restart API+vision),
+  gambar ulang zona attendance 7/8/9/11 di area kepala, cara baca label gerbang
+  debugger, kalibrasi `face_stats`, rollback dengan urutan
+  `alembic downgrade 0015` sebelum revert. `README.md` peta repo:
+  `face_gate.py` dihapus, wajah kini `face_worker.py` di `vision/vision/`.
+  `ROADMAP.md`: bagian R5b status lokal/PENDING lapangan; temuan terbuka R5a #2
+  (max_age per frame) ditandai selesai oleh R5b Task 1. `docs/detection-
+  behavior-inventory.md` §6 + §10 diberi catatan status R5b.
+- Bukti: suite lengkap lokal (angka persis di bawah). **Tidak ada klaim GPU,
+  deploy, server, atau field** — semua PENDING sampai deploy diizinkan user.
+- Dampak: siap deploy; runbook menegaskan rollback perlu downgrade 0015 dulu.
+  Rollback Task 11: `git revert` commit docs.
+
 ### R5b Task 10 — overlay halus + TTL, label gerbang, mode player, hasil wajah di Events (lokal, 2026-09-23)
 
 - Konteks/path: `frontend/src/features/live/playerMode.ts` baru (WebRTC via `srcObject`,

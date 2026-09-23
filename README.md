@@ -38,7 +38,7 @@ isentinel/
 ├── vision/                   # vision-node (deployable ke Jetson, minimal deps)
 │   ├── node.py
 │   ├── pipeline/             # source(go2rtc) → detector(YOLO) → tracker(ByteTrack) → emit
-│   ├── analyzers/            # intrusion.py, loitering.py, running.py, face_gate.py
+│   ├── analyzers/            # intrusion.py, loitering.py, running.py (face: face_worker.py di vision/vision/)
 │   ├── transport/            # mqtt client + disk queue store-and-forward
 │   └── tests/
 ├── frontend/                 # React 19 + Vite + Carbon (9 halaman)

@@ -107,6 +107,15 @@ membedakan "kena limit" dari "gagal kirim".
 
 ## 6. Rantai attendance (absensi)
 
+> **R5b status (lokal, PENDING verifikasi lapangan):** rantai di bawah ini masih
+> deskripsi Fase 4 (face_gate analyzer lama). R5b menggantinya: pengirim event
+> attendance kini **face worker** (`vision/vision/face_worker.py`, wajah di
+> `cuda:2`); crop diambil dari frame mainstream node; event tanpa `crop_path`
+> tetap match bila payload punya embedding; cooldown backend kini karyawan+arah
+> ±5 menit lintas kamera (ATTENDANCE_COOLDOWN_MIN); embedding dibuang dari
+> payload event pada jalur normal (migration 0016 purge yang lama). Tabel ini
+> diperbarui penuh setelah verifikasi lapangan.
+
 ```
 event type=attendance (dari face_gate)
   └─ butuh payload.crop_path  ─── tidak ada → skip ("tanpa crop_path")
@@ -222,6 +231,11 @@ Hemat ≈ 84–90% inferensi. Saat diam, laju turun ke ≈ `1/force_interval_s` 
 kamera (0,5/detik) — yaitu jalur force-interval, bukan gate yang macet.
 
 ### Batas yang diketahui: `force_interval_s × ai_fps ≤ ByteTracker.max_age`
+
+> **R5b status:** temuan ini ditutup di R5b Task 1 (`f9ee6be`) — track basi
+> di-expire **sebelum** matching, sehingga gap melewati `max_age` tidak lagi
+> menghidupkan ID lama (tes invarian umur vs gap). Seksi di bawah tetap
+> dipertahankan sebagai catatan sebelum perbaikan.
 
 `max_age = 15` dihitung **per frame**, sementara gap gate = `force_interval_s ×
 ai_fps`. Pada setelan terpasang aman (2,0 × 5 = 10 ≤ 15), tapi menaikkan AI FPS

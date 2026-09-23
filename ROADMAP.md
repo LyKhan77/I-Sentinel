@@ -18,6 +18,7 @@
 | 4d | Responsif: nol overflow horizontal di 390px | [x] selesai | 2026-09-15 | 9/9 halaman `overflow=0 scrollX=0` (sebelumnya /events 132px, /attendance 115px, /config/gates 23px) | `a0ab278..(v0.5.3)` |
 | 4e | Live view jalan dari klien LAN (proxy snapshot) | [x] selesai | 2026-09-15 | 24/25 tile render `640x360` same-origin; `/snapshot` 401 tanpa login, 200 image/jpeg dengan login | `7c89eb1..(v0.5.4)` |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [~] plan detail siap | — | `docs/plans/06-fase-5-hardening.md` 12 task / 66 step (591a18e); prasyarat P1-P9 teraudit | |
+| R5b | Attendance face-first (SCRFD+ArcFace node, cooldown, UI) | [~] lokal selesai, PENDING deploy + verifikasi lapangan | — | frontend/backend/vision suite hijau lokal (Task 10); deploy + GPU + lapangan belum dijalankan (runbook `docs/runbooks/attendance-face-first.md`) | |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
@@ -359,7 +360,35 @@ Spec: `docs/superpowers/specs/2026-09-22-detection-model-redesign.md`
 - **`ByteTracker.max_age` berbasis frame (15)** vs gap motion gate
   (`force_interval_s × ai_fps`): aman di 5 fps (10 ≤ 15), rusak diam-diam pada
   `ai_fps ≥ 8` yang diizinkan schema. Detail di
-  `docs/detection-behavior-inventory.md` §10.
+  `docs/detection-behavior-inventory.md` §10. — **Ditutup di R5b Task 1**:
+  track basi kini di-expire sebelum matching sehingga gap >`max_age_s` tidak
+  menghidupkan ID lama (tes invarian umur vs gap).
+
+---
+
+## R5b — Attendance face-first — **lokal selesai, PENDING deploy + verifikasi lapangan**
+
+Plan: `docs/superpowers/plans/2026-09-23-attendance-face-first-r5b.md`
+Spec: `docs/superpowers/specs/2026-09-23-attendance-face-first-design.md`
+
+**Kriteria selesai (lokal; lapangan PENDING):**
+- [x] Face worker terpisah di node wajah `cuda:2`, gerbang dari mainstream,
+      gerbang tanpa arah ditolak, node idle tetap menerima config (vision suite
+      non-GPU **177 passed, 3 deselected**)
+- [x] Setelan wajah global + migration 0016 (purge embedding attendance),
+      PUT lima field wajib; editor UI Advanced (backend non-GPU **324 passed**,
+      frontend **99 passed / 14 files**, build + lint hijau)
+- [x] Cooldown karyawan+arah ±5 menit, embedding dibuang dari payload normal,
+      event tanpa crop tetap match, sanitasi embedding (27 tests logic)
+- [x] Overlay TTL 1 s + transisi 150 ms, label gerbang, badge mode player,
+      hasil wajah di Events (5 tests frontend baru)
+- [ ] Deploy + verifikasi GPU/lapangan spec §11 — runbook
+      `docs/runbooks/attendance-face-first.md`; kalibrasi `face_stats`
+      (blur/width_px) mencatat nilai final di sini
+
+**Bukti:** angka suite per task di `CHANGELOG.md` bagian R5b; range diff
+`temp/sdd/r5b/task-<n>-committed.diff`. Belum ada bukti lapangan/GPU —
+tidak diklaim sampai deploy diizinkan.
 
 ---
 
