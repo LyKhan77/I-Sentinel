@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
@@ -101,31 +101,13 @@ test('admin can add a gate zone', async () => {
   expect(screen.getAllByRole('combobox')[1]).toBeEnabled()
 })
 
-test('admin ubah trigger threshold per gate (PATCH trigger_seconds + behaviors)', async () => {
-  const fetchMock = stubFetch([gate(1, 'entry')])
+test('gate attendance tanpa kolom trigger, dengan petunjuk area wajah', async () => {
+  stubFetch([gate(1, 'entry')])
   renderPage()
 
   await screen.findByTestId('gate-row-1')
-  const trigger = screen.getByTestId('gate-trigger-1')
-  expect(trigger).toHaveValue(0)
-  fireEvent.change(trigger, { target: { value: '3' } })
-
-  await waitFor(() => {
-    const patch = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith('/zones/1') && i?.method === 'PATCH')
-    expect(patch).toBeTruthy()
-    expect(JSON.parse(String(patch![1]!.body))).toEqual({
-      trigger_seconds: 3,
-      behaviors: [{ kind: 'attendance', trigger_seconds: 3 }],
-    })
-  })
-})
-
-test('viewer tidak bisa ubah trigger threshold', async () => {
-  stubFetch([gate(1, 'entry')], VIEWER)
-  renderPage()
-
-  await screen.findByTestId('gate-row-1')
-  expect(screen.getByTestId('gate-trigger-1')).toBeDisabled()
+  expect(screen.queryByTestId('gate-trigger-1')).not.toBeInTheDocument()
+  expect(screen.getByTestId('gates-face-hint')).toHaveTextContent(/wajah/i)
 })
 
 test('perubahan gate yang tersimpan memunculkan notifikasi sukses', async () => {
@@ -133,7 +115,7 @@ test('perubahan gate yang tersimpan memunculkan notifikasi sukses', async () => 
   renderPage()
 
   await screen.findByTestId('gate-row-1')
-  fireEvent.change(screen.getByTestId('gate-trigger-1'), { target: { value: '3' } })
+  fireEvent.change(document.querySelector('#gate-dir-1')!, { target: { value: 'exit' } })
 
   expect(await screen.findByTestId('gate-toast')).toHaveTextContent(/tersimpan/i)
 })

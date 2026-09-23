@@ -5,7 +5,6 @@ import {
   InlineLoading,
   InlineNotification,
   ToastNotification,
-  NumberInput,
   Select,
   SelectItem,
   Table,
@@ -112,7 +111,7 @@ export default function GatesPage() {
     }
   }
 
-  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.trigger', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
+  const headers: TKey[] = ['gates.col.camera', 'gates.col.direction', 'gates.col.snapshot', 'gates.col.clip', 'gates.col.active']
 
   return (
     <>
@@ -147,6 +146,9 @@ export default function GatesPage() {
         <InlineLoading description={t('common.loading')} />
       ) : (
         <>
+          <p data-testid="gates-face-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: '0 0 8px' }}>
+            {t('gates.faceHint')}
+          </p>
           <TableContainer>
             <Table>
               <TableHead>
@@ -179,25 +181,6 @@ export default function GatesPage() {
                         <SelectItem value="entry" text={t('gates.dir.entry')} />
                         <SelectItem value="exit" text={t('gates.dir.exit')} />
                       </Select>
-                    </TableCell>
-                    <TableCell>
-                      <NumberInput
-                        id={`gate-trigger-${z.id}`}
-                        data-testid={`gate-trigger-${z.id}`}
-                        label={t('gates.col.trigger')}
-                        hideLabel
-                        size="sm"
-                        min={0}
-                        step={1}
-                        disabled={!isAdmin}
-                        value={z.trigger_seconds ?? 0}
-                        onChange={(_, state) => {
-                          const n = Number(state.value)
-                          // gate attendance: kolom zona dan entry behavior dijaga sinkron
-                          if (Number.isInteger(n) && n >= 0)
-                            patch(z, { trigger_seconds: n, behaviors: [{ kind: 'attendance', trigger_seconds: n }] })
-                        }}
-                      />
                     </TableCell>
                     <TableCell>
                       <Toggle

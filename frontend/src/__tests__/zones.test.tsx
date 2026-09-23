@@ -207,21 +207,18 @@ test('behavior running membawa speed_limit_mps sendiri', async () => {
   )
 })
 
-test('tipe Attendance: arah + satu trigger threshold, tanpa daftar behavior', async () => {
+test('tipe Attendance: arah + petunjuk area wajah, tanpa input trigger', async () => {
   const fetchMock = await selectZone([
     zoneFix({ type: 'attendance', direction: 'entry', behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] }),
   ])
 
   expect(screen.getByLabelText('Masuk')).toBeInTheDocument()
   expect(screen.queryByTestId('zone-behavior-intrusion')).not.toBeInTheDocument()
-  fireEvent.change(screen.getByTestId('zone-trigger'), { target: { value: '3' } })
+  expect(screen.queryByTestId('zone-trigger')).not.toBeInTheDocument()
+  expect(screen.getByTestId('zone-attendance-hint')).toHaveTextContent(/wajah/i)
   fireEvent.click(screen.getByTestId('zone-save'))
 
-  await waitFor(() => {
-    const body = patchBody(fetchMock)
-    expect(body.trigger_seconds).toBe(3)
-    expect(body.behaviors).toEqual([{ kind: 'attendance', trigger_seconds: 3 }])
-  })
+  await waitFor(() => expect(patchBody(fetchMock).direction).toBe('entry'))
 })
 
 test('zona Behavior tanpa behavior terpilih tetap tersimpan (zona visual)', async () => {

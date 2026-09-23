@@ -113,10 +113,6 @@ export default function ZonesPage() {
     patchSelected({ behaviors: BEHAVIOR_KINDS.map(entry).filter((b): b is Behavior => b !== null) })
   }
 
-  // attendance: satu threshold — kolom zona dan entry behavior dijaga sinkron
-  const setAttendanceTrigger = (n: number) =>
-    patchSelected({ trigger_seconds: n, behaviors: [{ kind: 'attendance', trigger_seconds: n }] })
-
   const save = async () => {
     if (!selected || !cam) return
     setError(null)
@@ -390,19 +386,9 @@ export default function ZonesPage() {
                   onToggle={(v) => patchSelected({ clip: v })}
                 />
                 {selected.type === 'attendance' ? (
-                  <NumberInput
-                    id="zone-trigger"
-                    data-testid="zone-trigger"
-                    label={t('zones.trigger')}
-                    helperText={t('zones.triggerHint')}
-                    min={0}
-                    step={1}
-                    value={selected.trigger_seconds ?? 0}
-                    onChange={(_, state) => {
-                      const n = Number(state.value)
-                      if (Number.isInteger(n) && n >= 0) setAttendanceTrigger(n)
-                    }}
-                  />
+                  <p data-testid="zone-attendance-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: 0 }}>
+                    {t('zones.attendanceHint')}
+                  </p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{t('zones.behaviors')}</span>

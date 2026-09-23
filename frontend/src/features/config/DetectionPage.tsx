@@ -110,6 +110,22 @@ export default function DetectionPage() {
             onChange={(_, { value }) => setSettings({ ...settings, motion_threshold: Number(value) })} />
           <Toggle id="motion-enabled" labelText={t('detection.motion')} toggled={settings.motion_enabled}
             onToggle={(value) => setSettings({ ...settings, motion_enabled: value })} />
+          <h4>{t('detection.faceGroup')}</h4>
+          <NumberInput id="face-min-width" label={t('detection.faceMinWidth')} min={16} max={1000} step={1}
+            value={settings.face_min_width_px}
+            onChange={(_, { value }) => setSettings({ ...settings, face_min_width_px: Number(value) })} />
+          <NumberInput id="face-min-score" label={t('detection.faceMinScore')} min={0.1} max={0.99} step={0.05}
+            value={settings.face_min_det_score}
+            onChange={(_, { value }) => setSettings({ ...settings, face_min_det_score: Number(value) })} />
+          <NumberInput id="face-max-yaw" label={t('detection.faceMaxYaw')} min={0.05} max={1} step={0.05}
+            value={settings.face_max_yaw}
+            onChange={(_, { value }) => setSettings({ ...settings, face_max_yaw: Number(value) })} />
+          <NumberInput id="face-blur-min" label={t('detection.faceBlurMin')} min={0} step={10}
+            value={settings.face_blur_min}
+            onChange={(_, { value }) => setSettings({ ...settings, face_blur_min: Number(value) })} />
+          <NumberInput id="face-min-frames" label={t('detection.faceMinFrames')} min={1} max={20} step={1}
+            value={settings.face_min_frames}
+            onChange={(_, { value }) => setSettings({ ...settings, face_min_frames: Number(value) })} />
           <Button size="sm" onClick={save}>{t('detection.save')}</Button>
         </div>
       )}

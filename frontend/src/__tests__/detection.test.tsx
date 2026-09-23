@@ -36,6 +36,30 @@ test('detection tab updates analyzer and global motion settings', async () => {
   expect(sent).not.toHaveProperty('updated_at')
 })
 
+test('grup Wajah attendance di Advanced ikut tersimpan', async () => {
+  const calls: { url: string; init?: RequestInit }[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init })
+    const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone] : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
+    return { ok: true, status: 200, json: async () => body }
+  }))
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+
+  expect(await screen.findByText('Deteksi & Model')).toBeInTheDocument()
+  await userEvent.click(screen.getByText('Advanced'))
+  expect(screen.getByText('Wajah attendance')).toBeInTheDocument()
+  await userEvent.clear(screen.getByLabelText('Jumlah frame wajah bagus (K)'))
+  await userEvent.type(screen.getByLabelText('Jumlah frame wajah bagus (K)'), '5')
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan setelan global' }))
+  await waitFor(() => {
+    const put = calls.find((c) => c.url.endsWith('/detector-settings') && c.init?.method === 'PUT')
+    expect(put).toBeTruthy()
+    const body = JSON.parse(String(put!.init!.body))
+    expect(body.face_min_frames).toBe(5)
+    expect(body.face_min_width_px).toBe(80)
+  })
+})
+
 test('kolom override kosong bukan keadaan invalid — kosong berarti pakai nilai global', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone] : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
