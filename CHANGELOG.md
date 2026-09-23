@@ -3,6 +3,24 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 5 review — expiry saat stream idle dan upload wajah berbatas (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/pipeline/source.py` memberi `next_frame(timeout)` tanpa
+  menutup sumber saat idle; `vision/vision/face_worker.py` mengecek expiry walau
+  RTSP belum mengirim frame baru. Upload crop/snapshot independen, tiap gambar
+  satu percobaan socket 0,5 s agar event dan overlay tidak tertahan retry 60 s.
+  `vision/vision/recorder.py` menerima override timeout/retries hanya untuk
+  upload blob worker wajah; default recorder lain tetap. Tes di
+  `vision/tests/test_face_worker.py` dan `vision/tests/test_source.py`.
+- Bukti TDD: RED 3 failed, 13 deselected (idle stream, exception crop,
+  enam percobaan upload lambat); GREEN tes terarah worker/source/recorder
+  `36 passed`; suite vision non-GPU `192 passed, 2 deselected, 2 warnings`
+  (pynvml dan mock heartbeat lama). Tidak ada GPU/server/field verification.
+- Dampak: event short-pass bisa terbit setelah sumber diam; keterlambatan upload
+  normal dibatasi dua socket timeout 0,5 s. Media mungkin hilang bila API lebih
+  lambat; event embedding tetap terbit. Rollback: `git revert` commit review
+  Task 5; tidak ada migrasi DB. Pin GPU tidak berubah.
+
 ### R5b Task 5 — FaceGateWorker (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/face_worker.py` menambah worker wajah di frame main

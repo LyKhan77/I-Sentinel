@@ -1,5 +1,8 @@
 """FaceGateWorker: face-first on main frames without GPU or YOLO."""
 
+import threading
+import time
+
 import cv2
 import numpy as np
 import pytest
@@ -7,7 +10,7 @@ import pytest
 from vision.face import FaceDet
 from vision.face_quality import FaceSettings
 from vision.face_worker import FaceGateWorker
-from vision.pipeline.source import FrameSource
+from vision.pipeline.source import Frame, FrameSource
 
 FRAME = np.zeros((1080, 1920, 3), np.uint8)
 SHARP = np.random.default_rng(0).integers(0, 255, (112, 112, 3), dtype=np.uint8)
@@ -64,7 +67,7 @@ class FakeRecorder:
         self.fail = fail
         self.uploads = []
 
-    def upload_bytes(self, data, kind, content_type="image/jpeg"):
+    def upload_bytes(self, data, kind, content_type="image/jpeg", **kwargs):
         self.uploads.append((kind, data))
         return None if self.fail else f"{kind}s/x.jpg"
 
@@ -118,6 +121,48 @@ def test_short_pass_emits_when_track_expires():
     _, t, _ = run_worker([[GOOD]] + [[]] * 8)
     assert len(t.events) == 1
     assert t.events[0]["payload"]["face_stats"]["frames"] == 1
+
+
+def test_short_pass_expires_while_stream_stalls():
+    class StalledSource:
+        def __init__(self):
+            self.first = True
+            self.closed = threading.Event()
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            if self.first:
+                self.first = False
+                return Frame(time.monotonic(), FRAME)
+            self.closed.wait()
+            raise StopIteration
+
+        def next_frame(self, timeout):
+            if self.first:
+                return next(self)
+            self.closed.wait(timeout)
+            return None
+
+        def close(self):
+            self.closed.set()
+
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[GOOD]]), t, "test-node",
+                       FaceSettings(), max_age_s=0.15)
+    w.source = StalledSource()
+    w.start()
+    try:
+        deadline = time.monotonic() + 1.0
+        while not t.events and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(t.events) == 1
+        assert t.events[0]["payload"]["face_stats"]["frames"] == 1
+    finally:
+        w.stop()
+        w.join(timeout=2)
+    assert not w.is_alive()
 
 
 def test_overlay_published_before_embedding():
@@ -179,6 +224,49 @@ def test_crop_and_snapshot_come_from_best_frame():
     assert ev["snapshot_path"] == "snapshots/x.jpg"
     assert ev["payload"]["crop_path"] == "crops/x.jpg"
     assert ev["payload"]["face_bbox"][0] == pytest.approx(36.0)
+
+
+def test_crop_upload_exception_does_not_skip_snapshot():
+    class BrokenCrop(FakeRecorder):
+        def upload_bytes(self, data, kind, content_type="image/jpeg", **kwargs):
+            if kind == "crop":
+                raise OSError("crop upload failed")
+            return super().upload_bytes(data, kind, content_type, **kwargs)
+
+    _, t, _ = run_worker([[GOOD]] * 3, recorder=BrokenCrop())
+    assert t.events[0]["payload"]["crop_path"] is None
+    assert t.events[0]["snapshot_path"] == "snapshots/x.jpg"
+
+
+def test_upload_timeout_does_not_hold_event_or_next_overlay(monkeypatch, tmp_path):
+    from vision.recorder import Recorder
+
+    class Cfg:
+        api_url = "http://localhost:8000"
+        api_key = "test"
+        node_id = "test-node"
+        data_dir = str(tmp_path)
+
+    rec = Recorder(363, Cfg())
+    calls = []
+
+    def slow_urlopen(req, timeout):
+        calls.append(timeout)
+        time.sleep(timeout)
+        raise TimeoutError("stalled API")
+
+    monkeypatch.setattr("vision.recorder.urlopen", slow_urlopen)
+    try:
+        start = time.monotonic()
+        _, t, _ = run_worker([[GOOD]] * 5, recorder=rec)
+        assert time.monotonic() - start < 2.0
+        assert len(t.events) == 1
+        assert t.events[0]["payload"]["crop_path"] is None
+        assert t.events[0]["snapshot_path"] is None
+        assert len(t.detections) == 5
+        assert calls == [0.5, 0.5]  # one bounded attempt per image; no 60s retries
+    finally:
+        rec.close()
 
 
 def test_upload_failure_still_publishes_event():

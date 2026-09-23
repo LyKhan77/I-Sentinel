@@ -1,3 +1,4 @@
+import threading
 import time
 
 import numpy as np
@@ -111,6 +112,35 @@ def test_source_unavailable_at_start_retries_instead_of_raising(monkeypatch):
         frame = next(src)
         assert int(frame.data[0]) >= 1
         assert OpensOnSecondTry.attempts >= 2
+    finally:
+        src.close()
+
+
+def test_live_idle_timeout_returns_none_without_closing_source():
+    class PausedCapture:
+        def __init__(self, url):
+            self.resume = threading.Event()
+            self.n = 0
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            if self.n:
+                self.resume.wait(2)
+            self.n += 1
+            return True, np.array([self.n])
+
+        def release(self):
+            self.resume.set()
+
+    cap = PausedCapture("fake://cam")
+    src = FrameSource("fake://cam", target_fps=20.0, open_capture=lambda url: cap)
+    try:
+        assert int(src.next_frame(timeout=0.5).data[0]) == 1
+        assert src.next_frame(timeout=0.05) is None
+        cap.resume.set()
+        assert int(src.next_frame(timeout=0.5).data[0]) >= 2
     finally:
         src.close()
 

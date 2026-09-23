@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -82,9 +83,17 @@ class FaceGateWorker(threading.Thread):
     def run(self) -> None:
         """Consume source until stopped; frame-level inference errors never stop worker."""
         try:
-            for frame in self.source:
-                if self.stop_event.is_set():
+            while not self.stop_event.is_set():
+                try:
+                    frame = self.source.next_frame(timeout=min(0.1, self._tracker.max_age_s / 2))
+                except StopIteration:
                     break
+                if frame is None:
+                    self._tracker.update([], time.monotonic())
+                    if self._tracker.lost_ids:
+                        self._publish([])
+                    self._expire()
+                    continue
                 if frame.data is None:
                     continue
                 if self.motion_gate is not None and not self.motion_gate.update(frame.data, frame.ts):
@@ -186,12 +195,17 @@ class FaceGateWorker(threading.Thread):
         if self.recorder is not None:
             cx1, cy1, cx2, cy2 = crop_box(bbox, w, h)
             face_bbox = [x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1]
-            try:
-                crop_path = self.recorder.upload_bytes(_jpeg(frame[cy1:cy2, cx1:cx2]), "crop")
-                snapshot_path = self.recorder.upload_bytes(_snapshot_jpeg(frame, bbox), "snapshot")
-            except Exception:
-                log.warning("camera %s: face media upload failed", self.camera_id,
-                            exc_info=True)
+            for kind, image in (("crop", lambda: _jpeg(frame[cy1:cy2, cx1:cx2])),
+                                ("snapshot", lambda: _snapshot_jpeg(frame, bbox))):
+                try:
+                    path = self.recorder.upload_bytes(image(), kind, timeout=0.5, retries=1)
+                    if kind == "crop":
+                        crop_path = path
+                    else:
+                        snapshot_path = path
+                except Exception:
+                    log.warning("camera %s: face %s upload failed", self.camera_id,
+                                kind, exc_info=True)
         ev = {
             "event_id": str(uuid.uuid4()),
             "type": "attendance",

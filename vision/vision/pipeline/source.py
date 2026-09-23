@@ -101,6 +101,12 @@ class FrameSource:
         return self
 
     def __next__(self) -> Frame:
+        frame = self.next_frame()
+        assert frame is not None  # unbounded iterator never returns an idle timeout
+        return frame
+
+    def next_frame(self, timeout: float | None = None) -> Frame | None:
+        """Get latest sampled frame, or None when no frame arrives before timeout."""
         if self._closed:
             raise StopIteration
 
@@ -114,16 +120,23 @@ class FrameSource:
             self._index += 1
             return Frame(ts=ts, data=data)
 
-        # real mode
+        # real mode: idle timeout must not terminate source (reconnect may still succeed)
+        deadline = None if timeout is None else time.monotonic() + timeout
         if self._reader is None:
             self.start()
         wait = self._next_due - time.monotonic()
         if wait > 0:
+            if deadline is not None and wait >= deadline - time.monotonic():
+                time.sleep(max(0, deadline - time.monotonic()))
+                return None
             time.sleep(wait)
         with self._cond:
             while not (self._closed or self._ended) and (
                     self._latest is None or self._latest[0] == self._last_seq):
-                self._cond.wait(timeout=1.0)
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    return None
+                self._cond.wait(timeout=remaining)
             if self._closed or self._latest is None or self._latest[0] == self._last_seq:
                 raise StopIteration
             seq, ts, data = self._latest

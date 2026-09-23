@@ -200,9 +200,9 @@ class Recorder:
             f.write(data)
         return path
 
-    def upload_bytes(self, data: bytes, kind: str,
-                     content_type: str = "image/jpeg") -> str | None:
-        """Upload raw bytes via a temp file in outbox. Returns backend path or None."""
+    def upload_bytes(self, data: bytes, kind: str, content_type: str = "image/jpeg",
+                     *, timeout: float = 60, retries: int = UPLOAD_RETRIES) -> str | None:
+        """Upload blob; latency-sensitive callers may limit socket wait and attempts."""
         import os
         import uuid
         if not self.cfg.api_url or not self.cfg.api_key:
@@ -211,18 +211,19 @@ class Recorder:
         try:
             with open(tmp, "wb") as f:
                 f.write(data)
-            return self._upload_one(tmp, kind, content_type)
+            return self._upload_one(tmp, kind, content_type, timeout=timeout, retries=retries)
         finally:
             try:
                 os.remove(tmp)
             except OSError:
                 pass
 
-    def _upload_one(self, path: str, kind: str, content_type: str) -> str | None:
+    def _upload_one(self, path: str, kind: str, content_type: str, *,
+                    timeout: float = 60, retries: int = UPLOAD_RETRIES) -> str | None:
         """POST raw bytes to blob endpoint. Returns backend path or None on final failure."""
         import os
         url = (f"{self.cfg.api_url}/internal/nodes/{self.cfg.node_id}/blobs?kind={kind}")
-        for attempt in range(UPLOAD_RETRIES):
+        for attempt in range(retries):
             if attempt:
                 time.sleep(2 ** (attempt - 1))
             try:
@@ -233,7 +234,7 @@ class Recorder:
                 )
                 with open(path, "rb") as f:
                     req.data = f.read()
-                with urlopen(req, timeout=60) as resp:
+                with urlopen(req, timeout=timeout) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                     return body.get("path")
             except Exception as e:
