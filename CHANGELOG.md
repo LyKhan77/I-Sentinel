@@ -3,6 +3,20 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 1 review evidence — commit patches (lokal, 2026-09-23)
+
+- Konteks: reviewer hanya menerima diff working tree bersih, bukan dua patch commit
+  Task 1; tidak ada cacat kode baru. Path yang diperiksa: `vision/vision/pipeline/tracker.py`,
+  `vision/vision/node.py`, `vision/vision/motion.py`, `vision/tests/test_tracker.py`,
+  `vision/tests/test_motion_gate.py`, `CHANGELOG.md`. Patch lengkap tersedia lewat
+  `git show --format=fuller 0b5fcfa` dan `git show --format=fuller f9ee6be`.
+- Bukti: kedua patch terbaca lokal; `git diff 0b5fcfa^ 0b5fcfa --check` dan
+  `git diff f9ee6be^ f9ee6be --check` bersih; suite non-GPU diulang lokal:
+  `157 passed, 2 deselected, 2 warnings` (`backend/.venv/bin/python -m pytest
+  vision/tests -q -m 'not gpu'`). RED/GREEN historis tetap tercatat di bawah.
+- Dampak: hanya keterlacakan review, tidak ada perubahan runtime/test baru,
+  pin GPU tidak berubah. Rollback: `git revert` commit dokumentasi evidence.
+
 ### R5b Task 1 review — expiry sebelum matching (lokal, 2026-09-23)
 
 - Konteks: `vision/vision/pipeline/tracker.py` masih mencocokkan deteksi sebelum
