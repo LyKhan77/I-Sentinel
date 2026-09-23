@@ -2,6 +2,7 @@
 import json
 import re
 import threading
+import time
 import uuid
 from datetime import datetime
 
@@ -229,6 +230,20 @@ def test_legacy_absensi_zone_is_attendance():
     assert [z["id"] for z in attendance_zones(camera)] == [11]
 
 
+@pytest.mark.parametrize("direction", [None, "sideways"])
+def test_behavior_attendance_without_valid_direction_is_not_a_gate(direction, tmp_path):
+    invalid = {"id": 22, "type": "behavior", "direction": direction,
+               "polygon": ATTENDANCE_ZONE["polygon"],
+               "behaviors": [{"kind": "attendance"}]}
+    cam = {"camera_id": 363, "source_url": "test://363", "zones": [invalid]}
+    node = _node_with(cam)
+    assert attendance_zones(node._cameras_from_config({"cameras": [cam]})[0]) == []
+    _, workers, urls, _ = _wired_node(tmp_path, [invalid, ATTENDANCE_ZONE])
+    assert [type(w).__name__ for w in workers] == ["FaceGateWorker"]
+    assert [z["id"] for z in workers[0].zones] == [9]
+    assert urls == ["rtsp://h:8554/cam_363_main"]
+
+
 def test_main_stream_url_and_name():
     assert main_stream_name("rtsp://localhost:8554/cam_4") == "cam_4_main"
     assert main_stream_name("rtsp://localhost:8554/cam_12/") == "cam_12_main"
@@ -327,6 +342,45 @@ def test_disabled_face_does_not_start_orphan_recorder(tmp_path, monkeypatch):
                                     "zones": [ATTENDANCE_ZONE]}]})
     assert node._workers == []
     assert created == []
+
+
+@pytest.mark.parametrize("preapply", [False, True])
+def test_no_face_workers_keep_node_listening_for_config(tmp_path, preapply):
+    transport = FakeTransport()
+    closed = []
+    transport.close = lambda: closed.append(True)
+    attendance_cam = {"camera_id": 363, "source_url": "test://363",
+                      "zones": [ATTENDANCE_ZONE]}
+    cfg = NodeSettings(node_id="n", cameras_json="[]" if preapply else json.dumps([attendance_cam]),
+                       face_embed=False, heartbeat_s=0.02, data_dir=str(tmp_path))
+    det_calls = []
+    node = VisionNode(cfg, detector_factory=lambda cid: det_calls.append(cid) or MockDetector([[]]),
+                      source_factory=lambda cam: FrameSource.from_frames(
+                          [np.zeros((4, 4, 3), np.uint8)], fps=5), transport=transport)
+    if preapply:
+        node.apply_config({"cameras": [attendance_cam]})
+        assert node._workers == []
+    runner = threading.Thread(target=node.run, daemon=True)
+    runner.start()
+    try:
+        deadline = time.monotonic() + 2
+        while not transport.heartbeats and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert transport.heartbeats
+        time.sleep(0.3)  # past run loop's 0.2 s config poll; must still be receptive
+        assert runner.is_alive() and not closed and not node.stop_event.is_set()
+        assert node._workers == []
+        assert det_calls == []  # attendance-only stays off YOLO while disabled
+        node._config_q.put({"cameras": [{"camera_id": 363, "source_url": "test://363",
+                                          "zones": [BEHAVIOR_ZONE]}]})
+        deadline = time.monotonic() + 2
+        while not det_calls and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert det_calls == [363]  # hot reload still consumed
+    finally:
+        node.stop_event.set()
+        runner.join(timeout=3)
+    assert not runner.is_alive() and closed == [True]
 
 
 def test_heartbeat_reports_face_module_and_distinct_cameras(tmp_path):

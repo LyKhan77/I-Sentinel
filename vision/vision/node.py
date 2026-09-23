@@ -195,9 +195,10 @@ class CameraWorker(threading.Thread):
 
 
 def attendance_zones(cam: CameraCfg) -> list[dict]:
-    """Active attendance gates, including legacy absensi, independent of camera master."""
+    """Active attendance gates with valid direction, including legacy absensi."""
     return [z for z in cam.zones
-            if any(b.get("kind") == "attendance" for b in behaviors_of(z))]
+            if z.get("direction") in ("entry", "exit")
+            and any(b.get("kind") == "attendance" for b in behaviors_of(z))]
 
 
 def behaviors_of(z: dict) -> list[dict]:
@@ -243,6 +244,7 @@ class VisionNode:
         self._default_detector = detector_factory is None
         self.stop_event = threading.Event()
         self._workers: list[CameraWorker | FaceGateWorker] = []
+        self._await_config = False  # a configured node must not exit with zero workers
         self._face_settings = FaceSettings()
         self.events: list[dict] = []  # test hook: all worker events
         from .face import FaceEmbedder
@@ -362,10 +364,12 @@ class VisionNode:
                 self.face = FaceEmbedder(root, dev)
                 self.cfg.face_device = dev
         self._face_settings = FaceSettings.from_config(cfg_dict.get("face"))
+        self._await_config = True
         self._start_workers(self._cameras_from_config(cfg_dict))
 
     def _start_workers(self, cameras: list[CameraCfg]) -> None:
         self._stop_workers()
+        self._await_config |= bool(cameras)
         for cam in cameras:
             analyzers = self._make_analyzers(cam)
             gates = attendance_zones(cam)
@@ -421,7 +425,7 @@ class VisionNode:
         hb = threading.Thread(target=self._heartbeat_loop, daemon=True)
         hb.start()
 
-        if not self._workers:
+        if not self._workers and not self._await_config:
             self._start_workers(self.cfg.cameras())
 
         # wait for stop, natural worker completion (test mode: sources end),
@@ -434,7 +438,9 @@ class VisionNode:
             if cfg_dict is not None:
                 self.apply_config(cfg_dict)
                 continue
-            if not any(w.is_alive() for w in self._workers):
+            if self._workers and not any(w.is_alive() for w in self._workers):
+                break
+            if not self._workers and not self._await_config:
                 break
         self.stop_event.set()
         stopped = self._stop_workers()

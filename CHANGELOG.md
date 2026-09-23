@@ -3,6 +3,24 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 6 review — node idle tetap hidup, arah attendance divalidasi (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/node.py` mempertahankan config/heartbeat loop saat
+  konfigurasi berisi kamera tetapi tidak ada worker (mis. `VISION_FACE_EMBED=false`
+  pada kamera hanya-attendance), termasuk konfigurasi hot-reload; tanpa kamera
+  dan tanpa config push tetap boleh berhenti seperti test mode sebelumnya.
+  Zona attendance tanpa arah `entry`/`exit` tidak diberikan ke `FaceGateWorker`.
+  `vision/tests/test_node.py` menguji startup maupun config push tanpa worker,
+  hot-reload setelah idle, dan zona behavior attendance tanpa arah valid.
+- Bukti TDD: RED arah invalid **2 failed, 1 passed, 18 deselected**; RED
+  node idle **1 failed, 20 deselected** setelah melewati polling 0,2 s;
+  GREEN tes terarah **3 passed, 18 deselected**, regresi node/config/worker/pin
+  **57 passed**. Suite vision non-GPU **177 passed, 2 deselected, 2 warnings**
+  lama (pynvml deprecated dan mock heartbeat tanpa `publish_heartbeat`).
+- Dampak: node tidak terputus saat gate tidak dapat dijalankan; event invalid
+  tidak memuat embedding yang akan dibuang backend. Rollback: `git revert`
+  commit review ini. Pin `cuda:1`/`cuda:2` tetap, GPU/field belum diuji.
+
 ### R5b Task 6 — FaceGateWorker terpasang pada VisionNode (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/node.py` memisah zona attendance (termasuk legacy
