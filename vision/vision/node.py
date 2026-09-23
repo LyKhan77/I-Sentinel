@@ -358,15 +358,17 @@ class VisionNode:
         """Satu zona bisa membawa beberapa behavior; master `analyzers` kamera menyaring.
 
         `cam.analyzers = None` → semua behavior aktif; `[]` → kamera tanpa analitik
-        (hanya live view, hemat GPU). Parameter tiap behavior (`trigger_seconds`,
-        `speed_limit_mps`) ditempel ke spec zona sebelum analyzer dibuat.
+        perilaku (hemat GPU). `attendance` dikecualikan: absensi diatur dari tab Gate
+        Absensi (zona `active`), UI tak bisa menaruhnya di master, jadi master tak boleh
+        mematikannya. Parameter tiap behavior (`trigger_seconds`, `speed_limit_mps`)
+        ditempel ke spec zona sebelum analyzer dibuat.
         """
         out = []
         for z in cam.zones:
             media = {"snapshot": z.get("snapshot", True), "clip": z.get("clip", True)}
             for b in behaviors_of(z):
                 kind = b.get("kind")
-                if cam.analyzers is not None and kind not in cam.analyzers:
+                if kind != "attendance" and cam.analyzers is not None and kind not in cam.analyzers:
                     continue
                 spec = dict(z)
                 spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0

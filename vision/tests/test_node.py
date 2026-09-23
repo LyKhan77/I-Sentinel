@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 import numpy as np
+import pytest
 
 
 from vision.config import CameraCfg, NodeSettings
@@ -200,3 +201,21 @@ def test_worker_publishes_person_detection_kind(tmp_path):
     assert camera_id == 2
     assert kind == "person"
     assert boxes == [{"id": 1, "bbox_norm": [0.1, 0.1, 0.3, 0.4], "label": None}]
+
+
+ATTENDANCE_ZONE = {
+    "id": 9, "name": "Gate", "type": "attendance", "direction": "entry",
+    "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+    "behaviors": [{"kind": "attendance", "trigger_seconds": 3}],
+}
+
+
+@pytest.mark.parametrize("master", [["intrusion"], []])
+def test_attendance_gate_ignores_camera_analyzers_master(master):
+    """Absensi diatur dari tab Gate Absensi (zona active), bukan chip kamera —
+    master `analyzers` yang tak bisa memuat 'attendance' dari UI tak boleh mematikan gate."""
+    cam = {"camera_id": 1, "source_url": "test://1", "zones": [ATTENDANCE_ZONE],
+           "analyzers": master}
+    node = _node_with(cam)
+    cams = node._cameras_from_config({"cameras": [cam]})
+    assert [type(a).__name__ for a in node._make_analyzers(cams[0])] == ["FaceGateAnalyzer"]
