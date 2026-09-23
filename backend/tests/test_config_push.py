@@ -174,6 +174,20 @@ def test_build_node_config_includes_detector_device(db):
     assert cfg["detector"]["device"] == "cuda:1"
 
 
+def test_build_node_config_face_defaults_keep_device_pins(db):
+    node = Node(name="pinned", detector_device="cuda:1", face_device="cuda:2")
+    db.add(node)
+    db.commit()
+
+    cfg = config_push.build_node_config(db, node)
+
+    assert cfg["detector"]["device"] == "cuda:1"
+    assert cfg["face"] == {
+        "device": "cuda:2", "min_width_px": 80.0, "min_det_score": 0.6,
+        "max_yaw": 0.35, "blur_min": 120.0, "min_frames": 3,
+    }
+
+
 def test_build_node_config_device_empty_when_unset(db):
     from app.models.node import Node
     from app.services.config_push import build_node_config

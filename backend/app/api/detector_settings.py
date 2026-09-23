@@ -19,6 +19,11 @@ def _effective(db: Session) -> DetectorSetting:
         default_confidence=settings.detector_conf, motion_enabled=settings.motion_enabled,
         motion_threshold=settings.motion_threshold, motion_min_area=settings.motion_min_area,
         motion_force_interval_s=settings.motion_force_interval_s,
+        face_min_width_px=settings.face_min_width_px,
+        face_min_det_score=settings.face_min_det_score,
+        face_max_yaw=settings.face_max_yaw,
+        face_blur_min=settings.face_blur_min,
+        face_min_frames=settings.face_min_frames,
         # fallback tidak pernah di-flush, jadi default kolom tak pernah jalan
         updated_at=datetime.now(timezone.utc),
     )

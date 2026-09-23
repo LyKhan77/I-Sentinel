@@ -29,7 +29,15 @@ def build_node_config(db: Session, node: Node) -> dict:
         "imgsz": settings.detector_imgsz,
         "device": node.detector_device or "",  # "" = node pakai env/auto
     }
-    face = {"device": node.face_device or ""}  # "" = node pakai env/auto
+    gs = global_settings
+    face = {
+        "device": node.face_device or "",  # "" = node pakai env/auto
+        "min_width_px": gs.face_min_width_px if gs else settings.face_min_width_px,
+        "min_det_score": gs.face_min_det_score if gs else settings.face_min_det_score,
+        "max_yaw": gs.face_max_yaw if gs else settings.face_max_yaw,
+        "blur_min": gs.face_blur_min if gs else settings.face_blur_min,
+        "min_frames": gs.face_min_frames if gs else settings.face_min_frames,
+    }
     cameras = []
     for cam in (
         db.query(Camera)

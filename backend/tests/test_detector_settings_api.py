@@ -26,6 +26,8 @@ VALUES = {
     "default_ai_fps": 8.0, "default_confidence": 0.45,
     "motion_enabled": False, "motion_threshold": 30.0,
     "motion_min_area": 0.02, "motion_force_interval_s": 3.0,
+    "face_min_width_px": 100.0, "face_min_det_score": 0.7, "face_max_yaw": 0.3,
+    "face_blur_min": 90.0, "face_min_frames": 4,
 }
 
 
@@ -42,6 +44,11 @@ def test_admin_put_persists_global_settings_and_config_uses_them(client, db):
     assert config["ai_fps"] == 8.0
     assert config["confidence"] == 0.45
     assert config["motion"] == {"enabled": False, "threshold": 30.0, "min_area": 0.02, "force_interval_s": 3.0}
+    face = build_node_config(db, node)["face"]
+    assert face == {
+        "device": "", "min_width_px": 100.0, "min_det_score": 0.7,
+        "max_yaw": 0.3, "blur_min": 90.0, "min_frames": 4,
+    }
 
 
 def test_viewer_cannot_change_detector_settings(client):
@@ -55,3 +62,16 @@ def test_get_without_row_returns_env_defaults(client):
     assert response.status_code == 200
     assert response.json()["default_ai_fps"] == settings.default_ai_fps
     assert response.json()["updated_at"] is not None
+    assert (response.json()["face_min_width_px"], response.json()["face_min_frames"]) == (80.0, 3)
+
+
+def test_face_settings_validated(client):
+    bad = {**VALUES, "face_min_frames": 0}
+    response = client.put("/api/v1/detector-settings", json=bad, headers=admin_headers(client))
+    assert response.status_code == 422
+
+
+def test_face_fields_required_on_put(client):
+    values = {key: value for key, value in VALUES.items() if not key.startswith("face_")}
+    response = client.put("/api/v1/detector-settings", json=values, headers=admin_headers(client))
+    assert response.status_code == 422

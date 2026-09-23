@@ -3,6 +3,27 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 7 — setelan wajah global + migration 0016 (lokal, 2026-09-23)
+
+- Konteks/path: `backend/app/core/config.py`, `models/detector_setting.py`,
+  `schemas/detector_setting.py`, `api/detector_settings.py`, dan
+  `services/config_push.py` menambah lima setelan kualitas wajah global pada
+  GET/PUT dan config push tanpa mengubah pin device. `.env.example` menambah
+  `ATTENDANCE_COOLDOWN_MIN=5` untuk Task 8. Migration
+  `backend/alembic/versions/0016_face_gate_settings.py` mengisi default kolom
+  dan membuang embedding payload event attendance lama; tes di
+  `backend/tests/test_migration_0016.py`, `test_detector_settings_api.py`,
+  `test_config_push.py` (fallback dan pin device).
+- Bukti TDD: RED migration **1 collection error** (file belum ada), RED API
+  **4 failed, 1 passed**; GREEN targeted migration/API/config push **23 passed**;
+  suite backend non-GPU **315 passed, 299 warnings**. Tes migrasi berjalan lokal
+  dengan SQLite; Postgres/server belum dijalankan.
+- Dampak: config gate wajah kini dapat disetel global; PUT butuh lima field baru,
+  UI pengaturannya masih Task 9. Pembersihan embedding historis tidak dapat
+  dipulihkan. Rollback: `git revert` commit Task 7 dan `alembic downgrade 0015`
+  jika sudah dimigrasi, setelah backup; payload embedding yang dibuang tetap
+  tidak dapat dikembalikan. Tidak ada deploy/GPU/field verification.
+
 ### R5b Task 6 review — node idle tetap hidup, arah attendance divalidasi (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/node.py` mempertahankan config/heartbeat loop saat

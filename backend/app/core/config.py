@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     face_match_threshold: float = 0.40
     face_min_quality: float = 0.5
     face_dup_warn: float = 0.6  # warn enrollment bila cosine vs employee lain >= ini
+    # fallback gerbang wajah attendance bila baris detector_setting belum ada
+    face_min_width_px: float = 80.0
+    face_min_det_score: float = 0.6
+    face_max_yaw: float = 0.35
+    face_blur_min: float = 120.0
+    face_min_frames: int = 3
+    attendance_cooldown_min: int = 5
     no_exit_grace_min: int = 60  # toleransi setelah jam shift usai sebelum status jadi no_exit
     # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)
 
