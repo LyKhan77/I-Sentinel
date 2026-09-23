@@ -1,11 +1,16 @@
 """Frame source: RTSP/file capture with fps sampling and reconnect backoff."""
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import dataclass
 
 import numpy as np
+
+
+log = logging.getLogger(__name__)
+RECONNECT_START_S = 1.0
 
 
 @dataclass
@@ -57,7 +62,7 @@ class FrameSource:
     def start(self) -> None:
         self._cap = self._open()
         if not self._cap.isOpened():
-            raise RuntimeError(f"cannot open video source: {self.url}")
+            log.warning("cannot open video source %s, retrying", self.url)
         self._next_due = time.monotonic()
         self._reader = threading.Thread(target=self._read_loop, daemon=True,
                                         name=f"src-{self.url.rsplit('/', 1)[-1]}")
@@ -65,12 +70,12 @@ class FrameSource:
 
     def _read_loop(self) -> None:
         """Baca secepat stream aslinya; simpan hanya frame terbaru (buang yang basi)."""
-        delay = 1.0
+        delay = RECONNECT_START_S
         seq = 0
         while not self._closed:
             ok, data = self._cap.read()
             if ok:
-                delay = 1.0
+                delay = RECONNECT_START_S
                 seq += 1
                 with self._cond:
                     self._latest = (seq, time.monotonic(), data)

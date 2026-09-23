@@ -3,6 +3,19 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 2 — FrameSource retry saat stream belum tersedia (lokal, 2026-09-23)
+
+- Konteks: `FrameSource.start()` sebelumnya melempar `RuntimeError` jika go2rtc belum
+  menyediakan stream saat worker mulai. `vision/vision/pipeline/source.py` kini
+  membiarkan reader mencoba ulang dengan backoff yang sudah ada (1, 2, 4 … 30 s);
+  `vision/tests/test_source.py` menguji stream muncul pada upaya kedua.
+- Bukti TDD: RED `1 failed, 5 deselected` (`RuntimeError: cannot open video source`);
+  GREEN `1 passed, 5 deselected`; suite vision non-GPU
+  `158 passed, 2 deselected, 2 warnings` (pynvml dan mock heartbeat lama).
+- Dampak: worker tetap hidup ketika stream belum siap saat startup; pin GPU detector
+  `cuda:1` dan face `cuda:2` tidak diubah. Belum diuji pada server/GPU.
+  Rollback: `git revert` commit Task 2; tidak ada migrasi DB.
+
 ### R5b Task 1 review evidence — commit patches (lokal, 2026-09-23)
 
 - Konteks: reviewer hanya menerima diff working tree bersih, bukan dua patch commit
