@@ -106,12 +106,6 @@ class CameraWorker(threading.Thread):
         motion = motion or {}
         # Config pra-R5 tidak mengirim `motion` → gate OFF (perilaku lama). R5 selalu
         # mengirim dict berisi `enabled`, jadi default-nya ON kecuali dimatikan.
-        # ponytail: umur track ByteTrack dihitung per-frame (max_age=15), jadi gap
-        # gate = force_interval_s * ai_fps harus <= 15. Aman pada setelan terpasang
-        # (2.0 s * 5 fps = 10), tapi ai_fps >= 8 membuat objek diam kehilangan id tiap
-        # gap sehingga timer dwell/loitering ter-reset. Upgrade: buat max_age berbasis
-        # waktu (detik) di ByteTracker, bukan hitungan frame.
-        # Dijaga oleh test_static_track_survives_the_gated_gap_at_deployed_settings.
         self.motion_gate = (
             FrameMotionGate(threshold=motion.get("threshold", 25.0),
                             min_area=motion.get("min_area", 0.01),

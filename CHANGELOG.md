@@ -3,6 +3,21 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 1 — ByteTracker expiration berbasis detik (lokal, 2026-09-23)
+
+- Konteks: `max_age=15` frame memutus track diam saat motion gate 2 s dan AI FPS ≥ 8.
+  `vision/vision/pipeline/tracker.py` kini memakai `max_age_s=3.0` sejak `last_seen`
+  untuk expiry; `misses`, `lost_ids`, dan matching tetap. Komentar lama di
+  `vision/vision/node.py` dan docstring `vision/vision/motion.py` diselaraskan.
+  Tes: `vision/tests/test_tracker.py`, `vision/tests/test_motion_gate.py`.
+- Bukti TDD: tes terarah RED 5 failed, 14 passed; tes tambahan reset jam RED 1 failed;
+  GREEN 20 passed; suite vision lokal `155 passed, 2 deselected, 2 warnings`
+  (`backend/.venv/bin/python -m pytest vision/tests -q -m "not gpu"`).
+- Dampak: track bertahan saat gap gate 2 s di 5/10/15 fps; kedaluwarsa setelah
+  >3 s tanpa match, sehingga timer behavior tidak reset akibat FPS tinggi.
+  Pin detector `cuda:1` / face `cuda:2` tidak diubah. Belum dideploy/diverifikasi GPU.
+- Rollback: `git revert` commit Task 1; tidak ada migrasi DB.
+
 ## [0.7.0] — 2026-09-21 · Fase 5: GPU hardware probe + device delegation + soak
 
 ### GPU hardware probe per node + detector device pin (Task 9)

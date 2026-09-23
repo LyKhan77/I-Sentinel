@@ -1,5 +1,6 @@
 """Motion gate: inferensi hanya saat ada gerakan (+ interval paksa)."""
 import numpy as np
+import pytest
 
 from vision.motion import FrameMotionGate
 
@@ -93,30 +94,27 @@ def test_worker_motion_missing_means_no_gate():
 
 # --- gate tidak boleh membunuh track objek diam ------------------------------
 
-def test_static_track_survives_the_gated_gap_at_deployed_settings():
-    """Objek diam: gate menahan inferensi selama force_interval_s, dan tiap frame
-    tertahan memanggil tracker.update([]) → misses bertambah. Track harus masih
-    hidup saat inferensi paksa berikutnya, jika tidak id-nya berganti dan event
-    dwell/loitering ter-reset terus.
+@pytest.mark.parametrize("ai_fps", [5.0, 10.0, 15.0])
+def test_static_track_survives_the_gated_gap_at_deployed_settings(ai_fps):
+    """Objek diam: frame tertahan memanggil update([]) selama force_interval_s.
 
-    Invarian: force_interval_s * ai_fps <= ByteTracker.max_age.
-    Setelan terpasang di gspe-ai3: force_interval_s=2.0, ai_fps=5 → 10 <= 15.
+    Track harus hidup saat inferensi paksa berikutnya untuk semua AI FPS UI;
+    jika tidak, id berganti dan timer dwell/loitering serta penggabungan wajah reset.
     """
     from vision.pipeline.detector import Detection
     from vision.pipeline.tracker import ByteTracker
 
-    force_interval_s, ai_fps = 2.0, 5.0
+    force_interval_s = 2.0
     gated_frames = int(force_interval_s * ai_fps)
 
     tracker = ByteTracker()
     det = Detection(bbox=(0.4, 0.4, 0.5, 0.6), conf=0.9)
     track_id = tracker.update([det], ts=0.0)[0].id
 
-    for i in range(gated_frames):                      # frame-frame yang ditahan gate
+    for i in range(gated_frames):
         tracker.update([], ts=(i + 1) / ai_fps)
 
-    survivors = tracker.update([det], ts=force_interval_s)   # inferensi paksa
+    survivors = tracker.update([det], ts=force_interval_s)
     assert [t.id for t in survivors] == [track_id], (
-        f"track mati setelah {gated_frames} frame tertahan; "
-        f"max_age={ByteTracker.max_age} terlalu kecil untuk force_interval_s={force_interval_s} @ {ai_fps} fps"
+        f"track mati setelah {gated_frames} frame tertahan @ {ai_fps} fps"
     )

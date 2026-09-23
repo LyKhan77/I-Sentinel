@@ -34,16 +34,16 @@ def test_shifted_bbox_same_id_velocity_x_positive():
     assert tracks[0].velocity[0] > 0
 
 
-def test_track_dropped_after_max_age_misses():
-    tr = ByteTracker(max_age=15)
+def test_track_dropped_after_max_age_seconds():
+    tr = ByteTracker(max_age_s=3.0)
     tr.update([D(0.5, 0.5)], ts=0.0)
     lost_at = None
     for i in range(1, 21):
-        tracks = tr.update([], ts=i * 0.2)
+        tracks = tr.update([], ts=i / 5)
         if 1 in tr.lost_ids:
             lost_at = i
             break
-    assert lost_at == 16  # misses reaches 16 > max_age=15 -> dropped
+    assert lost_at == 16  # 3.2 s sejak terakhir terlihat > 3.0 s -> dibuang
     assert all(t.id != 1 for t in tracks)
 
 
@@ -61,13 +61,31 @@ def test_two_tracks_stable_ids():
 
 
 def test_missed_track_still_active_until_max_age():
-    tr = ByteTracker(max_age=3)
+    tr = ByteTracker(max_age_s=0.6)
     tr.update([D(0.5, 0.5)], ts=0.0)
     tracks = tr.update([], ts=0.2)
     assert [t.id for t in tracks] == [1]
     assert tracks[0].misses == 1
     tracks = tr.update([], ts=0.4)
     assert tracks[0].misses == 2
+
+
+def test_matched_track_resets_expiration_clock():
+    tr = ByteTracker(max_age_s=3.0)
+    tr.update([D(0.5, 0.5)], ts=0.0)
+    tr.update([D(0.5, 0.5)], ts=2.0)
+    assert [t.id for t in tr.update([], ts=3.1)] == [1]
+    assert [t.id for t in tr.update([], ts=5.1)] == []
+    assert tr.lost_ids == {1}
+
+
+def test_track_age_is_time_based_not_frame_count():
+    """25 fps: 30 frame kosong = 1.2 s; umur 3 s tidak membunuh track."""
+    tr = ByteTracker(max_age_s=3.0)
+    tr.update([D(0.5, 0.5)], ts=0.0)
+    for i in range(1, 31):
+        tracks = tr.update([], ts=i / 25)
+    assert [t.id for t in tracks] == [1]
 
 
 def test_low_conf_detection_ignored():

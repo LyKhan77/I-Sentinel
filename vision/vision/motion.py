@@ -9,7 +9,7 @@ koridor yang kosong tidak perlu inferensi 5x/detik. Dua knob:
 
 Objek yang diam tetap terdeteksi karena ``force_interval_s`` memaksa satu
 inferensi berkala — sekaligus menjaga id ByteTrack tidak hilang (jarak frame
-di bawah `max_age` tracker).
+di bawah `max_age_s` tracker, dalam detik).
 """
 from __future__ import annotations
 
