@@ -334,6 +334,45 @@ def test_blocked_uploader_cannot_hold_event_or_overlay():
     assert t.events[0]["snapshot_path"] is None
 
 
+def test_three_faces_publish_before_serial_uploads_can_delay_them():
+    class SlowSuccess(FakeRecorder):
+        def upload_bytes(self, data, kind, content_type="image/jpeg", **kwargs):
+            time.sleep(0.4)
+            return super().upload_bytes(data, kind, content_type, **kwargs)
+
+    class TimedTransport(FakeTransport):
+        def __init__(self):
+            super().__init__()
+            self.published = []
+
+        def publish_event(self, ev):
+            self.published.append(time.monotonic())
+            super().publish_event(ev)
+
+    faces = [face(cx=x) for x in (700, 960, 1220)]
+    rec, t = SlowSuccess(), TimedTransport()
+    start = time.monotonic()
+    run_worker([faces] * 3, transport=t, recorder=rec)
+    assert len(t.events) == 3 and len({e["payload"]["track_id"] for e in t.events}) == 3
+    assert max(t.published) - start < 1.5  # third must not wait for 3 x 0.8 s media
+    assert [kind for kind, _ in rec.uploads] == ["crop", "snapshot"]
+    assert [e["payload"]["crop_path"] is None for e in t.events] == [True, True, False]
+
+
+def test_worker_event_history_is_bounded_without_dropping_transport_events():
+    count = 34
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[GOOD]] * count), t, "test-node",
+                       FaceSettings(min_frames=1), max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * count, fps=1)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    assert len(t.events) == count
+    assert 0 < len(w.events) <= 32
+    assert w.events[-1] is t.events[-1]
+
+
 def test_stalled_media_allows_second_face_without_spawning_another_upload():
     class BlockedRecorder(FakeRecorder):
         def __init__(self):

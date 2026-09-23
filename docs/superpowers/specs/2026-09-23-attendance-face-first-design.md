@@ -155,8 +155,10 @@ koordinat crop, dipakai `annotate_face_crop`), `crop_path`, dan baru `face_stats
   Upload crop/snapshot independen: satu percobaan socket 0,5 s per gambar;
   thread finalisasi event menunggu maksimal 1,1 s lalu menerbitkan event tanpa
   media bila masih tertahan; pembacaan frame dan overlay tetap berjalan. Hanya
-  satu upload media tertahan per kamera; blob yang berhasil sesudah
-  batas waktu tidak diasosiasikan ke event (tanpa kontrak update backend baru).
+  satu upload media tertahan per kamera; event wajah lain selama media pertama
+  antre/tertahan dikirim segera tanpa media sehingga urutan terima bisa berbeda
+  dari `ts_event`. Blob yang berhasil sesudah batas waktu tidak diasosiasikan
+  ke event (tanpa kontrak update backend baru).
 
 ### 5.6 Heartbeat
 
@@ -170,7 +172,8 @@ koordinat crop, dipakai `annotate_face_crop`), `crop_path`, dan baru `face_stats
   crop hanya bila crop ada.
 - **Cooldown per karyawan + arah**: bila sudah ada `attendance_event` untuk
   `(employee_id, direction)` dalam `ATTENDANCE_COOLDOWN_MIN` (env, default 5) menit
-  sebelum `ts_event`, tidak dibuat baris baru; payload event diberi `employee_id` dan
+  dari `ts_event` ke kedua arah waktu (karena event media dapat tiba tidak urut),
+  tidak dibuat baris baru; payload event diberi `employee_id` dan
   `match_reason: "cooldown"`. Kamera tidak ikut kunci (dua kamera entry dalam 5 menit =
   satu entry).
 - **Embedding dibuang dari `event.payload`** di akhir `handle_face_event` pada semua

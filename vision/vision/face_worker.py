@@ -23,6 +23,7 @@ DEDUP_BUCKET_S = 10.0
 SNAPSHOT_W = 1280
 BOX_BGR = (255, 169, 120)  # #78a9ff
 MEDIA_WAIT_S = 1.1  # event deadline; slow upload falls back to event without media
+EVENT_HISTORY_MAX = 32  # test hook only; do not retain lifetime biometric payloads
 
 
 @dataclass
@@ -82,6 +83,7 @@ class FaceGateWorker(threading.Thread):
         self._states: dict[int, _TrackState] = {}
         self._faces_shown = False
         self._media_busy = threading.Event()
+        self._media_pending = threading.Event()
         self._pending_events: queue.SimpleQueue = queue.SimpleQueue()
 
     def run(self) -> None:
@@ -199,7 +201,14 @@ class FaceGateWorker(threading.Thread):
     def _emit(self, tid: int, st: _TrackState) -> None:
         st.done = True
         best, st.best = st.best, None
-        self._pending_events.put((tid, st, best))
+        if self.recorder is not None and (self._media_pending.is_set() or
+                                          self._media_busy.is_set()):
+            # A burst must not queue serial media waits; later faces keep metadata.
+            self._finalize_event(tid, st, best, allow_media=False)
+        else:
+            if self.recorder is not None:
+                self._media_pending.set()
+            self._pending_events.put((tid, st, best))
 
     def _finalize_events(self) -> None:
         """Publish queued events without holding frame reads or overlay updates."""
@@ -208,8 +217,12 @@ class FaceGateWorker(threading.Thread):
                 self._finalize_event(*item)
             except Exception:
                 log.exception("camera %s: face event finalization failed", self.camera_id)
+            finally:
+                if self.recorder is not None:
+                    self._media_pending.clear()
 
-    def _finalize_event(self, tid: int, st: _TrackState, best: dict) -> None:
+    def _finalize_event(self, tid: int, st: _TrackState, best: dict,
+                        allow_media: bool = True) -> None:
         from .node import _iso  # lazy import: node imports this worker in Task 6
         frame, bbox, ts = best["frame"], best["bbox"], best["ts"]
         h, w = frame.shape[:2]
@@ -218,7 +231,7 @@ class FaceGateWorker(threading.Thread):
         if self.recorder is not None:
             cx1, cy1, cx2, cy2 = crop_box(bbox, w, h)
             face_bbox = [x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1]
-            if not self.stop_event.is_set() and not self._media_busy.is_set():
+            if allow_media and not self.stop_event.is_set() and not self._media_busy.is_set():
                 paths: dict[str, str | None] = {}
                 finished = threading.Event()
                 abandoned = threading.Event()
@@ -271,4 +284,6 @@ class FaceGateWorker(threading.Thread):
             "clip_path": None,
         }
         self.events.append(ev)
+        if len(self.events) > EVENT_HISTORY_MAX:
+            del self.events[:-EVENT_HISTORY_MAX]
         self.transport.publish_event(ev)

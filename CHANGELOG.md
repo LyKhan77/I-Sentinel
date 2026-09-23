@@ -3,6 +3,23 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 5 review — burst event tidak menunggu antrean media (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face_worker.py` mengirim event wajah berikut segera
+  tanpa media saat satu upload antre/berjalan, bukan mengantre 1,1 s per orang;
+  hanya satu finalisasi media per kamera dan riwayat `events` dibatasi 32 payload
+  biometrik (transport tetap menerima semua). `vision/tests/test_face_worker.py`
+  menguji tiga wajah dengan upload sukses 0,8 s per event dan 34 event untuk
+  batas memori. Ruling urutan terima bisa berbeda `ts_event` dicatat di spec §5.5/§6
+  dan plan Task 5; Task 8 harus uji cooldown simetris, belum diimplementasi.
+- Bukti TDD: RED `2 failed, 20 deselected` (event ketiga ~2,54 s; riwayat 34
+  tetap 34); GREEN worker `22 passed`; worker/source/recorder `42 passed`;
+  suite vision non-GPU `198 passed, 2 deselected, 2 warnings` (pynvml + mock
+  heartbeat lama). Pin detector `cuda:1` / face `cuda:2` tidak diubah.
+- Dampak: metadata burst cepat namun media wajah berikut sengaja hilang selama
+  kamera sibuk; event pertama masih dapat menyertakan crop/snapshot bila selesai
+  dalam 1,1 s. Rollback: `git revert` commit review ini; tidak ada migrasi/tes GPU.
+
 ### R5b Task 5 review — overlay tetap lancar saat upload media macet (lokal, 2026-09-23)
 
 - Konteks/path: `vision/vision/face_worker.py` memindahkan finalisasi event dan
