@@ -208,6 +208,12 @@ test('detail event attendance menampilkan crop beranotasi dari payload', async (
 
 // --- R4: tabstrip detail (mockup 03) ---------------------------------------
 
+const CLIP_EVENT: EventOut[] = [
+  { id: 1, event_id: 'ev-1', type: 'intrusion', camera_id: 1, zone_id: 2, severity: 'warning',
+    ts_event: '2026-09-21T07:00:00+07:00', clip_path: 'clips/x.mp4', snapshot_path: 'snapshots/x.jpg',
+    payload: null },
+]
+
 const ATT_EVENT: EventOut[] = [
   { id: 1, event_id: 'ev-1', type: 'attendance', camera_id: 1, zone_id: 2, severity: 'info',
     ts_event: '2026-09-21T07:00:00+07:00', clip_path: 'clips/x.mp4', snapshot_path: 'snapshots/x.jpg',
@@ -234,14 +240,14 @@ test('metadata tetap tampil saat pindah tab media', async () => {
   renderPage()
   await screen.findByTestId('event-detail')
 
-  await userEvent.click(screen.getByTestId('event-tab-clip'))
+  await userEvent.click(screen.getByTestId('event-tab-snapshot'))
   expect(screen.getByText('ev-1')).toBeInTheDocument()
   await userEvent.click(screen.getByTestId('event-tab-crop'))
   expect(screen.getByText('ev-1')).toBeInTheDocument()
 })
 
 test('tabstrip klik Clip → video, klik Snapshot → img snapshot', async () => {
-  vi.stubGlobal('fetch', stubFetch(ATT_EVENT))
+  vi.stubGlobal('fetch', stubFetch(CLIP_EVENT))
   renderPage()
   await screen.findByTestId('event-detail')
 
@@ -278,7 +284,7 @@ test('tab Face crop tidak ada untuk event non-attendance', async () => {
 
 test('ganti event → tab kembali ke Snapshot', async () => {
   const two: EventOut[] = [
-    ATT_EVENT[0],
+    CLIP_EVENT[0],
     { id: 2, event_id: 'ev-2', type: 'intrusion', camera_id: 1, zone_id: null, severity: 'warning',
       ts_event: '2026-09-21T06:00:00+07:00', payload: null, clip_path: 'clips/y.mp4', snapshot_path: null },
   ]
@@ -319,4 +325,17 @@ test('detail event attendance entry kedua hari yang sama menampilkan keterangan'
   vi.stubGlobal('fetch', stubFetch(att))
   renderPage()
   expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Budi · sudah absen masuk hari ini')
+})
+
+test('event attendance tanpa tab Clip (attendance tidak merekam klip)', async () => {
+  const att: EventOut[] = [{ id: 6, event_id: 'ev-6', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'matched', employee_name: 'Budi', crop_path: 'crops/x.jpg' },
+    clip_path: null, snapshot_path: 'snapshots/x.jpg' }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  await screen.findByTestId('event-detail')
+
+  expect(screen.getByTestId('event-tab-snapshot')).toBeInTheDocument()
+  expect(screen.getByTestId('event-tab-crop')).toBeInTheDocument()
+  expect(screen.queryByTestId('event-tab-clip')).not.toBeInTheDocument()
 })

@@ -38,7 +38,7 @@ const RANGE_HOURS: Partial<Record<RangeId, number>> = { '24h': 24, '7d': 24 * 7,
 
 // Tabstrip detail (mockup 03): media dipisah per tab, metadata grid (Details)
 // selalu di bawah media. Crop wajah hanya untuk event attendance — satu-satunya
-// tipe yang mengirim payload.crop_path.
+// tipe yang mengirim payload.crop_path; attendance tidak merekam klip, jadi tanpa tab Clip.
 type DetailTab = 'snapshot' | 'clip' | 'crop'
 const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
   { id: 'snapshot', key: 'events.tab.snapshot' },
@@ -311,7 +311,7 @@ export default function EventsPage() {
               </div>
 
               <div className="ev-tabstrip" role="tablist">
-                {DETAIL_TABS.filter((tb) => tb.id !== 'crop' || isAttendance).map((tb) => {
+                {DETAIL_TABS.filter((tb) => (tb.id === 'crop' ? isAttendance : tb.id !== 'clip' || !isAttendance)).map((tb) => {
                   const off = tb.id === 'crop' && !cropPath
                   return (
                     <button
