@@ -3,6 +3,19 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 3 — FaceEmbedder deteksi/align/embed terpisah (lokal, 2026-09-23)
+
+- Konteks/path: `vision/vision/face.py` menambah `FaceDet`, SCRFD + landmark,
+  alignment ArcFace 112×112 dan embedding L2; model hanya memuat modul detection
+  dan recognition. `vision/tests/test_face_embed.py` menguji kontrak, pin GPU,
+  fallback tanpa insightface, dan lazy loading. API `detect`/`embed_jpeg` lama tetap.
+- Bukti TDD: RED `5 failed, 7 passed` (method baru belum ada); GREEN
+  `12 passed`; suite vision non-GPU `163 passed, 2 deselected, 2 warnings`
+  (pynvml dan mock heartbeat lama).
+- Dampak: kontrak wajah untuk worker face-first siap secara lokal; provider face
+  `cuda:2` tetap, detector `cuda:1` tidak diubah. Belum ada uji GPU/lapangan.
+  Rollback: `git revert` commit Task 3; tidak ada migrasi DB.
+
 ### R5b Task 2 — FrameSource retry saat stream belum tersedia (lokal, 2026-09-23)
 
 - Konteks: `FrameSource.start()` sebelumnya melempar `RuntimeError` jika go2rtc belum
