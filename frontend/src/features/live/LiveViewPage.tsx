@@ -191,14 +191,20 @@ const BOX_COLORS = { person: '#ff832b', face: '#78a9ff' } as const
 type DetectionKind = keyof typeof BOX_COLORS
 type DetBox = { id: number; bbox_norm: number[]; label?: string | null; kind: DetectionKind; at: number }
 const BOX_TTL_MS = 1000
+// Nama dari event attendance yang sudah dicocokkan backend. Hanya event segar yang dipakai
+// dan disimpan sebentar: id track wajah mulai dari 1 lagi setelah node restart.
+const NAME_TTL_MS = 30000
+type FaceName = { name: string; at: number }
 const FACE_GATE_CODES = ['zone', 'small', 'score', 'yaw', 'blur'] as const
 
-function DebugOverlay({ camId, showZones, showDetection, boxes }: {
-  camId: number; showZones: boolean; showDetection: boolean; boxes: DetBox[]
+function DebugOverlay({ camId, showZones, showDetection, boxes, names }: {
+  camId: number; showZones: boolean; showDetection: boolean; boxes: DetBox[]; names: Record<string, FaceName>
 }) {
   const { t } = useT()
   const boxLabel = (b: DetBox) =>
-    b.kind === 'face' && b.label && (FACE_GATE_CODES as readonly string[]).includes(b.label)
+    b.kind === 'face' && names[`${camId}:${b.id}`]
+      ? names[`${camId}:${b.id}`].name
+      : b.kind === 'face' && b.label && (FACE_GATE_CODES as readonly string[]).includes(b.label)
       ? t(`live.faceGate.${b.label}` as TKey)
       : b.label ?? t('live.trackId').replace('{n}', String(b.id))
   const [zones, setZones] = useState<Zone[]>([])
@@ -257,6 +263,7 @@ export default function LiveViewPage() {
   const [showZones, setShowZones] = useState(true)
   const [showDetection, setShowDetection] = useState(true)
   const [boxes, setBoxes] = useState<DetBox[]>([])
+  const [faceNames, setFaceNames] = useState<Record<string, FaceName>>({})
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [cols, setCols] = useState<Cols>(initialCols)
@@ -273,6 +280,14 @@ export default function LiveViewPage() {
         ? [...prev.filter((b) => b.kind !== kind), ...(m.boxes ?? []).map((box) => ({ ...box, kind, at }))]
         : prev))
     }
+    const ev = e as { type?: string; camera_id?: number; ts_event?: string; payload?: Record<string, unknown> | null }
+    const p = ev?.payload
+    if (ev?.type === 'attendance' && ev.camera_id != null && p && typeof p.track_id === 'number'
+      && ev.ts_event && Date.now() - Date.parse(ev.ts_event) < NAME_TTL_MS) {
+      const name = typeof p.employee_name === 'string' ? p.employee_name
+        : p.match_reason === 'no_match' || p.match_reason === 'low_quality' ? t('events.face.unknown') : null
+      if (name) setFaceNames((prev) => ({ ...prev, [`${ev.camera_id}:${p.track_id}`]: { name, at: Date.now() } }))
+    }
   })
 
   // Kotak basi (tanpa update WS >1 s) dihapus sendiri supaya overlay tidak menampilkan
@@ -283,6 +298,11 @@ export default function LiveViewPage() {
         const now = Date.now()
         const fresh = prev.filter((b) => now - b.at < BOX_TTL_MS)
         return fresh.length === prev.length ? prev : fresh
+      })
+      setFaceNames((prev) => {
+        const now = Date.now()
+        const keys = Object.keys(prev).filter((k) => now - prev[k].at < NAME_TTL_MS)
+        return keys.length === Object.keys(prev).length ? prev : Object.fromEntries(keys.map((k) => [k, prev[k]]))
       })
     }, 250)
     return () => clearInterval(timer)
@@ -405,7 +425,7 @@ export default function LiveViewPage() {
           </div>
           <div style={{ position: 'relative', background: '#000', aspectRatio: '16/9' }}>
             <CameraTile cam={debugCam} live={lives[debugCam.id] ?? null} big />
-            <DebugOverlay camId={debugCam.id} showZones={showZones} showDetection={showDetection} boxes={boxes} />
+            <DebugOverlay camId={debugCam.id} showZones={showZones} showDetection={showDetection} boxes={boxes} names={faceNames} />
           </div>
         </Modal>
       )}

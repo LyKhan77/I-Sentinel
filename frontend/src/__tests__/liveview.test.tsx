@@ -258,3 +258,57 @@ test('playerMode membaca transport aktif dari elemen video', () => {
   expect(playerMode({ srcObject: null, src: '' })).toBeNull()
   expect(playerMode(null)).toBeNull()
 })
+
+function faceNameSetup() {
+  const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
+  class FakeWS {
+    onmessage: ((ev: { data: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    constructor(_url: string) { handlers.push(this as { onmessage?: (ev: { data: string }) => void }) }
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetch())
+  const send = (msg: unknown) => act(async () => { handlers[0].onmessage?.({ data: JSON.stringify(msg) }) })
+  const faceBox = () => send({ type: 'detections', camera_id: 1, kind: 'face',
+    boxes: [{ id: 2, bbox_norm: [0.2, 0.2, 0.3, 0.3], label: '0.82' }] })
+  const attendance = (payload: Record<string, unknown>, ts = new Date().toISOString()) =>
+    send({ type: 'attendance', event_id: crypto.randomUUID(), camera_id: 1, ts_event: ts, payload })
+  return { faceBox, attendance }
+}
+
+test('nama karyawan menggantikan label kotak wajah setelah event attendance cocok', async () => {
+  const { faceBox, attendance } = faceNameSetup()
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+  await faceBox()
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('0.82')
+  await attendance({ track_id: 2, employee_name: 'Angly', match_reason: 'matched' })
+  await faceBox()
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Angly')
+})
+
+test('wajah tak cocok diberi label Tidak dikenal', async () => {
+  const { faceBox, attendance } = faceNameSetup()
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+  await attendance({ track_id: 2, employee_id: null, match_reason: 'no_match' })
+  await faceBox()
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Tidak dikenal')
+})
+
+test('event attendance lama (polling awal) tidak menamai track baru dengan id sama', async () => {
+  const { faceBox, attendance } = faceNameSetup()
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+  await attendance({ track_id: 2, employee_name: 'Angly', match_reason: 'matched' },
+    new Date(Date.now() - 3600_000).toISOString())
+  await faceBox()
+  expect(screen.getByTestId('debug-overlay')).not.toHaveTextContent('Angly')
+})

@@ -311,3 +311,12 @@ test('detail event attendance cooldown menampilkan nama + keterangan', async () 
   renderPage()
   expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Budi · sudah tercatat (cooldown)')
 })
+
+test('detail event attendance entry kedua hari yang sama menampilkan keterangan', async () => {
+  const att: EventOut[] = [{ id: 5, event_id: 'ev-5', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'already_in', employee_id: 1, employee_name: 'Budi' },
+    clip_path: null, snapshot_path: null }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Budi · sudah absen masuk hari ini')
+})
