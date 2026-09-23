@@ -38,6 +38,9 @@ export default function DetectionPage() {
       default_ai_fps: settings.default_ai_fps, default_confidence: settings.default_confidence,
       motion_enabled: settings.motion_enabled, motion_threshold: settings.motion_threshold,
       motion_min_area: settings.motion_min_area, motion_force_interval_s: settings.motion_force_interval_s,
+      face_min_width_px: settings.face_min_width_px, face_min_det_score: settings.face_min_det_score,
+      face_max_yaw: settings.face_max_yaw, face_blur_min: settings.face_blur_min,
+      face_min_frames: settings.face_min_frames,
     }))
 
   return (

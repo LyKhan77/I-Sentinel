@@ -3,6 +3,23 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 7 review — simpan setelan deteksi tidak kehilangan field wajah (lokal, 2026-09-23)
+
+- Konteks/path: setelah API PUT mewajibkan lima setelan wajah baru, save lama di
+  `frontend/src/features/config/DetectionPage.tsx` mengirim enam field saja dan
+  selalu mendapat 422. `frontend/src/api/detection.ts` mengetik kontrak GET/PUT,
+  save mengirim kelima nilai wajah yang diterima lewat GET tanpa UI editor baru;
+  `frontend/src/__tests__/detection.test.tsx` memeriksa payload sebenarnya.
+- Bukti TDD: RED frontend terarah **1 failed, 3 passed** (lima field tidak dikirim),
+  GREEN **4 passed**; suite frontend **94 passed / 14 files**; build hijau
+  (951 modul, warning chunk besar), lint exit 0 (22 warning lama), backend
+  non-GPU **315 passed, 299 warnings**. Diff committed base Task 7 mencakup
+  seluruh patch implementasi dan review.
+- Dampak: tombol Simpan setelan global tetap bekerja sebelum editor wajah Task 9;
+  nilai wajah tidak berubah diam-diam. Rollback: `git revert` commit review ini
+  bersama Task 7, jangan rollback review saja selama schema PUT wajib masih aktif.
+  Tidak ada deploy/GPU/field verification.
+
 ### R5b Task 7 — setelan wajah global + migration 0016 (lokal, 2026-09-23)
 
 - Konteks/path: `backend/app/core/config.py`, `models/detector_setting.py`,

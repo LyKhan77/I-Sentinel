@@ -6,7 +6,7 @@ import { I18nProvider } from '../app/i18n'
 import ConfigurationPage from '../features/config/ConfigurationPage'
 
 const camera = { id: 1, name: 'CAM-01', location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, main_path: null, sub_path: null, node_id: 1, source_id: null, location_group_id: null, credential_override_id: null, source: null, location_group: null, credential_override: null, enabled: true, status: 'online', probe_main: null, probe_sub: null, ai_fps: null, confidence: null, analyzers: null, motion_enabled: null }
-const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, updated_at: '2026-09-22T00:00:00Z' }
+const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, face_min_width_px: 80, face_min_det_score: 0.6, face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3, updated_at: '2026-09-22T00:00:00Z' }
 // tabel deteksi hanya menampilkan kamera yang punya zona, jadi tiap tes perlu stub /zones
 const zone = { id: 9, camera_id: 1, name: 'Z', type: 'behavior', polygon: [], behaviors: [], trigger_seconds: 0, active: true }
 
@@ -27,6 +27,13 @@ test('detection tab updates analyzer and global motion settings', async () => {
   await userEvent.type(screen.getByLabelText('Motion threshold'), '30')
   await userEvent.click(screen.getByRole('button', { name: 'Simpan setelan global' }))
   await waitFor(() => expect(calls.some((c) => c.url.endsWith('/detector-settings') && c.init?.method === 'PUT')).toBe(true))
+  const put = calls.find((c) => c.url.endsWith('/detector-settings') && c.init?.method === 'PUT')
+  const sent = JSON.parse(String(put?.init?.body))
+  expect(sent).toMatchObject({
+    motion_threshold: 30, face_min_width_px: 80, face_min_det_score: 0.6,
+    face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3,
+  })
+  expect(sent).not.toHaveProperty('updated_at')
 })
 
 test('kolom override kosong bukan keadaan invalid — kosong berarti pakai nilai global', async () => {
