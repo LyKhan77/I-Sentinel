@@ -3,6 +3,26 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 9 — editor UI setelan wajah, zona attendance tanpa trigger (lokal, 2026-09-23)
+
+- Konteks/path: `frontend/src/api/detection.ts` type `DetectorSettings` sudah memuat
+  lima field wajah (Task 7); `DetectionPage.tsx` kini menampilkan grup Advanced
+  "Wajah attendance" (lebar min px, skor deteksi, yaw, blur, jumlah frame K)
+  dan mengirim kelima field saat simpan global. `ZonesPage.tsx` mengganti input
+  trigger zone attendance dengan petunjuk area wajah (`zone-attendance-hint`);
+  `setAttendanceTrigger` dihapus. `GatesPage.tsx` menghapus kolom trigger tabel
+  gate dan menambah petunjuk `gates-face-hint`. `i18n.tsx` menambah kunci
+  `detection.face*`, `zones.attendanceHint`, `gates.faceHint` (id+en) dan
+  menghapus `gates.col.trigger` dari kedua kamus.
+- Bukti TDD: RED terarah frontend **3 failed, 20 passed**; setelah implementasi
+  GREEN **94 passed / 14 files**, build hijau (chunk warning lama), lint exit 0
+  (22 warning lama, baseline sama sebelum/sesudah). Perintah Step 2/4 plan Task 9.
+- Dampak: admin mengatur kualitas wajah dari UI tanpa edit env; UI attendance
+  tidak lagi menjanjikan trigger detik yang tidak dipakai node wajah. Rollback:
+  `git revert` commit Task 9. Deploy frontend harus sinkron dengan backend
+  Task 7/8 (PUT wajib lima field). Belum deploy/GPU/field verification; tidak
+  ada operasi server.
+
 ### R5b Task 8 — cooldown simetris dan sanitasi embedding (lokal, 2026-09-23)
 
 - Konteks/path: `backend/app/services/attendance.py` mencocokkan embedding meski crop
