@@ -2200,7 +2200,9 @@ Expected: 1 passed.
 
 - [ ] **Step 2: Runbook**
 
-`docs/runbooks/attendance-face-first.md` berisi: urutan deploy (`git pull` → `alembic upgrade head` dengan venv `/home/gspe-ai3/isentinel-venv` → restart `isentinel-api` → restart `vision-node`, tunggu `journalctl -u vision-node | grep "started .* worker"`), **gambar ulang zona attendance 7/8/9/11 di area kepala**, cara membaca label gerbang di debugger, langkah kalibrasi `face_stats` (≥10 lintasan, catat distribusi `blur` dan `width_px`, setel `face_blur_min`/`face_min_width_px` di Advanced), dan rollback (`git revert` rentang R5b, `alembic downgrade 0015`, restart API + vision; pembersihan embedding lama tidak kembali).
+`docs/runbooks/attendance-face-first.md` berisi: urutan deploy (`git pull` → `alembic upgrade head` dengan venv `/home/gspe-ai3/isentinel-venv` → restart `isentinel-api` → restart `vision-node`, tunggu `journalctl -u vision-node | grep "started .* worker"`), **gambar ulang zona attendance 7/8/9/11 di area kepala**, cara membaca label gerbang di debugger, langkah kalibrasi `face_stats` (≥10 lintasan, catat distribusi `blur` dan `width_px`, setel `face_blur_min`/`face_min_width_px` di Advanced), dan rollback (hentikan API + vision, backup DB, `alembic downgrade 0015` saat
+migration 0016 masih ada, baru `git revert` rentang R5b/deploy kode lama dan restart
+API + vision; pembersihan embedding lama tidak kembali).
 
 - [ ] **Step 3: Verifikasi suite lengkap lokal**
 

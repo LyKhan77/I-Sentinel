@@ -261,9 +261,11 @@ disk.
 - Deploy: migration 0016 → restart API → restart `vision-node` → **gambar ulang zona
   attendance** (7, 8, 9, 11 digambar untuk titik kaki; tidak bisa dimigrasi otomatis).
   Masuk runbook `docs/runbooks/`.
-- Rollback: `git revert` rentang commit R5b, `alembic downgrade` ke 0015, restart API
-  dan `vision-node`. Kolom baru hanya ditambah; pembersihan embedding lama tidak bisa
-  dikembalikan (disengaja).
+- Rollback: hentikan API dan `vision-node`, backup DB, jalankan
+  `alembic downgrade 0015` **sebelum** `git revert` rentang commit R5b agar berkas
+  migration 0016 masih tersedia bagi Alembic; lalu deploy kode lama dan restart
+  API serta `vision-node`. Kolom baru hanya ditambah; pembersihan embedding lama
+  tidak bisa dikembalikan (disengaja).
 
 ## 13. Di luar lingkup (dicatat)
 

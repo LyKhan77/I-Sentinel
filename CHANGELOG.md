@@ -3,6 +3,21 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### R5b Task 7 review — urutan rollback migration 0016 (lokal, 2026-09-23)
+
+- Konteks/path: `CHANGELOG.md`, spec R5b §12, dan plan R5b Task 11 Step 2
+  sebelumnya menyuruh revert kode sebelum downgrade; Alembic tidak dapat
+  menelusuri revision 0016 bila berkas migrasinya sudah hilang. Instruksi kini
+  menghentikan layanan, backup DB, downgrade ke 0015 saat migration 0016 masih
+  ada, lalu revert/deploy kode lama dan restart. Runbook Task 11 belum dibuat.
+- Bukti: pemeriksaan urutan tiga dokumen RED (assertion CHANGELOG), GREEN
+  **3 bagian sesuai**; backend non-GPU **315 passed, 299 warnings**, vision
+  non-GPU **177 passed, 2 deselected, 2 warnings**, frontend **94 passed / 14 files**.
+- Dampak: rollback mendahulukan operasi Alembic selagi revision tersedia;
+  pembersihan embedding historis tetap irreversible. Rollback perubahan
+  dokumen ini: `git revert` commit review ini saja (tidak dianjurkan bila
+  rollback R5b masih dibutuhkan). Tidak ada migrasi/deploy/server/GPU lapangan.
+
 ### R5b Task 7 review — simpan setelan deteksi tidak kehilangan field wajah (lokal, 2026-09-23)
 
 - Konteks/path: setelah API PUT mewajibkan lima setelan wajah baru, save lama di
@@ -37,9 +52,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   dengan SQLite; Postgres/server belum dijalankan.
 - Dampak: config gate wajah kini dapat disetel global; PUT butuh lima field baru,
   UI pengaturannya masih Task 9. Pembersihan embedding historis tidak dapat
-  dipulihkan. Rollback: `git revert` commit Task 7 dan `alembic downgrade 0015`
-  jika sudah dimigrasi, setelah backup; payload embedding yang dibuang tetap
-  tidak dapat dikembalikan. Tidak ada deploy/GPU/field verification.
+  dipulihkan. Rollback jika sudah dimigrasi: hentikan API dan vision-node,
+  backup DB, jalankan `alembic downgrade 0015` saat berkas migrasi 0016 masih
+  tersedia, baru `git revert` rentang commit R5b/deploy kode lama dan restart
+  layanan. Payload embedding yang dibuang tidak dapat dikembalikan. Tidak ada
+  deploy/GPU/field verification.
 
 ### R5b Task 6 review — node idle tetap hidup, arah attendance divalidasi (lokal, 2026-09-23)
 
