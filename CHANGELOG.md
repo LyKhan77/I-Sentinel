@@ -1048,3 +1048,33 @@ Siklus absensi penuh: enrollment wajah → gate attendance → rekap dengan shif
 - Bukti: frontend **93 passed** (dari 88), `npm run build` exit 0, lint tanpa warning
   baru (1 warning `set-state-in-effect` yang sudah ada sebelumnya, diverifikasi dengan
   membandingkan lint sebelum/sesudah). Backend **309 passed**, vision **140 passed**.
+
+### R5a lanjutan — bloker attendance + overlay wajah debugger (2026-09-23)
+
+- **Gate absensi tidak lagi disaring master `camera.analyzers`** (`5711160`).
+  Kasus nyata: kelima kamera kini `analyzers=['intrusion','loitering','running']`
+  (tertulis dari klik chip), sehingga zona 9 cam 363 yang sudah aktif tidak pernah
+  membuat analyzer `face_gate`. `_make_analyzers` kini mengecualikan `attendance`
+  dari filter — absensi diatur dari tab Gate Absensi (zona `active`). Juga berlaku
+  untuk `analyzers: []`. Test: `test_attendance_gate_ignores_camera_analyzers_master`
+  (`['intrusion']` dan `[]`), merah sebelum perbaikan.
+- **`face_gate` memakai `trigger_seconds`** (`b60c602`). UI hanya menulis
+  `trigger_seconds`, analyzer membaca `dwell_seconds` → trigger yang diubah dari UI
+  atau zona attendance baru (dwell 0) tidak sampai ke gate. Zona 9 kebetulan aman
+  (keduanya 3). `dwell_seconds` tetap fallback config pra-R5.
+  Test: `test_trigger_seconds_wins_over_stale_legacy_dwell`.
+- **Produsen overlay wajah `kind="face"`** (`e508a97`). Kamera yang punya
+  `FaceGateAnalyzer` menjalankan `FaceEmbedder.detect()` (SCRFD saja, tanpa embedding,
+  `cuda:2`) pada frame substream yang lolos motion gate dan hanya saat ada track;
+  kotak dinormalisasi, label = `det_score`. Satu publish kosong saat wajah hilang.
+  Error deteksi tidak mematikan worker (test mutasi: tanpa `try` test merah).
+  Lazy-load `FaceEmbedder` dikunci supaya beberapa worker tidak memuat model dua kali.
+- **Overlay Live View**: pesan person dan face tidak lagi saling menimpa — hanya
+  kotak dengan `kind` sama yang diganti; key/testid memuat kind (`51ba870`).
+- Bukti lokal: vision **147 passed, 2 deselected** (dari 140), frontend **94 passed**,
+  build exit 0, lint: set warning identik sebelum/sesudah (dibandingkan via stash),
+  backend **309 passed**.
+- Dampak: kamera attendance kini memakai GPU face per frame saat ada orang.
+- Rollback: `git revert 51ba870 e508a97 b60c602 5711160` lalu restart `vision-node`.
+- **Deploy + reset `analyzers` kamera ke `null` + tes lapangan belum dilakukan**
+  (butuh izin user untuk push/tulis server).
