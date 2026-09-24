@@ -22,6 +22,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   koneksi mainstream. Worker memanggil `recorder.touch(track_ids)` tiap frame inferensi.
   Watchdog ring: ffmpeg yang tidak mati setelah kill tidak lagi melempar keluar `stop()` (config push tetap jalan).
   Vision **200 passed**.
+- **Inbox**: tab Clip menampilkan "Clip sedang direkam…" untuk event keamanan < 3 menit tanpa
+  `clip_path`, dan me-refresh daftar tiap 5 s sampai clip datang (poll live hanya menambah event baru,
+  sehingga clip/snapshot yang datang belakangan dulu tak pernah tampil tanpa reload). Label zona
+  "Rekam clip event" tanpa "(30 detik)". Frontend **120 passed**.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
