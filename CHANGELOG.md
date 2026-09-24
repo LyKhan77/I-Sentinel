@@ -10,6 +10,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   tetap melepas shift. Backend **336 passed**.
 - **`EmployeeOut` memuat `photo_count` + `face_ready`** (≥ `MIN_PHOTOS` = 3, kini satu sumber di
   `models/employee.py`) → daftar Enrollment tak perlu lagi `enrollment-status` per karyawan (N+1).
+- **Karyawan nonaktif tidak dikenali di gate**: `FaceGallery.load` hanya memuat embedding karyawan
+  aktif; PATCH `active` me-refresh gallery. Aktif kembali → dikenali lagi tanpa enroll ulang.
+  Konsekuensi: wajah karyawan nonaktif tidak memicu peringatan duplikat saat enroll.
 
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 

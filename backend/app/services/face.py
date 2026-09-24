@@ -10,6 +10,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from app.core.config import settings
+from app.models.employee import Employee
 from app.models.face_embedding import FaceEmbedding
 
 logger = logging.getLogger(__name__)
@@ -137,14 +138,19 @@ class FaceEngine:
 
 
 class FaceGallery:
-    """In-memory employee_id → list[vector]. Vector disimpan sebagai list[float] biasa (tanpa numpy)."""
+    """In-memory employee_id → list[vector] untuk karyawan AKTIF saja. Vector disimpan sebagai list[float] biasa (tanpa numpy)."""
 
     def __init__(self):
         self._by_employee: dict[int, list[list[float]]] = {}
 
     def load(self, db) -> None:
         grouped: dict[int, list[list[float]]] = {}
-        for row in db.query(FaceEmbedding).all():
+        rows = (
+            db.query(FaceEmbedding)
+            .join(Employee, Employee.id == FaceEmbedding.employee_id)
+            .filter(Employee.active.is_(True))
+        )
+        for row in rows:
             grouped.setdefault(row.employee_id, []).append([float(x) for x in row.vector])
         self._by_employee = grouped
 
@@ -177,7 +183,7 @@ gallery = FaceGallery()
 
 
 def refresh_gallery(db) -> FaceGallery:
-    """Muat ulang gallery dari DB. Panggil di startup, setelah enroll, setelah delete/purge."""
+    """Muat ulang gallery dari DB. Panggil di startup, setelah enroll, setelah delete/purge, setelah ubah `active`."""
     gallery.refresh(db)
     return gallery
 

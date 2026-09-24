@@ -66,6 +66,8 @@ def update_employee(employee_id: int, body: EmployeePatch, admin=Depends(require
     for k, v in changes.items():
         setattr(emp, k, v)
     db.commit(); db.refresh(emp)
+    if "active" in changes:
+        face.refresh_gallery(db)  # nonaktif = tidak dikenali di gate
     return emp
 
 

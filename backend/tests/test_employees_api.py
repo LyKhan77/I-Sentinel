@@ -282,3 +282,20 @@ def test_employee_out_has_photo_count_and_face_ready(client, db):
     by_id = {e["id"]: e for e in client.get("/api/v1/employees", headers=h).json()}
     assert by_id[e1["id"]]["photo_count"] == 3 and by_id[e1["id"]]["face_ready"] is True
     assert by_id[e2["id"]]["photo_count"] == 1 and by_id[e2["id"]]["face_ready"] is False
+
+
+def test_toggle_active_refreshes_face_gallery(client, db, monkeypatch):
+    from app.models.face_embedding import FaceEmbedding
+    from app.services import face
+    monkeypatch.setattr(face, "gallery", face.FaceGallery())
+    h = _admin_headers(client)
+    eid = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001"}, headers=h).json()["id"]
+    db.add(FaceEmbedding(employee_id=eid, vector=[1.0, 0.0, 0.0, 0.0], quality=0.9))
+    db.commit()
+    face.refresh_gallery(db)
+    assert face.gallery.size() == 1
+
+    assert client.patch(f"/api/v1/employees/{eid}", json={"active": False}, headers=h).status_code == 200
+    assert face.gallery.size() == 0
+    assert client.patch(f"/api/v1/employees/{eid}", json={"active": True}, headers=h).status_code == 200
+    assert face.gallery.size() == 1

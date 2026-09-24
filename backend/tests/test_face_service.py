@@ -247,3 +247,21 @@ def test_gallery_remove(db):
 
     assert face.gallery.size() == 0
     assert face.gallery.match([1.0, 0.0, 0.0, 0.0]) is None
+
+
+# --- (j) karyawan nonaktif tidak di gallery ---
+
+def test_refresh_gallery_skips_inactive_employees(db):
+    a = _employee(db, "E1")
+    b = _employee(db, "E2")
+    b.active = False
+    db.add(FaceEmbedding(employee_id=a.id, vector=[1.0, 0.0, 0.0, 0.0], quality=0.9))
+    db.add(FaceEmbedding(employee_id=b.id, vector=[0.0, 1.0, 0.0, 0.0], quality=0.9))
+    db.commit()
+
+    refresh_gallery(db)
+
+    assert face.gallery.size() == 1
+    assert face.gallery.match([0.0, 1.0, 0.0, 0.0]) is None
+    m = face.gallery.match([1.0, 0.0, 0.0, 0.0])
+    assert m is not None and m[0] == a.id
