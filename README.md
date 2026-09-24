@@ -97,28 +97,42 @@ curl -s localhost:8000/api/v1/health
 
 Registrasi kamera cukup lewat **Konfigurasi → Kamera → + Tambah kamera**:
 
-1. Isi **Nama kamera**, **Lokasi**, **IP / Host**, **Port** (default 554), **Node**.
-2. Klik **Deteksi otomatis** — backend memindai channel NVR (pola Hikvision
-   `/Streaming/Channels/<ch>`, wave paralel, berhenti setelah 2 wave kosong) dan
-   menampilkan dropdown `ch N — MAIN res·codec / SUB res·codec`. Channel pertama
-   otomatis terpilih; pilih lainnya bila perlu.
-3. Kamera non-NVR / vendor lain: gunakan **Isi path manual** (MAIN/SUB) + tombol
-   **Probe** untuk verifikasi exact path.
-4. **Simpan** — aktif hanya setelah stream terverifikasi (scan/probe menemukan ≥1 stream).
+1. Isi **Nama kamera**, **Lokasi** (pilih dari kamera lain atau ketik baru), **IP kamera**
+   (port opsional: `192.168.2.179:8554`), **Path mainstream** (wajib), **Path substream**
+   (kosong = pakai mainstream).
+2. Pilih **Kredensial**: `Default (NVR)` (fallback `CAM_USERNAME`/`CAM_PASSWORD` dari `.env`)
+   atau profil khusus; **+ Kredensial baru…** langsung membuat profil (Nama, Username, Password).
+3. Klik **Tes koneksi** — probe menampilkan res/fps/codec MAIN & SUB + thumbnail substream;
+   peringatan muncul bila substream sama dengan mainstream (AI memproses resolusi penuh).
+   Tempel URL RTSP berisi password ke kolom path pun aman — yang terkirim hanya path.
+4. **Simpan** — bila belum dites muncul peringatan; klik **Simpan** sekali lagi untuk tetap
+   menyimpan.
+
+**Lanjutan** (tertutup default): **Node** (hanya bila node > 1) dan **Deteksi otomatis** —
+backend memindai channel NVR (pola Hikvision `/Streaming/Channels/<ch>`, wave paralel, berhenti
+setelah 2 wave kosong) dan menampilkan dropdown channel; memilih channel mengisi path main/sub.
+Menu **Lanjutan** di header halaman berisi Import CCTV, Sync go2rtc, dan **Kelola kredensial**
+(ubah username/password — password dikosongkan = tidak diganti; nonaktifkan ditolak bila profil
+masih dipakai kamera aktif; tambah profil baru).
 
 Aturan yang perlu diketahui:
 
 - **Grup lokasi otomatis** dari teks Lokasi (get-or-create, tidak diinput manual).
-- **Password kamera tidak pernah diketik di UI** — kredensial selalu referensi
-  `env:VAR` (fallback `CAM_USERNAME`/`CAM_PASSWORD`); password hidup di `.env` server.
+- **Password kamera tidak pernah tampil di UI atau DB.** Default: kredensial dari `.env`
+  (`CAM_USERNAME`/`CAM_PASSWORD`). Kredensial khusus dibuat via Kelola kredensial: DB hanya
+  menyimpan referensi `store:cred_<id>`; password aslinya di file rahasia server
+  `CAMERA_SECRETS_FILE` (default `~/.isentinel/camera-secrets.json`, izin `0600`, direktori
+  `0700`, WAJIB di luar `STORAGE_ROOT`).
+- **Backup**: file rahasia tersebut harus ikut dibackup bersama DB — tanpa file itu, kamera
+  berkredensial khusus gagal konek ("credential reference is unavailable").
+- **Rollback** (`git revert`): kamera berprofil `store:` dikembalikan ke Default (NVR) atau
+  `env:` SEBELUM revert, karena referensi `store:` tidak bisa di-resolve oleh kode lama.
 - Duplikat nama-per-node atau duplikat stream ditolak (409) dan ditampilkan
   sebagai InlineNotification.
-- Panel **Sumber & kredensial (lanjutan)** di halaman Kamera hanya untuk
-  **Import CCTV** dan perubahan NVR/kredensial — collapsed by default.
 - Menghapus kamera tidak menghapus riwayat: `event` dan `alert` tetap
   (migration `0008`, FK `ON DELETE SET NULL`).
-- List kamera memakai kolom terpisah Nama/Lokasi; Live View filter lokasi bisa
-  direset ke **All locations**.
+- List kamera memakai kolom terpisah Nama/Lokasi + kolom **Kredensial**; Live View filter
+  lokasi bisa direset ke **All locations**.
 
 Detail migrasi skema: `docs/runbooks/camera-management-migration.md`.
 
