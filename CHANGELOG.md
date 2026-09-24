@@ -49,6 +49,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Post-buffer default 15 → 8 s** (`VISION_CLIP_POST_S`, permintaan user setelah uji lapangan): ekor kosong
   ≈ post + 3 s tracker + 2–4 s segmen. Tes jendela insiden mem-pin post 15 s secara eksplisit.
   Vision **200 passed**.
+- **Seek per event di klip bersama**: recorder mengirim `clip_offset_s` per event (= waktu event − pre − awal
+  klip, ≥ 0; event pertama 0) di payload media; backend menyimpannya ke `event.payload.clip_offset_s`
+  (angka ≥ 0 saja, tanpa migrasi); Inbox memutar `…mp4#t=<offset>` (media fragment), tautan unduh tetap
+  tanpa offset. Backend **342**, vision **200**, frontend **121** passed, build 0, lint set rule+file sama.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 

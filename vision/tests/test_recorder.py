@@ -264,8 +264,9 @@ def test_two_events_one_incident_one_clip(tmp_path):
     rec.tick()
     assert ring.cuts == [(990.0, 1020.0, 1000.0, False)]
     assert uploads == [("clip", {})]
-    assert t.media == [{"event_id": "a", "clip_path": "clips/x"},
-                       {"event_id": "b", "clip_path": "clips/x"}]
+    # each event seeks to its own pre window inside the shared clip
+    assert t.media == [{"event_id": "a", "clip_path": "clips/x", "clip_offset_s": 0.0},
+                       {"event_id": "b", "clip_path": "clips/x", "clip_offset_s": 5.0}]
     assert os.listdir(tmp_path / "data" / "outbox") == []   # local clip removed after upload
 
 
@@ -368,7 +369,7 @@ def test_close_finalizes_open_incident(tmp_path):
     assert ring.stopped and ring.closed
     assert ring.cuts == [(990.0, 1015.0, 1000.0, True)]
     assert uploads == [("clip", {"timeout": 10, "retries": 1})]
-    assert t.media == [{"event_id": "a", "clip_path": "clips/x"}]
+    assert t.media == [{"event_id": "a", "clip_path": "clips/x", "clip_offset_s": 0.0}]
 
 
 def test_tick_prunes_to_open_incident_start(tmp_path):

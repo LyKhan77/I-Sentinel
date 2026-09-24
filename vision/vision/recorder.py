@@ -34,11 +34,13 @@ class _Incident:
         self.start = start
         self.last_active = now
         self.events: list[dict] = []
+        self.times: list[float] = []  # recorder clock when each event joined
         self.tracks: set[int] = set()
         self.add(event, now)
 
     def add(self, event: dict, now: float) -> None:
         self.events.append(event)
+        self.times.append(now)
         self.last_active = max(self.last_active, now)
         tid = (event.get("payload") or {}).get("track_id")
         if tid is not None:
@@ -163,7 +165,11 @@ class Recorder:
             log.warning("recorder cam%s: ring missed incident %s, no clip",
                         self.camera_id, first)
             return
-        self._ship(local, "clip", "video/mp4", [e["event_id"] for e in inc.events], **upload_kw)
+        # each event seeks to its own pre window inside the shared clip
+        media = [{"event_id": e["event_id"],
+                  "clip_offset_s": round(max(0.0, t - self.cfg.clip_pre_s - inc.start), 1)}
+                 for e, t in zip(inc.events, inc.times)]
+        self._ship(local, "clip", "video/mp4", media, **upload_kw)
 
     def _run_job(self, kind: str, event: dict) -> None:
         event_id = event["event_id"]
@@ -171,15 +177,18 @@ class Recorder:
         if kind == "snapshot":
             local = self._save_snapshot(event_id, outbox, event)
             if local:
-                self._ship(local, "snapshot", "image/jpeg", [event_id])
+                self._ship(local, "snapshot", "image/jpeg", [{"event_id": event_id}])
         else:  # live_clip
             local = self._save_clip(event_id, outbox)
             if local:
-                self._ship(local, "clip", "video/mp4", [event_id])
+                self._ship(local, "clip", "video/mp4", [{"event_id": event_id}])
 
-    def _ship(self, local: str, kind: str, content_type: str, event_ids: list[str],
+    def _ship(self, local: str, kind: str, content_type: str, media: list[dict],
               **upload_kw) -> None:
-        """Upload once, drop the local file, publish the backend path for every event."""
+        """Upload once, drop the local file, publish the backend path for every event.
+
+        media: one dict per event ({"event_id", ...extra fields}).
+        """
         try:
             path = self._upload_one(local, kind, content_type, **upload_kw)
         finally:
@@ -189,8 +198,8 @@ class Recorder:
                 pass
         if path is None or self.transport is None:
             return
-        for event_id in event_ids:
-            self.transport.publish_media({"event_id": event_id, f"{kind}_path": path})
+        for m in media:
+            self.transport.publish_media({**m, f"{kind}_path": path})
 
     def _loop(self) -> None:
         while not self._stopped.is_set():

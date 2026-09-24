@@ -139,6 +139,9 @@ export default function EventsPage() {
   const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
   const isAttendance = selected?.type === 'attendance'
 
+  // klip insiden dipakai beberapa event: mulai putar di detik event ini (media fragment)
+  const clipOffset = selected?.payload?.clip_offset_s
+  const clipSeek = typeof clipOffset === 'number' && clipOffset > 0 ? `#t=${clipOffset}` : ''
   const clipPending =
     !!selected && !selected.clip_path && !isAttendance &&
     nowMs - new Date(selected.ts_event).getTime() < CLIP_PENDING_MS
@@ -355,7 +358,7 @@ export default function EventsPage() {
               {tab === 'clip' &&
                 (selected.clip_path ? (
                   <>
-                    <video controls src={`/api/v1/media/${selected.clip_path}`} data-testid="event-clip" className="ev-player" />
+                    <video controls src={`/api/v1/media/${selected.clip_path}${clipSeek}`} data-testid="event-clip" className="ev-player" />
                     <div className="ev-detail__actions">
                       <a
                         className="ev-detail__download"

@@ -121,6 +121,28 @@ def test_consumer_media_topic_updates_event(db):
     assert ev.clip_path == "clips/2026/01/01/y.mp4"
 
 
+def test_consumer_media_clip_offset_merged_into_payload(db):
+    ev = _seed_event(db)
+    ev.payload = {"track_id": 6}
+    db.commit()
+    handle_message(db, "isentinel/events/media", json.dumps(
+        {"event_id": ev.event_id, "clip_path": "clips/y.mp4", "clip_offset_s": 12.4}
+    ).encode())
+    db.refresh(ev)
+    assert ev.clip_path == "clips/y.mp4"
+    assert ev.payload == {"track_id": 6, "clip_offset_s": 12.4}
+
+
+def test_consumer_media_clip_offset_rejects_non_number(db):
+    ev = _seed_event(db)
+    for bad in ("12", -3, True, None):
+        handle_message(db, "isentinel/events/media", json.dumps(
+            {"event_id": ev.event_id, "clip_path": "clips/y.mp4", "clip_offset_s": bad}
+        ).encode())
+    db.refresh(ev)
+    assert "clip_offset_s" not in (ev.payload or {})
+
+
 def test_consumer_media_unknown_event_no_crash(db):
     handle_message(db, "isentinel/events/media", json.dumps(
         _media_payload(str(uuid.uuid4()))
