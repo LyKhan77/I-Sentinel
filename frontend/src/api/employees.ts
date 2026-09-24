@@ -26,8 +26,6 @@ export type ShiftPayload = { name: string; start_time: string; end_time: string;
 
 export type Photo = { id: number; quality: number | null; created_at: string; path: string | null }
 
-export type EnrollmentStatus = { photos: number; active: boolean }
-
 // ponytail: status → kode error tetap yang dibaca UI (mis. 409 → 'duplicate'); selain itu pesan generik
 async function expectOk(res: Response, what: string, codes: Record<number, string> = {}) {
   if (!res.ok) throw new Error(codes[res.status] ?? `${what} failed: ${res.status}`)
@@ -73,12 +71,6 @@ export async function listPhotos(employeeId: number): Promise<Photo[]> {
   return expectOk(await apiFetch(`/employees/${employeeId}/photos`), 'list photos')
 }
 
-export async function uploadPhoto(employeeId: number, file: File): Promise<{ embedding_id: number; quality: number | null }> {
-  const fd = new FormData()
-  fd.append('file', file)
-  return expectOk(await apiFetch(`/employees/${employeeId}/photos`, { method: 'POST', body: fd }), 'upload photo')
-}
-
 export type BatchPhotoResult = {
   ok: boolean
   reason?: string
@@ -100,8 +92,4 @@ export async function deletePhoto(employeeId: number, embeddingId: number): Prom
 
 export async function purgeBiometrics(employeeId: number): Promise<{ deleted: number }> {
   return expectOk(await apiFetch(`/employees/${employeeId}/biometrics`, { method: 'DELETE' }), 'purge biometrics')
-}
-
-export async function enrollmentStatus(employeeId: number): Promise<EnrollmentStatus> {
-  return expectOk(await apiFetch(`/employees/${employeeId}/enrollment-status`), 'enrollment status')
 }

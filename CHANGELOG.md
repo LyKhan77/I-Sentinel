@@ -21,6 +21,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   foto wajah {nama}"** (nonaktif bila 0 foto, konfirmasi menyebut nama + jumlah foto); kartu Status:
   Nonaktifkan dengan konfirmasi, Hapus karyawan (riwayat absensi → tawaran Nonaktifkan). Badge wajah
   dari `photo_count` (tanpa N+1). Grid satu kolom di ≤ 671 px. Frontend **117 passed**.
+- **Cleanup sisa refining**: hapus 3 API client mati (`EnrollmentStatus`, `uploadPhoto`,
+  `enrollmentStatus` — endpoint backend tetap ada) + 8 baris key i18n `en.col.*` yatim.
+  Frontend **117 passed** (tanpa perubahan hasil).
 
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 
