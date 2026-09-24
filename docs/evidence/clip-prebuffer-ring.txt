@@ -1,0 +1,39 @@
+Event clip pre-buffer — bukti ring (Task 6 Step 3)
+Server: gspe-ai3 · 2026-09-24 14:23 WIB · branch feat/event-clip-prebuffer @ 8853bca
+Deploy: vision-venv di-install editable (pip install -e vision) + vision-node restart (PID baru 48716).
+
+catatan izin user: (a) push branch OK, (b) checkout + pip + restart OK, (c) chip analyzer intrusion cam 357 OK,
+(d) hapus outbox = tampilkan jumlahnya dulu.
+
+Kondisi kamera (via API, bukan DB langsung)
+- cam 357 "Lorong Manager": enabled, analyzers ['attendance'] → diubah jadi ['attendance','intrusion']
+  (PATCH /api/v1/cameras/357) karena zona 6 (behavior, active, behaviors intrusion/loitering/running,
+  clip=True) di-skip oleh mask `camera.analyzers`.
+- Kamera lain tanpa zona clip: analyzers None/['attendance'] dengan zona attendance saja →
+  FaceGateWorker; `_wants_clip([])` False → tanpa ring. Jadi hanya cam 357 yang membuka mainstream.
+- VISION_EMIT_PERSON_DETECT=false di vision.env → tidak ada ring "semua kamera".
+- Env lain: VISION_CLIP_* tidak diset di .env/vision.env → default kode (10/15/120, /dev/shm/isentinel).
+
+Ring (14:23:45, sampl 6 s)
+/dev/shm/isentinel/  total 484K (hanya subdir cam357)
+cam357 sample 1: 1790234615.ts 616.ts 618.ts 622.ts 624.ts        count=5
+cam357 sample 2: 1790234618.ts 622.ts 624.ts 626.ts 628.ts 630.ts count=6
+→ nama = epoch detik (strftime %s), segmen bergulir ~2 s (kadang ~4 s saat menunggu keyframe),
+  jumlah file stabil (prune jalan), total hanya ~484 KB.
+
+ffmpeg
+PID 48830  etime 00:17  cpu 0.9%  rss 51476 KB
+cmd: ffmpeg -nostdin -loglevel error -rtsp_transport tcp -i rtsp://localhost:8554/cam_357_main
+     -map 0:v:0 -c copy -an -f segment … (target < 1% per kamera: 0.9% ✓)
+
+go2rtc
+/api/streams → {'cam_357_main': 1}   (tepat +1 sesi RTSP mainstream permanen per kamera ber-clip)
+
+journal (sejak restart 14:23:33)
+INFO:vision.node:started 6 worker(s) for 6 camera(s)
+0 baris "clip ring" → tanpa restart/watchdog warning (ring sehat)
+
+Observasi pra-eksisting (bukan regresi fitur ini)
+- 8x `DESCRIBE failed: 404` + 4x `cannot open video source` dalam 23 jam sebelum restart;
+  setelah restart 1x per stream untuk cam_4/5/6/7 (stream go2rtc yang tidak ada). Jumlah dan pola sama
+  sebelum deploy, tidak berkaitan dengan ring cam 357.

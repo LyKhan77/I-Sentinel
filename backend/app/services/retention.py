@@ -100,13 +100,22 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
         .filter((Event.clip_path.isnot(None)) | (Event.snapshot_path.isnot(None)))
         .all()
     )
+    # clip insiden dipakai bersama beberapa event; jangan hapus selama masih
+    # dirujuk event yang belum kedaluwarsa (null-kan path saja)
+    live = {
+        path
+        for row in db.query(Event.clip_path, Event.snapshot_path)
+        .filter(Event.ts_event >= cutoff)
+        for path in row
+        if path
+    } if expired else set()
     for ev in expired:
         for field in ("clip_path", "snapshot_path"):
             rel = getattr(ev, field)
             if not rel:
                 continue
             full = _safe_join(root, rel)
-            if full and os.path.isfile(full):
+            if full and rel not in live and os.path.isfile(full):
                 bytes_freed += _size(full)
                 files_deleted += 1
                 if not dry_run:

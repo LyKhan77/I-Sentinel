@@ -46,6 +46,9 @@ const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
   { id: 'crop', key: 'events.tab.crop' },
 ]
 
+// Clip insiden baru ada ±post (default 8 s) setelah orang terakhir terlihat (maks 120 s) — tunggu 3 menit.
+const CLIP_PENDING_MS = 3 * 60_000
+
 function timeStr(ts: string): string {
   return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
 }
@@ -72,6 +75,8 @@ export default function EventsPage() {
   const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
   const [tabState, setTabState] = useState<{ id: number; tab: DetailTab } | null>(null)
   const [tg, setTg] = useState<TelegramStatus | null>(null)
+  // jam 5 s untuk `clipPending`: Date.now() langsung di body render melanggar react/purity
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const refresh = useCallback(async () => {
     const hours = RANGE_HOURS[range]
@@ -133,6 +138,26 @@ export default function EventsPage() {
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
   const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
   const isAttendance = selected?.type === 'attendance'
+
+  // klip insiden dipakai beberapa event: mulai putar di detik event ini (media fragment)
+  const clipOffset = selected?.payload?.clip_offset_s
+  const clipSeek = typeof clipOffset === 'number' && clipOffset > 0 ? `#t=${clipOffset}` : ''
+  const clipPending =
+    !!selected && !selected.clip_path && !isAttendance &&
+    nowMs - new Date(selected.ts_event).getTime() < CLIP_PENDING_MS
+
+  // jam ber-tick supaya event yang menua berhenti dianggap "sedang direkam"
+  useEffect(() => {
+    const clock = setInterval(() => setNowMs(Date.now()), 5000)
+    return () => clearInterval(clock)
+  }, [])
+
+  // poll live hanya menambah event baru; clip_path yang datang belakangan perlu refetch
+  useEffect(() => {
+    if (!clipPending) return
+    const timer = setInterval(refresh, 5000)
+    return () => clearInterval(timer)
+  }, [clipPending, refresh])
 
   // tab aktif ikut event terpilih: event berganti → kembali ke Snapshot (derived,
   // tanpa effect yang memicu render kedua)
@@ -333,7 +358,7 @@ export default function EventsPage() {
               {tab === 'clip' &&
                 (selected.clip_path ? (
                   <>
-                    <video controls src={`/api/v1/media/${selected.clip_path}`} data-testid="event-clip" className="ev-player" />
+                    <video controls src={`/api/v1/media/${selected.clip_path}${clipSeek}`} data-testid="event-clip" className="ev-player" />
                     <div className="ev-detail__actions">
                       <a
                         className="ev-detail__download"
@@ -347,7 +372,7 @@ export default function EventsPage() {
                   </>
                 ) : (
                   <div data-testid="event-clip-placeholder" className="ev-player ev-player--empty">
-                    {t('events.clipUnavailable')}
+                    {t(clipPending ? 'events.clipRecording' : 'events.clipUnavailable')}
                   </div>
                 ))}
 

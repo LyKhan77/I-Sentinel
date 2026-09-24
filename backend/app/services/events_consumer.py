@@ -75,6 +75,10 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             for col in ("clip_path", "snapshot_path"):
                 if data.get(col):
                     setattr(ev, col, data[col])
+            # detik mulai event ini di dalam klip insiden bersama (UI: #t=offset)
+            offset = data.get("clip_offset_s")
+            if isinstance(offset, (int, float)) and not isinstance(offset, bool) and offset >= 0:
+                ev.payload = {**(ev.payload or {}), "clip_offset_s": offset}
             db.commit()
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/heartbeat"):
             name = topic.split("/")[2]

@@ -307,3 +307,42 @@ def test_zone_media_flags_on_events():
         "publish_heartbeat": staticmethod(lambda hb: None)})())
     azs = node._make_analyzers(CameraCfg(camera_id=1, source_url="t", zones=[zone]))
     assert azs and azs[0].media == {"snapshot": False, "clip": False}
+
+
+# --- R3: ring mainstream hanya utk kamera ber-zona clip ----------------------
+
+def test_clip_ring_only_for_cameras_with_clip_zones(tmp_path, monkeypatch):
+    import vision.clipring as cr
+
+    made = []
+
+    class FakeRing:
+        def __init__(self, camera_id, src_url, ring_dir):
+            made.append((camera_id, src_url, ring_dir))
+
+        def start(self): pass
+        def healthy(self): return True
+        def check(self): pass
+        def prune(self, keep_from): pass
+        def stop(self): pass
+        def close(self): pass
+
+    monkeypatch.setattr(cr, "ClipRing", FakeRing)
+    cfg = NodeSettings(node_id="n1", api_key="k", face_embed=False, data_dir=str(tmp_path),
+                       clip_ring_dir=str(tmp_path / "ring"))
+    node = VisionNode(cfg=cfg, detector_factory=lambda cid: MockDetector([]),
+                      source_factory=lambda cam: FrameSource.from_frames([], fps=5.0),
+                      transport=FakeTransportWithCfg())
+    poly = [[0, 0], [1, 0], [1, 1], [0, 1]]
+
+    def zone(zid, clip):
+        return {"id": zid, "type": "behavior", "active": True, "polygon": poly,
+                "behaviors": [{"kind": "intrusion"}], "clip": clip}
+
+    node.apply_config({"cameras": [
+        {"camera_id": 1, "source_url": "rtsp://h:8554/cam_1", "zones": [zone(1, True)]},
+        {"camera_id": 2, "source_url": "rtsp://h:8554/cam_2", "zones": [zone(2, False)]},
+        {"camera_id": 3, "source_url": "rtsp://h:8554/cam_3", "zones": []},
+    ]})
+    node._stop_workers()
+    assert made == [(1, "rtsp://h:8554/cam_1_main", str(tmp_path / "ring"))]

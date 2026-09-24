@@ -144,6 +144,8 @@ class CameraWorker(threading.Thread):
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if self.recorder is not None and tracks:
+                    self.recorder.touch([t.id for t in tracks])
                 if tracks and self.transport is not None:
                     self.transport.publish_detections(cam_id, [
                         {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox], "label": None}
@@ -310,6 +312,11 @@ class VisionNode:
         analyzer.media = media
         return analyzer
 
+    def _wants_clip(self, analyzers: list) -> bool:
+        """Mainstream ring only for cameras whose events can carry a clip."""
+        return self.cfg.emit_person_detect or any(
+            getattr(a, "media", {}).get("clip", True) for a in analyzers)
+
     def apply_config(self, cfg_dict: dict) -> None:
         """Hot-reload: stop current workers, start new ones from cfg_dict."""
         det = cfg_dict.get("detector")
@@ -378,7 +385,13 @@ class VisionNode:
             recorder = None
             if self.cfg.api_key:  # production: upload blobs to backend
                 from .recorder import Recorder
-                recorder = Recorder(cam.camera_id, self.cfg, self.transport)
+                ring = None
+                if (analyzers or not gates) and self._wants_clip(analyzers):
+                    from . import clipring
+                    ring = clipring.ClipRing(cam.camera_id, main_stream_url(cam.source_url),
+                                             self.cfg.clip_ring_dir)
+                    ring.start()
+                recorder = Recorder(cam.camera_id, self.cfg, self.transport, clip_ring=ring)
             if analyzers or not gates:
                 w = CameraWorker(cam, self.detector_factory, self.transport,
                                  threading.Event(), self.cfg.node_id,

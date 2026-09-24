@@ -1,0 +1,21 @@
+Event clip pre-buffer — uji lapangan (gspe-ai3, 2026-09-24)
+Sumber: /api/v1/events + ffprobe file di I-Sentinel-data/api/clips (tanpa kredensial).
+
+Sebelum (main, clip substream post-only): 640x480, 25,3–29,8 s, selesai 30,0–30,3 s setelah event;
+beruntun 38,9 / 44,5 / 55,9 s. Snapshot ikut tertahan ~30 s.
+
+Run 1 — post 15 s (commit 3df06e3)
+15:12:00 intrusion cam357 track3  clip 1920x1080 48,0 s  ditulis +38 s  snapshot +0,5 s
+  frame: orang terlihat dari detik 0 (sebelum masuk zona) s/d keluar ~detik 24; ekor kosong ~22 s
+15:17:55 intrusion cam363 track2  clip 1920x1080 50,6 s  ditulis +43 s
+15:19:26 intrusion cam363 track5  clip d6bc5941 68,2 s   ditulis +59 s   } 2 orang beda, 1 file
+15:19:38 intrusion cam363 track6  clip d6bc5941 68,2 s   ditulis +47 s   }
+15:24:44 intrusion cam363 track8  clip 1920x1080 34,0 s  ditulis +26 s
+
+Run 2 — post 8 s + seek per event (commit 7a5db70)
+15:48:44 intrusion cam363 track1  offset 0.0   clip 1920x1080 32,0 s  ditulis +24 s
+15:49:15 intrusion cam363 track2  offset 0.0   clip 1920x1080 40,0 s  ditulis +31 s
+15:51:24 intrusion cam363 track3  offset 0.0   clip 17c19191 56,2 s   ditulis +48 s  } 1 file,
+15:51:45 intrusion cam363 track5  offset 21.2  clip 17c19191 56,2 s   ditulis +27 s  } seek #t=21.2
+journalctl vision-node sejak 15:37: 0 baris "ring missed" / "clip ring" / Traceback.
+User: orang kedua di klip bersama mulai dari detik terdeteksi — OK.

@@ -3,6 +3,60 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Event clip pre-buffer (2026-09-24)
+
+- **`ClipRing`** (`vision/vision/clipring.py`): ffmpeg `-c copy` per kamera menulis segmen MPEG-TS 2 s
+  ke tmpfs; `cut` menggabung segmen yang menutupi jendela insiden (concat `-c copy`, `+faststart`);
+  watchdog restart ffmpeg mati/stall dengan backoff ≤ 30 s; celah restart tidak dianggap tertutup.
+  Watchdog tahan gagal start ffmpeg (`OSError` → ring nonaktif, bukan traceback).
+  Belum dipakai recorder. Vision **190 passed**.
+- **Recorder = insiden per kamera**: snapshot per event langsung diunggah + dipublikasi (dulu tertahan
+  ~30 s oleh clip); event ber-clip membuka/bergabung ke satu insiden per kamera, ditutup 15 s setelah
+  track insiden terakhir terlihat (cap 120 s), clip dipotong dari `ClipRing`, satu upload, media
+  dipublikasi untuk setiap event. Ring tidak sehat → fallback live `cam_<id>_main` (perilaku lama).
+  Config `record_clip_s` → `clip_pre_s/clip_post_s/clip_max_s/clip_ring_dir`. **Fix kebocoran
+  outbox**: file lokal dihapus setelah upload (server: 582 MB / 2.464 file menumpuk).
+  Vision **195 passed**.
+- **Node memasang ring**: `ClipRing` dari `cam_<id>_main` hanya untuk `CameraWorker` yang punya
+  analyzer `clip` aktif (atau `emit_person_detect`); kamera gate-only / tanpa zona clip tidak membuka
+  koneksi mainstream. Worker memanggil `recorder.touch(track_ids)` tiap frame inferensi.
+  Watchdog ring: ffmpeg yang tidak mati setelah kill tidak lagi melempar keluar `stop()` (config push tetap jalan).
+  Vision **200 passed**.
+- **Inbox**: tab Clip menampilkan "Clip sedang direkam…" untuk event keamanan < 3 menit tanpa
+  `clip_path`, dan me-refresh daftar tiap 5 s sampai clip datang (poll live hanya menambah event baru,
+  sehingga clip/snapshot yang datang belakangan dulu tak pernah tampil tanpa reload). Label zona
+  "Rekam clip event" tanpa "(30 detik)". Frontend **120 passed**.
+- **Docs**: ROADMAP tabel ringkasan diperbarui (Fase 5 DONE 2026-09-21, R5b deploy + lapangan
+  2026-09-23, baris CP clip pre-buffer). Suite penuh: backend 339 passed, vision 200 passed
+  (3 deselected), frontend 120 passed, build 0, lint 22 warning (set sama dengan sebelum perubahan).
+- **Docs**: catatan deviasi implementasi (flag ffmpeg segmen, concat protocol, `covered_s` tidak dikembalikan,
+  `SETTLE_S`/`prune`) + ekspektasi verifikasi lapangan di plan Task 6; sinkron status R5b di ROADMAP.
+
+- **Deploy + pengukuran ring (2026-09-24)**: branch `feat/event-clip-prebuffer` (`8853bca`) di gspe-ai3,
+  `pip install -e vision` di `vision-venv`, restart `vision-node`; chip analyzer intrusion cam 357
+  diaktifkan (zona 6 tadinya di-skip oleh mask `analyzers=['attendance']`). Terukur: ffmpeg ring cam357
+  **0,9 % CPU / 51 MB RSS**, segmen 2 s bergulir (`/dev/shm/isentinel/cam357`, total **484 KB**),
+  `cam_357_main` **1 konsumen**, 0 warning `clip ring`; outbox lama dibersihkan (582 MB / 2.464 file → 0).
+  **Uji lapangan (klip 1080p dari orang nyata) belum dijalankan** — bukti:
+  `docs/evidence/clip-prebuffer-ring.txt`.
+- **Fix retensi klip bersama**: lapis 1 tidak lagi menghapus file yang masih dirujuk event belum
+  kedaluwarsa (klip insiden dipakai beberapa event; cutoff bisa jatuh di tengah insiden). Path event lama
+  tetap di-null-kan; file dihapus saat event terakhir yang merujuknya kedaluwarsa. Backend **340 passed**.
+- **Uji lapangan (2026-09-24)**: cam 357 intrusion 15:12 → klip **1920×1080, 48,0 s**, orang terlihat sejak
+  sebelum masuk zona sampai keluar; snapshot tersimpan **0,5 s** setelah event (dulu ~30 s), klip 38 s. Cam 363:
+  dua orang berbeda berjarak 12 s (15:19:26 / 15:19:38) → **satu file klip** bersama (68,2 s), snapshot per
+  event berbeda — sesuai desain insiden per kamera. Temuan: ekor klip ~22 s lorong kosong.
+- **Post-buffer default 15 → 8 s** (`VISION_CLIP_POST_S`, permintaan user setelah uji lapangan): ekor kosong
+  ≈ post + 3 s tracker + 2–4 s segmen. Tes jendela insiden mem-pin post 15 s secara eksplisit.
+  Vision **200 passed**.
+- **Seek per event di klip bersama**: recorder mengirim `clip_offset_s` per event (= waktu event − pre − awal
+  klip, ≥ 0; event pertama 0) di payload media; backend menyimpannya ke `event.payload.clip_offset_s`
+  (angka ≥ 0 saja, tanpa migrasi); Inbox memutar `…mp4#t=<offset>` (media fragment), tautan unduh tetap
+  tanpa offset. Backend **342**, vision **200**, frontend **121** passed, build 0, lint set rule+file sama.
+- **Uji lapangan ulang (post 8 s + seek, 15:48–15:51)**: klip 1 orang 32–40 s (dulu 48 s); dua orang cam 363
+  berjarak 21 s → 1 file 56,2 s, event kedua `clip_offset_s` 21.2 → Inbox mulai di detik orang kedua; 0 error
+  `vision-node`. **E2E user OK.** Bukti `docs/evidence/clip-prebuffer-field.txt`.
+
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
 - **Validasi backend**: nama/NIK/nama shift di-trim dan wajib isi (422); shift wajib `end_time >

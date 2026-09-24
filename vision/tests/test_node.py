@@ -266,7 +266,8 @@ class _NoFaces:
 def _wired_node(tmp_path, zones, api_key="", analyzers=None):
     urls, det_calls = [], []
     frame = np.zeros((4, 4, 3), np.uint8)
-    cfg = NodeSettings(node_id="n", cameras_json="[]", api_key=api_key, data_dir=str(tmp_path))
+    cfg = NodeSettings(node_id="n", cameras_json="[]", api_key=api_key, data_dir=str(tmp_path),
+                       clip_ring_dir=str(tmp_path / "ring"))
 
     def source_factory(cam):
         urls.append(cam.source_url)
@@ -296,12 +297,13 @@ def test_attendance_only_camera_runs_face_worker_without_yolo(tmp_path):
 
 
 def test_mixed_camera_runs_both_workers_sharing_one_recorder(tmp_path, monkeypatch):
+    import vision.clipring as clipring
     import vision.recorder as recorder
     recorders, closes = [], []
     original = recorder.Recorder
 
-    def make_recorder(*args):
-        rec = original(*args)
+    def make_recorder(*args, **kw):
+        rec = original(*args, **kw)
         close = rec.close
         def close_once():
             closes.append(rec)
@@ -311,6 +313,7 @@ def test_mixed_camera_runs_both_workers_sharing_one_recorder(tmp_path, monkeypat
         return rec
 
     monkeypatch.setattr(recorder, "Recorder", make_recorder)
+    monkeypatch.setattr(clipring, "_which", lambda _: None)  # no ffmpeg spawn in tests
     _, workers, urls, det_calls = _wired_node(tmp_path, [ATTENDANCE_ZONE, BEHAVIOR_ZONE],
                                               api_key="k")
     assert sorted(type(w).__name__ for w in workers) == ["CameraWorker", "FaceGateWorker"]
@@ -334,7 +337,8 @@ def test_disabled_face_does_not_start_orphan_recorder(tmp_path, monkeypatch):
     created = []
     monkeypatch.setattr(recorder, "Recorder", lambda *args: created.append(args))
     cfg = NodeSettings(node_id="n", cameras_json="[]", face_embed=False,
-                       api_key="k", data_dir=str(tmp_path))
+                       api_key="k", data_dir=str(tmp_path),
+                       clip_ring_dir=str(tmp_path / "ring"))
     node = VisionNode(cfg, detector_factory=lambda _: pytest.fail("YOLO started"),
                       source_factory=lambda _: pytest.fail("source opened"),
                       transport=FakeTransport())

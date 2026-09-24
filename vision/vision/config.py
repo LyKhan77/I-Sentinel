@@ -33,7 +33,10 @@ class NodeSettings(BaseSettings):
     heartbeat_s: float = 10.0
     emit_person_detect: bool = False  # debug-only: zones are the real signal
     go2rtc_url: str = "http://localhost:1984"
-    record_clip_s: int = 30
+    clip_pre_s: float = 10.0     # clip starts this long before the first incident event
+    clip_post_s: float = 8.0     # ...and ends this long after its tracks were last seen
+    clip_max_s: float = 120.0    # hard cap on one incident clip (pre included)
+    clip_ring_dir: str = "/dev/shm/isentinel"  # tmpfs for mainstream segments
     log_level: str = "INFO"
     detector_device: str = ""  # ""=auto; "cuda:N" pin (Task 9, fail-fast if invalid)
     face_embed: bool = True   # Opsi B: embed wajah di node; False = kirim crop saja

@@ -128,6 +128,19 @@ test('detail panel shows video element when clip_path present', async () => {
   expect(screen.getByTestId('event-download')).toHaveAttribute('href', '/api/v1/media/clips/ev-1.mp4')
 })
 
+test('shared incident clip starts at this event offset', async () => {
+  const withOffset: typeof EVENTS = [
+    { ...EVENTS[0], clip_path: 'clips/inc.mp4', payload: { track_id: 6, clip_offset_s: 12.4 } },
+  ]
+  vi.stubGlobal('fetch', stubFetch(withOffset))
+  renderPage()
+
+  await screen.findByTestId('event-detail')
+  await userEvent.click(screen.getByTestId('event-tab-clip'))
+  expect((screen.getByTestId('event-clip') as HTMLVideoElement).src).toMatch(/clips\/inc\.mp4#t=12\.4$/)
+  expect(screen.getByTestId('event-download')).toHaveAttribute('href', '/api/v1/media/clips/inc.mp4')
+})
+
 test('detail panel shows placeholder when clip_path null', async () => {
   vi.stubGlobal('fetch', stubFetch())
   renderPage()
@@ -136,6 +149,32 @@ test('detail panel shows placeholder when clip_path null', async () => {
   await userEvent.click(screen.getByTestId('event-tab-clip'))
   expect(screen.getByTestId('event-clip-placeholder')).toBeInTheDocument()
   expect(screen.queryByTestId('event-clip')).not.toBeInTheDocument()
+})
+
+test('fresh event without clip shows recording placeholder and refetches', async () => {
+  const fresh: EventOut[] = [{ ...EVENTS[0], ts_event: new Date().toISOString() }]
+  const fetchMock = stubFetch(fresh)
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('event-detail')
+  await userEvent.click(screen.getByTestId('event-tab-clip'))
+  expect(screen.getByTestId('event-clip-placeholder')).toHaveTextContent('Clip sedang direkam')
+  const before = fetchMock.mock.calls.filter(([u]) => String(u).includes('limit=200')).length
+  await waitFor(
+    () => expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('limit=200')).length)
+      .toBeGreaterThan(before),
+    { timeout: 7000 },
+  )
+}, 10000)
+
+test('old event without clip shows unavailable placeholder', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+
+  await screen.findByTestId('event-detail')
+  await userEvent.click(screen.getByTestId('event-tab-clip'))
+  expect(screen.getByTestId('event-clip-placeholder')).toHaveTextContent('Clip belum tersedia')
 })
 
 test('search narrows list by camera name and payload, count follows', async () => {

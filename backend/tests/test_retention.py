@@ -61,6 +61,27 @@ def test_sweep_deletes_expired_files_and_marks_event(db, tmp_path, monkeypatch):
     assert ev_fresh.clip_path == "clips/2026/09/14/b.mp4"
 
 
+def test_sweep_keeps_clip_shared_with_unexpired_event(db, tmp_path, monkeypatch):
+    # clip insiden dipakai beberapa event; cutoff jatuh di tengah insiden
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    monkeypatch.setattr(retention.settings, "retention_days", 30)
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    cutoff = now - timedelta(days=30)
+
+    shared = _mkfile(str(tmp_path), "clips/2026/08/16/inc.mp4", age_days=30)
+    ev_old = _event(db, cutoff - timedelta(seconds=10), clip="clips/2026/08/16/inc.mp4")
+    ev_new = _event(db, cutoff + timedelta(seconds=50), clip="clips/2026/08/16/inc.mp4")
+
+    result = retention.sweep(db, now=now)
+
+    assert os.path.exists(shared)
+    assert result["files_deleted"] == 0
+    db.refresh(ev_old)
+    db.refresh(ev_new)
+    assert ev_old.media_expired is True and ev_old.clip_path is None
+    assert ev_new.clip_path == "clips/2026/08/16/inc.mp4"
+
+
 def test_sweep_dry_run_touches_nothing(db, tmp_path, monkeypatch):
     monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
     monkeypatch.setattr(retention.settings, "retention_days", 30)
