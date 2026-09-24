@@ -19,6 +19,7 @@
 | 4e | Live view jalan dari klien LAN (proxy snapshot) | [x] selesai | 2026-09-15 | 24/25 tile render `640x360` same-origin; `/snapshot` 401 tanpa login, 200 image/jpeg dengan login | `7c89eb1..(v0.5.4)` |
 | 5 | Hardening (retensi, beban 30+ kamera, docs) | [~] plan detail siap | — | `docs/plans/06-fase-5-hardening.md` 12 task / 66 step (591a18e); prasyarat P1-P9 teraudit | |
 | R5b | Attendance face-first (SCRFD+ArcFace node, cooldown, UI) | [~] lokal selesai, PENDING deploy + verifikasi lapangan | — | frontend/backend/vision suite hijau lokal (Task 10); deploy + GPU + lapangan belum dijalankan (runbook `docs/runbooks/attendance-face-first.md`) | |
+| RE | Enrollment & Shift refining (CRUD karyawan/shift, NIK, hapus foto per karyawan) | [x] selesai | 2026-09-24 | backend 339, vision 177, frontend 118; UI 390px overflow 0; `docs/evidence/enrollment-*.png` | `f8028ed` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
@@ -389,6 +390,24 @@ Spec: `docs/superpowers/specs/2026-09-23-attendance-face-first-design.md`
 **Bukti:** angka suite per task di `CHANGELOG.md` bagian R5b; range diff
 `temp/sdd/r5b/task-<n>-committed.diff`. Belum ada bukti lapangan/GPU —
 tidak diklaim sampai deploy diizinkan.
+
+---
+
+## Enrollment & Shift refining — **DONE (2026-09-24)**
+
+Plan: `docs/superpowers/plans/2026-09-23-enrollment-refining.md`
+Spec: `docs/superpowers/specs/2026-09-23-enrollment-refining-design.md`
+
+- [x] Validasi backend (trim, wajib isi, shift selesai > mulai, PATCH null aman) — backend **336**
+- [x] `photo_count` + `face_ready` di `EmployeeOut` (tanpa N+1) — backend **337**
+- [x] Galeri wajah hanya karyawan aktif (nonaktif = tidak dikenali di gate) — backend **339**, vision **177**
+- [x] Tab Shift (CRUD lengkap) + tab Karyawan (NIK bisa diedit, hapus foto wajah per karyawan,
+      konfirmasi nonaktif/hapus) — frontend **118**, build + lint (22 set lama) hijau
+- [x] Deploy branch ke gspe-ai3 2026-09-24 (tanpa migrasi), health ok; UI desktop + 390 px overflow 0;
+      CRUD shift uji `UJI` lewat UI (POST/PATCH 200, 409 nama duplikat tampil, DELETE 200, data kembali 3 shift)
+- [x] E2E user di UI OK (2026-09-24); merge `--no-ff` ke `main`, server kembali ke `main`
+
+**Bukti:** `docs/evidence/enrollment-{employees,shifts}-{desktop,390}.png`; suite per commit di `CHANGELOG.md`.
 
 ---
 

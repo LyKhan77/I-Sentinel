@@ -57,7 +57,8 @@ def get_employee(employee_id: int, user=Depends(get_current_user), db: Session =
 def update_employee(employee_id: int, body: EmployeePatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
     emp = db.get(Employee, employee_id)
     if not emp: raise HTTPException(404, "employee not found")
-    changes = body.model_dump(exclude_unset=True)
+    # shift_id boleh null (lepas shift); kolom lain NOT NULL → null eksplisit diabaikan
+    changes = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None or k == "shift_id"}
     if "employee_code" in changes and _dup_code(db, changes["employee_code"], exclude_id=employee_id):
         raise HTTPException(409, "employee_code already exists")
     if "shift_id" in changes:
@@ -65,6 +66,8 @@ def update_employee(employee_id: int, body: EmployeePatch, admin=Depends(require
     for k, v in changes.items():
         setattr(emp, k, v)
     db.commit(); db.refresh(emp)
+    if "active" in changes:
+        face.refresh_gallery(db)  # nonaktif = tidak dikenali di gate
     return emp
 
 

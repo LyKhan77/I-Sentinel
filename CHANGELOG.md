@@ -3,6 +3,44 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
+
+- **Validasi backend**: nama/NIK/nama shift di-trim dan wajib isi (422); shift wajib `end_time >
+  start_time` di POST dan PATCH gabungan; PATCH null eksplisit diabaikan (dulu 500), `shift_id: null`
+  tetap melepas shift. Backend **336 passed**.
+- **`EmployeeOut` memuat `photo_count` + `face_ready`** (≥ `MIN_PHOTOS` = 3, kini satu sumber di
+  `models/employee.py`) → daftar Enrollment tak perlu lagi `enrollment-status` per karyawan (N+1).
+- **Karyawan nonaktif tidak dikenali di gate**: `FaceGallery.load` hanya memuat embedding karyawan
+  aktif; PATCH `active` me-refresh gallery. Aktif kembali → dikenali lagi tanpa enroll ulang.
+  Konsekuensi: wajah karyawan nonaktif tidak memicu peringatan duplikat saat enroll.
+- **Tab Shift** di Enrollment (`?tab=shifts`): tabel + modal tambah/edit (nama, jam `type=time`,
+  toleransi, hari kerja) + hapus dengan konfirmasi; error duplikat / selesai ≤ mulai / "masih dipakai"
+  tampil spesifik. Kartu shift dikeluarkan dari panel karyawan. Frontend **109 passed**.
+- **Tab Karyawan dirapikan**: filter status (default Aktif) + tag Nonaktif; kartu Identitas dengan
+  **NIK bisa diedit** (409 → "NIK sudah dipakai" inline); kartu Wajah memuat tombol **"Hapus semua
+  foto wajah {nama}"** (nonaktif bila 0 foto, konfirmasi menyebut nama + jumlah foto); kartu Status:
+  Nonaktifkan dengan konfirmasi, Hapus karyawan (riwayat absensi → tawaran Nonaktifkan). Badge wajah
+  dari `photo_count` (tanpa N+1). Grid satu kolom di ≤ 671 px. Frontend **117 passed**.
+- **Cleanup sisa refining**: hapus 3 API client mati (`EnrollmentStatus`, `uploadPhoto`,
+  `enrollmentStatus` — endpoint backend tetap ada) + 8 baris key i18n `en.col.*` yatim.
+  Frontend **117 passed** (tanpa perubahan hasil).
+- **Fix review: suntingan identitas tidak hilang saat refresh**. Effect pengisi form bergantung pada
+  objek `selected`, yang baru setiap `refresh()`; upload/hapus foto sebelum Simpan menimpa nama/NIK
+  yang sedang diedit. Kini dependency primitif (nama, NIK, shift tersimpan). Tes baru merah dulu
+  (`Budi Santoso` ≠ `Budi Baru`). Frontend **118 passed**, lint 22 set tetap.
+
+- **Deploy branch + verifikasi UI** (2026-09-24): `feat/enrollment-refining` @ `f8028ed` di-push dan
+  di-checkout di gspe-ai3, restart `isentinel-api` (tanpa migrasi), health `{"status":"ok"}`. API
+  menampilkan `photo_count` Angly 5 / Ikhsal 5. Tidak ada shift lama dengan selesai ≤ mulai (3 shift:
+  Shift 1, Sore, Tekno). CRUD shift uji `UJI` lewat UI: POST 200, PATCH 200 (tambah Sab), rename ke
+  `Tekno` → 409 "Nama shift sudah dipakai", DELETE 200. 390 px: `scrollWidth = 390` di kedua tab.
+  Temuan data: NIK Ikhsal kosong (`""`, data lama) → form menandai "Wajib diisi"; tidak diubah.
+  Bukti `docs/evidence/enrollment-*.png`. Follow-up: shift malam; hitung ulang `attendance_day` setelah
+  shift diedit; tabel shift di 390 px sempit (kolom hari terbungkus per kata, scroll di dalam tabel).
+
+- **E2E user OK** (2026-09-24): user menguji UI secara menyeluruh; merge `--no-ff` ke `main`,
+  server gspe-ai3 kembali ke `main`.
+
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 
 - **Deploy** `f22f2d6` ke gspe-ai3: backup `~/backup-pra-0016-20260923-1533.sql` (73 event, cocok

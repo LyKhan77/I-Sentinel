@@ -986,3 +986,109 @@ html {
 .det-link { background: none; border: 0; padding: 0; font-size: 12px; cursor: pointer; color: var(--cds-link-primary); }
 .det-advanced { display: grid; gap: 16px; max-inline-size: 320px; margin-block-start: 16px; }
 @media (max-width: 672px) { .det-global { grid-template-columns: 1fr 1fr; } .det-table { min-inline-size: 760px; } .det-page { overflow-x: auto; } }
+
+/* Enrollment (tab Karyawan | Shift) */
+.en-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-block: 14px;
+}
+
+.en-toolbar .cds--form-item {
+  flex: 0 1 260px;
+  min-inline-size: 0;
+}
+
+.en-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.en-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.en-form__row > * {
+  flex: 1 1 140px;
+}
+
+.en-form__hint,
+.en-muted {
+  color: var(--cds-text-helper);
+  font-size: 12px;
+}
+
+.en-days {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
+}
+
+.en-days legend {
+  inline-size: 100%;
+}
+
+.en-table-scroll {
+  overflow-x: auto;
+  max-inline-size: 100%;
+}
+
+/* Enrollment: daftar | detail; satu kolom di layar sempit (390px tanpa overflow) */
+.en-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr);
+  border: 1px solid #393939;
+}
+
+.en-list {
+  border-inline-end: 1px solid #393939;
+  min-inline-size: 0;
+}
+
+.en-detail {
+  padding: 16px;
+  min-inline-size: 0;
+}
+
+.en-card {
+  border: 1px solid #393939;
+  background: #262626;
+  padding: 14px;
+  margin-block-end: 12px;
+}
+
+.en-card__title {
+  font-size: 12px;
+  color: var(--cds-text-helper);
+  letter-spacing: 0.32px;
+  font-weight: 400;
+  margin: 0 0 10px;
+}
+
+.en-card__danger {
+  margin-block-start: 12px;
+  padding-block-start: 10px;
+  border-block-start: 1px solid #393939;
+}
+
+.en-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 671px) {
+  .en-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .en-list {
+    border-inline-end: 0;
+    border-block-end: 1px solid #393939;
+  }
+}

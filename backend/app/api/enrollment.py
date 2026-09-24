@@ -10,14 +10,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.db import get_db
-from app.models.employee import Employee
+from app.models.employee import Employee, MIN_PHOTOS
 from app.models.face_embedding import FaceEmbedding
 from app.services import face
 
 router = APIRouter(prefix="/api/v1/employees", tags=["enrollment"])
 
 MAX_PHOTOS = 5
-MIN_PHOTOS = 3
 MAX_FACE_UPLOAD = 10 * 1024 * 1024  # 10MB
 
 

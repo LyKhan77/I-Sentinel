@@ -3,6 +3,8 @@ from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 
+MIN_PHOTOS = 3  # foto minimal agar wajah dianggap siap (enrollment-status + EmployeeOut)
+
 
 class Employee(Base):
     __tablename__ = "employee"
@@ -19,3 +21,11 @@ class Employee(Base):
     @property
     def shift_name(self) -> str | None:
         return self.shift.name if self.shift else None
+
+    @property
+    def photo_count(self) -> int:
+        return self.embeddings.count()
+
+    @property
+    def face_ready(self) -> bool:
+        return self.photo_count >= MIN_PHOTOS
