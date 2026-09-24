@@ -74,21 +74,16 @@ function baseResponse(call: Call, cameras: unknown[] = [CAMERA]): Resp | null {
   return null
 }
 
-test('sources panel collapsed by default; expand shows source and profile forms', async () => {
+test('advanced menu holds import, sync and credential management; sources panel is gone', async () => {
   stubFetch((call) => baseResponse(call) ?? { status: 404 })
   renderPage()
-
-  // collapsed: hanya baris ringkasan, form + chip tidak tampil
-  expect(await screen.findByTestId('camera-sources-toggle')).toHaveTextContent('1 sumber')
-  expect(screen.queryByText('NVR-A · 10.0.0.5:554 · nvr-main')).not.toBeInTheDocument()
-  expect(screen.queryByTestId('source-create')).not.toBeInTheDocument()
-  expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
-
-  await userEvent.click(screen.getByTestId('camera-sources-toggle'))
-  expect(screen.getByTestId('source-create')).toBeInTheDocument()
-  expect(screen.getByTestId('profile-create')).toBeInTheDocument()
-  expect(screen.queryByTestId('group-create')).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('Nama grup lokasi')).not.toBeInTheDocument()
+  expect(await screen.findByText('CAM-A')).toBeInTheDocument()
+  expect(screen.queryByTestId('camera-sources-toggle')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('go2rtc-sync')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('camera-advanced-toggle'))
+  expect(screen.getByTestId('camera-import-btn')).toBeInTheDocument()
+  expect(screen.getByTestId('go2rtc-sync')).toBeInTheDocument()
+  expect(screen.getByTestId('camera-manage-credentials')).toBeInTheDocument()
 })
 
 test('wizard shows a credential select but no password, source, or group fields', async () => {
@@ -223,9 +218,50 @@ test('viewer cannot mutate sources, groups, or credential profiles', async () =>
   renderPage()
 
   expect(await screen.findByText('CAM-A')).toBeInTheDocument()
+  expect(screen.queryByTestId('camera-advanced-toggle')).not.toBeInTheDocument()
   expect(screen.queryByTestId('camera-sources-panel')).not.toBeInTheDocument()
   expect(screen.queryByTestId('source-create')).not.toBeInTheDocument()
   expect(screen.queryByTestId('group-create')).not.toBeInTheDocument()
   expect(screen.queryByTestId('profile-create')).not.toBeInTheDocument()
   expect(calls.some((call) => /(stream-sources|location-groups|credential-profiles)$/.test(call.url))).toBe(false)
+})
+
+test('camera table shows which credentials each camera uses', async () => {
+  const withProfile = { ...CAMERA, id: 2, name: 'CAM-B', credential_override_id: PROFILE.id,
+    credential_override: { id: PROFILE.id, name: PROFILE.name, username: PROFILE.username, enabled: true } }
+  stubFetch((call) => baseResponse(call, [CAMERA, withProfile]) ?? { status: 404 })
+  renderPage()
+  const rowA = (await screen.findByText('CAM-A')).closest('tr')!
+  const rowB = screen.getByText('CAM-B').closest('tr')!
+  expect(rowA).toHaveTextContent('Default (NVR)')
+  expect(rowB).toHaveTextContent('nvr-main')
+})
+
+test('manage credentials: change password and blocked disable', async () => {
+  const calls = stubFetch((call) => {
+    const fallback = baseResponse(call)
+    if (fallback) return fallback
+    if (call.url.endsWith(`/credential-profiles/${PROFILE.id}`) && call.init?.method === 'PATCH') {
+      const body = JSON.parse(String(call.init.body))
+      if ('enabled' in body) return { status: 409, body: { detail: 'in use' } }
+      return { status: 200, body: PROFILE }
+    }
+    return { status: 404 }
+  })
+  renderPage()
+  await userEvent.click(await screen.findByTestId('camera-advanced-toggle'))
+  await userEvent.click(screen.getByTestId('camera-manage-credentials'))
+  const modal = await screen.findByTestId('credential-profiles-modal')
+  expect(modal).toHaveTextContent('nvr-main')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah nvr-main' }))
+  await userEvent.type(screen.getByLabelText('Password baru', { selector: 'input' }), 'BaruSekali1')
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan kredensial' }))
+  await waitFor(() => {
+    const patch = calls.find((c) => c.init?.method === 'PATCH' && c.url.endsWith(`/credential-profiles/${PROFILE.id}`))
+    expect(JSON.parse(String(patch!.init!.body))).toEqual({ username: 'viewer', password: 'BaruSekali1' })
+  })
+
+  await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan nvr-main' }))
+  expect(await screen.findByText('Masih dipakai kamera aktif — pindahkan kameranya dulu.')).toBeInTheDocument()
 })

@@ -5,6 +5,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ### Pendaftaran kamera sederhana (2026-09-24 – …)
 
+- **Halaman Kamera dirapikan**: panel "Sumber & kredensial" dihapus (`CameraSourcesPanel`); tombol
+  **Lanjutan** berisi Import CSV, Sync go2rtc, dan **Kelola kredensial** (ubah username/password — kosong =
+  tidak diganti, nonaktifkan dengan pesan bila masih dipakai, tambah baru); kolom **Kredensial** di tabel
+  (Default (NVR) / nama profil). Frontend **129 passed**, build 0, lint set sama.
 - **Form kamera sederhana**: Nama, Lokasi (datalist), IP kamera (port opsional), Path mainstream, Path
   substream, Kredensial (Default (NVR) / profil / "+ Kredensial baru…") + Tes koneksi dengan thumbnail;
   peringatan sub = main; simpan tanpa tes = klik Simpan dua kali; Node (hanya bila > 1 node) + scan NVR di

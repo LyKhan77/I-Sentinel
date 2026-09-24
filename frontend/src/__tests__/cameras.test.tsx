@@ -402,6 +402,7 @@ test('tombol Sync go2rtc memanggil endpoint dan menampilkan hasil', async () => 
   renderPage()
 
   await waitFor(() => expect(screen.getByText('CAM-01')).toBeInTheDocument())
+  await userEvent.click(await screen.findByTestId('camera-advanced-toggle'))
   await userEvent.click(screen.getByTestId('go2rtc-sync'))
 
   await waitFor(() => expect(screen.getByTestId('go2rtc-sync-result')).toBeInTheDocument())
