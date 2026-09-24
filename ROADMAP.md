@@ -384,13 +384,15 @@ Spec: `docs/superpowers/specs/2026-09-23-attendance-face-first-design.md`
       event tanpa crop tetap match, sanitasi embedding (27 tests logic)
 - [x] Overlay TTL 1 s + transisi 150 ms, label gerbang, badge mode player,
       hasil wajah di Events (5 tests frontend baru)
-- [ ] Deploy + verifikasi GPU/lapangan spec §11 — runbook
+- [x] Deploy + verifikasi GPU/lapangan spec §11 — runbook
       `docs/runbooks/attendance-face-first.md`; kalibrasi `face_stats`
       (blur/width_px) mencatat nilai final di sini
 
 **Bukti:** angka suite per task di `CHANGELOG.md` bagian R5b; range diff
-`temp/sdd/r5b/task-<n>-committed.diff`. Belum ada bukti lapangan/GPU —
-tidak diklaim sampai deploy diizinkan.
+`temp/sdd/r5b/task-<n>-committed.diff`. Deploy `f22f2d6` ke gspe-ai3 (alembic 0015→0016,
+`modules.face.device = cuda:2`) + tes lapangan 2026-09-23: entry cam 364 zona 12
+`matched` 0,714, exit cam 365 zona 14 0,65, satu baris `attendance_day`, model wajah
+GPU 2 1054 MiB.
 
 ---
 
