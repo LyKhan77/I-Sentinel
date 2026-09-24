@@ -85,8 +85,11 @@ def resolve_stream(
         if not legacy_host:
             raise StreamEndpointError("camera host is empty")
         host, port = split_host_port(legacy_host)
-        username = settings.cam_username or None
-        password = settings.cam_password or None
+        if credential_override is not None:
+            username, password = _profile_credentials(credential_override)
+        else:
+            username = settings.cam_username or None
+            password = settings.cam_password or None
     else:
         if not source.enabled:
             raise StreamEndpointError("stream source is disabled")

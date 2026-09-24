@@ -119,3 +119,23 @@ def test_legacy_profile_reads_configured_camera_password(db, monkeypatch):
     db.commit()
 
     assert resolve_camera_stream(camera).password == "configured-pass"
+
+
+def test_direct_host_camera_uses_override_profile(db, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "cam_username", "nvr")
+    monkeypatch.setattr(settings, "cam_password", "nvr-pass")
+    monkeypatch.setenv("CAMERA_CRED_ZK", "p@ss:w/rd#1")
+    profile = CredentialProfile(name="zk", username="admin", secret_ref="env:CAMERA_CRED_ZK")
+    zk = Camera(name="ZK", host="192.168.2.179:8554", credential_override=profile, rtsp_main="/stream")
+    nvr = Camera(name="NVR-1", host="192.168.2.184", rtsp_main="/Streaming/Channels/101")
+    db.add_all([zk, nvr])
+    db.commit()
+
+    zk_stream = resolve_camera_stream(zk)
+    assert build_rtsp_url(zk_stream, zk_stream.main_path) == (
+        "rtsp://admin:p%40ss%3Aw%2Frd%231@192.168.2.179:8554/stream"
+    )
+    nvr_stream = resolve_camera_stream(nvr)
+    assert (nvr_stream.username, nvr_stream.password) == ("nvr", "nvr-pass")

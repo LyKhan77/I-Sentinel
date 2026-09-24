@@ -13,6 +13,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `store:cred_<id>`; tepat satu dari `password`/`secret_ref: env:` (422 bila tidak); PATCH `password`
   menimpa store (profil `env:` pindah ke `store:`) dan memicu sinkron go2rtc + config push; gagal tulis store
   → 500, profil tidak dibuat. Password tidak pernah muncul di response. Backend **353 passed**.
+- **Kredensial per kamera direct-host**: `resolve_stream` memakai `credential_override` walau kamera tanpa
+  stream source (13 kamera server semuanya direct-host); API kamera + probe tidak lagi menolak kombinasi itu.
+  Password khusus ter-encode di URL RTSP; referensi `store:` yang hilang → probe 422. Backend **357 passed**.
 
 ### Event clip pre-buffer (2026-09-24)
 
