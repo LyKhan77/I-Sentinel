@@ -16,6 +16,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Tab Shift** di Enrollment (`?tab=shifts`): tabel + modal tambah/edit (nama, jam `type=time`,
   toleransi, hari kerja) + hapus dengan konfirmasi; error duplikat / selesai ≤ mulai / "masih dipakai"
   tampil spesifik. Kartu shift dikeluarkan dari panel karyawan. Frontend **109 passed**.
+- **Tab Karyawan dirapikan**: filter status (default Aktif) + tag Nonaktif; kartu Identitas dengan
+  **NIK bisa diedit** (409 → "NIK sudah dipakai" inline); kartu Wajah memuat tombol **"Hapus semua
+  foto wajah {nama}"** (nonaktif bila 0 foto, konfirmasi menyebut nama + jumlah foto); kartu Status:
+  Nonaktifkan dengan konfirmasi, Hapus karyawan (riwayat absensi → tawaran Nonaktifkan). Badge wajah
+  dari `photo_count` (tanpa N+1). Grid satu kolom di ≤ 671 px. Frontend **117 passed**.
 
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 

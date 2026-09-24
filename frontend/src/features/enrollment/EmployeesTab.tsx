@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Button,
-  InlineLoading,
-  InlineNotification,
-  Modal,
-  Select,
-  SelectItem,
-  TextInput,
-} from '@carbon/react'
+import { Button, InlineLoading, InlineNotification, Modal, Select, SelectItem, Tag, TextInput } from '@carbon/react'
 import { useT, type TKey } from '../../app/i18n'
 import {
   createEmployee,
+  deleteEmployee,
   deletePhoto,
-  enrollmentStatus,
   listEmployees,
   listPhotos,
   listShifts,
@@ -21,10 +13,14 @@ import {
   uploadPhotosBatch,
   type BatchPhotoResult,
   type Employee,
-  type EnrollmentStatus,
   type Photo,
   type Shift,
 } from '../../api/employees'
+
+type StatusFilter = 'active' | 'inactive' | 'all'
+type EmpForm = { name: string; code: string; shiftId: string }
+
+const EMPTY_FORM: EmpForm = { name: '', code: '', shiftId: '' }
 
 function initials(name: string) {
   return name
@@ -35,58 +31,55 @@ function initials(name: string) {
     .join('')
 }
 
-const EMPTY_STATUS: EnrollmentStatus = { photos: 0, active: false }
+const shiftLabel = (s: Shift) => `${s.name} · ${s.start_time}–${s.end_time}`
+const shiftIdOf = (f: EmpForm) => (f.shiftId ? Number(f.shiftId) : null)
+const isBlank = (f: EmpForm) => !f.name.trim() || !f.code.trim()
 
 export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
   const { t } = useT()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
-  const [status, setStatus] = useState<Record<number, EnrollmentStatus>>({})
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
   const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', shiftId: '' })
+  const [form, setForm] = useState<EmpForm>(EMPTY_FORM)
+  const [codeTaken, setCodeTaken] = useState(false)
   const [adding, setAdding] = useState(false)
-  const [newEmp, setNewEmp] = useState({ name: '', employee_code: '', shift_id: '' })
+  const [newEmp, setNewEmp] = useState<EmpForm>(EMPTY_FORM)
+  const [newCodeTaken, setNewCodeTaken] = useState(false)
   const [purging, setPurging] = useState(false)
+  const [deactivating, setDeactivating] = useState(false)
+  const [deleting, setDeleting] = useState<'confirm' | 'blocked' | null>(null)
   const [batchResults, setBatchResults] = useState<BatchPhotoResult[] | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const selected = employees.find((e) => e.id === selectedId) ?? null
 
-  const loadStatuses = useCallback(async (list: Employee[]) => {
-    const entries = await Promise.all(
-      list.map(async (e) => [e.id, await enrollmentStatus(e.id).catch(() => EMPTY_STATUS)] as const),
-    )
-    setStatus(Object.fromEntries(entries))
-  }, [])
-
   const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(null)
     try {
       const [emps, shs] = await Promise.all([listEmployees(), listShifts()])
       setEmployees(emps)
       setShifts(shs)
-      await loadStatuses(emps)
-      if (selectedId == null && emps.length > 0) setSelectedId(emps[0].id)
+      // pertahankan pilihan; pilih karyawan aktif pertama hanya bila belum ada
+      setSelectedId((cur) => cur ?? emps.find((e) => e.active)?.id ?? emps[0]?.id ?? null)
     } catch {
       setError(t('en.loadError'))
     } finally {
       setLoading(false)
     }
-    // ponytail: selectedId sengaja tidak di deps — hanya auto-select saat belum ada pilihan
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadStatuses, t])
+  }, [t])
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- refresh async: semua setState terjadi setelah await, bukan sinkron di effect
     refresh()
   }, [refresh])
 
   useEffect(() => {
     if (selectedId == null) {
+      // oxlint-disable-next-line react/set-state-in-effect -- reset daftar foto saat tidak ada karyawan terpilih (sinkronisasi, bukan cascade)
       setPhotos([])
       return
     }
@@ -96,13 +89,16 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
   }, [selectedId])
 
   useEffect(() => {
-    if (selected) setForm({ name: selected.name, shiftId: selected.shift_id != null ? String(selected.shift_id) : '' })
+    if (!selected) return
+    // oxlint-disable-next-line react/set-state-in-effect -- isi form dari karyawan terpilih (sinkronisasi form dengan selection)
+    setForm({ name: selected.name, code: selected.employee_code, shiftId: selected.shift_id != null ? String(selected.shift_id) : '' })
+    setCodeTaken(false)
   }, [selected])
 
   const reloadPhotos = async () => {
     if (selectedId == null) return
     setPhotos(await listPhotos(selectedId).catch(() => []))
-    await loadStatuses(employees)
+    await refresh()
   }
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,69 +126,108 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
   }
 
   const doPurge = async () => {
-    if (selectedId == null) return
+    if (!selected) return
     try {
-      await purgeBiometrics(selectedId)
-      setPurging(false)
-      await reloadPhotos()
+      await purgeBiometrics(selected.id)
     } catch {
       setError(t('en.saveError'))
-      setPurging(false)
     }
+    setPurging(false)
+    await reloadPhotos()
   }
 
   const saveEmployee = async () => {
     if (!selected) return
+    setCodeTaken(false)
     try {
-      await updateEmployee(selected.id, { name: form.name, shift_id: form.shiftId ? Number(form.shiftId) : null })
+      await updateEmployee(selected.id, { name: form.name.trim(), employee_code: form.code.trim(), shift_id: shiftIdOf(form) })
+      await refresh()
+    } catch (e) {
+      if ((e as Error).message === 'duplicate') setCodeTaken(true)
+      else setError(t('en.saveError'))
+    }
+  }
+
+  const setActive = async (active: boolean) => {
+    if (!selected) return
+    setDeactivating(false)
+    setDeleting(null)
+    try {
+      await updateEmployee(selected.id, { active })
       await refresh()
     } catch {
       setError(t('en.saveError'))
     }
   }
 
-  const toggleActive = async () => {
+  const doDelete = async () => {
     if (!selected) return
     try {
-      await updateEmployee(selected.id, { active: !selected.active })
+      await deleteEmployee(selected.id)
+      setDeleting(null)
+      setSelectedId(null)
       await refresh()
-    } catch {
-      setError(t('en.saveError'))
+    } catch (e) {
+      if ((e as Error).message === 'has_attendance') {
+        setDeleting('blocked')
+      } else {
+        setDeleting(null)
+        setError(t('en.saveError'))
+      }
     }
   }
 
   const addEmployee = async () => {
+    setNewCodeTaken(false)
     try {
-      const created = await createEmployee({
-        name: newEmp.name,
-        employee_code: newEmp.employee_code,
-        shift_id: newEmp.shift_id ? Number(newEmp.shift_id) : null,
-      })
+      const created = await createEmployee({ name: newEmp.name.trim(), employee_code: newEmp.code.trim(), shift_id: shiftIdOf(newEmp) })
       setAdding(false)
-      setNewEmp({ name: '', employee_code: '', shift_id: '' })
+      setNewEmp(EMPTY_FORM)
+      setStatusFilter((f) => (f === 'inactive' ? 'active' : f))
       setSelectedId(created.id)
       await refresh()
-    } catch {
-      setError(t('en.createError'))
+    } catch (e) {
+      if ((e as Error).message === 'duplicate') setNewCodeTaken(true)
+      else setError(t('en.createError'))
     }
   }
 
-  const filtered = employees.filter((e) => {
-    const q = query.trim().toLowerCase()
-    return !q || e.name.toLowerCase().includes(q) || e.employee_code.toLowerCase().includes(q)
-  })
+  const q = query.trim().toLowerCase()
+  const filtered = employees.filter(
+    (e) =>
+      (statusFilter === 'all' || e.active === (statusFilter === 'active')) &&
+      (!q || e.name.toLowerCase().includes(q) || e.employee_code.toLowerCase().includes(q)),
+  )
 
-  const st = (id: number) => status[id] ?? EMPTY_STATUS
+  const shiftOptions = (
+    <>
+      <SelectItem value="" text="—" />
+      {shifts.map((s) => (
+        <SelectItem key={s.id} value={String(s.id)} text={shiftLabel(s)} />
+      ))}
+    </>
+  )
 
   return (
     <div>
-
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} onCloseButtonClick={() => setError(null)} />}
 
       <div className="en-toolbar">
         <TextInput id="en-search" labelText={t('en.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Select id="en-status-filter" labelText={t('en.filter.status')} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+          <SelectItem value="active" text={t('en.filter.active')} />
+          <SelectItem value="inactive" text={t('en.filter.inactive')} />
+          <SelectItem value="all" text={t('en.filter.all')} />
+        </Select>
         {isAdmin && (
-          <Button data-testid="en-add" onClick={() => setAdding(true)}>
+          <Button
+            data-testid="en-add"
+            onClick={() => {
+              setNewEmp(EMPTY_FORM)
+              setNewCodeTaken(false)
+              setAdding(true)
+            }}
+          >
             {t('en.add')}
           </Button>
         )}
@@ -201,80 +236,82 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
       {loading ? (
         <InlineLoading description={t('common.loading')} />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 1fr)', gap: 0, border: '1px solid #393939' }}>
-          <div style={{ borderRight: '1px solid #393939', minWidth: 0 }}>
-            {filtered.map((e) => {
-              const s = st(e.id)
-              return (
-                <div
-                  key={e.id}
-                  data-testid={`en-row-${e.id}`}
-                  onClick={() => setSelectedId(e.id)}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 1fr 1fr',
-                    alignItems: 'center',
-                    fontSize: 13,
-                    borderBottom: '1px solid #2d2d2d',
-                    background: e.id === selectedId ? '#262626' : 'transparent',
-                    borderLeft: e.id === selectedId ? '3px solid #4589ff' : '3px solid transparent',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ position: 'relative', width: 28, height: 28, background: '#333', color: '#c6c6c6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
-                        {initials(e.name)}
-                        <span
-                          data-testid={`en-dot-${e.id}`}
-                          style={{
-                            position: 'absolute',
-                            right: -2,
-                            bottom: -2,
-                            width: 9,
-                            height: 9,
-                            borderRadius: 9999,
-                            background: s.active ? '#42be65' : '#6f6f6f',
-                            border: '2px solid #161616',
-                          }}
-                        />
-                      </div>
-                      {e.name}
+        <div className="en-layout">
+          <div className="en-list">
+            {filtered.map((e) => (
+              <div
+                key={e.id}
+                data-testid={`en-row-${e.id}`}
+                onClick={() => setSelectedId(e.id)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                  alignItems: 'center',
+                  fontSize: 13,
+                  borderBottom: '1px solid #2d2d2d',
+                  background: e.id === selectedId ? '#262626' : 'transparent',
+                  borderLeft: e.id === selectedId ? '3px solid #4589ff' : '3px solid transparent',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ padding: '10px 14px', minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', width: 28, height: 28, background: '#333', color: '#c6c6c6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
+                      {initials(e.name)}
+                      <span
+                        data-testid={`en-dot-${e.id}`}
+                        style={{
+                          position: 'absolute',
+                          right: -2,
+                          bottom: -2,
+                          width: 9,
+                          height: 9,
+                          borderRadius: 9999,
+                          background: e.face_ready ? '#42be65' : '#6f6f6f',
+                          border: '2px solid #161616',
+                        }}
+                      />
                     </div>
-                  </div>
-                  <div style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: '#8d8d8d' }}>{e.employee_code}</div>
-                  <div style={{ padding: '10px 14px' }}>{e.shift_name ?? '—'}</div>
-                  <div style={{ padding: '10px 14px' }}>
-                    <span
-                      data-testid={`en-face-${e.id}`}
-                      style={{
-                        fontSize: 11,
-                        padding: '2px 8px',
-                        border: `1px solid ${s.active ? '#42be65' : '#f1c21b'}`,
-                        color: s.active ? '#42be65' : '#f1c21b',
-                        display: 'inline-block',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {s.active ? t('en.face.count').replace('{n}', String(s.photos)) : t('en.face.none')}
-                    </span>
+                    {e.name}
+                    {!e.active && (
+                      <Tag type="gray" size="sm" data-testid={`en-inactive-${e.id}`}>
+                        {t('en.inactive')}
+                      </Tag>
+                    )}
                   </div>
                 </div>
-              )
-            })}
-            {filtered.length === 0 && <div style={{ padding: 16, color: '#8d8d8d' }}>{t('en.empty')}</div>}
+                <div style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: '#8d8d8d', overflowWrap: 'anywhere' }}>{e.employee_code}</div>
+                <div style={{ padding: '10px 14px' }}>{e.shift_name ?? '—'}</div>
+                <div style={{ padding: '10px 14px' }}>
+                  <span
+                    data-testid={`en-face-${e.id}`}
+                    style={{
+                      fontSize: 11,
+                      padding: '2px 8px',
+                      border: `1px solid ${e.face_ready ? '#42be65' : '#f1c21b'}`,
+                      color: e.face_ready ? '#42be65' : '#f1c21b',
+                      display: 'inline-block',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {e.face_ready ? t('en.face.count').replace('{n}', String(e.photo_count)) : t('en.face.none')}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 && <div style={{ padding: 16 }} className="en-muted">{t('en.empty')}</div>}
           </div>
 
-          <div style={{ padding: 16, minWidth: 0 }}>
+          <div className="en-detail">
             {!selected ? (
-              <p style={{ color: '#8d8d8d' }}>{t('en.selectHint')}</p>
+              <p className="en-muted">{t('en.selectHint')}</p>
             ) : (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                  <div style={{ width: 40, height: 40, background: '#333', color: '#c6c6c6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
+                  <div style={{ width: 40, height: 40, background: '#333', color: '#c6c6c6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
                     {initials(selected.name)}
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 16, fontWeight: 600 }}>{selected.name}</div>
                     <div style={{ fontSize: 12, color: '#8d8d8d', fontFamily: 'monospace' }}>
                       {selected.employee_code} · {selected.active ? t('en.active') : t('en.inactive')} · {selected.shift_name ?? '—'}
@@ -282,10 +319,43 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                   </div>
                 </div>
 
-                <div style={{ border: '1px solid #393939', background: '#262626', padding: 14, marginBottom: 12 }}>
-                  <h4 style={{ fontSize: 12, color: '#8d8d8d', letterSpacing: '.32px', fontWeight: 400, margin: '0 0 10px' }}>
-                    {t('en.faceTitle').replace('{n}', String(photos.length))}
-                  </h4>
+                <section className="en-card" data-testid="en-card-identity">
+                  <h4 className="en-card__title">{t('en.card.identity')}</h4>
+                  <div className="en-form">
+                    <TextInput
+                      id="en-name"
+                      labelText={t('en.name')}
+                      value={form.name}
+                      disabled={!isAdmin}
+                      invalid={!form.name.trim()}
+                      invalidText={t('en.err.required')}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    />
+                    <TextInput
+                      id="en-code"
+                      labelText={t('en.code')}
+                      value={form.code}
+                      disabled={!isAdmin}
+                      invalid={!form.code.trim() || codeTaken}
+                      invalidText={codeTaken ? t('en.err.codeDup') : t('en.err.required')}
+                      onChange={(e) => {
+                        setForm({ ...form, code: e.target.value })
+                        setCodeTaken(false)
+                      }}
+                    />
+                    <Select id="en-shift" labelText={t('en.shift.select')} value={form.shiftId} disabled={!isAdmin} onChange={(e) => setForm({ ...form, shiftId: e.target.value })}>
+                      {shiftOptions}
+                    </Select>
+                    <div>
+                      <Button kind="primary" size="sm" data-testid="en-save" disabled={!isAdmin || isBlank(form)} onClick={saveEmployee}>
+                        {t('en.save')}
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="en-card" data-testid="en-card-face">
+                  <h4 className="en-card__title">{t('en.faceTitle').replace('{n}', String(photos.length))}</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                     {photos.map((p) => (
                       <div key={p.id} data-testid={`en-photo-${p.id}`} style={{ position: 'relative', aspectRatio: '3/4', background: '#0d1117', border: '1px solid #393939' }}>
@@ -308,7 +378,16 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                     ))}
                   </div>
                   <input ref={fileRef} type="file" accept="image/*" multiple data-testid="en-upload-input" style={{ display: 'none' }} onChange={onUpload} />
-                  <Button kind="tertiary" size="sm" style={{ marginTop: 10 }} disabled={!isAdmin} onClick={() => { setBatchResults(null); fileRef.current?.click() }}>
+                  <Button
+                    kind="tertiary"
+                    size="sm"
+                    style={{ marginTop: 10 }}
+                    disabled={!isAdmin}
+                    onClick={() => {
+                      setBatchResults(null)
+                      fileRef.current?.click()
+                    }}
+                  >
                     {t('en.upload')}
                   </Button>
                   {batchResults && (
@@ -322,31 +401,27 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                       ))}
                     </ul>
                   )}
-                </div>
-
-                <div style={{ border: '1px solid #393939', background: '#262626', padding: 14, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <TextInput id="en-name" labelText={t('en.name')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                  <TextInput id="en-code" labelText={t('en.code')} value={selected.employee_code} readOnly disabled />
-                  <Select id="en-shift" labelText={t('en.shift.select')} value={form.shiftId} onChange={(e) => setForm({ ...form, shiftId: e.target.value })}>
-                    <SelectItem value="" text="—" />
-                    {shifts.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)} text={`${s.name} · ${s.start_time}–${s.end_time}`} />
-                    ))}
-                  </Select>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button kind="primary" size="sm" data-testid="en-save" disabled={!isAdmin} onClick={saveEmployee}>
-                      {t('en.save')}
-                    </Button>
-                    <Button kind="ghost" size="sm" disabled={!isAdmin} onClick={toggleActive}>
-                      {selected.active ? t('en.deactivate') : t('en.activate')}
-                    </Button>
-                  </div>
-                </div>
+                  {isAdmin && (
+                    <div className="en-card__danger">
+                      <Button kind="danger--ghost" size="sm" data-testid="en-purge" disabled={selected.photo_count === 0} onClick={() => setPurging(true)}>
+                        {t('en.purge').replace('{name}', selected.name)}
+                      </Button>
+                    </div>
+                  )}
+                </section>
 
                 {isAdmin && (
-                  <Button kind="danger--tertiary" size="sm" data-testid="en-purge" onClick={() => setPurging(true)}>
-                    {t('en.purge')}
-                  </Button>
+                  <section className="en-card" data-testid="en-card-status">
+                    <h4 className="en-card__title">{t('en.card.status')}</h4>
+                    <div className="en-actions">
+                      <Button kind="tertiary" size="sm" data-testid="en-toggle-active" onClick={() => (selected.active ? setDeactivating(true) : setActive(true))}>
+                        {selected.active ? t('en.deactivate') : t('en.activate')}
+                      </Button>
+                      <Button kind="danger--tertiary" size="sm" data-testid="en-delete" onClick={() => setDeleting('confirm')}>
+                        {t('en.delete')}
+                      </Button>
+                    </div>
+                  </section>
                 )}
               </>
             )}
@@ -354,41 +429,85 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      <Modal
-        open={adding}
-        modalHeading={t('en.addTitle')}
-        primaryButtonText={t('common.save')}
-        secondaryButtonText={t('common.cancel')}
-        onRequestClose={() => setAdding(false)}
-        onRequestSubmit={addEmployee}
-        size="sm"
-      >
-        <TextInput id="new-name" labelText={t('en.name')} value={newEmp.name} onChange={(e) => setNewEmp({ ...newEmp, name: e.target.value })} />
-        <TextInput id="new-code" labelText={t('en.code')} value={newEmp.employee_code} onChange={(e) => setNewEmp({ ...newEmp, employee_code: e.target.value })} />
-        <Select id="new-shift" labelText={t('en.shift.select')} value={newEmp.shift_id} onChange={(e) => setNewEmp({ ...newEmp, shift_id: e.target.value })}>
-          <SelectItem value="" text="—" />
-          {shifts.map((s) => (
-            <SelectItem key={s.id} value={String(s.id)} text={`${s.name} · ${s.start_time}–${s.end_time}`} />
-          ))}
-        </Select>
-      </Modal>
+      {adding && (
+        <Modal
+          open
+          modalHeading={t('en.addTitle')}
+          primaryButtonText={t('common.save')}
+          secondaryButtonText={t('common.cancel')}
+          primaryButtonDisabled={isBlank(newEmp)}
+          onRequestClose={() => setAdding(false)}
+          onRequestSubmit={addEmployee}
+          size="sm"
+        >
+          <div className="en-form">
+            <TextInput id="new-name" labelText={t('en.name')} value={newEmp.name} onChange={(e) => setNewEmp({ ...newEmp, name: e.target.value })} />
+            <TextInput
+              id="new-code"
+              labelText={t('en.code')}
+              value={newEmp.code}
+              invalid={newCodeTaken}
+              invalidText={t('en.err.codeDup')}
+              onChange={(e) => {
+                setNewEmp({ ...newEmp, code: e.target.value })
+                setNewCodeTaken(false)
+              }}
+            />
+            <Select id="new-shift" labelText={t('en.shift.select')} value={newEmp.shiftId} onChange={(e) => setNewEmp({ ...newEmp, shiftId: e.target.value })}>
+              {shiftOptions}
+            </Select>
+          </div>
+        </Modal>
+      )}
 
-      <Modal
-        open={purging}
-        modalHeading={t('en.purgeConfirmTitle')}
-        primaryButtonText={t('en.purge')}
-        secondaryButtonText={t('common.cancel')}
-        onRequestClose={() => setPurging(false)}
-        onRequestSubmit={doPurge}
-        danger
-        size="sm"
-      >
-        <p>
-          {t('en.purgeConfirmBody')
-            .replace('{n}', String(selected ? st(selected.id).photos : 0))
-            .replace('{name}', selected?.name ?? '')}
-        </p>
-      </Modal>
+      {purging && selected && (
+        <Modal
+          open
+          danger
+          modalHeading={t('en.purgeConfirmTitle')}
+          primaryButtonText={t('en.purgeConfirm')}
+          secondaryButtonText={t('common.cancel')}
+          onRequestClose={() => setPurging(false)}
+          onRequestSubmit={doPurge}
+          size="sm"
+        >
+          <p>{t('en.purgeConfirmBody').replace('{n}', String(selected.photo_count)).replace('{name}', selected.name)}</p>
+        </Modal>
+      )}
+
+      {deactivating && selected && (
+        <Modal
+          open
+          modalHeading={t('en.deactivateTitle')}
+          primaryButtonText={t('en.deactivate')}
+          secondaryButtonText={t('common.cancel')}
+          onRequestClose={() => setDeactivating(false)}
+          onRequestSubmit={() => setActive(false)}
+          size="sm"
+        >
+          <p>{t('en.deactivateBody').replace('{name}', selected.name)}</p>
+        </Modal>
+      )}
+
+      {deleting && selected && (
+        <Modal
+          open
+          danger={deleting === 'confirm'}
+          passiveModal={deleting === 'blocked' && !selected.active}
+          modalHeading={t('en.deleteTitle')}
+          primaryButtonText={deleting === 'confirm' ? t('en.delete') : t('en.deactivate')}
+          secondaryButtonText={t('common.cancel')}
+          onRequestClose={() => setDeleting(null)}
+          onRequestSubmit={deleting === 'confirm' ? doDelete : () => setActive(false)}
+          size="sm"
+        >
+          <p>
+            {deleting === 'confirm'
+              ? t('en.deleteBody').replace('{name}', selected.name).replace('{n}', String(selected.photo_count))
+              : t(selected.active ? 'en.deleteBlocked' : 'en.deleteBlockedInactive').replace('{name}', selected.name)}
+          </p>
+        </Modal>
+      )}
     </div>
   )
 }
