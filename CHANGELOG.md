@@ -5,6 +5,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 ### Pendaftaran kamera sederhana (2026-09-24 – …)
 
+- **Form kamera sederhana**: Nama, Lokasi (datalist), IP kamera (port opsional), Path mainstream, Path
+  substream, Kredensial (Default (NVR) / profil / "+ Kredensial baru…") + Tes koneksi dengan thumbnail;
+  peringatan sub = main; simpan tanpa tes = klik Simpan dua kali; Node (hanya bila > 1 node) + scan NVR di
+  "Lanjutan". Frontend **127 passed**.
 - **`secret_store`**: password kamera dari UI disimpan di file rahasia server (`CAMERA_SECRETS_FILE`,
   default `~/.isentinel/camera-secrets.json`, 0600, direktori 0700, tulis atomik, ditolak bila di dalam
   `STORAGE_ROOT`); DB hanya referensi `store:cred_<id>`, di-resolve oleh `stream_endpoint._secret`.

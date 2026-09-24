@@ -383,6 +383,9 @@ export default function CamerasPage() {
       {(wizardOpen || editing) && (
         <CameraWizard
           camera={editing ?? undefined}
+          profiles={profiles}
+          locations={[...new Set(cams.map((c) => c.location).filter((l): l is string => !!l))].sort()}
+          onProfilesChanged={() => void refreshReferences()}
           onClose={() => {
             setWizardOpen(false)
             setEditing(null)

@@ -23,12 +23,19 @@ import {
   type ProbeResult,
   type ScanChannel,
 } from '../../api/cameras'
+import type { CredentialProfile } from '../../api/credentialProfiles'
+import NewCredentialForm from './NewCredentialForm'
 
 type Props = {
   camera?: Camera
+  profiles: CredentialProfile[]
+  locations: string[]
+  onProfilesChanged: () => void
   onClose: () => void
   onSaved: () => void
 }
+
+const NEW_CREDENTIAL = 'new'
 
 function safePath(value: string | null | undefined): string | null {
   if (!value) return null
@@ -43,13 +50,6 @@ function safePath(value: string | null | undefined): string | null {
     }
   }
   return raw.startsWith('/') ? raw : `/${raw}`
-}
-
-function safeHost(value: string | null | undefined): [string, string | null] {
-  if (!value) return ['', null]
-  const idx = value.lastIndexOf(':')
-  if (idx > 0 && /^\d+$/.test(value.slice(idx + 1))) return [value.slice(0, idx), value.slice(idx + 1)]
-  return [value, null]
 }
 
 function streamText(s: { res: string; fps: number; codec: string } | null, path: string | null, failMsg: string) {
@@ -72,18 +72,19 @@ function savedProbe(camera?: Camera): ProbeResult | null {
   }
 }
 
-export default function CameraWizard({ camera, onClose, onSaved }: Props) {
+export default function CameraWizard({ camera, profiles, locations, onProfilesChanged, onClose, onSaved }: Props) {
   const { t } = useT()
   const isEdit = camera != null
   const [nodes, setNodes] = useState<CameraNode[]>([])
   const [name, setName] = useState(camera?.name ?? '')
   const [location, setLocation] = useState(camera?.location ?? '')
-  const [host, setHost] = useState(safeHost(camera?.host)[0] ?? '')
-  const [port, setPort] = useState(safeHost(camera?.host)[1] ?? '554')
+  const [host, setHost] = useState(camera?.host ?? '')
   const [nodeId, setNodeId] = useState<number | ''>(camera?.node_id ?? '')
   const [mainPath, setMainPath] = useState(camera?.main_path ?? safePath(camera?.rtsp_main) ?? '')
   const [subPath, setSubPath] = useState(camera?.sub_path ?? safePath(camera?.rtsp_sub) ?? '')
-  const [manual, setManual] = useState(camera?.rtsp_main != null || camera?.main_path != null)
+  const [credentialId, setCredentialId] = useState<number | null>(camera?.credential_override_id ?? null)
+  const [created, setCreated] = useState<CredentialProfile | null>(null)
+  const [newCredential, setNewCredential] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scans, setScans] = useState<ScanChannel[]>([])
   const [scanSelected, setScanSelected] = useState<ScanChannel | null>(null)
@@ -92,6 +93,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const [probing, setProbing] = useState(false)
   const [probe, setProbe] = useState<ProbeResult | null>(() => savedProbe(camera))
   const [probeFailed, setProbeFailed] = useState(false)
+  const [unverifiedAck, setUnverifiedAck] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const probeSeq = useRef(0)
@@ -108,14 +110,21 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   const found = (probe?.main ? 1 : 0) + (probe?.sub ? 1 : 0)
   const needsProbe = !isEdit || connectionTouched
   const verified = !needsProbe || found >= 1
-  const endpointHost = port.trim() && Number(port) !== 554 ? `${host.trim()}:${Number(port)}` : host.trim()
-  const canSave = name.trim() !== '' && endpointHost !== '' && verified
+  const endpointHost = host.trim()
+  const canSave = name.trim() !== '' && endpointHost !== '' && mainPath.trim() !== '' && !saving
+  const subSameAsMain = safePath(subPath) != null && safePath(subPath) === safePath(mainPath)
+  // profil nonaktif hanya tampil bila masih terpasang di kamera ini
+  const profileOptions = [
+    ...profiles.filter((p) => p.enabled || p.id === credentialId),
+    ...(created && !profiles.some((p) => p.id === created.id) ? [created] : []),
+  ]
 
   const clearProbe = () => {
     probeSeq.current += 1
     setProbing(false)
     setProbe(null)
     setProbeFailed(false)
+    setUnverifiedAck(false)
     setConnectionTouched(true)
   }
 
@@ -167,6 +176,8 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
         host: endpointHost,
         main_path: safePath(mainPath),
         sub_path: safePath(subPath),
+        ...(credentialId != null ? { credential_override_id: credentialId } : {}),
+        snapshot: true,
       })
       if (seq !== probeSeq.current) return
       setProbe(result)
@@ -180,6 +191,10 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
   }
 
   const save = async () => {
+    if (!verified && !unverifiedAck) {
+      setUnverifiedAck(true) // klik kedua = simpan tanpa tes
+      return
+    }
     setSaving(true)
     setError(null)
     const connection = {
@@ -187,6 +202,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
       node_id: nodeId === '' ? null : nodeId,
       rtsp_main: probe?.main_path ?? (safePath(mainPath) || null),
       rtsp_sub: probe?.sub_path ?? (safePath(subPath) || null),
+      credential_override_id: credentialId,
     }
     const probeMeta = {
       probe_main: probe?.main ?? null,
@@ -202,12 +218,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
             : { name: name.trim(), location: location.trim() || null },
         )
       } else {
-        await createCamera({
-          name: name.trim(),
-          location: location.trim() || null,
-          ...connection,
-          ...probeMeta,
-        })
+        await createCamera({ name: name.trim(), location: location.trim() || null, ...connection, ...probeMeta })
       }
       onSaved()
     } catch (e) {
@@ -227,141 +238,109 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
         <TextInput
           id="wiz-name"
           labelText={t('cameras.wizard.name')}
-          placeholder="CAM-06 · Kantor Lobi"
+          placeholder="Lorong Manager"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <TextInput
           id="wiz-location"
           labelText={t('cameras.wizard.location')}
-          placeholder="Gedung Kantor Lt.1"
+          placeholder="LT 2"
+          list="wiz-locations"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           style={{ marginTop: 12 }}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginTop: 12 }}>
-          <TextInput
-            id="wiz-host"
-            labelText={t('cameras.wizard.host')}
-            placeholder="192.168.1.108"
-            value={host}
-            onChange={(e) => {
-              setHost(e.target.value)
-              invalidate()
+        <datalist id="wiz-locations">
+          {locations.map((l) => <option key={l} value={l} />)}
+        </datalist>
+        <TextInput
+          id="wiz-host"
+          labelText={t('cameras.wizard.host')}
+          helperText={t('cameras.wizard.hostHint')}
+          placeholder="192.168.1.108"
+          value={host}
+          style={{ marginTop: 12 }}
+          onChange={(e) => {
+            setHost(e.target.value)
+            invalidate()
+          }}
+        />
+        <TextInput
+          id="wiz-main-path"
+          labelText={t('cameras.wizard.mainPath')}
+          placeholder="/Streaming/Channels/101"
+          value={mainPath}
+          style={{ marginTop: 12 }}
+          onChange={(e) => {
+            setMainPath(e.target.value)
+            clearProbe()
+          }}
+        />
+        <TextInput
+          id="wiz-sub-path"
+          labelText={t('cameras.wizard.subPath')}
+          helperText={t('cameras.wizard.subHint')}
+          placeholder="/Streaming/Channels/102"
+          value={subPath}
+          style={{ marginTop: 12 }}
+          onChange={(e) => {
+            setSubPath(e.target.value)
+            clearProbe()
+          }}
+        />
+        {subSameAsMain && (
+          <InlineNotification
+            kind="warning"
+            lowContrast
+            hideCloseButton
+            title={t('cameras.wizard.subSameAsMain')}
+            style={{ marginTop: 8 }}
+          />
+        )}
+        <Select
+          id="wiz-credential"
+          labelText={t('cameras.wizard.credential')}
+          value={credentialId ?? ''}
+          style={{ marginTop: 12 }}
+          onChange={(e) => {
+            if (e.target.value === NEW_CREDENTIAL) {
+              setNewCredential(true)
+              return
+            }
+            setCredentialId(e.target.value === '' ? null : Number(e.target.value))
+            clearProbe()
+          }}
+        >
+          <SelectItem value="" text={t('cameras.wizard.credentialDefault')} />
+          {profileOptions.map((p) => <SelectItem key={p.id} value={p.id} text={p.name} />)}
+          <SelectItem value={NEW_CREDENTIAL} text={t('cameras.wizard.credentialNew')} />
+        </Select>
+        {newCredential && (
+          <NewCredentialForm
+            onCancel={() => setNewCredential(false)}
+            onCreated={(p) => {
+              setNewCredential(false)
+              setCreated(p)
+              setCredentialId(p.id)
+              clearProbe()
+              onProfilesChanged()
             }}
           />
-          <TextInput
-            id="wiz-port"
-            labelText={t('cameras.wizard.port')}
-            placeholder="554"
-            value={port}
-            onChange={(e) => {
-              setPort(e.target.value.replace(/\D/g, ''))
-              invalidate()
-            }}
-          />
-          <Select
-            id="wiz-node"
-            labelText={t('cameras.wizard.node')}
-            value={nodeId}
-            onChange={(e) => {
-              setNodeId(Number(e.target.value))
-              if (isEdit) clearProbe()
-            }}
-          >
-            {nodes.map((n) => <SelectItem key={n.id} value={n.id} text={n.name} />)}
-          </Select>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
-          <Button kind="secondary" size="sm" onClick={runScan} disabled={scanning || !endpointHost}>
-            {t('cameras.wizard.autoDetect')}
-          </Button>
-          {scans.length > 0 && !scanning && (
-            <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>
-              {scans.length} {t('cameras.wizard.scanFound')}
-            </span>
-          )}
-        </div>
-        {scanning && <InlineLoading style={{ marginTop: 8 }} description={t('cameras.wizard.scanning')} />}
-        {scanEmpty && !scanning && (
-          <p style={{ fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 8 }}>
-            {t('cameras.wizard.scanEmpty')}
-          </p>
-        )}
-        {scans.length > 0 && !scanning && (
-          <Select
-            id="wiz-scan"
-            labelText={t('cameras.wizard.detectedPaths')}
-            value={scanSelected?.channel ?? ''}
-            onChange={(e) => {
-              const ch = scans.find((s) => s.channel === Number(e.target.value))
-              if (ch) selectScan(ch)
-            }}
-            style={{ marginTop: 12 }}
-          >
-            <SelectItem value="" text={t('cameras.wizard.chooseChannel')} />
-            {scans.map((ch) => (
-              <SelectItem key={ch.channel} value={ch.channel} text={channelLabel(ch, t('cameras.wizard.probeFail'))} />
-            ))}
-          </Select>
         )}
 
-        {!manual ? (
-          <button
-            type="button"
-            onClick={() => setManual(true)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--cds-link-primary)',
-              cursor: 'pointer',
-              padding: 0,
-              marginTop: 12,
-              fontSize: 13,
-            }}
-          >
-            {t('cameras.wizard.manualToggle')}
-          </button>
-        ) : (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <TextInput
-                id="wiz-main-path"
-                labelText={t('cameras.wizard.mainPath')}
-                placeholder="/Streaming/Channels/101"
-                value={mainPath}
-                onChange={(e) => {
-                  setMainPath(e.target.value)
-                  clearProbe()
-                }}
-              />
-              <TextInput
-                id="wiz-sub-path"
-                labelText={t('cameras.wizard.subPath')}
-                placeholder="/Streaming/Channels/102"
-                value={subPath}
-                onChange={(e) => {
-                  setSubPath(e.target.value)
-                  clearProbe()
-                }}
-              />
-            </div>
-            <Button
-              kind="secondary"
-              size="sm"
-              onClick={runProbe}
-              disabled={probing || !mainPath.trim()}
-              style={{ marginTop: 8 }}
-            >
-              {t('cameras.wizard.probe')}
-            </Button>
-          </div>
-        )}
-
+        <Button
+          kind="secondary"
+          size="sm"
+          onClick={runProbe}
+          disabled={probing || !endpointHost || !mainPath.trim()}
+          style={{ marginTop: 12 }}
+        >
+          {t('cameras.wizard.probe')}
+        </Button>
         <div
           data-testid="probe-box"
-          style={{ border: '1px dashed var(--cds-border-subtle)', padding: 12, marginTop: 14, fontSize: 12, minHeight: 84 }}
+          style={{ border: '1px dashed var(--cds-border-subtle)', padding: 12, marginTop: 12, fontSize: 12, minHeight: 84 }}
         >
           {probing ? (
             <InlineLoading description={t('cameras.wizard.probing')} />
@@ -373,11 +352,80 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
               <div style={{ color: probe?.sub ? '#42be65' : '#fa4d56' }}>
                 SUB: {streamText(probe?.sub ?? null, probe?.sub_path ?? null, t('cameras.wizard.probeFail'))}
               </div>
+              {probe?.snapshot_jpeg_b64 && (
+                <img
+                  data-testid="probe-thumb"
+                  alt=""
+                  src={`data:image/jpeg;base64,${probe.snapshot_jpeg_b64}`}
+                  style={{ display: 'block', width: '100%', maxWidth: 320, marginTop: 8 }}
+                />
+              )}
             </>
           ) : (
             t('cameras.wizard.probeHint')
           )}
         </div>
+
+        <details data-testid="wiz-advanced" style={{ marginTop: 14 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13 }}>{t('cameras.wizard.advanced')}</summary>
+          {nodes.length > 1 && (
+            <Select
+              id="wiz-node"
+              labelText={t('cameras.wizard.node')}
+              value={nodeId}
+              style={{ marginTop: 12 }}
+              onChange={(e) => {
+                setNodeId(Number(e.target.value))
+                if (isEdit) clearProbe()
+              }}
+            >
+              {nodes.map((n) => <SelectItem key={n.id} value={n.id} text={n.name} />)}
+            </Select>
+          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
+            <Button kind="secondary" size="sm" onClick={runScan} disabled={scanning || !endpointHost}>
+              {t('cameras.wizard.autoDetect')}
+            </Button>
+            {scans.length > 0 && !scanning && (
+              <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>
+                {scans.length} {t('cameras.wizard.scanFound')}
+              </span>
+            )}
+          </div>
+          {scanning && <InlineLoading style={{ marginTop: 8 }} description={t('cameras.wizard.scanning')} />}
+          {scanEmpty && !scanning && (
+            <p style={{ fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 8 }}>
+              {t('cameras.wizard.scanEmpty')}
+            </p>
+          )}
+          {scans.length > 0 && !scanning && (
+            <Select
+              id="wiz-scan"
+              labelText={t('cameras.wizard.detectedPaths')}
+              value={scanSelected?.channel ?? ''}
+              onChange={(e) => {
+                const ch = scans.find((s) => s.channel === Number(e.target.value))
+                if (ch) selectScan(ch)
+              }}
+              style={{ marginTop: 12 }}
+            >
+              <SelectItem value="" text={t('cameras.wizard.chooseChannel')} />
+              {scans.map((ch) => (
+                <SelectItem key={ch.channel} value={ch.channel} text={channelLabel(ch, t('cameras.wizard.probeFail'))} />
+              ))}
+            </Select>
+          )}
+        </details>
+
+        {unverifiedAck && !verified && (
+          <InlineNotification
+            kind="warning"
+            lowContrast
+            hideCloseButton
+            title={t('cameras.wizard.unverified')}
+            style={{ marginTop: 12 }}
+          />
+        )}
         {error && (
           <InlineNotification
             kind="error"
@@ -391,7 +439,7 @@ export default function CameraWizard({ camera, onClose, onSaved }: Props) {
       </ModalBody>
       <ModalFooter>
         <Button kind="ghost" onClick={onClose}>{t('common.cancel')}</Button>
-        <Button onClick={save} disabled={!canSave || saving}>{t('common.save')}</Button>
+        <Button onClick={save} disabled={!canSave}>{t('common.save')}</Button>
       </ModalFooter>
     </ComposedModal>
   )

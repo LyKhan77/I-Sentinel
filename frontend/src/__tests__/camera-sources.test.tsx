@@ -91,16 +91,14 @@ test('sources panel collapsed by default; expand shows source and profile forms'
   expect(screen.queryByLabelText('Nama grup lokasi')).not.toBeInTheDocument()
 })
 
-test('wizard shows no password, source, group, or credential fields', async () => {
+test('wizard shows a credential select but no password, source, or group fields', async () => {
   stubFetch((call) => baseResponse(call) ?? { status: 404 })
   renderPage()
-
-  expect(await screen.findByTestId('camera-sources-toggle')).toBeInTheDocument()
-
-  await userEvent.click(screen.getByText('+ Tambah kamera'))
+  await userEvent.click(await screen.findByText('+ Tambah kamera'))
   await screen.findByLabelText('Nama kamera')
+  expect(screen.getByLabelText('Kredensial')).toBeInTheDocument()
+  expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Sumber stream')).not.toBeInTheDocument()
-  expect(screen.queryByLabelText(/override kredensial/i)).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Grup lokasi')).not.toBeInTheDocument()
 })
 
@@ -108,7 +106,6 @@ test('creating a direct-host camera with manual paths sends host and paths', asy
   const calls = stubFetch((call) => {
     const fallback = baseResponse(call, [])
     if (fallback) return fallback
-    if (call.url.endsWith('/cameras/scan')) return { status: 200, body: { streams: [] } }
     if (call.url.endsWith('/cameras/probe')) {
       return {
         status: 200,
@@ -127,20 +124,17 @@ test('creating a direct-host camera with manual paths sends host and paths', asy
   await userEvent.click(await screen.findByText('+ Tambah kamera'))
   await userEvent.type(await screen.findByLabelText('Nama kamera'), 'CAM-B')
   await userEvent.type(screen.getByLabelText('Lokasi'), 'Lantai 1')
-  await userEvent.type(screen.getByLabelText('IP / Host'), '10.0.0.5')
-  await userEvent.click(screen.getByRole('button', { name: 'Deteksi otomatis' }))
-  await waitFor(() => expect(screen.getByText('Tidak ada channel NVR terdeteksi. Gunakan isi path manual.')).toBeInTheDocument())
-  await userEvent.click(screen.getByRole('button', { name: 'Isi path manual' }))
-  await userEvent.type(screen.getByLabelText('Path MAIN (utama)'), '/vendor/high?profile=recording')
-  await userEvent.type(screen.getByLabelText('Path SUB (deteksi)'), '/vendor/low?profile=ai')
-  await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
+  await userEvent.type(screen.getByLabelText('IP kamera'), '10.0.0.5')
+  await userEvent.type(screen.getByLabelText('Path mainstream'), '/vendor/high?profile=recording')
+  await userEvent.type(screen.getByLabelText('Path substream'), '/vendor/low?profile=ai')
+  await userEvent.click(screen.getByRole('button', { name: 'Tes koneksi' }))
   await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('1920x1080'))
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
 
   await waitFor(() => {
     const probe = calls.find((call) => call.url.endsWith('/cameras/probe'))
     const payload = JSON.parse(String(probe!.init!.body))
-    expect(payload).toEqual({ host: '10.0.0.5', main_path: '/vendor/high?profile=recording', sub_path: '/vendor/low?profile=ai' })
+    expect(payload).toEqual({ host: '10.0.0.5', main_path: '/vendor/high?profile=recording', sub_path: '/vendor/low?profile=ai', snapshot: true })
     const create = calls.find((call) => call.url.endsWith('/cameras') && call.init?.method === 'POST')
     const saved = JSON.parse(String(create!.init!.body))
     expect(saved.host).toBe('10.0.0.5')
@@ -169,10 +163,10 @@ test('editing one exact path retains the other path', async () => {
   })
   renderPage()
   await userEvent.click((await screen.findAllByRole('button', { name: 'Ubah' }))[0])
-  const main = await screen.findByLabelText('Path MAIN (utama)')
+  const main = await screen.findByLabelText('Path mainstream')
   await userEvent.clear(main)
   await userEvent.type(main, '/vendor/changed')
-  await userEvent.click(screen.getByRole('button', { name: 'Probe stream' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Tes koneksi' }))
   await waitFor(() => expect(screen.getByTestId('probe-box')).toHaveTextContent('1280x720'))
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
 
