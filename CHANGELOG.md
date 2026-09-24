@@ -39,6 +39,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `cam_357_main` **1 konsumen**, 0 warning `clip ring`; outbox lama dibersihkan (582 MB / 2.464 file → 0).
   **Uji lapangan (klip 1080p dari orang nyata) belum dijalankan** — bukti:
   `docs/evidence/clip-prebuffer-ring.txt`.
+- **Fix retensi klip bersama**: lapis 1 tidak lagi menghapus file yang masih dirujuk event belum
+  kedaluwarsa (klip insiden dipakai beberapa event; cutoff bisa jatuh di tengah insiden). Path event lama
+  tetap di-null-kan; file dihapus saat event terakhir yang merujuknya kedaluwarsa. Backend **340 passed**.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
