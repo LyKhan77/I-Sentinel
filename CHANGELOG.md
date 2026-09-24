@@ -17,6 +17,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   Config `record_clip_s` → `clip_pre_s/clip_post_s/clip_max_s/clip_ring_dir`. **Fix kebocoran
   outbox**: file lokal dihapus setelah upload (server: 582 MB / 2.464 file menumpuk).
   Vision **195 passed**.
+- **Node memasang ring**: `ClipRing` dari `cam_<id>_main` hanya untuk `CameraWorker` yang punya
+  analyzer `clip` aktif (atau `emit_person_detect`); kamera gate-only / tanpa zona clip tidak membuka
+  koneksi mainstream. Worker memanggil `recorder.touch(track_ids)` tiap frame inferensi.
+  Vision **199 passed**.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 

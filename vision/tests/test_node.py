@@ -296,12 +296,13 @@ def test_attendance_only_camera_runs_face_worker_without_yolo(tmp_path):
 
 
 def test_mixed_camera_runs_both_workers_sharing_one_recorder(tmp_path, monkeypatch):
+    import vision.clipring as clipring
     import vision.recorder as recorder
     recorders, closes = [], []
     original = recorder.Recorder
 
-    def make_recorder(*args):
-        rec = original(*args)
+    def make_recorder(*args, **kw):
+        rec = original(*args, **kw)
         close = rec.close
         def close_once():
             closes.append(rec)
@@ -311,6 +312,7 @@ def test_mixed_camera_runs_both_workers_sharing_one_recorder(tmp_path, monkeypat
         return rec
 
     monkeypatch.setattr(recorder, "Recorder", make_recorder)
+    monkeypatch.setattr(clipring, "_which", lambda _: None)  # no ffmpeg spawn in tests
     _, workers, urls, det_calls = _wired_node(tmp_path, [ATTENDANCE_ZONE, BEHAVIOR_ZONE],
                                               api_key="k")
     assert sorted(type(w).__name__ for w in workers) == ["CameraWorker", "FaceGateWorker"]

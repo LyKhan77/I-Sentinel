@@ -1,4 +1,4 @@
-"""Recorder tests: ring buffer, capture (snapshot+clip via mocked urlopen), upload retry, worker integration. No network, no subprocess."""
+"""Recorder tests: frame ring, snapshot/upload, per-camera incident clips (mainstream ring). No network, no subprocess."""
 import json
 import threading
 
@@ -391,3 +391,48 @@ def test_queue_drops_oldest_when_full(tmp_path):
     assert rec._q.qsize() == 50
     assert rec._q.get_nowait()[1]["event_id"] == "ev-35"
     rec.close()
+
+
+def test_tick_after_close_does_not_touch_ring(tmp_path):
+    clock = Clock(1000.0)
+    ring = FakeRing()
+    rec, _, _ = _clip_recorder(tmp_path, ring, clock)
+    rec.close()
+    checks = ring.checks
+    rec.tick()
+    assert ring.checks == checks
+
+
+def test_failed_upload_still_removes_local_clip(tmp_path):
+    clock = Clock(1000.0)
+    ring = FakeRing()
+    rec, t, _ = _clip_recorder(tmp_path, ring, clock)
+    rec._upload_one = lambda *a, **kw: None          # backend down
+    rec.enqueue(_sec_ev("a", 1))
+    clock.t = 1023.0
+    rec.tick()
+    assert os.listdir(tmp_path / "data" / "outbox") == []
+    assert t.media == []
+
+
+# --- R3: worker memberi track id ke recorder tiap frame ----------------------
+
+def test_worker_touches_recorder_with_track_ids():
+    class TouchRec:
+        def __init__(self):
+            self.touches = []
+
+        def push_jpeg(self, ts, jpeg): pass
+        def enqueue(self, ev): pass
+        def touch(self, ids): self.touches.append(list(ids))
+
+    rec = TouchRec()
+    frame = np.zeros((4, 4, 3), dtype=np.uint8)
+    src = FrameSource.from_frames([frame] * 3, fps=100.0)
+    det = MockDetector([[Detection(bbox=(0.1, 0.1, 0.3, 0.4), conf=0.9)]] * 3)
+    w = CameraWorker(CameraCfg(camera_id=1, source_url="test://1"), lambda cid: det,
+                     FakeTransport(), threading.Event(), "n", recorder=rec)
+    w.source = src
+    w.start()
+    w.join(timeout=10)
+    assert rec.touches and all(len(ids) == 1 for ids in rec.touches)

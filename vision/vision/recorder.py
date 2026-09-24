@@ -147,7 +147,7 @@ class Recorder:
         if due:
             upload_kw = {"timeout": 10, "retries": 1} if force else {}
             self._finish(inc, include_open=force, **upload_kw)
-        if self.clip_ring is not None and not force:
+        if self.clip_ring is not None and not force and not self._stopped.is_set():
             self.clip_ring.check()
             with self._lock:
                 open_start = self._incident.start if self._incident else now
