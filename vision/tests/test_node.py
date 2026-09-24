@@ -337,7 +337,8 @@ def test_disabled_face_does_not_start_orphan_recorder(tmp_path, monkeypatch):
     created = []
     monkeypatch.setattr(recorder, "Recorder", lambda *args: created.append(args))
     cfg = NodeSettings(node_id="n", cameras_json="[]", face_embed=False,
-                       api_key="k", data_dir=str(tmp_path))
+                       api_key="k", data_dir=str(tmp_path),
+                       clip_ring_dir=str(tmp_path / "ring"))
     node = VisionNode(cfg, detector_factory=lambda _: pytest.fail("YOLO started"),
                       source_factory=lambda _: pytest.fail("source opened"),
                       transport=FakeTransport())

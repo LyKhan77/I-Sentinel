@@ -189,6 +189,22 @@ def test_close_stops_process_and_removes_dir(tmp_path, procs):
     assert procs[0].terminated and not os.path.exists(ring.dir)
 
 
+def test_stop_survives_unkillable_process(tmp_path, monkeypatch):
+    class Stubborn(FakeProc):
+        def terminate(self):
+            self.terminated = True      # ignores SIGTERM
+
+        def wait(self, timeout=None):
+            raise cr.subprocess.TimeoutExpired("ffmpeg", timeout)
+
+    monkeypatch.setattr(cr, "_which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(cr, "_popen", lambda cmd, **kw: Stubborn(cmd))
+    ring = ClipRing(1, "src", str(tmp_path))
+    ring.start()
+    ring.stop()                          # must not raise
+    assert ring._proc is None
+
+
 def test_check_survives_start_failure(tmp_path, monkeypatch):
     clock = Clock(1000.0)
 

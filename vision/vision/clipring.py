@@ -164,7 +164,10 @@ class ClipRing:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
-            proc.wait(timeout=3)
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                log.warning("clip ring cam%s: ffmpeg did not die", self.camera_id)
 
     def close(self) -> None:
         self.stop()
