@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Enrollment & Shift refining (lokal, 2026-09-23)
+### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
 - **Validasi backend**: nama/NIK/nama shift di-trim dan wajib isi (422); shift wajib `end_time >
   start_time` di POST dan PATCH gabungan; PATCH null eksplisit diabaikan (dulu 500), `shift_id: null`
@@ -37,6 +37,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   Temuan data: NIK Ikhsal kosong (`""`, data lama) → form menandai "Wajib diisi"; tidak diubah.
   Bukti `docs/evidence/enrollment-*.png`. Follow-up: shift malam; hitung ulang `attendance_day` setelah
   shift diedit; tabel shift di 390 px sempit (kolom hari terbungkus per kata, scroll di dalam tabel).
+
+- **E2E user OK** (2026-09-24): user menguji UI secara menyeluruh; merge `--no-ff` ke `main`,
+  server gspe-ai3 kembali ke `main`.
 
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 
