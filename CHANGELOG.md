@@ -9,6 +9,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   default `~/.isentinel/camera-secrets.json`, 0600, direktori 0700, tulis atomik, ditolak bila di dalam
   `STORAGE_ROOT`); DB hanya referensi `store:cred_<id>`, di-resolve oleh `stream_endpoint._secret`.
   Backend **348 passed**.
+- **Profil kredensial menerima `password`** (write-only): disimpan ke `secret_store`, `secret_ref` =
+  `store:cred_<id>`; tepat satu dari `password`/`secret_ref: env:` (422 bila tidak); PATCH `password`
+  menimpa store (profil `env:` pindah ke `store:`) dan memicu sinkron go2rtc + config push; gagal tulis store
+  → 500, profil tidak dibuat. Password tidak pernah muncul di response. Backend **353 passed**.
 
 ### Event clip pre-buffer (2026-09-24)
 

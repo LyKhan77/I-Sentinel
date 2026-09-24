@@ -183,3 +183,79 @@ def test_source_and_profile_runtime_updates_resync_attached_camera(client, db):
         )
     assert response.status_code == 200
     assert sync.call_count == config.call_count == 1
+
+
+from app.models.credential_profile import CredentialProfile
+from app.services import secret_store
+
+
+@pytest.fixture
+def secrets(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path / "media"))
+    monkeypatch.setattr(settings, "camera_secrets_file", str(tmp_path / "s" / "cams.json"))
+
+
+def test_profile_password_goes_to_store_not_db(client, db, secrets):
+    h = admin_headers(client)
+    r = client.post(
+        "/api/v1/credential-profiles",
+        json={"name": "zkteco", "username": "admin", "password": "Rahasia#1"},
+        headers=h,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["secret_ref"] == f"store:cred_{body['id']}"
+    assert "Rahasia#1" not in r.text
+    assert db.get(CredentialProfile, body["id"]).secret_ref == body["secret_ref"]
+    assert secret_store.get(f"cred_{body['id']}") == "Rahasia#1"
+    assert "Rahasia#1" not in client.get("/api/v1/credential-profiles", headers=h).text
+
+
+def test_profile_requires_exactly_one_secret(client, secrets):
+    h = admin_headers(client)
+    both = client.post(
+        "/api/v1/credential-profiles",
+        json={"name": "a", "secret_ref": "env:CAMERA_CRED", "password": "x"},
+        headers=h,
+    )
+    neither = client.post("/api/v1/credential-profiles", json={"name": "b"}, headers=h)
+    assert both.status_code == 422 and neither.status_code == 422
+
+
+def test_patch_password_updates_store(client, secrets):
+    h = admin_headers(client)
+    created = client.post(
+        "/api/v1/credential-profiles", json={"name": "zk", "password": "old"}, headers=h
+    ).json()
+    r = client.patch(
+        f"/api/v1/credential-profiles/{created['id']}", json={"password": "new"}, headers=h
+    )
+    assert r.status_code == 200
+    assert r.json()["secret_ref"] == created["secret_ref"]
+    assert secret_store.get(f"cred_{created['id']}") == "new"
+
+
+def test_patch_password_moves_env_profile_to_store(client, secrets):
+    h = admin_headers(client)
+    created = client.post(
+        "/api/v1/credential-profiles", json={"name": "legacy", "secret_ref": "env:CAMERA_CRED"}, headers=h
+    ).json()
+    r = client.patch(
+        f"/api/v1/credential-profiles/{created['id']}", json={"password": "typed"}, headers=h
+    )
+    assert r.json()["secret_ref"] == f"store:cred_{created['id']}"
+    assert secret_store.get(f"cred_{created['id']}") == "typed"
+
+
+def test_store_failure_creates_no_profile(client, db, secrets, monkeypatch):
+    def boom(key, value):
+        raise secret_store.SecretStoreError("disk full")
+
+    monkeypatch.setattr(secret_store, "put", boom)
+    r = client.post(
+        "/api/v1/credential-profiles", json={"name": "zk", "password": "x"}, headers=admin_headers(client)
+    )
+    assert r.status_code == 500
+    assert db.query(CredentialProfile).count() == 0
