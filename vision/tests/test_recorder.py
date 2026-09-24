@@ -223,6 +223,7 @@ class FakeRing:
 
 def _clip_recorder(tmp_path, ring=None, clock=None, **cfg_kw):
     t = FakeTransport()
+    cfg_kw.setdefault("clip_post_s", 15.0)  # window math below assumes 15 s post
     rec = Recorder(1, make_cfg(tmp_path, **cfg_kw), t, clip_ring=ring or FakeRing(),
                    clock=clock or Clock(), autostart=False)
     uploads = []

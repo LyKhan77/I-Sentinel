@@ -42,6 +42,13 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Fix retensi klip bersama**: lapis 1 tidak lagi menghapus file yang masih dirujuk event belum
   kedaluwarsa (klip insiden dipakai beberapa event; cutoff bisa jatuh di tengah insiden). Path event lama
   tetap di-null-kan; file dihapus saat event terakhir yang merujuknya kedaluwarsa. Backend **340 passed**.
+- **Uji lapangan (2026-09-24)**: cam 357 intrusion 15:12 → klip **1920×1080, 48,0 s**, orang terlihat sejak
+  sebelum masuk zona sampai keluar; snapshot tersimpan **0,5 s** setelah event (dulu ~30 s), klip 38 s. Cam 363:
+  dua orang berbeda berjarak 12 s (15:19:26 / 15:19:38) → **satu file klip** bersama (68,2 s), snapshot per
+  event berbeda — sesuai desain insiden per kamera. Temuan: ekor klip ~22 s lorong kosong.
+- **Post-buffer default 15 → 8 s** (`VISION_CLIP_POST_S`, permintaan user setelah uji lapangan): ekor kosong
+  ≈ post + 3 s tracker + 2–4 s segmen. Tes jendela insiden mem-pin post 15 s secara eksplisit.
+  Vision **200 passed**.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 

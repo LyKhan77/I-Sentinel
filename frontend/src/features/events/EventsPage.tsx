@@ -46,7 +46,7 @@ const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
   { id: 'crop', key: 'events.tab.crop' },
 ]
 
-// Clip insiden baru ada ±15 s setelah orang terakhir terlihat (maks 120 s) — tunggu 3 menit.
+// Clip insiden baru ada ±post (default 8 s) setelah orang terakhir terlihat (maks 120 s) — tunggu 3 menit.
 const CLIP_PENDING_MS = 3 * 60_000
 
 function timeStr(ts: string): string {
