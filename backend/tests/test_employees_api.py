@@ -267,3 +267,18 @@ def test_shift_patch_null_ignored(client):
     sid = _shift(client, h).json()["id"]
     r = client.patch(f"/api/v1/shifts/{sid}", json={"start_time": None, "name": None}, headers=h)
     assert r.status_code == 200 and r.json()["start_time"] == "08:00" and r.json()["name"] == "Pagi"
+
+
+def test_employee_out_has_photo_count_and_face_ready(client, db):
+    from app.models.face_embedding import FaceEmbedding
+    h = _admin_headers(client)
+    e1 = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001"}, headers=h).json()
+    e2 = client.post("/api/v1/employees", json={"name": "Ani", "employee_code": "E002"}, headers=h).json()
+    assert e1["photo_count"] == 0 and e1["face_ready"] is False
+    for _ in range(3):
+        db.add(FaceEmbedding(employee_id=e1["id"], vector=[1.0, 0.0, 0.0, 0.0], quality=0.9))
+    db.add(FaceEmbedding(employee_id=e2["id"], vector=[0.0, 1.0, 0.0, 0.0], quality=0.9))
+    db.commit()
+    by_id = {e["id"]: e for e in client.get("/api/v1/employees", headers=h).json()}
+    assert by_id[e1["id"]]["photo_count"] == 3 and by_id[e1["id"]]["face_ready"] is True
+    assert by_id[e2["id"]]["photo_count"] == 1 and by_id[e2["id"]]["face_ready"] is False

@@ -96,4 +96,6 @@ class EmployeeOut(BaseModel):
     active: bool
     shift_id: int | None
     shift_name: str | None = None
+    photo_count: int = 0
+    face_ready: bool = False
     model_config = {"from_attributes": True}
