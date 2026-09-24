@@ -32,6 +32,14 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Docs**: catatan deviasi implementasi (flag ffmpeg segmen, concat protocol, `covered_s` tidak dikembalikan,
   `SETTLE_S`/`prune`) + ekspektasi verifikasi lapangan di plan Task 6; sinkron status R5b di ROADMAP.
 
+- **Deploy + pengukuran ring (2026-09-24)**: branch `feat/event-clip-prebuffer` (`8853bca`) di gspe-ai3,
+  `pip install -e vision` di `vision-venv`, restart `vision-node`; chip analyzer intrusion cam 357
+  diaktifkan (zona 6 tadinya di-skip oleh mask `analyzers=['attendance']`). Terukur: ffmpeg ring cam357
+  **0,9 % CPU / 51 MB RSS**, segmen 2 s bergulir (`/dev/shm/isentinel/cam357`, total **484 KB**),
+  `cam_357_main` **1 konsumen**, 0 warning `clip ring`; outbox lama dibersihkan (582 MB / 2.464 file → 0).
+  **Uji lapangan (klip 1080p dari orang nyata) belum dijalankan** — bukti:
+  `docs/evidence/clip-prebuffer-ring.txt`.
+
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
 - **Validasi backend**: nama/NIK/nama shift di-trim dan wajib isi (422); shift wajib `end_time >
