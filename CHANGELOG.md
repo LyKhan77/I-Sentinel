@@ -24,6 +24,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Cleanup sisa refining**: hapus 3 API client mati (`EnrollmentStatus`, `uploadPhoto`,
   `enrollmentStatus` — endpoint backend tetap ada) + 8 baris key i18n `en.col.*` yatim.
   Frontend **117 passed** (tanpa perubahan hasil).
+- **Fix review: suntingan identitas tidak hilang saat refresh**. Effect pengisi form bergantung pada
+  objek `selected`, yang baru setiap `refresh()`; upload/hapus foto sebelum Simpan menimpa nama/NIK
+  yang sedang diedit. Kini dependency primitif (nama, NIK, shift tersimpan). Tes baru merah dulu
+  (`Budi Santoso` ≠ `Budi Baru`). Frontend **118 passed**, lint 22 set tetap.
 
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 

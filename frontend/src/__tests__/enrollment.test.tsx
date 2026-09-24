@@ -209,3 +209,18 @@ test('upload multi-file: batch sekali + hasil per foto', async () => {
   expect(list).toHaveTextContent('Skor: 0.91')
   expect(list).toHaveTextContent('Wajah tidak terdeteksi')
 })
+
+test('suntingan identitas yang belum disimpan tidak hilang saat upload foto me-refresh daftar', async () => {
+  const calls = stubFetch((u, init) =>
+    u.endsWith('/employees') && !init?.method && calls.some((c) => c.url.endsWith('/photos/batch'))
+      ? resp(200, EMPLOYEES.map((e) => (e.id === 1 ? { ...e, photo_count: 4 } : e)))
+      : undefined,
+  )
+  renderPage()
+  await screen.findAllByText('Budi Santoso')
+  fireEvent.change(within(screen.getByTestId('en-card-identity')).getByLabelText('Nama'), { target: { value: 'Budi Baru' } })
+  fireEvent.change(screen.getByTestId('en-upload-input'), { target: { files: [new File(['a'], 'a.jpg', { type: 'image/jpeg' })] } })
+  // refresh sudah ter-render: badge ikut jumlah foto baru
+  expect(await screen.findByText('4 Foto')).toBeInTheDocument()
+  expect(within(screen.getByTestId('en-card-identity')).getByLabelText('Nama')).toHaveValue('Budi Baru')
+})

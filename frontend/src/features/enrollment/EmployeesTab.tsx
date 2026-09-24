@@ -88,12 +88,17 @@ export default function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
       .catch(() => setPhotos([]))
   }, [selectedId])
 
+  // deps primitif: refresh() membuat objek karyawan baru, tapi form hanya di-reset bila pilihan atau data
+  // tersimpan berubah — suntingan yang belum disimpan tidak hilang saat upload/hapus foto
+  const selName = selected?.name
+  const selCode = selected?.employee_code
+  const selShift = selected?.shift_id
   useEffect(() => {
-    if (!selected) return
+    if (selName == null || selCode == null) return
     // oxlint-disable-next-line react/set-state-in-effect -- isi form dari karyawan terpilih (sinkronisasi form dengan selection)
-    setForm({ name: selected.name, code: selected.employee_code, shiftId: selected.shift_id != null ? String(selected.shift_id) : '' })
+    setForm({ name: selName, code: selCode, shiftId: selShift != null ? String(selShift) : '' })
     setCodeTaken(false)
-  }, [selected])
+  }, [selName, selCode, selShift])
 
   const reloadPhotos = async () => {
     if (selectedId == null) return
