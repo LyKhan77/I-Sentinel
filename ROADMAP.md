@@ -17,9 +17,10 @@
 | 4c | Penutup polish (kolom Live View, daftar zona) + bug live view LAN | [x] selesai | 2026-09-15 | `GO2RTC_PUBLIC_HOST`; snapshot klien LAN `http://localhost:1984` → `http://192.168.2.133:1984`; 3 test baru | `9ca496c..(v0.5.2)` |
 | 4d | Responsif: nol overflow horizontal di 390px | [x] selesai | 2026-09-15 | 9/9 halaman `overflow=0 scrollX=0` (sebelumnya /events 132px, /attendance 115px, /config/gates 23px) | `a0ab278..(v0.5.3)` |
 | 4e | Live view jalan dari klien LAN (proxy snapshot) | [x] selesai | 2026-09-15 | 24/25 tile render `640x360` same-origin; `/snapshot` 401 tanpa login, 200 image/jpeg dengan login | `7c89eb1..(v0.5.4)` |
-| 5 | Hardening (retensi, beban 30+ kamera, docs) | [~] plan detail siap | — | `docs/plans/06-fase-5-hardening.md` 12 task / 66 step (591a18e); prasyarat P1-P9 teraudit | |
-| R5b | Attendance face-first (SCRFD+ArcFace node, cooldown, UI) | [~] lokal selesai, PENDING deploy + verifikasi lapangan | — | frontend/backend/vision suite hijau lokal (Task 10); deploy + GPU + lapangan belum dijalankan (runbook `docs/runbooks/attendance-face-first.md`) | |
+| 5 | Hardening (retensi, beban 30+ kamera, docs) | [x] selesai | 2026-09-21 | lihat §Fase 5 (retensi + timer, soak 30+ stream, GPU probe) dan CHANGELOG [0.7.0] | |
+| R5b | Attendance face-first (SCRFD+ArcFace node, cooldown, UI) | [x] deploy + tes lapangan | 2026-09-23 | deploy `f22f2d6` di gspe-ai3 (alembic 0015→0016, heartbeat `modules.face.device = cuda:2`); lapangan: entry cam 364 zona 12 `matched` 0,714 (wajah 217 px), exit cam 365 zona 14 `matched` 0,65, `attendance_day` satu baris 15:45→15:59; model wajah GPU 2 (1054 MiB) | |
 | RE | Enrollment & Shift refining (CRUD karyawan/shift, NIK, hapus foto per karyawan) | [x] selesai | 2026-09-24 | backend 339, vision 177, frontend 118; UI 390px overflow 0; `docs/evidence/enrollment-*.png` | `f8028ed` |
+| CP | Event clip pre-buffer (ring mainstream, insiden per kamera) | [~] lokal selesai, PENDING deploy + verifikasi lapangan | — | vision/frontend suite hijau lokal; spec + plan 2026-09-24 | |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
@@ -367,7 +368,7 @@ Spec: `docs/superpowers/specs/2026-09-22-detection-model-redesign.md`
 
 ---
 
-## R5b — Attendance face-first — **lokal selesai, PENDING deploy + verifikasi lapangan**
+## R5b — Attendance face-first — **DEPLOY + tes lapangan (2026-09-23)**
 
 Plan: `docs/superpowers/plans/2026-09-23-attendance-face-first-r5b.md`
 Spec: `docs/superpowers/specs/2026-09-23-attendance-face-first-design.md`

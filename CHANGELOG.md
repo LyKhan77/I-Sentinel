@@ -26,6 +26,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `clip_path`, dan me-refresh daftar tiap 5 s sampai clip datang (poll live hanya menambah event baru,
   sehingga clip/snapshot yang datang belakangan dulu tak pernah tampil tanpa reload). Label zona
   "Rekam clip event" tanpa "(30 detik)". Frontend **120 passed**.
+- **Docs**: ROADMAP tabel ringkasan diperbarui (Fase 5 DONE 2026-09-21, R5b deploy + lapangan
+  2026-09-23, baris CP clip pre-buffer). Suite penuh: backend 339 passed, vision 200 passed
+  (3 deselected), frontend 120 passed, build 0, lint 22 warning (set sama dengan sebelum perubahan).
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
