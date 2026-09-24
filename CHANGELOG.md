@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Event clip pre-buffer (2026-09-24 – …)
+### Event clip pre-buffer (2026-09-24)
 
 - **`ClipRing`** (`vision/vision/clipring.py`): ffmpeg `-c copy` per kamera menulis segmen MPEG-TS 2 s
   ke tmpfs; `cut` menggabung segmen yang menutupi jendela insiden (concat `-c copy`, `+faststart`);
@@ -53,6 +53,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   klip, ≥ 0; event pertama 0) di payload media; backend menyimpannya ke `event.payload.clip_offset_s`
   (angka ≥ 0 saja, tanpa migrasi); Inbox memutar `…mp4#t=<offset>` (media fragment), tautan unduh tetap
   tanpa offset. Backend **342**, vision **200**, frontend **121** passed, build 0, lint set rule+file sama.
+- **Uji lapangan ulang (post 8 s + seek, 15:48–15:51)**: klip 1 orang 32–40 s (dulu 48 s); dua orang cam 363
+  berjarak 21 s → 1 file 56,2 s, event kedua `clip_offset_s` 21.2 → Inbox mulai di detik orang kedua; 0 error
+  `vision-node`. **E2E user OK.** Bukti `docs/evidence/clip-prebuffer-field.txt`.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
