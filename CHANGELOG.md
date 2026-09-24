@@ -13,6 +13,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Karyawan nonaktif tidak dikenali di gate**: `FaceGallery.load` hanya memuat embedding karyawan
   aktif; PATCH `active` me-refresh gallery. Aktif kembali → dikenali lagi tanpa enroll ulang.
   Konsekuensi: wajah karyawan nonaktif tidak memicu peringatan duplikat saat enroll.
+- **Tab Shift** di Enrollment (`?tab=shifts`): tabel + modal tambah/edit (nama, jam `type=time`,
+  toleransi, hari kerja) + hapus dengan konfirmasi; error duplikat / selesai ≤ mulai / "masih dipakai"
+  tampil spesifik. Kartu shift dikeluarkan dari panel karyawan. Frontend **109 passed**.
 
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 
