@@ -10,6 +10,13 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   watchdog restart ffmpeg mati/stall dengan backoff ≤ 30 s; celah restart tidak dianggap tertutup.
   Watchdog tahan gagal start ffmpeg (`OSError` → ring nonaktif, bukan traceback).
   Belum dipakai recorder. Vision **190 passed**.
+- **Recorder = insiden per kamera**: snapshot per event langsung diunggah + dipublikasi (dulu tertahan
+  ~30 s oleh clip); event ber-clip membuka/bergabung ke satu insiden per kamera, ditutup 15 s setelah
+  track insiden terakhir terlihat (cap 120 s), clip dipotong dari `ClipRing`, satu upload, media
+  dipublikasi untuk setiap event. Ring tidak sehat → fallback live `cam_<id>_main` (perilaku lama).
+  Config `record_clip_s` → `clip_pre_s/clip_post_s/clip_max_s/clip_ring_dir`. **Fix kebocoran
+  outbox**: file lokal dihapus setelah upload (server: 582 MB / 2.464 file menumpuk).
+  Vision **195 passed**.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 
