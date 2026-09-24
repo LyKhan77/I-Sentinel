@@ -1,9 +1,15 @@
 import re
+from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 VALID_DAYS = set(range(1, 8))
+END_AFTER_START: str = "end_time must be after start_time"
+
+EmpName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+EmpCode = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+ShiftName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 
 
 def _validate_time(v: str) -> str:
@@ -24,7 +30,7 @@ def _validate_workdays(v: list) -> list:
 
 
 class ShiftIn(BaseModel):
-    name: str
+    name: ShiftName
     start_time: str
     end_time: str
     tolerance_min: int = Field(default=15, ge=0, le=120)
@@ -34,9 +40,16 @@ class ShiftIn(BaseModel):
     _v_end = field_validator("end_time")(_validate_time)
     _v_days = field_validator("workdays")(_validate_workdays)
 
+    # ponytail: "HH:MM" sebanding leksikografis; shift lintas tengah malam ditolak (follow-up)
+    @model_validator(mode="after")
+    def end_after_start(self):
+        if self.end_time <= self.start_time:
+            raise ValueError(END_AFTER_START)
+        return self
+
 
 class ShiftPatch(BaseModel):
-    name: str | None = None
+    name: ShiftName | None = None
     start_time: str | None = None
     end_time: str | None = None
     tolerance_min: int | None = Field(default=None, ge=0, le=120)
@@ -64,14 +77,14 @@ class ShiftOut(BaseModel):
 
 
 class EmployeeIn(BaseModel):
-    name: str
-    employee_code: str
+    name: EmpName
+    employee_code: EmpCode
     shift_id: int | None = None
 
 
 class EmployeePatch(BaseModel):
-    name: str | None = None
-    employee_code: str | None = None
+    name: EmpName | None = None
+    employee_code: EmpCode | None = None
     shift_id: int | None = None
     active: bool | None = None
 

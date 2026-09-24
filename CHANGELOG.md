@@ -3,6 +3,12 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Enrollment & Shift refining (lokal, 2026-09-23)
+
+- **Validasi backend**: nama/NIK/nama shift di-trim dan wajib isi (422); shift wajib `end_time >
+  start_time` di POST dan PATCH gabungan; PATCH null eksplisit diabaikan (dulu 500), `shift_id: null`
+  tetap melepas shift. Backend **336 passed**.
+
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 
 - **Deploy** `f22f2d6` ke gspe-ai3: backup `~/backup-pra-0016-20260923-1533.sql` (73 event, cocok

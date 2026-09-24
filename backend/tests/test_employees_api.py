@@ -206,3 +206,64 @@ def test_attendance_event_unique_event_id(client, db):
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
+
+
+# --- (i) validasi refining ---------------------------------------------------
+
+def test_employee_blank_name_or_code_422(client):
+    h = _admin_headers(client)
+    assert client.post("/api/v1/employees", json={"name": "   ", "employee_code": "E1"}, headers=h).status_code == 422
+    assert client.post("/api/v1/employees", json={"name": "Budi", "employee_code": ""}, headers=h).status_code == 422
+
+
+def test_employee_fields_trimmed_and_trimmed_duplicate_409(client):
+    h = _admin_headers(client)
+    r = client.post("/api/v1/employees", json={"name": "  Budi ", "employee_code": " E001 "}, headers=h)
+    assert r.status_code == 200
+    assert r.json()["name"] == "Budi" and r.json()["employee_code"] == "E001"
+    assert client.post("/api/v1/employees", json={"name": "Ani", "employee_code": "E001  "}, headers=h).status_code == 409
+
+
+def test_employee_patch_code_and_blank_code_422(client):
+    h = _admin_headers(client)
+    eid = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001"}, headers=h).json()["id"]
+    r = client.patch(f"/api/v1/employees/{eid}", json={"employee_code": "E002"}, headers=h)
+    assert r.status_code == 200 and r.json()["employee_code"] == "E002"
+    assert client.patch(f"/api/v1/employees/{eid}", json={"employee_code": "  "}, headers=h).status_code == 422
+
+
+def test_employee_patch_null_ignored_but_shift_can_be_cleared(client):
+    h = _admin_headers(client)
+    sid = _shift(client, h).json()["id"]
+    eid = client.post("/api/v1/employees", json={"name": "Budi", "employee_code": "E001", "shift_id": sid}, headers=h).json()["id"]
+    r = client.patch(f"/api/v1/employees/{eid}", json={"name": None, "active": None}, headers=h)
+    assert r.status_code == 200 and r.json()["name"] == "Budi" and r.json()["active"] is True
+    r = client.patch(f"/api/v1/employees/{eid}", json={"shift_id": None}, headers=h)
+    assert r.status_code == 200 and r.json()["shift_id"] is None and r.json()["shift_name"] is None
+
+
+def test_shift_blank_name_422(client):
+    h = _admin_headers(client)
+    assert _shift(client, h, name="  ").status_code == 422
+
+
+def test_shift_end_not_after_start_422(client):
+    h = _admin_headers(client)
+    assert _shift(client, h, end_time="07:00").status_code == 422
+    assert _shift(client, h, end_time="08:00").status_code == 422
+
+
+def test_shift_patch_validates_merged_times(client):
+    h = _admin_headers(client)
+    sid = _shift(client, h).json()["id"]  # 08:00–17:00
+    assert client.patch(f"/api/v1/shifts/{sid}", json={"end_time": "07:00"}, headers=h).status_code == 422
+    assert client.patch(f"/api/v1/shifts/{sid}", json={"start_time": "18:00"}, headers=h).status_code == 422
+    r = client.patch(f"/api/v1/shifts/{sid}", json={"start_time": "06:00", "end_time": "07:00"}, headers=h)
+    assert r.status_code == 200 and r.json()["end_time"] == "07:00"
+
+
+def test_shift_patch_null_ignored(client):
+    h = _admin_headers(client)
+    sid = _shift(client, h).json()["id"]
+    r = client.patch(f"/api/v1/shifts/{sid}", json={"start_time": None, "name": None}, headers=h)
+    assert r.status_code == 200 and r.json()["start_time"] == "08:00" and r.json()["name"] == "Pagi"

@@ -4,7 +4,7 @@ from app.core.db import get_db
 from app.api.deps import get_current_user, require_admin
 from app.models.shift import Shift
 from app.models.employee import Employee
-from app.schemas.employee import ShiftIn, ShiftPatch, ShiftOut
+from app.schemas.employee import END_AFTER_START, ShiftIn, ShiftPatch, ShiftOut
 
 router = APIRouter(prefix="/api/v1/shifts", tags=["shifts"])
 
@@ -41,9 +41,12 @@ def get_shift(shift_id: int, user=Depends(get_current_user), db: Session = Depen
 def update_shift(shift_id: int, body: ShiftPatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
     shift = db.get(Shift, shift_id)
     if not shift: raise HTTPException(404, "shift not found")
-    changes = body.model_dump(exclude_unset=True)
+    # semua kolom shift NOT NULL → null eksplisit diabaikan, bukan 500
+    changes = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
     if "name" in changes and _dup_name(db, changes["name"], exclude_id=shift_id):
         raise HTTPException(409, "shift name already exists")
+    if changes.get("end_time", shift.end_time) <= changes.get("start_time", shift.start_time):
+        raise HTTPException(422, END_AFTER_START)
     for k, v in changes.items():
         setattr(shift, k, v)
     db.commit(); db.refresh(shift)
