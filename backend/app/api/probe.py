@@ -25,6 +25,7 @@ class ProbeIn(BaseModel):
     credential_override_id: int | None = None
     main_path: str | None = None
     sub_path: str | None = None
+    snapshot: bool = False
 
 
 class ScanIn(BaseModel):
@@ -93,7 +94,7 @@ def probe(body: ProbeIn, admin=Depends(require_admin), db: Session = Depends(get
                     main_path=main_path,
                     sub_path=sub_path,
                 )
-            result = probe_exact(stream)
+            result = probe_exact(stream, snapshot=body.snapshot)
         else:
             if source is not None:
                 stream = resolve_source_stream(source, credential)

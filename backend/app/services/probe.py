@@ -1,3 +1,4 @@
+import base64
 import os
 import subprocess
 from urllib.parse import quote
@@ -50,18 +51,40 @@ def probe_url(url, timeout=6.0):
         return None
     return {"res": f"{s['width']}x{s['height']}", "fps": fps, "codec": s["codec_name"]}
 
-def probe_exact(stream: EffectiveStream):
+
+def snapshot_jpeg_b64(url, timeout=6.0):
+    """Satu frame JPEG (lebar 480) dari RTSP sebagai base64; None bila gagal. Tidak ditulis ke disk."""
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-v", "error", "-rtsp_transport", "tcp", "-i", url,
+             "-frames:v", "1", "-vf", "scale=480:-1", "-f", "image2", "-c:v", "mjpeg", "pipe:1"],
+            capture_output=True, timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if r.returncode != 0 or not r.stdout:
+        return None
+    return base64.b64encode(r.stdout).decode("ascii")
+
+
+def probe_exact(stream: EffectiveStream, snapshot: bool = False):
     """Probe only the selected paths; never infer a vendor path."""
     def probe_path(path):
         url = build_rtsp_url(stream, path)
         return probe_url(url) if url else None
 
-    return {
+    result = {
         "main": probe_path(stream.main_path),
         "sub": probe_path(stream.sub_path),
         "main_path": stream.main_path,
         "sub_path": stream.sub_path,
     }
+    if snapshot:
+        # thumbnail dari stream deteksi (SUB), atau MAIN bila SUB kosong
+        path, ok = (stream.sub_path, result["sub"]) if stream.sub_path else (stream.main_path, result["main"])
+        url = build_rtsp_url(stream, path) if ok else None
+        result["snapshot_jpeg_b64"] = snapshot_jpeg_b64(url) if url else None
+    return result
 
 
 def _path_only(url):

@@ -16,6 +16,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Kredensial per kamera direct-host**: `resolve_stream` memakai `credential_override` walau kamera tanpa
   stream source (13 kamera server semuanya direct-host); API kamera + probe tidak lagi menolak kombinasi itu.
   Password khusus ter-encode di URL RTSP; referensi `store:` yang hilang → probe 422. Backend **357 passed**.
+- **Probe thumbnail**: `POST /cameras/probe` dengan `snapshot: true` mengembalikan `snapshot_jpeg_b64`
+  (1 frame SUB, atau MAIN bila SUB kosong, lebar 480, ffmpeg timeout 6 s, tidak ditulis ke disk; gagal →
+  `null`). Backend **361 passed**.
 
 ### Event clip pre-buffer (2026-09-24)
 
