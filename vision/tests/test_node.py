@@ -266,7 +266,8 @@ class _NoFaces:
 def _wired_node(tmp_path, zones, api_key="", analyzers=None):
     urls, det_calls = [], []
     frame = np.zeros((4, 4, 3), np.uint8)
-    cfg = NodeSettings(node_id="n", cameras_json="[]", api_key=api_key, data_dir=str(tmp_path))
+    cfg = NodeSettings(node_id="n", cameras_json="[]", api_key=api_key, data_dir=str(tmp_path),
+                       clip_ring_dir=str(tmp_path / "ring"))
 
     def source_factory(cam):
         urls.append(cam.source_url)
