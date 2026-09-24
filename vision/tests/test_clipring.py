@@ -187,3 +187,17 @@ def test_close_stops_process_and_removes_dir(tmp_path, procs):
     touch_segments(ring, [100])
     ring.close()
     assert procs[0].terminated and not os.path.exists(ring.dir)
+
+
+def test_check_survives_start_failure(tmp_path, monkeypatch):
+    clock = Clock(1000.0)
+
+    def popen(cmd, **kw):
+        raise OSError("no forks left")
+
+    monkeypatch.setattr(cr, "_which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(cr, "_popen", popen)
+    ring = ClipRing(1, "src", str(tmp_path), clock=clock)
+    ring.start()          # returns instead of raising
+    ring.check()          # the watchdog step must not raise either
+    assert ring.available is True and not ring.healthy()

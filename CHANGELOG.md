@@ -8,7 +8,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **`ClipRing`** (`vision/vision/clipring.py`): ffmpeg `-c copy` per kamera menulis segmen MPEG-TS 2 s
   ke tmpfs; `cut` menggabung segmen yang menutupi jendela insiden (concat `-c copy`, `+faststart`);
   watchdog restart ffmpeg mati/stall dengan backoff ≤ 30 s; celah restart tidak dianggap tertutup.
-  Belum dipakai recorder. Vision **189 passed**.
+  Watchdog tahan gagal start ffmpeg (`OSError` → ring nonaktif, bukan traceback).
+  Belum dipakai recorder. Vision **190 passed**.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 

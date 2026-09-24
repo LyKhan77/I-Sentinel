@@ -68,9 +68,14 @@ class ClipRing:
     def start(self) -> None:
         if not self.available:
             return
-        os.makedirs(self.dir, exist_ok=True)
-        self._proc = _popen(self.command(), stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+            self._proc = _popen(self.command(), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as e:
+            log.warning("clip ring cam%s: ffmpeg start failed: %s", self.camera_id, e)
+            self._proc = None
+            return
         self._started_at = self._clock()
 
     def segments(self) -> list[tuple[int, str]]:
