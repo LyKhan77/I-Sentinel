@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     cam_username: str = ""
     cam_password: str = ""
     storage_root: str = "/data/isentinel"
+    # Password kamera (profil kredensial "store:") — file 0600, WAJIB di luar storage_root
+    camera_secrets_file: str = "~/.isentinel/camera-secrets.json"
     mqtt_url: str = "localhost:1883"
     mqtt_username: str = ""
     mqtt_password: str = ""

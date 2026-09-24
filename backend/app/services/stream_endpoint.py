@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
 
 from app.core.config import settings
+from app.services import secret_store
 
 
 class StreamEndpointError(ValueError):
@@ -44,6 +45,14 @@ def path_only(value: str | None) -> str | None:
 
 
 def _secret(secret_ref: str) -> str:
+    if secret_ref.startswith("store:"):
+        try:
+            value = secret_store.get(secret_ref[len("store:"):])
+        except secret_store.SecretStoreError as exc:
+            raise StreamEndpointError("credential reference is unavailable") from exc
+        if value is None:
+            raise StreamEndpointError("credential reference is unavailable")
+        return value
     if not secret_ref.startswith("env:"):
         raise StreamEndpointError("unsupported credential reference")
     name = secret_ref[4:]

@@ -3,6 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Pendaftaran kamera sederhana (2026-09-24 – …)
+
+- **`secret_store`**: password kamera dari UI disimpan di file rahasia server (`CAMERA_SECRETS_FILE`,
+  default `~/.isentinel/camera-secrets.json`, 0600, direktori 0700, tulis atomik, ditolak bila di dalam
+  `STORAGE_ROOT`); DB hanya referensi `store:cred_<id>`, di-resolve oleh `stream_endpoint._secret`.
+  Backend **348 passed**.
+
 ### Event clip pre-buffer (2026-09-24)
 
 - **`ClipRing`** (`vision/vision/clipring.py`): ffmpeg `-c copy` per kamera menulis segmen MPEG-TS 2 s
