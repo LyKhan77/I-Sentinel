@@ -29,6 +29,15 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   yang sedang diedit. Kini dependency primitif (nama, NIK, shift tersimpan). Tes baru merah dulu
   (`Budi Santoso` ≠ `Budi Baru`). Frontend **118 passed**, lint 22 set tetap.
 
+- **Deploy branch + verifikasi UI** (2026-09-24): `feat/enrollment-refining` @ `f8028ed` di-push dan
+  di-checkout di gspe-ai3, restart `isentinel-api` (tanpa migrasi), health `{"status":"ok"}`. API
+  menampilkan `photo_count` Angly 5 / Ikhsal 5. Tidak ada shift lama dengan selesai ≤ mulai (3 shift:
+  Shift 1, Sore, Tekno). CRUD shift uji `UJI` lewat UI: POST 200, PATCH 200 (tambah Sab), rename ke
+  `Tekno` → 409 "Nama shift sudah dipakai", DELETE 200. 390 px: `scrollWidth = 390` di kedua tab.
+  Temuan data: NIK Ikhsal kosong (`""`, data lama) → form menandai "Wajib diisi"; tidak diubah.
+  Bukti `docs/evidence/enrollment-*.png`. Follow-up: shift malam; hitung ulang `attendance_day` setelah
+  shift diedit; tabel shift di 390 px sempit (kolom hari terbungkus per kata, scroll di dalam tabel).
+
 ### R5b deploy + tes lapangan pertama + permintaan user (2026-09-23)
 
 - **Deploy** `f22f2d6` ke gspe-ai3: backup `~/backup-pra-0016-20260923-1533.sql` (73 event, cocok
