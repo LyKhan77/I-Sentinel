@@ -29,6 +29,10 @@
 2. **Fallback live hanya saat ring tidak sehat di waktu event** (ffmpeg tidak ada/mati/stall): event diproses seperti perilaku lama (tarik live `stream.mp4` dari `cam_<id>_main`, durasi = post). Bila ring sehat tetapi segmen ternyata tidak menutupi event saat insiden ditutup, **tidak ada clip + log warning** — menarik live pada saat itu akan merekam momen yang salah.
 3. **Perbaikan kebocoran outbox**: file lokal di `<data_dir>/outbox` sekarang dihapus setelah upload. Terukur di server: `I-Sentinel-data/vision/outbox` = **582 MB, 2.464 file** yang tidak pernah dihapus.
 4. **Inbox auto-refresh**: poll `useLiveEvents` hanya menambah event baru (cursor `since`), sehingga `clip_path` yang datang belakangan tidak pernah tampil tanpa reload. Selama clip event terpilih masih "sedang direkam", halaman memanggil `refresh()` tiap 5 s.
+5. **Perintah ffmpeg segmen tanpa `-reset_timestamps 1`** (spec §3.1 menyebutkannya): dengan `-c copy` + concat protocol, PTS yang berlanjut antar segmen membuat timeline MP4 tetap monotonik; menambahkan flag itu justru berisiko pada jalur concat mentah.
+6. **`cut()` memakai concat protocol** (`-i concat:a.ts|b.ts`) alih-alih concat demuxer (`-f concat -safe 0 -i list.txt`) seperti di spec §3.1. Hasil setara untuk segmen MPEG-TS hasil `-c copy`; kalau suatu saat klip hasil gabungan bermasalah (durasi/pemutaran di batas segmen), ganti ke concat demuxer.
+7. **`cut()` hanya mengembalikan path atau `None`** — tidak ada `covered_s` seperti spec §3.1/§5. Cakupan sebagian karena itu hanya terlihat dari log total-miss (`ring missed incident ... no clip`). Bila verifikasi lapangan butuh angka cakupan, tambahkan log jendela yang tercakup.
+8. **`SETTLE_S = SEGMENT_S + 1 = 3 s`** (spec §3.2 menulis "end + 1 s") dan **`prune` menyimpan segmen yang menutupi `keep_from`** (spec §3.1 menulis "hapus segmen `start < keep_from − 4 s`"): keduanya setara/konservatif untuk pre-post yang disetujui; konsekuensi `SETTLE_S` ada di langkah verifikasi lapangan di bawah.
 
 ## Review Focus
 
@@ -1380,6 +1384,13 @@ ssh gspe-ai3 'cd /home/gspe-ai3/project_cv/I-Sentinel-data/api; for f in $(find 
 ```
 
 Expected: 1920×1080; durasi ≈ 10 + lama di zona + 15 s; skenario dua orang → **satu** file, dua event di Inbox menunjuk `clip_path` yang sama; snapshot muncul di Inbox dalam beberapa detik; tab Clip menampilkan "Clip sedang direkam…" lalu video tanpa reload. Putar clip: orang terlihat **sebelum** masuk zona. Screenshot Inbox (login CDP, lihat `temp/prompt-next-features.txt`) ke `docs/evidence/clip-prebuffer-inbox.png`; output ffprobe ke `docs/evidence/clip-prebuffer-ffprobe.txt`.
+
+Tambahan ekspektasi/instruksi verifikasi lapangan:
+
+- Durasi klip ≈ 10 s + lama orang di zona + 15 s, dengan toleransi **−0 s sampai ≈ −4 s**: klip selalu berakhir di batas segmen, dan bila satu segmen berjalan > 3 s ekor post-roll bisa terpotong (lihat Deviasi 8). Jangan anggap itu bug tanpa memeriksa log.
+- Periksa juga **akhir** klip (orang masih terlihat setelah keluar zona), bukan hanya bahwa orang terlihat sebelum masuk zona.
+- Di Inbox, **pilih event terbaru** saat memeriksa snapshot/klip: auto-refresh 5 s hanya berjalan untuk event terpilih yang masih "sedang direkam".
+- Bila satu klip terlihat terlalu pendek/berhenti di tengah gerakan pada batas segmen, catat sebagai temuan lapangan (kandidat perbaikan: concat demuxer, Deviasi 6).
 
 - [ ] **Step 5 ⚠: Bersihkan outbox lama**
 

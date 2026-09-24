@@ -29,6 +29,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Docs**: ROADMAP tabel ringkasan diperbarui (Fase 5 DONE 2026-09-21, R5b deploy + lapangan
   2026-09-23, baris CP clip pre-buffer). Suite penuh: backend 339 passed, vision 200 passed
   (3 deselected), frontend 120 passed, build 0, lint 22 warning (set sama dengan sebelum perubahan).
+- **Docs**: catatan deviasi implementasi (flag ffmpeg segmen, concat protocol, `covered_s` tidak dikembalikan,
+  `SETTLE_S`/`prune`) + ekspektasi verifikasi lapangan di plan Task 6; sinkron status R5b di ROADMAP.
 
 ### Enrollment & Shift refining (2026-09-23 – 2026-09-24)
 

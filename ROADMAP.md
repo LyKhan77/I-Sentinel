@@ -373,7 +373,7 @@ Spec: `docs/superpowers/specs/2026-09-22-detection-model-redesign.md`
 Plan: `docs/superpowers/plans/2026-09-23-attendance-face-first-r5b.md`
 Spec: `docs/superpowers/specs/2026-09-23-attendance-face-first-design.md`
 
-**Kriteria selesai (lokal; lapangan PENDING):**
+**Kriteria selesai (lokal + lapangan 2026-09-23):**
 - [x] Face worker terpisah di node wajah `cuda:2`, gerbang dari mainstream,
       gerbang tanpa arah ditolak, node idle tetap menerima config (vision suite
       non-GPU **177 passed, 3 deselected**)
