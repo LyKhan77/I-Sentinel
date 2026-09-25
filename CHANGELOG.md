@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Integrasi bot Telegram (2026-09-25 – …)
+### Integrasi bot Telegram (2026-09-25)
 
 - **`services/telegram.py`**: klien stdlib (getMe, getUpdates → daftar grup unik, sendPhoto multipart,
   sendMessage, retry 3× backoff), token di `secret_store` (fallback env), grup = satu baris aktif
@@ -36,6 +36,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Fix review: tautan Telegram selamat melewati login**: 401 mengarahkan ke `/login?next=<path asal>` dan login
   kembali ke `next` (hanya path internal; `//host`, `/\\host`, URL absolut → `/dashboard`). Dulu petugas yang membuka
   tautan event dari HP tanpa sesi berakhir di dashboard. Frontend **137 passed**, build 0, lint set sama.
+- **Deploy + verifikasi (2026-09-25)**: `00899ee` di gspe-ai3, restart `isentinel-api` saja (vision tidak berubah);
+  `GET /alerts` 200 (bug 500 tertutup). User membuat bot + grup, menghubungkan lewat tab Notifikasi; **E2E user OK**:
+  pesan uji, intrusion cam 357 (15:12, 15:24) dan absensi tercatat cam 365 (15:20) masuk grup sebagai foto + caption
+  (alert `sent`, keputusan 0,0–2,8 s setelah event). Token **0×** di log API, `camera-secrets.json` `-rw-------`,
+  0 error dispatcher. Rate-limit belum teramati di lapangan (tertutup tes unit). Tanpa screenshot (uji oleh user).
 
 ### Zona UX (2026-09-25)
 
