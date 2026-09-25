@@ -17,6 +17,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Halaman Gate Absensi dihapus**: zona absensi dibuat/diubah di Zona Deteksi (tipe Absensi, arah, aktif);
   kolom SNAPSHOT/CLIP Gates memang no-op (pipeline wajah selalu crop + snapshot, tanpa clip). `?tab=gates` lama
   jatuh ke tab Kamera. Frontend **126 passed**.
+- **Deteksi & Model = parameter model**: chip analyzer dihapus; tabel memuat semua kamera dengan kolom
+  **Status AI** ("Aktif · N zona" / "Tidak jalan (tanpa zona aktif)" / "Kamera nonaktif"); kartu model wajah
+  (InsightFace buffalo_l); teks tracker diperbaiki ("lepas track setelah 3 s"); Reset tidak mengirim
+  `analyzers`. Frontend **126 passed**, build 0, lint set sama.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
