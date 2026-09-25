@@ -20,6 +20,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **API Telegram**: `GET/PUT /telegram/settings` (token write-only, validasi format + `getMe`, 422 tanpa gema token;
   grup; URL aplikasi; alert terakhir), `POST /telegram/discover` (grup dari `getUpdates`, 409/502),
   `POST /telegram/test` (1 percobaan). Admin saja; `/status` tetap. Backend **404 passed**.
+- **Tab Notifikasi**: token bot (write-only, "Token tersimpan ✓" + Ganti), Deteksi grup → pilih → simpan, URL
+  aplikasi (default alamat browser), Kirim pesan uji, status alert terakhir. Frontend **129 passed**.
 
 ### Zona UX (2026-09-25)
 
