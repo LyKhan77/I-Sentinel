@@ -9,6 +9,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   sendMessage, retry 3× backoff), token di `secret_store` (fallback env), grup = satu baris aktif
   `telegram_chat`, URL aplikasi di `setting`; caption (behavior, absensi tercatat, wajah tidak dikenal, fallback
   tipe baru, ≤ 1024); token tidak pernah masuk pesan error. Tes memakai file rahasia terisolasi. Backend **381 passed**.
+- **Gerbang alert baru**: toggle `telegram` per behavior (fallback `zone.telegram`, default off; berlaku untuk tipe
+  apa pun), `ALERT_MIN_SEVERITY` bukan gerbang lagi; attendance hanya `matched` (tanpa rate-limit) dan wajah tidak
+  dikenal (`alert.type = attendance_unknown`, rate-limit sendiri); `handle` tanpa I/O jaringan → status `queued` +
+  antrean dispatcher. Consumer memproses attendance sebelum alert. Fix `GET /alerts` 500 (`camera_id` null).
+  Backend **388 passed**.
 
 ### Zona UX (2026-09-25)
 

@@ -13,7 +13,7 @@ class Alert(Base):
     zone_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # no FK — zones come Fase 2
     type: Mapped[str] = mapped_column(String(32))
     severity: Mapped[str] = mapped_column(String(16), default="info")
-    status: Mapped[str] = mapped_column(String(16))  # sent | failed | rate_limited | not_configured
+    status: Mapped[str] = mapped_column(String(16))  # queued | sent | failed | rate_limited | not_configured
     error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

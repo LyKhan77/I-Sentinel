@@ -55,16 +55,17 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 embedding = data["payload"].pop("embedding", None)
             status, ev = ingest_event(db, data)
             if status == "created" and ev is not None:
-                try:
-                    alerting.handle(db, ev)
-                except Exception:
-                    db.rollback()
-                    logger.exception("alerting failed for event %s", ev.event_id)
+                # attendance dulu: keputusan alert absensi butuh match_reason
                 try:
                     attendance.handle_face_event(db, ev, embedding=embedding)
                 except Exception:
                     db.rollback()
                     logger.exception("attendance failed for event %s", ev.event_id)
+                try:
+                    alerting.handle(db, ev)
+                except Exception:
+                    db.rollback()
+                    logger.exception("alerting failed for event %s", ev.event_id)
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
         elif topic == MEDIA_TOPIC:
             event_id = data.get("event_id")
