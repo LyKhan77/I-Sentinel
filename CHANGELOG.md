@@ -54,6 +54,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   untuk wajah tak dikenal) oleh backend setelah pencocokan (Pillow, best-effort) → foto Telegram ikut berlabel.
   Pipeline wajah vision tidak berubah. Backend **415**, vision **205** passed;
   rollback: revert perubahan ini lalu restart API **dan** vision-node.
+- **Feedback F3/F4**: Inbox menampilkan **nama zona** (zona terhapus → `#id`); Deteksi & Model mengganti tombol Reset
+  override dengan tautan **"Atur zona →"** yang membuka Zona Deteksi dengan kamera itu terpilih (`?camera=`).
+  Frontend **139 passed**, build 0, lint set sama; rollback: revert perubahan ini.
 
 ### Zona UX (2026-09-25)
 

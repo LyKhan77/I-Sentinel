@@ -343,3 +343,17 @@ test('zona absensi punya satu toggle Telegram pada behavior attendance', async (
     { kind: 'attendance', trigger_seconds: 0, telegram: true },
   ]))
 })
+
+test('?camera=<id> memilih kamera itu', async () => {
+  window.history.pushState({}, '', '/configuration?tab=zones&camera=2')
+  try {
+    vi.stubGlobal('fetch', stubFetch({ zones: [] }))
+    render(<I18nProvider><ZonesPage /></I18nProvider>)
+    await waitFor(() => {
+      const zoneCalls = (fetch as unknown as Mock).mock.calls.map(([u]) => String(u))
+      expect(zoneCalls.some((u) => u.includes('/zones?camera_id=2'))).toBe(true)
+    })
+  } finally {
+    window.history.pushState({}, '', '/')
+  }
+})

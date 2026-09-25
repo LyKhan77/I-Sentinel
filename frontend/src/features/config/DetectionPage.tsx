@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button, NumberInput, Toggle } from '@carbon/react'
 import { listCameras, updateCamera, type Camera, type CameraPayload } from '../../api/cameras'
 import { getDetectorSettings, putDetectorSettings, type DetectorSettings } from '../../api/detection'
@@ -93,10 +94,7 @@ export default function DetectionPage() {
               </td>
               <td data-testid={`ai-status-${camera.id}`}>{aiStatus(camera)}</td>
               <td className="det-actions">
-                <button
-                  type="button" className="det-link"
-                  onClick={() => patch(camera, { ai_fps: null, confidence: null, motion_enabled: null })}
-                >{t('detection.reset')}</button>
+                <Link className="det-link" to={`/configuration?tab=zones&camera=${camera.id}`}>{t('detection.editZones')}</Link>
               </td>
             </tr>
           ))}

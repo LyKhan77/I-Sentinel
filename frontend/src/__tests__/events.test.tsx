@@ -16,6 +16,7 @@ function stubFetch(events = EVENTS) {
   return vi.fn(async (url: string) => {
     const u = String(url)
     if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(events) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([{ id: 7, name: 'Lorong-15', camera_id: 1 }]) }
     if (u.endsWith('/cameras')) {
       return {
         ok: true,
@@ -384,4 +385,16 @@ test('?event=<id> opens that event in the detail panel', async () => {
   renderPage('/events?event=2')
   await screen.findByTestId('event-detail')
   expect(screen.getByTestId('event-detail')).toHaveTextContent('loitering')
+})
+
+test('inbox shows zone names; deleted zone falls back to #id', async () => {
+  const withZones: EventOut[] = [
+    { ...EVENTS[0], zone_id: 7 },
+    { ...EVENTS[1], zone_id: 99 },
+  ]
+  vi.stubGlobal('fetch', stubFetch(withZones))
+  renderPage()
+  expect((await screen.findAllByText(/Lorong-15/)).length).toBeGreaterThanOrEqual(1)
+  expect(screen.getByText(/#99/)).toBeInTheDocument()
+  expect(screen.getByTestId('event-detail')).toHaveTextContent('Lorong-15')
 })

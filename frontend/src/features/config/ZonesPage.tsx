@@ -69,9 +69,12 @@ export default function ZonesPage() {
       .then(([cs, all]) => {
         setCams(cs)
         setAllZones(all)
+        // tautan "Atur zona" dari Deteksi & Model: ?camera=<id> memilih kamera itu
+        const wanted = Number(new URLSearchParams(window.location.search).get('camera'))
         // buka kamera yang sudah punya zona — membuka kamera kosong bikin editor
         // langsung tampil hampa padahal ada zona lain yang siap disunting
-        const first = cs.find((c) => all.some((z) => z.camera_id === c.id)) ?? cs[0]
+        const first = cs.find((c) => c.id === wanted)
+          ?? cs.find((c) => all.some((z) => z.camera_id === c.id)) ?? cs[0]
         if (first) setCam({ id: first.id, label: first.name })
       })
       .catch(() => setError(t('cameras.loadError')))
