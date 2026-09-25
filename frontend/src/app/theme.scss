@@ -975,13 +975,6 @@ html {
   border: 1px solid var(--cds-border-subtle); border-block-end-color: var(--cds-border-strong);
 }
 .det-num::placeholder { color: var(--cds-text-placeholder); }
-// chip ringkas sesuai mockup 06 — bukan tombol Carbon yang setinggi 32px
-.det-chip {
-  display: inline-block; font-size: 10px; letter-spacing: .32px; padding: 2px 7px;
-  margin-inline-end: 4px; background: none; cursor: pointer;
-  border: 1px solid var(--cds-border-subtle); color: var(--cds-text-secondary);
-}
-.det-chip.on { border-color: var(--cds-support-success); color: var(--cds-support-success); }
 .det-actions { text-align: end; }
 .det-link { background: none; border: 0; padding: 0; font-size: 12px; cursor: pointer; color: var(--cds-link-primary); }
 .det-advanced { display: grid; gap: 16px; max-inline-size: 320px; margin-block-start: 16px; }
