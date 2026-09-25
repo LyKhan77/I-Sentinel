@@ -65,6 +65,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Dev-deps backend**: `numpy` masuk `[dev]` (dipakai `test_attendance_logic.py`, dulu hanya terbawa lewat paket
   `vision`). Catatan env: venv backend lokal sempat dibangun ulang tool review (`uv`) → editable `vision` hilang;
   dipulihkan `uv pip install -e "vision[dev]"`. Backend 418, vision 205, frontend 139.
+- **Deploy + verifikasi refining (2026-09-25 17:24)**: `fce11ae` di gspe-ai3, restart `isentinel-api` + `vision-node`
+  (`started 1 worker(s)`, 0 traceback). **E2E user OK**: dua orang satu zona → dua pesan, orang sama ≤ 2 menit →
+  rate_limited, format pesan per baris + judul Inggris, label foto (jenis kejadian / nama karyawan), nama zona di Inbox,
+  tautan Atur zona. Data alert sejak deploy: intrusion warning 5 sent + 2 rate_limited, loitering 1 sent, attendance
+  1 sent; token 0× di log API.
 
 ### Zona UX (2026-09-25)
 
