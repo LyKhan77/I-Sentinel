@@ -30,6 +30,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Probe thumbnail**: `POST /cameras/probe` dengan `snapshot: true` mengembalikan `snapshot_jpeg_b64`
   (1 frame SUB, atau MAIN bila SUB kosong, lebar 480, ffmpeg timeout 6 s, tidak ditulis ke disk; gagal →
   `null`). Backend **361 passed**.
+- **Fix review: 422 tidak menggemakan password**: handler `RequestValidationError` global membuang `input`/`ctx`
+  dari error (bawaan FastAPI mengembalikan body klien mentah → password profil kamera dan password login ikut
+  kembali di response 422). `msg`/`loc` tetap. Tes merah dulu (3 kasus profil + login). Backend **363 passed**.
 
 ### Event clip pre-buffer (2026-09-24)
 
