@@ -128,8 +128,10 @@ export default function ZonesPage() {
       }
       setAllZones((prev) => [...prev.filter((z) => z.camera_id !== cam.id), ...zones.filter((z) => z.id > 0)])
       setToast(t('zones.saved'))
-    } catch {
-      setError(t('zones.saveError'))
+    } catch (e) {
+      // API client melempar `Error('<what> failed: <status>')` (api/zones.ts expectOk)
+      const conflict = e instanceof Error && e.message.endsWith(': 422') && selected.type === 'attendance'
+      setError(t(conflict ? 'zones.directionConflict' : 'zones.saveError'))
     } finally {
       setBusy(null)
     }
@@ -373,18 +375,6 @@ export default function ZonesPage() {
                   </div>
                 )}
 
-                <Toggle
-                  id="zone-snapshot"
-                  labelText={t('zones.snapshot')}
-                  toggled={selected.snapshot}
-                  onToggle={(v) => patchSelected({ snapshot: v })}
-                />
-                <Toggle
-                  id="zone-clip"
-                  labelText={t('zones.clip')}
-                  toggled={selected.clip}
-                  onToggle={(v) => patchSelected({ clip: v })}
-                />
                 {selected.type === 'attendance' ? (
                   <p data-testid="zone-attendance-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: 0 }}>
                     {t('zones.attendanceHint')}
@@ -434,6 +424,20 @@ export default function ZonesPage() {
                                   }}
                                 />
                               )}
+                              <Toggle
+                                id={`zone-snapshot-${kind}`}
+                                size="sm"
+                                labelText={t('zones.snapshot')}
+                                toggled={b.snapshot ?? selected.snapshot}
+                                onToggle={(v) => setBehavior(kind, { snapshot: v })}
+                              />
+                              <Toggle
+                                id={`zone-clip-${kind}`}
+                                size="sm"
+                                labelText={t('zones.clip')}
+                                toggled={b.clip ?? selected.clip}
+                                onToggle={(v) => setBehavior(kind, { clip: v })}
+                              />
                             </div>
                           )}
                         </div>

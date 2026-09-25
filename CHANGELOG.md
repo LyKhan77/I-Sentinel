@@ -11,6 +11,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Backend**: item `behaviors` menerima `snapshot`/`clip` (bool, lainnya 422); zona absensi aktif dengan arah
   berbeda di kamera yang sama ditolak 422 saat create/patch (patch gagal tidak setengah tersimpan); config push
   tidak lagi mengirim `analyzers` (kolom dibiarkan, deprecated). Backend **367 passed**.
+- **Zona Deteksi**: toggle Snapshot/Clip level zona dihapus; tiap behavior tercentang punya toggle Snapshot dan
+  Clip (default mengikuti flag zona lama), dikirim sebagai key di item `behaviors`; zona absensi tanpa toggle
+  media; konflik arah → "Kamera ini sudah punya zona absensi aktif dengan arah lain.". Frontend **132 passed**.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
