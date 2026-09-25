@@ -17,6 +17,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Dispatcher alert**: thread di proses API (start/stop di `lifespan`) mengambil antrean, menunggu snapshot ±5 s
   (10 × 0,5 s), kirim `sendPhoto` dari `storage_root` atau teks bila snapshot tidak datang / file hilang; hasil
   `sent` / `failed` (+ pesan Telegram) / `not_configured` di baris alert. Backend **395 passed**.
+- **API Telegram**: `GET/PUT /telegram/settings` (token write-only, validasi format + `getMe`, 422 tanpa gema token;
+  grup; URL aplikasi; alert terakhir), `POST /telegram/discover` (grup dari `getUpdates`, 409/502),
+  `POST /telegram/test` (1 percobaan). Admin saja; `/status` tetap. Backend **404 passed**.
 
 ### Zona UX (2026-09-25)
 
