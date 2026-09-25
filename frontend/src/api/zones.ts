@@ -5,7 +5,13 @@ export type ZoneType = 'attendance' | 'behavior'
 export type BehaviorKind = 'intrusion' | 'loitering' | 'running'
 
 /** Satu behavior zona; `trigger_seconds` = lama di zona sebelum event terbit (0 = langsung). */
-export type Behavior = { kind: BehaviorKind | 'attendance'; trigger_seconds: number; speed_limit_mps?: number }
+export type Behavior = {
+  kind: BehaviorKind | 'attendance'
+  trigger_seconds: number
+  speed_limit_mps?: number
+  snapshot?: boolean // kosong = ikut flag zona (data lama)
+  clip?: boolean
+}
 
 export type Schedule = { days: number[]; start: string; end: string }
 
@@ -44,7 +50,11 @@ export type ZonePayload = {
 }
 
 async function expectOk(res: Response, what: string) {
-  if (!res.ok) throw new Error(`${what} failed: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const detail = body && typeof body.detail === 'string' ? `: ${body.detail}` : ''
+    throw new Error(`${what} failed: ${res.status}${detail}`)
+  }
   return res.json()
 }
 

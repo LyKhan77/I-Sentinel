@@ -7,10 +7,10 @@ import ConfigurationPage from '../features/config/ConfigurationPage'
 
 const camera = { id: 1, name: 'CAM-01', location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, main_path: null, sub_path: null, node_id: 1, source_id: null, location_group_id: null, credential_override_id: null, source: null, location_group: null, credential_override: null, enabled: true, status: 'online', probe_main: null, probe_sub: null, ai_fps: null, confidence: null, analyzers: null, motion_enabled: null }
 const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, face_min_width_px: 80, face_min_det_score: 0.6, face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3, updated_at: '2026-09-22T00:00:00Z' }
-// tabel deteksi hanya menampilkan kamera yang punya zona, jadi tiap tes perlu stub /zones
+// kolom Status AI dihitung dari zona aktif, jadi tiap tes perlu stub /zones
 const zone = { id: 9, camera_id: 1, name: 'Z', type: 'behavior', polygon: [], behaviors: [], trigger_seconds: 0, active: true }
 
-test('detection tab updates analyzer and global motion settings', async () => {
+test('detection tab saves per-camera fps and global motion settings', async () => {
   const calls: { url: string; init?: RequestInit }[] = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init })
@@ -20,8 +20,12 @@ test('detection tab updates analyzer and global motion settings', async () => {
   render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
 
   expect(await screen.findByText('Deteksi & Model')).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'intrusion' }))
-  await waitFor(() => expect(calls.some((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH')).toBe(true))
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.type(document.querySelector('#fps-1') as HTMLInputElement, '8')
+  await waitFor(() => {
+    const patch = calls.find((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH')
+    expect(JSON.parse(String(patch!.init!.body))).toEqual({ ai_fps: 8 })
+  })
   await userEvent.click(screen.getByText('Advanced'))
   await userEvent.clear(screen.getByLabelText('Motion threshold'))
   await userEvent.type(screen.getByLabelText('Motion threshold'), '30')
@@ -76,9 +80,21 @@ test('kolom override kosong bukan keadaan invalid — kosong berarti pakai nilai
   expect(fps.closest('.cds--number')?.className ?? '').not.toContain('invalid')
 })
 
-test('tabel hanya memuat kamera yang punya zona, chip ringkas, override kosong memakai placeholder global', async () => {
-  const cams = [camera, { ...camera, id: 2, name: 'CAM-02' }]
-  const zones = [{ id: 9, camera_id: 1, name: 'Z', type: 'behavior', polygon: [], behaviors: [], trigger_seconds: 0, active: true }]
+test('tabel memuat semua kamera dengan Status AI dari zona aktif, tanpa chip analyzer', async () => {
+  const cams = [camera, { ...camera, id: 2, name: 'CAM-02' }, { ...camera, id: 3, name: 'CAM-03', enabled: false },
+    { ...camera, id: 4, name: 'CAM-04' }]
+  const intrusion = [{ kind: 'intrusion', trigger_seconds: 0 }]
+  const gate = [{ kind: 'attendance', trigger_seconds: 0 }]
+  const zones = [
+    { id: 9, camera_id: 1, name: 'Z', type: 'behavior', direction: null, polygon: [], behaviors: intrusion, trigger_seconds: 0, active: true },
+    { id: 10, camera_id: 1, name: 'G', type: 'attendance', direction: 'entry', polygon: [], behaviors: gate, trigger_seconds: 0, active: true },
+    // zona visual (tanpa behavior) tidak menjalankan AI → tidak dihitung
+    { id: 12, camera_id: 1, name: 'Visual', type: 'behavior', direction: null, polygon: [], behaviors: [], trigger_seconds: 0, active: true },
+    { id: 11, camera_id: 2, name: 'Off', type: 'behavior', direction: null, polygon: [], behaviors: intrusion, trigger_seconds: 0, active: false },
+    // hanya zona visual / gate tanpa arah → vision tidak membuat worker
+    { id: 13, camera_id: 4, name: 'Visual', type: 'behavior', direction: null, polygon: [], behaviors: [], trigger_seconds: 0, active: true },
+    { id: 14, camera_id: 4, name: 'G?', type: 'attendance', direction: null, polygon: [], behaviors: gate, trigger_seconds: 0, active: true },
+  ]
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const body = url.includes('/detector-settings') ? settings
       : url.includes('/zones') ? zones
@@ -88,20 +104,17 @@ test('tabel hanya memuat kamera yang punya zona, chip ringkas, override kosong m
   }))
   render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
 
-  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
-  expect(screen.queryByText('CAM-02')).toBeNull()
-
-  const fps = document.querySelector('#fps-1') as HTMLInputElement
-  expect(fps.value).toBe('')
-  expect(fps.placeholder).toBe('5')
-  expect((document.querySelector('#confidence-1') as HTMLInputElement).placeholder).toBe('0.4')
-
-  const chips = document.querySelectorAll('.det-chip')
-  expect(chips.length).toBe(3)   // attendance diatur dari tab Gate Absensi
-  expect(document.querySelectorAll('.det-table .cds--btn').length).toBe(0)
+  expect(await screen.findByTestId('ai-status-1')).toHaveTextContent('Aktif · 2 zona')
+  expect(screen.getByTestId('ai-status-2')).toHaveTextContent('Tidak jalan (tanpa zona aktif)')
+  expect(screen.getByTestId('ai-status-3')).toHaveTextContent('Kamera nonaktif')
+  expect(screen.getByTestId('ai-status-4')).toHaveTextContent('Tidak jalan (tanpa zona aktif)')
+  expect(document.querySelectorAll('.det-chip')).toHaveLength(0)
+  expect(screen.getByText('InsightFace buffalo_l')).toBeInTheDocument()
+  expect(screen.getByText('lepas track setelah 3 s')).toBeInTheDocument()
+  expect((document.querySelector('#fps-1') as HTMLInputElement).placeholder).toBe('5')
 })
 
-test('chip attendance tidak ditampilkan tapi tetap tersimpan saat chip lain di-toggle', async () => {
+test('reset override tidak lagi mengirim analyzers', async () => {
   const calls: { url: string; init?: RequestInit }[] = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init })
@@ -110,16 +123,9 @@ test('chip attendance tidak ditampilkan tapi tetap tersimpan saat chip lain di-t
     return { ok: true, status: 200, json: async () => body }
   }))
   render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
-
-  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'attendance' })).toBeNull()
-  expect(document.querySelectorAll('.det-chip')).toHaveLength(3)
-
-  await userEvent.click(screen.getByRole('button', { name: 'intrusion' }))
-
-  const patch = calls.find((c) => c.url.includes('/cameras/1') && c.init?.method === 'PATCH')
-  const sent = JSON.parse(String(patch?.init?.body)).analyzers
-  // mematikan intrusion tidak boleh ikut mematikan gate absensi kamera ini
-  expect(sent).toContain('attendance')
-  expect(sent).not.toContain('intrusion')
+  await userEvent.click(await screen.findByRole('button', { name: 'Reset override' }))
+  await waitFor(() => {
+    const patch = calls.find((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH')
+    expect(JSON.parse(String(patch!.init!.body))).toEqual({ ai_fps: null, confidence: null, motion_enabled: null })
+  })
 })

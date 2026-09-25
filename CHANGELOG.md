@@ -3,6 +3,45 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Zona UX (2026-09-25)
+
+- **Vision: zona aktif = AI aktif**: mask `camera.analyzers` tidak dibaca lagi; kamera tanpa zona aktif tidak
+  mendapat worker (stream tidak dibuka, tanpa YOLO → hemat GPU); flag Snapshot/Clip dibaca per behavior dengan
+  fallback flag zona (zona lama berperilaku sama). Vision **203 passed**.
+- **Backend**: item `behaviors` menerima `snapshot`/`clip` (bool, lainnya 422); zona absensi aktif dengan arah
+  berbeda di kamera yang sama ditolak 422 saat create/patch (patch gagal tidak setengah tersimpan); config push
+  tidak lagi mengirim `analyzers` (kolom dibiarkan, deprecated). Backend **367 passed**.
+- **Zona Deteksi**: toggle Snapshot/Clip level zona dihapus; tiap behavior tercentang punya toggle Snapshot dan
+  Clip (default mengikuti flag zona lama), dikirim sebagai key di item `behaviors`; zona absensi tanpa toggle
+  media; konflik arah → "Kamera ini sudah punya zona absensi aktif dengan arah lain.". Frontend **132 passed**.
+- **Halaman Gate Absensi dihapus**: zona absensi dibuat/diubah di Zona Deteksi (tipe Absensi, arah, aktif);
+  kolom SNAPSHOT/CLIP Gates memang no-op (pipeline wajah selalu crop + snapshot, tanpa clip). `?tab=gates` lama
+  jatuh ke tab Kamera. Frontend **126 passed**.
+- **Deteksi & Model = parameter model**: chip analyzer dihapus; tabel memuat semua kamera dengan kolom
+  **Status AI** ("Aktif · N zona" / "Tidak jalan (tanpa zona aktif)" / "Kamera nonaktif"); kartu model wajah
+  (InsightFace buffalo_l); teks tracker diperbaiki ("lepas track setelah 3 s"); Reset tidak mengirim
+  `analyzers`. Frontend **126 passed**, build 0, lint set sama.
+- **Fix kontrak `behaviors`**: zona dengan `behaviors: []` (semua behavior di-uncheck) kini benar-benar zona visual
+  saja — node tidak lagi membangkitkan analyzer dari kolom legacy; `behaviors` NULL tetap memakai fallback legacy
+  (zona 15). Config push mengirim nilai `behaviors` apa adanya. Vision **204 passed**, backend **368 passed**.
+- **Fix pesan error zona**: pesan "kamera sudah punya zona absensi aktif dengan arah lain" hanya muncul bila
+  backend memang menolak karena konflik arah; 422 lain memakai pesan simpan generik. Frontend **127 passed**.
+- **Bersih-bersih**: CSS `.det-chip` yang tak terpakai dibuang dari `theme.scss` (chip analyzer sudah dihapus dari
+  halaman Deteksi & Model).
+- **Dokumen**: README (aturan "deteksi hanya berjalan di kamera yang punya zona aktif" + chip analyzer tidak
+  dipakai), ROADMAP (baris **ZU** + catatan halaman Gate Absensi dihapus), dan runbook `attendance-face-first`
+  disinkronkan — tanpa perubahan kode.
+- **Fix review M1: Status AI jujur**: kolom menghitung hanya zona yang benar-benar dijalankan vision — zona visual
+  (behaviors kosong) dan gate absensi tanpa arah tidak dihitung (dulu tertulis "Aktif" walau tanpa worker). Tes
+  diperluas dulu (merah). + 2 tes backend jalur PATCH konflik arah (ubah tipe ke absensi, ubah arah gate aktif).
+  Backend **370**, frontend **127** passed, build 0, lint set sama.
+- **Deploy + verifikasi (2026-09-25)**: `5d785a6` di gspe-ai3, restart `isentinel-api` lalu `vision-node` (tanpa
+  migrasi). Vision `started 7 worker(s)` → **1 worker** (cam 363, zona 15 kini jalan walau chip lama
+  `['attendance']`); CPU proses vision **70,7 % → ~5 %** (±6 menit setelah start), RSS **3,43 → 1,53 GB**, memori
+  GPU1 924 → 436 MiB; ring clip cam363 aktif, 0 error log. **E2E user OK**: tab Gate hilang (`?tab=gates` →
+  Kamera), event intrusion cam 363, Clip off per behavior, Status AI, konflik arah absensi, 390 px. Tanpa
+  screenshot evidence (uji dilakukan user).
+
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
 - **Halaman Kamera dirapikan**: panel "Sumber & kredensial" dihapus (`CameraSourcesPanel`); tombol

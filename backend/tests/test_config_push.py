@@ -291,6 +291,20 @@ def test_build_node_config_zone_includes_behaviors_and_trigger(db):
                                    {"kind": "loitering", "trigger_seconds": 30}]
 
 
+def test_build_node_config_behaviors_sent_raw_null_vs_empty(db):
+    """NULL tetap None (node pakai fallback kolom lama); [] tetap [] (zona visual saja)."""
+    n = _node(db)
+    cam = _cam(db, n.id)
+    legacy = _zone(db, cam.id, name="legacy")
+    legacy.behaviors = None
+    visual = _zone(db, cam.id, name="visual")
+    visual.behaviors = []
+    db.commit()
+    zones = {z["name"]: z for z in config_push.build_node_config(db, n)["cameras"][0]["zones"]}
+    assert zones["legacy"]["behaviors"] is None
+    assert zones["visual"]["behaviors"] == []
+
+
 def test_build_node_config_camera_detection_overrides(db):
     from app.models.camera import Camera
     from app.models.node import Node
@@ -303,7 +317,7 @@ def test_build_node_config_camera_detection_overrides(db):
     cam = bnc(db, n)["cameras"][0]
     assert cam["ai_fps"] == 8.0
     assert cam["confidence"] == 0.45
-    assert cam["analyzers"] == ["intrusion"]
+    assert "analyzers" not in cam
     assert cam["motion"]["enabled"] is False
     assert cam["motion"]["threshold"] == settings.motion_threshold
 
@@ -319,5 +333,5 @@ def test_build_node_config_camera_uses_global_defaults(db):
     cam = bnc(db, n)["cameras"][0]
     assert cam["ai_fps"] == settings.default_ai_fps
     assert cam["confidence"] == settings.detector_conf
-    assert cam["analyzers"] is None          # None = semua analyzer aktif
+    assert "analyzers" not in cam
     assert cam["motion"]["enabled"] is True

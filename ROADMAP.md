@@ -22,6 +22,7 @@
 | RE | Enrollment & Shift refining (CRUD karyawan/shift, NIK, hapus foto per karyawan) | [x] selesai | 2026-09-24 | backend 339, vision 177, frontend 118; UI 390px overflow 0; `docs/evidence/enrollment-*.png` | `f8028ed` |
 | CP | Event clip pre-buffer (ring mainstream, insiden per kamera, seek per event) | [x] selesai | 2026-09-24 | Lapangan: klip 1080p berisi orang sejak sebelum masuk zona; snapshot 0,5 s (dulu ~30 s); 2 orang → 1 klip + `#t=21.2`; backend 342, vision 200, frontend 121; `docs/evidence/clip-prebuffer-*.txt` | `4d179d7..` |
 | CR | Pendaftaran kamera sederhana (IP + path + kredensial per profil) | [x] selesai | 2026-09-25 | Deploy gspe-ai3 `1924ef6`, E2E user OK; backend 363, vision 200, frontend 129, build 0; 422 tidak menggemakan password (profil + login) | `2a99bb3..` |
+| ZU | Zona UX (zona = aturan, Gate Absensi dihapus, Snapshot/Clip per behavior) | [x] selesai | 2026-09-25 | Deploy gspe-ai3 `5d785a6`, E2E user OK; worker vision 7 → 1, CPU vision 70,7 % → ~5 %, RSS 3,43 → 1,5 GB; backend 370, vision 204, frontend 127 | `21826e7..` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
@@ -146,7 +147,7 @@ Plan: `docs/plans/05-fase-4-absensi.md` (7 task, selesai + review)
 - Match E2E: event attendance crop → `attendance_event` match_score **1.0** → `attendance_day` waiting → exit event → late 429 mnt (masuk 14:24 vs shift 07:00+tol 15)
 - Crop dari MAINSTREAM (fix `41695a1`): 259×157 px (sebelumnya substream 87×67) — wajah dari belakang = no_face (benar)
 - CSV: `EMP-001,Karyawan Test,2026-09-15,Shift 1,14:24:07,14:24:26,0,late,429,` — import 2026-09-14 ontime 550 mnt roundtrip OK
-- UI: Attendance (tile summary, badge TELAT 429 MNT, Import/Export), Enrollment (badge 3 Foto + galeri), Gate Absensi (list kamera + arah) — screenshot
+- UI: Attendance (tile summary, badge TELAT 429 MNT, Import/Export), Enrollment (badge 3 Foto + galeri), Gate Absensi (list kamera + arah; halaman ini dihapus di Zona UX 2026-09-25) — screenshot
 
 **Catatan keputusan/temuan fase ini:**
 - Face tetap di server; vision hanya crop upper-body + upload (edge-friendly)

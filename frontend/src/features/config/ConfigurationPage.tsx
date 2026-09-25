@@ -3,18 +3,16 @@ import { useSearchParams } from 'react-router-dom'
 import { useT, type TKey } from '../../app/i18n'
 import CamerasPage from './CamerasPage'
 import ZonesPage from './ZonesPage'
-import GatesPage from './GatesPage'
 import StoragePage from './StoragePage'
 import NodesPanel from './NodesPanel'
 import DetectionPage from './DetectionPage'
 
-const TABS = ['cameras', 'zones', 'gates', 'detection', 'storage', 'nodes'] as const
+const TABS = ['cameras', 'zones', 'detection', 'storage', 'nodes'] as const
 type ConfigurationTab = (typeof TABS)[number]
 
 const TAB_LABEL: Record<ConfigurationTab, TKey> = {
   cameras: 'cameras.title',
   zones: 'zones.title',
-  gates: 'gates.title',
   storage: 'storage.title',
   detection: 'detection.title',
   nodes: 'configuration.tabNodes',
@@ -52,7 +50,6 @@ export default function ConfigurationPage() {
         <TabPanels>
           <TabPanel>{tab === 'cameras' && <CamerasPage />}</TabPanel>
           <TabPanel>{tab === 'zones' && <ZonesPage />}</TabPanel>
-          <TabPanel>{tab === 'gates' && <GatesPage />}</TabPanel>
           <TabPanel>{tab === 'detection' && <DetectionPage />}</TabPanel>
           <TabPanel>{tab === 'storage' && <StoragePage />}</TabPanel>
           <TabPanel>{tab === 'nodes' && <NodesPanel />}</TabPanel>

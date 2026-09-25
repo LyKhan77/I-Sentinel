@@ -42,7 +42,7 @@ timeout 150 bash -c 'until journalctl -u vision-node --since "-3 min" --no-pager
 
 Frontend (`isentinel-web`, Vite dev) memuat kode baru langsung setelah checkout, tanpa restart.
 Setelah deploy, zona attendance 7/8/9/11 masih `active=False`: fitur wajah belum
-berjalan sampai zona digambar ulang (§2) lalu diaktifkan di tab Gate Absensi.
+berjalan sampai zona digambar ulang (§2) lalu diaktifkan di Zona Deteksi (tipe Absensi).
 
 Deploy frontend+backend dan vision harus bersamaan: PUT setelan wajah
 (Task 7) menolak payload tanpa lima field wajah, jadi frontend lama + backend

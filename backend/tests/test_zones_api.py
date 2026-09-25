@@ -188,3 +188,80 @@ def test_patch_zone_to_attendance_without_direction_rejected(client):
     zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
     r = client.patch(f"/api/v1/zones/{zid}", json={"type": "attendance"}, headers=h)
     assert r.status_code == 422
+
+GATE_BEHAVIORS = [{"kind": "attendance", "trigger_seconds": 0}]
+
+
+def _gate(client, h, cam_id, direction, active=True, name="g"):
+    return client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam_id, "name": name, "type": "attendance",
+        "direction": direction, "behaviors": GATE_BEHAVIORS, "active": active,
+    }, headers=h)
+
+
+def test_behavior_media_flags_roundtrip_and_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    behaviors = [{"kind": "intrusion", "trigger_seconds": 0, "clip": False},
+                 {"kind": "loitering", "trigger_seconds": 30, "snapshot": False}]
+    r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                           "behaviors": behaviors}, headers=h)
+    assert r.status_code == 200 and r.json()["behaviors"] == behaviors
+    bad = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                             "behaviors": [{"kind": "intrusion", "clip": "no"}]}, headers=h)
+    assert bad.status_code == 422
+
+
+def test_attendance_direction_conflict_rejected_on_create(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    assert _gate(client, h, cam["id"], "entry").status_code == 200
+    assert _gate(client, h, cam["id"], "entry", name="g2").status_code == 200  # arah sama boleh
+    conflict = _gate(client, h, cam["id"], "exit", name="g3")
+    assert conflict.status_code == 422
+    assert "another direction" in conflict.json()["detail"]
+    assert _gate(client, h, cam["id"], "exit", active=False, name="g4").status_code == 200  # nonaktif tidak dihitung
+
+
+def test_attendance_direction_conflict_rejected_on_patch(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    assert _gate(client, h, cam["id"], "entry").status_code == 200
+    exit_gate = _gate(client, h, cam["id"], "exit", active=False, name="keluar").json()
+    r = client.patch(f"/api/v1/zones/{exit_gate['id']}", json={"active": True}, headers=h)
+    assert r.status_code == 422
+    assert client.get(f"/api/v1/zones/{exit_gate['id']}", headers=h).json()["active"] is False
+    ok = client.patch(f"/api/v1/zones/{exit_gate['id']}", json={"active": True, "direction": "entry"}, headers=h)
+    assert ok.status_code == 200
+
+
+def test_attendance_gates_on_different_cameras_do_not_conflict(client):
+    h = _admin_headers(client)
+    a, b = _camera(client, h, "cam-a"), _camera(client, h, "cam-b")
+    assert _gate(client, h, a["id"], "entry").status_code == 200
+    assert _gate(client, h, b["id"], "exit").status_code == 200
+
+
+def test_patch_flip_type_to_attendance_with_conflicting_direction_rejected(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    assert _gate(client, h, cam["id"], "entry").status_code == 200
+    zone = client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam["id"], "name": "b", "type": "behavior",
+        "behaviors": [{"kind": "intrusion", "trigger_seconds": 0}],
+    }, headers=h).json()
+    r = client.patch(f"/api/v1/zones/{zone['id']}", json={
+        "type": "attendance", "direction": "exit", "behaviors": GATE_BEHAVIORS,
+    }, headers=h)
+    assert r.status_code == 422
+    assert client.get(f"/api/v1/zones/{zone['id']}", headers=h).json()["type"] == "behavior"
+
+
+def test_patch_direction_of_active_gate_into_conflict_rejected(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    assert _gate(client, h, cam["id"], "entry").status_code == 200
+    other = _gate(client, h, cam["id"], "entry", name="g2").json()
+    r = client.patch(f"/api/v1/zones/{other['id']}", json={"direction": "exit"}, headers=h)
+    assert r.status_code == 422
+    assert client.get(f"/api/v1/zones/{other['id']}", headers=h).json()["direction"] == "entry"

@@ -11,7 +11,7 @@ const CAM_BASE = { location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: n
 const CAMS = [{ id: 1, name: 'CAM-01', ...CAM_BASE }, { id: 2, name: 'CAM-02', ...CAM_BASE }]
 const ZONE_CAM1: Zone = { id: 5, camera_id: 1, camera_name: 'CAM-01', name: 'Zona A', type: 'behavior', direction: null, polygon: [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]], schedule: null, severity: 'warning', rate_limit_min: 5, trigger_seconds: 0, behaviors: [], snapshot: true, clip: true, telegram: false, active: true }
 
-function stubFetch(opts: { zones?: Zone[]; created?: Zone } = {}) {
+function stubFetch(opts: { zones?: Zone[]; created?: Zone; patchStatus?: number; patchDetail?: string } = {}) {
   const zones = opts.zones ?? []
   return vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
@@ -27,6 +27,9 @@ function stubFetch(opts: { zones?: Zone[]; created?: Zone } = {}) {
       return { ok: true, status: 200, json: () => Promise.resolve(zones) }
     }
     if (u.includes('/zones/') && init?.method === 'PATCH') {
+      if (opts.patchStatus != null) {
+        return { ok: false, status: opts.patchStatus, json: () => Promise.resolve({ detail: opts.patchDetail ?? 'x' }) }
+      }
       const body = JSON.parse(String(init.body))
       return { ok: true, status: 200, json: () => Promise.resolve({ ...zones[0], ...body }) }
     }
@@ -161,8 +164,8 @@ const zoneFix = (over: Partial<Zone> = {}): Zone => ({
   telegram: false, active: true, ...over,
 })
 
-async function selectZone(zones: Zone[]) {
-  const fetchMock = stubFetch({ zones })
+async function selectZone(zones: Zone[], opts: { patchStatus?: number; patchDetail?: string } = {}) {
+  const fetchMock = stubFetch({ zones, ...opts })
   vi.stubGlobal('fetch', fetchMock)
   render(<I18nProvider><ZonesPage /></I18nProvider>)
   fireEvent.click(await screen.findByTestId('zone-item-10'))
@@ -205,6 +208,49 @@ test('behavior running membawa speed_limit_mps sendiri', async () => {
   await waitFor(() =>
     expect(patchBody(fetchMock).behaviors).toEqual([{ kind: 'running', trigger_seconds: 0, speed_limit_mps: 2.5 }]),
   )
+})
+
+test('Snapshot dan Clip diatur per behavior dan dikirim di item behaviors', async () => {
+  const fetchMock = await selectZone([zoneFix({ behaviors: [
+    { kind: 'intrusion', trigger_seconds: 0 }, { kind: 'loitering', trigger_seconds: 30 },
+  ] })])
+  expect(document.getElementById('zone-snapshot')).toBeNull() // toggle level zona dihapus
+  expect(document.getElementById('zone-clip')).toBeNull()
+  fireEvent.click(document.getElementById('zone-clip-intrusion')!)
+  fireEvent.click(document.getElementById('zone-snapshot-loitering')!)
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'intrusion', trigger_seconds: 0, clip: false },
+    { kind: 'loitering', trigger_seconds: 30, snapshot: false },
+  ]))
+})
+
+test('toggle behavior mengikuti flag zona lama bila belum diatur', async () => {
+  await selectZone([zoneFix({ clip: false, behaviors: [{ kind: 'intrusion', trigger_seconds: 0 }] })])
+  expect(document.getElementById('zone-clip-intrusion')).toHaveAttribute('aria-checked', 'false')
+  expect(document.getElementById('zone-snapshot-intrusion')).toHaveAttribute('aria-checked', 'true')
+  expect(document.getElementById('zone-clip-loitering')).toBeNull() // behavior tidak dicentang → tanpa toggle
+})
+
+test('zona absensi tanpa toggle Snapshot/Clip; konflik arah menampilkan pesan', async () => {
+  await selectZone(
+    [zoneFix({ type: 'attendance', direction: 'exit', behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] })],
+    { patchStatus: 422, patchDetail: 'camera already has an active attendance zone with another direction' },
+  )
+  expect(document.querySelector('[id^="zone-clip"]')).toBeNull()
+  expect(document.querySelector('[id^="zone-snapshot"]')).toBeNull()
+  fireEvent.click(screen.getByTestId('zone-save'))
+  expect(await screen.findByText('Kamera ini sudah punya zona absensi aktif dengan arah lain.')).toBeInTheDocument()
+})
+
+test('422 bukan konflik arah (validasi lain) memakai pesan simpan generik', async () => {
+  await selectZone(
+    [zoneFix({ type: 'attendance', direction: 'exit', behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] })],
+    { patchStatus: 422, patchDetail: 'direction is required' },
+  )
+  fireEvent.click(screen.getByTestId('zone-save'))
+  expect(await screen.findByText('Gagal menyimpan zona')).toBeInTheDocument()
+  expect(screen.queryByText('Kamera ini sudah punya zona absensi aktif dengan arah lain.')).toBeNull()
 })
 
 test('tipe Attendance: arah + petunjuk area wajah, tanpa input trigger', async () => {

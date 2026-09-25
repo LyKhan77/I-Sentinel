@@ -122,20 +122,19 @@ test('renders one shared workbench heading instead of per-panel titles', async (
   renderConfiguration('/configuration?tab=cameras')
 
   expect(await screen.findByRole('heading', { name: 'Konfigurasi' })).toBeInTheDocument()
-  expect(screen.getByText('Kamera, zona, gate absensi, dan retensi dalam satu tempat')).toBeInTheDocument()
+  expect(screen.getByText('Kamera, zona, model deteksi, dan retensi dalam satu tempat')).toBeInTheDocument()
   expect(screen.queryByText('Kamera terdaftar, stream utama/sub, dan node vision')).not.toBeInTheDocument()
 })
 
 test('selects the tab named by the URL, mounts only that panel, and updates the query on selection', async () => {
   const user = userEvent.setup()
   const calls = stubFetch([gate(1, 'entry')])
-  renderConfiguration('/configuration?tab=gates')
+  renderConfiguration('/configuration?tab=zones')
 
-  expect(await screen.findByRole('tab', { name: 'Gate Absensi', selected: true })).toBeInTheDocument()
-  expect(await screen.findByTestId('gate-add')).toBeInTheDocument()
-  // panel non-aktif tidak di-mount → API-nya tidak dipanggil
+  expect(await screen.findByRole('tab', { name: 'Zona Deteksi', selected: true })).toBeInTheDocument()
+  expect(await screen.findByTestId('zone-list')).toBeInTheDocument()
+  // panel non-aktif tidak di-mount → API-nya tidak dipanggil (ZoneEditor sendiri memang /live untuk latar)
   expect(calls.some((c) => c.url.includes('/storage/stats'))).toBe(false)
-  expect(calls.some((c) => c.url.includes('/live'))).toBe(false)
 
   await user.click(screen.getByRole('tab', { name: 'Retensi & Storage' }))
   expect(screen.getByTestId('location')).toHaveTextContent('?tab=storage')
@@ -145,14 +144,14 @@ test('selects the tab named by the URL, mounts only that panel, and updates the 
 test('tab selection is a history entry that Back and Forward restore', async () => {
   const user = userEvent.setup()
   stubFetch([gate(1, 'entry')])
-  renderConfiguration('/configuration?tab=gates')
+  renderConfiguration('/configuration?tab=zones')
 
   await user.click(await screen.findByRole('tab', { name: 'Retensi & Storage' }))
   expect(await screen.findByTestId('storage-retention')).toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'back' }))
-  expect(await screen.findByRole('tab', { name: 'Gate Absensi', selected: true })).toBeInTheDocument()
-  expect(screen.getByTestId('location')).toHaveTextContent('?tab=gates')
+  expect(await screen.findByRole('tab', { name: 'Zona Deteksi', selected: true })).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent('?tab=zones')
 
   await user.click(screen.getByRole('button', { name: 'forward' }))
   expect(await screen.findByRole('tab', { name: 'Retensi & Storage', selected: true })).toBeInTheDocument()
@@ -162,16 +161,16 @@ test('tab selection is a history entry that Back and Forward restore', async () 
 test('clicking the already-selected tab does not push a duplicate history entry', async () => {
   const user = userEvent.setup()
   stubFetch([gate(1, 'entry')])
-  renderConfiguration('/configuration?tab=gates')
+  renderConfiguration('/configuration?tab=zones')
 
   await user.click(await screen.findByRole('tab', { name: 'Retensi & Storage' }))
   const storageTab = await screen.findByRole('tab', { name: 'Retensi & Storage', selected: true })
   await user.click(storageTab)
 
-  // satu Back harus kembali ke Gate; entri history duplikat membuat Back tetap di Storage
+  // satu Back harus kembali ke Zona; entri history duplikat membuat Back tetap di Storage
   await user.click(screen.getByRole('button', { name: 'back' }))
-  expect(await screen.findByRole('tab', { name: 'Gate Absensi', selected: true })).toBeInTheDocument()
-  expect(screen.getByTestId('location')).toHaveTextContent('?tab=gates')
+  expect(await screen.findByRole('tab', { name: 'Zona Deteksi', selected: true })).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent('?tab=zones')
 })
 
 test('falls back to Cameras for an invalid or missing tab', async () => {
@@ -187,16 +186,11 @@ test('falls back to Cameras for an invalid or missing tab', async () => {
   expect(screen.getByTestId('location').textContent).toBe('')
 })
 
-test('Gate draw action selects the Zones tab in the same workbench', async () => {
-  const user = userEvent.setup()
-  stubFetch([gate(1, 'entry')])
+test('old gates URL falls back to cameras and the Gate tab is gone', async () => {
+  stubFetch()
   renderConfiguration('/configuration?tab=gates')
-
-  await user.click(await screen.findByTestId('gate-draw-1'))
-
-  expect(await screen.findByRole('tab', { name: 'Zona Deteksi', selected: true })).toBeInTheDocument()
-  expect(screen.getByTestId('location')).toHaveTextContent('?tab=zones')
-  expect(await screen.findByTestId('zone-draw-start')).toBeInTheDocument()
+  expect(await screen.findByRole('tab', { name: 'Kamera', selected: true })).toBeInTheDocument()
+  expect(screen.queryByRole('tab', { name: 'Gate Absensi' })).not.toBeInTheDocument()
 })
 
 const NODES = [
