@@ -26,6 +26,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   (zona 15). Config push mengirim nilai `behaviors` apa adanya. Vision **204 passed**, backend **368 passed**.
 - **Fix pesan error zona**: pesan "kamera sudah punya zona absensi aktif dengan arah lain" hanya muncul bila
   backend memang menolak karena konflik arah; 422 lain memakai pesan simpan generik. Frontend **127 passed**.
+- **Bersih-bersih**: CSS `.det-chip` yang tak terpakai dibuang dari `theme.scss` (chip analyzer sudah dihapus dari
+  halaman Deteksi & Model).
+- **Dokumen**: README (aturan "deteksi hanya berjalan di kamera yang punya zona aktif" + chip analyzer tidak
+  dipakai), ROADMAP (baris **ZU** + catatan halaman Gate Absensi dihapus), dan runbook `attendance-face-first`
+  disinkronkan — tanpa perubahan kode.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 

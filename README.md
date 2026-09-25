@@ -133,6 +133,10 @@ Aturan yang perlu diketahui:
   (migration `0008`, FK `ON DELETE SET NULL`).
 - List kamera memakai kolom terpisah Nama/Lokasi + kolom **Kredensial**; Live View filter
   lokasi bisa direset ke **All locations**.
+- **Deteksi hanya berjalan di kamera yang punya zona aktif.** Zona (behavior + absensi) diatur
+  di satu tempat — tab **Zona Deteksi** — termasuk Snapshot/Clip per behavior; kamera tanpa zona
+  aktif tetap bisa dipantau di Live View, tetapi tidak menghasilkan event/klip. Chip analyzer
+  per kamera (kolom `camera.analyzers`) sudah tidak dipakai.
 
 Detail migrasi skema: `docs/runbooks/camera-management-migration.md`.
 
