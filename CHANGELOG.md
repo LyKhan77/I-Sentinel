@@ -25,6 +25,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Zona Deteksi + Inbox**: toggle **Telegram** per behavior (default off, di samping Snapshot/Clip) dan satu toggle
   pada zona absensi; toggle level zona "tersedia di Fase 3" dihapus. Inbox mendukung `?event=<id>` (tautan caption)
   dan status alert `queued` ("MENGIRIM…"). Frontend **132 passed**.
+- **Dokumen**: README §Alert Telegram (sambungkan bot @BotFather → grup → tab Notifikasi →
+  toggle per behavior; snapshot keluar LAN, tautan klip LAN-saja, token di `CAMERA_SECRETS_FILE`),
+  ROADMAP baris **TG** `[~] lokal selesai, PENDING deploy + verifikasi`, `.env.example`
+  (`TELEGRAM_BOT_TOKEN` = fallback, `ALERT_MIN_SEVERITY` deprecated) — tanpa perubahan kode.
 
 ### Zona UX (2026-09-25)
 

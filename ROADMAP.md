@@ -23,6 +23,7 @@
 | CP | Event clip pre-buffer (ring mainstream, insiden per kamera, seek per event) | [x] selesai | 2026-09-24 | Lapangan: klip 1080p berisi orang sejak sebelum masuk zona; snapshot 0,5 s (dulu ~30 s); 2 orang → 1 klip + `#t=21.2`; backend 342, vision 200, frontend 121; `docs/evidence/clip-prebuffer-*.txt` | `4d179d7..` |
 | CR | Pendaftaran kamera sederhana (IP + path + kredensial per profil) | [x] selesai | 2026-09-25 | Deploy gspe-ai3 `1924ef6`, E2E user OK; backend 363, vision 200, frontend 129, build 0; 422 tidak menggemakan password (profil + login) | `2a99bb3..` |
 | ZU | Zona UX (zona = aturan, Gate Absensi dihapus, Snapshot/Clip per behavior) | [x] selesai | 2026-09-25 | Deploy gspe-ai3 `5d785a6`, E2E user OK; worker vision 7 → 1, CPU vision 70,7 % → ~5 %, RSS 3,43 → 1,5 GB; backend 370, vision 204, frontend 127 | `21826e7..` |
+| TG | Integrasi bot Telegram (foto + caption, toggle per behavior, tab Notifikasi) | [~] lokal selesai, PENDING deploy + verifikasi | — | backend 404, vision 204, frontend 132, build 0, lint 21·0 (token tak pernah keluar; tanpa dependensi/migrasi) | `bff5f61..` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
