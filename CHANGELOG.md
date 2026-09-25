@@ -62,6 +62,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   (`attendance.annotate_event_snapshot` dari payload tersimpan: nama karyawan, atau `Unknown` oranye bila
   `no_match`). Dulu subset absensi dengan snapshot telat terkirim ke Telegram tanpa label (F5 bolong).
   Backend **418 passed** (3 tes regresi); rollback: revert perubahan ini lalu restart API.
+- **Dev-deps backend**: `numpy` masuk `[dev]` (dipakai `test_attendance_logic.py`, dulu hanya terbawa lewat paket
+  `vision`). Catatan env: venv backend lokal sempat dibangun ulang tool review (`uv`) → editable `vision` hilang;
+  dipulihkan `uv pip install -e "vision[dev]"`. Backend 418, vision 205, frontend 139.
 
 ### Zona UX (2026-09-25)
 
