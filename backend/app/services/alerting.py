@@ -22,6 +22,10 @@ DEFAULT_RATE_LIMIT_MIN = 2
 
 
 def _track(event: Event):
+    # track_id direset per kamera oleh node: id yang daur ulang dalam jendela rate-limit
+    # bisa menahan orang berbeda (jarang); event tanpa track_id berbagi satu bucket
+    # per kamera+zona+tipe. Tradeoff diterima — debounce per orang yang akurat
+    # butuh kolom track_id di Alert (ikuti migrasi berikutnya).
     return (event.payload or {}).get("track_id")
 
 
