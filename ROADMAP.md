@@ -21,7 +21,7 @@
 | R5b | Attendance face-first (SCRFD+ArcFace node, cooldown, UI) | [x] deploy + tes lapangan | 2026-09-23 | deploy `f22f2d6` di gspe-ai3 (alembic 0015→0016, heartbeat `modules.face.device = cuda:2`); lapangan: entry cam 364 zona 12 `matched` 0,714 (wajah 217 px), exit cam 365 zona 14 `matched` 0,65, `attendance_day` satu baris 15:45→15:59; model wajah GPU 2 (1054 MiB) | |
 | RE | Enrollment & Shift refining (CRUD karyawan/shift, NIK, hapus foto per karyawan) | [x] selesai | 2026-09-24 | backend 339, vision 177, frontend 118; UI 390px overflow 0; `docs/evidence/enrollment-*.png` | `f8028ed` |
 | CP | Event clip pre-buffer (ring mainstream, insiden per kamera, seek per event) | [x] selesai | 2026-09-24 | Lapangan: klip 1080p berisi orang sejak sebelum masuk zona; snapshot 0,5 s (dulu ~30 s); 2 orang → 1 klip + `#t=21.2`; backend 342, vision 200, frontend 121; `docs/evidence/clip-prebuffer-*.txt` | `4d179d7..` |
-| CR | Pendaftaran kamera sederhana (IP + path + kredensial per profil) | [~] lokal selesai, PENDING deploy + verifikasi | — | spec + plan 2026-09-24 | |
+| CR | Pendaftaran kamera sederhana (IP + path + kredensial per profil) | [x] selesai | 2026-09-25 | Deploy gspe-ai3 `1924ef6`, E2E user OK; backend 363, vision 200, frontend 129, build 0; 422 tidak menggemakan password (profil + login) | `2a99bb3..` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton

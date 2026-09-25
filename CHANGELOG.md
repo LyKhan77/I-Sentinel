@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Pendaftaran kamera sederhana (2026-09-24 – …)
+### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
 - **Halaman Kamera dirapikan**: panel "Sumber & kredensial" dihapus (`CameraSourcesPanel`); tombol
   **Lanjutan** berisi Import CCTV, Sync go2rtc, dan **Kelola kredensial** (ubah username/password — kosong =
@@ -33,6 +33,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Fix review: 422 tidak menggemakan password**: handler `RequestValidationError` global membuang `input`/`ctx`
   dari error (bawaan FastAPI mengembalikan body klien mentah → password profil kamera dan password login ikut
   kembali di response 422). `msg`/`loc` tetap. Tes merah dulu (3 kasus profil + login). Backend **363 passed**.
+- **Deploy + verifikasi (2026-09-25)**: branch `1924ef6` di gspe-ai3, restart `isentinel-api` (health ok, tanpa
+  migrasi, `vision-node` tidak disentuh); `chmod 700 ~/.isentinel`. Smoke: `/cameras` 200, profil kredensial 0,
+  422 login tanpa gema password. Kamera tanpa autentikasi (ZKteco `:8554/stream`) terbukti jalan dengan
+  Default (NVR) — ffprobe tanpa/ dengan kredensial salah sama-sama 1920×1080, NVR tanpa kredensial 401.
+  **E2E user OK** (review form, Tes koneksi, Lanjutan). Tanpa screenshot evidence (uji dilakukan user).
 
 ### Event clip pre-buffer (2026-09-24)
 
