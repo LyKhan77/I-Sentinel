@@ -45,6 +45,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   severity critical tanpa batas, lainnya 2 menit, absensi tercatat tetap tanpa batas.
   Kolom `zone.rate_limit_min` tetap ada tetapi deprecated. Backend **409 passed**;
   rollback: revert perubahan ini lalu restart API.
+- **Feedback F2: caption rapi**: judul tebal berbahasa Inggris (`INTRUSION`, `ATTENDANCE — CHECK IN/OUT`,
+  `UNKNOWN FACE`, tipe baru → huruf besar), satu data per baris (Nama/Kamera/Zona/Waktu/Level), tautan klip di akhir;
+  `parse_mode=HTML` dengan escape nilai, panjang tiap nilai dibatasi (tanpa memotong tag). Backend **411 passed**;
+  rollback: revert perubahan ini lalu restart API.
 
 ### Zona UX (2026-09-25)
 

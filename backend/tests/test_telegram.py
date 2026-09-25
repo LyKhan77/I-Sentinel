@@ -72,29 +72,50 @@ def test_app_url_roundtrip_strips_slash(db):
     assert telegram.app_url(db) == "http://192.168.2.133:5173"
 
 
-def test_caption_behavior_with_link():
+def test_caption_behavior_layout():
     text = telegram.format_caption(_event(), "Lorong Server", "Lorong-15", "http://10.0.0.1:5173", tz=WIB)
-    assert text.splitlines()[0] == "🚨 Intrusi — Lorong Server · zona Lorong-15"
-    assert "25 Sep 2026 11:42:07 WIB" in text and "severity warning" in text
-    assert text.endswith("http://10.0.0.1:5173/events?event=1234")
+    assert text.splitlines() == [
+        "🚨 <b>INTRUSION</b>",
+        "",
+        "<b>Kamera</b>: Lorong Server",
+        "<b>Zona</b>: Lorong-15",
+        "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
+        "<b>Level</b>: WARNING",
+        "",
+        "🎥 Lihat klip: http://10.0.0.1:5173/events?event=1234",
+    ]
 
 
-def test_caption_attendance_matched_and_unknown_and_fallback():
+def test_caption_attendance_check_in_out_and_unknown():
     matched = _event(type="attendance", severity="info", payload={
-        "match_reason": "matched", "direction": "entry", "employee_name": "Budi Santoso"})
-    assert telegram.format_caption(matched, "Lobi", "Gate", None, tz=WIB).splitlines()[0] == \
-        "✅ Budi Santoso — Absen masuk 11:42 · Lobi"
+        "match_reason": "matched", "direction": "exit", "employee_name": "Budi Santoso"})
+    lines = telegram.format_caption(matched, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
+    assert lines[:4] == ["✅ <b>ATTENDANCE — CHECK OUT</b>", "", "<b>Nama</b>: Budi Santoso",
+                         "<b>Kamera</b>: Receptionist"]
+    assert not any(line.startswith("<b>Level</b>") for line in lines)
     unknown = _event(type="attendance", severity="info", payload={"match_reason": "no_match"})
-    assert telegram.format_caption(unknown, "Lobi", "Gate", None, tz=WIB).splitlines()[0] == \
-        "⚠️ Wajah tidak dikenal — Lobi · zona Gate"
-    new_kind = _event(type="fall_detect")
-    assert "fall_detect — Lobi" in telegram.format_caption(new_kind, "Lobi", None, None, tz=WIB)
-    assert "events?event" not in telegram.format_caption(new_kind, "Lobi", None, None, tz=WIB)
+    lines = telegram.format_caption(unknown, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
+    assert lines[0] == "⚠️ <b>UNKNOWN FACE</b>" and "<b>Zona</b>: Gerbang Lobi" in lines
+    assert not any("Lihat klip" in line for line in lines)
 
 
-def test_caption_naive_timestamp_is_utc_and_capped():
+def test_caption_new_type_uppercased_and_no_zone():
+    text = telegram.format_caption(_event(type="fall_detect"), "Lobi", None, None, tz=WIB)
+    assert text.splitlines()[0] == "🚨 <b>FALL_DETECT</b>"
+    assert "<b>Zona</b>" not in text
+
+
+def test_caption_escapes_html():
+    ev = _event(type="attendance", severity="info", payload={
+        "match_reason": "matched", "direction": "entry", "employee_name": "A&B <x>"})
+    text = telegram.format_caption(ev, "Cam <1>", "Z & Z", None, tz=WIB)
+    assert "A&amp;B &lt;x&gt;" in text and "Cam &lt;1&gt;" in text and "Z &amp; Z" in text
+    assert "<x>" not in text
+
+
+def test_caption_bounded_length_naive_utc():
     naive = _event(ts_event=datetime(2026, 9, 25, 4, 42, 7), type="x" * 2000)
-    text = telegram.format_caption(naive, "Cam", None, None, tz=WIB)
+    text = telegram.format_caption(naive, "C" * 500, "Z" * 500, "http://h", tz=WIB)
     assert "11:42:07" in text and len(text) <= telegram.CAPTION_MAX
 
 
@@ -118,12 +139,13 @@ def test_deliver_photo_uses_multipart(urlopen):
     assert req.full_url.endswith("/sendPhoto")
     assert req.headers["Content-type"].startswith("multipart/form-data; boundary=")
     assert b'name="chat_id"' in req.data and b"\xff\xd8jpg" in req.data and b'name="caption"' in req.data
+    assert b'name="parse_mode"' in req.data and b"HTML" in req.data
 
 
 def test_deliver_text_without_photo(urlopen):
     assert telegram.deliver(TOKEN, "-1001", "halo") == ("sent", None)
     assert urlopen.calls[0].full_url.endswith("/sendMessage")
-    assert json.loads(urlopen.calls[0].data) == {"chat_id": "-1001", "text": "halo"}
+    assert json.loads(urlopen.calls[0].data) == {"chat_id": "-1001", "text": "halo", "parse_mode": "HTML"}
 
 
 def test_deliver_retries_then_failed_without_token_in_error(urlopen):

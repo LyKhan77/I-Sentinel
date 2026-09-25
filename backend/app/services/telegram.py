@@ -5,6 +5,7 @@ telegram_chat, URL aplikasi di setting "telegram". Token tidak pernah masuk log/
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 import time
@@ -23,11 +24,11 @@ TOKEN_KEY = "telegram_bot_token"
 SETTING_KEY = "telegram"
 TOKEN_RE = re.compile(r"^\d+:[A-Za-z0-9_-]{30,}$")
 CAPTION_MAX = 1024  # batas caption sendPhoto
-HEADER_MAX = 200  # judul dipotong agar tipe/nama sangat panjang tidak mendorong baris waktu lewat CAPTION_MAX
 ERROR_MAX = 250  # maksimum panjang pesan TelegramError (kolom alert.error String(255))
 CHAT_LABEL_MAX = 64  # maksimum TelegramChat.label (kolom String(64))
 TEST_TEXT = "✅ Tes I-Sentinel — bot terhubung ke grup ini."
-LABELS = {"intrusion": "Intrusi", "loitering": "Berlama-lama", "running": "Berlari"}
+TYPE_TITLE = {"intrusion": "INTRUSION", "loitering": "LOITERING", "running": "RUNNING"}
+FIELD_MAX = 120  # nilai per baris dibatasi sebelum escape → caption selalu < CAPTION_MAX
 
 _urlopen = urllib.request.urlopen  # hook tes
 
@@ -156,10 +157,10 @@ def deliver(token: str, chat_id: str, caption: str, photo: bytes | None = None, 
     for attempt in range(retries):
         try:
             if photo:
-                _call(token, "sendPhoto", {"chat_id": chat_id, "caption": caption},
+                _call(token, "sendPhoto", {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
                       {"photo": ("snapshot.jpg", photo, "image/jpeg")})
             else:
-                _call(token, "sendMessage", {"chat_id": chat_id, "text": caption})
+                _call(token, "sendMessage", {"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
             return "sent", None
         except TelegramError as exc:
             last = str(exc)
@@ -169,23 +170,33 @@ def deliver(token: str, chat_id: str, caption: str, photo: bytes | None = None, 
 
 
 def format_caption(event, camera_name: str, zone_name: str | None, app_url: str | None, tz=None) -> str:
-    """Judul + waktu lokal + (opsional) tautan event, ≤ CAPTION_MAX, aman untuk tipe/behavior baru."""
+    """Caption HTML Telegram: judul tebal (Inggris), satu data per baris (label Indonesia).
+
+    Setiap nilai dibatasi `FIELD_MAX` sebelum di-escape sehingga total pasti < CAPTION_MAX;
+    caption tidak dipotong mentah-mentah (memotong string HTML bisa merusak tag → Telegram 400).
+    """
+    def val(v) -> str:
+        return html.escape(str(v)[:FIELD_MAX])
+
     ts = event.ts_event if event.ts_event.tzinfo else event.ts_event.replace(tzinfo=timezone.utc)
     ts = ts.astimezone(tz)
-    when = ts.strftime("%d %b %Y %H:%M:%S %Z").strip()
-    where = f"{camera_name} · zona {zone_name}" if zone_name else camera_name
     payload = event.payload or {}
+    rows: list[tuple[str, str]] = []
     if event.type == "attendance" and payload.get("match_reason") == "matched":
-        arah = "Absen masuk" if payload.get("direction") == "entry" else "Absen keluar"
-        name = payload.get("employee_name") or "Karyawan"
-        lines = [f"✅ {name} — {arah} {ts:%H:%M} · {camera_name}", when]
+        arah = "CHECK IN" if payload.get("direction") == "entry" else "CHECK OUT"
+        title = f"✅ <b>ATTENDANCE — {arah}</b>"
+        rows.append(("Nama", payload.get("employee_name") or "-"))
     elif event.type == "attendance":
-        lines = [f"⚠️ Wajah tidak dikenal — {where}", when]
+        title = "⚠️ <b>UNKNOWN FACE</b>"
     else:
-        lines = [f"🚨 {LABELS.get(event.type, event.type)} — {where}", f"{when} · severity {event.severity}"]
-    # Potong judul saja (bukan caption utuh): tanpa ini, satu field yang sangat panjang
-    # akan memakan CAPTION_MAX dan memotong baris waktu; HEADER_MAX tetap di atas judul nyata terpanjang.
-    lines[0] = lines[0][:HEADER_MAX]
+        title = f"🚨 <b>{val(TYPE_TITLE.get(event.type, str(event.type).upper()))}</b>"
+    rows.append(("Kamera", camera_name))
+    if zone_name:
+        rows.append(("Zona", zone_name))
+    rows.append(("Waktu", ts.strftime("%d %b %Y %H:%M:%S %Z").strip()))
+    if event.type != "attendance":
+        rows.append(("Level", str(event.severity or "").upper()))
+    lines = [title, ""] + [f"<b>{k}</b>: {val(v)}" for k, v in rows]
     if app_url:
-        lines.append(f"Klip video: lihat di aplikasi → {app_url}/events?event={event.id}")
-    return "\n".join(lines)[:CAPTION_MAX]
+        lines += ["", f"🎥 Lihat klip: {val(app_url)}/events?event={event.id}"]
+    return "\n".join(lines)

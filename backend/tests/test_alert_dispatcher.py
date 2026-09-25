@@ -59,7 +59,7 @@ def test_process_sends_photo_with_caption(db, tmp_path, sent, monkeypatch):
     db.refresh(alert)
     assert (alert.status, alert.chat_id, alert.error) == ("sent", "-1001", None)
     assert sent[0]["photo"] == b"\xff\xd8jpg"
-    assert sent[0]["caption"].startswith("🚨 Intrusi — Lorong Server · zona Lorong-15")
+    assert sent[0]["caption"].startswith("🚨 <b>INTRUSION</b>")
 
 
 def test_process_waits_for_late_snapshot(db, tmp_path, sent, monkeypatch):
