@@ -54,7 +54,7 @@ def build_node_config(db: Session, node: Node) -> dict:
                 "schedule": z.schedule,
                 "severity": z.severity,
                 "rate_limit_min": z.rate_limit_min,
-                "behaviors": z.behaviors or [],
+                "behaviors": z.behaviors,
                 "trigger_seconds": z.trigger_seconds,
                 # deprecated: tetap dikirim sampai node R5 terpasang, lalu dihapus
                 "loiter_seconds": z.loiter_seconds,

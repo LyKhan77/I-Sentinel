@@ -21,6 +21,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   **Status AI** ("Aktif · N zona" / "Tidak jalan (tanpa zona aktif)" / "Kamera nonaktif"); kartu model wajah
   (InsightFace buffalo_l); teks tracker diperbaiki ("lepas track setelah 3 s"); Reset tidak mengirim
   `analyzers`. Frontend **126 passed**, build 0, lint set sama.
+- **Fix kontrak `behaviors`**: zona dengan `behaviors: []` (semua behavior di-uncheck) kini benar-benar zona visual
+  saja — node tidak lagi membangkitkan analyzer dari kolom legacy; `behaviors` NULL tetap memakai fallback legacy
+  (zona 15). Config push mengirim nilai `behaviors` apa adanya. Vision **204 passed**, backend **368 passed**.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 

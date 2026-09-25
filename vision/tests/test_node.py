@@ -174,6 +174,18 @@ def test_legacy_zone_without_behaviors_still_builds_analyzers():
     assert kinds == ["IntrusionAnalyzer", "LoiteringAnalyzer"]
 
 
+def test_explicit_empty_behaviors_zone_is_visual_only():
+    """Semua behavior di-uncheck = zona visual saja; kolom legacy tidak dibangkitkan."""
+    visual = {"id": 23, "name": "Visual", "type": "restricted",
+              "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+              "behaviors": [], "loiter_seconds": 30, "speed_limit_mps": 2.0}
+    cam = {"camera_id": 1, "source_url": "test://1", "meters_per_pixel": 0.01,
+           "zones": [visual]}
+    node = _node_with(cam)
+    cams = node._cameras_from_config({"cameras": [cam]})
+    assert node._make_analyzers(cams[0]) == []
+
+
 def test_behavior_media_flags_override_zone():
     zone = {**BEHAVIOR_ZONE, "snapshot": True, "clip": True,
             "behaviors": [{"kind": "intrusion", "trigger_seconds": 0, "clip": False},

@@ -206,7 +206,7 @@ def attendance_zones(cam: CameraCfg) -> list[dict]:
 def behaviors_of(z: dict) -> list[dict]:
     """Daftar behavior zona; fallback kolom lama bila config pra-R5 terpasang."""
     bs = z.get("behaviors")
-    if bs:
+    if bs is not None:
         return list(bs)
     legacy: list[dict] = []
     ztype = z.get("type")
