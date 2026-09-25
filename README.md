@@ -179,3 +179,9 @@ Yang perlu diketahui:
   critical tanpa batas, lainnya 2 menit; absensi tercatat tanpa batas. Event tanpa
   `track_id` dikelompokkan bersama. Status alert (`queued/sent/failed/rate_limited/
   not_configured`) tampil di Inbox.
+- **Format pesan**: foto snapshot dengan caption HTML — judul tebal berbahasa
+  Inggris (`INTRUSION`, `LOITERING`, `RUNNING`, `ATTENDANCE — CHECK IN/OUT`,
+  `UNKNOWN FACE`, tipe baru → huruf besar), lalu satu data per baris berlabel
+  Indonesia (Nama/Kamera/Zona/Waktu/Level) dan tautan klip di akhir. Kotak orang
+  pada snapshot behavior berlabel jenis kejadiannya; snapshot absensi berlabel
+  nama karyawan (atau `Unknown` oranye untuk wajah tak dikenal).
