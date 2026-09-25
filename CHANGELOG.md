@@ -3,6 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Integrasi bot Telegram (2026-09-25 – …)
+
+- **`services/telegram.py`**: klien stdlib (getMe, getUpdates → daftar grup unik, sendPhoto multipart,
+  sendMessage, retry 3× backoff), token di `secret_store` (fallback env), grup = satu baris aktif
+  `telegram_chat`, URL aplikasi di `setting`; caption (behavior, absensi tercatat, wajah tidak dikenal, fallback
+  tipe baru, ≤ 1024); token tidak pernah masuk pesan error. Tes memakai file rahasia terisolasi. Backend **381 passed**.
+
 ### Zona UX (2026-09-25)
 
 - **Vision: zona aktif = AI aktif**: mask `camera.analyzers` tidak dibaca lagi; kamera tanpa zona aktif tidak

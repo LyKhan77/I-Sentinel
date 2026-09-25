@@ -52,3 +52,10 @@ def _reset_login_ratelimit():
     auth_mod._FAILURES.clear()
     yield
     auth_mod._FAILURES.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_secret_store(tmp_path, monkeypatch):
+    """Tes tidak pernah membaca/menulis file rahasia asli di ~/.isentinel."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "camera_secrets_file", str(tmp_path / "secrets" / "store.json"))
