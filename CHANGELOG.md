@@ -14,6 +14,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Zona Deteksi**: toggle Snapshot/Clip level zona dihapus; tiap behavior tercentang punya toggle Snapshot dan
   Clip (default mengikuti flag zona lama), dikirim sebagai key di item `behaviors`; zona absensi tanpa toggle
   media; konflik arah → "Kamera ini sudah punya zona absensi aktif dengan arah lain.". Frontend **132 passed**.
+- **Halaman Gate Absensi dihapus**: zona absensi dibuat/diubah di Zona Deteksi (tipe Absensi, arah, aktif);
+  kolom SNAPSHOT/CLIP Gates memang no-op (pipeline wajah selalu crop + snapshot, tanpa clip). `?tab=gates` lama
+  jatuh ke tab Kamera. Frontend **126 passed**.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
