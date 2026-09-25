@@ -19,6 +19,26 @@ def _config_push(db: Session, camera_id: int) -> None:
         logger.warning("config push after zone mutation failed", exc_info=True)
 
 
+_ATTENDANCE_TYPES = ("absensi", "attendance")
+
+
+def _check_direction_conflict(db: Session, zone: Zone) -> None:
+    """Satu kamera: zona absensi aktif hanya boleh satu arah (satu FaceGateWorker per kamera)."""
+    if zone.type not in _ATTENDANCE_TYPES or not zone.active:
+        return
+    q = db.query(Zone).filter(
+        Zone.camera_id == zone.camera_id,
+        Zone.type.in_(_ATTENDANCE_TYPES),
+        Zone.active.is_(True),
+        Zone.direction != zone.direction,
+    )
+    if zone.id is not None:
+        q = q.filter(Zone.id != zone.id)
+    if q.first() is not None:
+        db.rollback()  # buang perubahan patch yang belum di-commit
+        raise HTTPException(422, "camera already has an active attendance zone with another direction")
+
+
 @router.get("", response_model=list[ZoneOut])
 def list_zones(camera_id: int | None = None, user=Depends(get_current_user), db: Session = Depends(get_db)):
     q = db.query(Zone)
@@ -29,6 +49,7 @@ def list_zones(camera_id: int | None = None, user=Depends(get_current_user), db:
 @router.post("", response_model=ZoneOut)
 def create_zone(body: ZoneIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     zone = Zone(**body.model_dump())
+    _check_direction_conflict(db, zone)
     db.add(zone); db.commit(); db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone
@@ -49,6 +70,7 @@ def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db:
     # zona attendance (dulu absensi) wajib direction — cek hasil gabungan patch + nilai lama
     if zone.type in ("absensi", "attendance") and not zone.direction:
         raise HTTPException(422, "direction (entry|exit) required for attendance zone")
+    _check_direction_conflict(db, zone)
     db.commit(); db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone

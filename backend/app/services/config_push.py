@@ -85,7 +85,6 @@ def build_node_config(db: Session, node: Node) -> dict:
             "source_url": source_url,
             "ai_fps": cam.ai_fps or default_ai_fps,
             "confidence": cam.confidence or default_confidence,
-            "analyzers": cam.analyzers,          # None = semua analyzer aktif
             "motion": {
                 "enabled": motion_enabled if cam.motion_enabled is None else cam.motion_enabled,
                 "threshold": motion_threshold,

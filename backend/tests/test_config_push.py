@@ -303,7 +303,7 @@ def test_build_node_config_camera_detection_overrides(db):
     cam = bnc(db, n)["cameras"][0]
     assert cam["ai_fps"] == 8.0
     assert cam["confidence"] == 0.45
-    assert cam["analyzers"] == ["intrusion"]
+    assert "analyzers" not in cam
     assert cam["motion"]["enabled"] is False
     assert cam["motion"]["threshold"] == settings.motion_threshold
 
@@ -319,5 +319,5 @@ def test_build_node_config_camera_uses_global_defaults(db):
     cam = bnc(db, n)["cameras"][0]
     assert cam["ai_fps"] == settings.default_ai_fps
     assert cam["confidence"] == settings.detector_conf
-    assert cam["analyzers"] is None          # None = semua analyzer aktif
+    assert "analyzers" not in cam
     assert cam["motion"]["enabled"] is True

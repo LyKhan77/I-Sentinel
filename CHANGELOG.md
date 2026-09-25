@@ -8,6 +8,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Vision: zona aktif = AI aktif**: mask `camera.analyzers` tidak dibaca lagi; kamera tanpa zona aktif tidak
   mendapat worker (stream tidak dibuka, tanpa YOLO → hemat GPU); flag Snapshot/Clip dibaca per behavior dengan
   fallback flag zona (zona lama berperilaku sama). Vision **203 passed**.
+- **Backend**: item `behaviors` menerima `snapshot`/`clip` (bool, lainnya 422); zona absensi aktif dengan arah
+  berbeda di kamera yang sama ditolak 422 saat create/patch (patch gagal tidak setengah tersimpan); config push
+  tidak lagi mengirim `analyzers` (kolom dibiarkan, deprecated). Backend **367 passed**.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 

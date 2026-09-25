@@ -42,6 +42,7 @@ class Camera(Base):
     ai_fps: Mapped[float | None] = mapped_column(Float, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Daftar analyzer aktif utk kamera ini; null = semua, [] = tanpa analitik (hemat GPU).
+    # deprecated: tidak dibaca (zona = satu-satunya aturan); tanpa migrasi
     analyzers: Mapped[list | None] = mapped_column(JSON, nullable=True)
     motion_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

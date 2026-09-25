@@ -7,7 +7,7 @@ VALID_DAYS = set(range(1, 8))
 
 
 def _validate_behaviors(v: list | None) -> list | None:
-    """behaviors = [{"kind": ..., "trigger_seconds": int, [speed_limit_mps]}]."""
+    """behaviors = [{"kind", "trigger_seconds", [speed_limit_mps], [snapshot], [clip]}]."""
     if v is None:
         return v
     if not isinstance(v, list):
@@ -21,6 +21,9 @@ def _validate_behaviors(v: list | None) -> list | None:
         speed = b.get("speed_limit_mps")
         if speed is not None and (not isinstance(speed, (int, float)) or isinstance(speed, bool) or speed < 0):
             raise ValueError("speed_limit_mps must be a number >= 0")
+        for flag in ("snapshot", "clip"):
+            if flag in b and not isinstance(b[flag], bool):
+                raise ValueError(f"{flag} must be a boolean")
     return v
 
 
