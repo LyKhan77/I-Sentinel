@@ -50,7 +50,11 @@ export type ZonePayload = {
 }
 
 async function expectOk(res: Response, what: string) {
-  if (!res.ok) throw new Error(`${what} failed: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const detail = body && typeof body.detail === 'string' ? `: ${body.detail}` : ''
+    throw new Error(`${what} failed: ${res.status}${detail}`)
+  }
   return res.json()
 }
 

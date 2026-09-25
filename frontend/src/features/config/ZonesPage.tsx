@@ -129,8 +129,9 @@ export default function ZonesPage() {
       setAllZones((prev) => [...prev.filter((z) => z.camera_id !== cam.id), ...zones.filter((z) => z.id > 0)])
       setToast(t('zones.saved'))
     } catch (e) {
-      // API client melempar `Error('<what> failed: <status>')` (api/zones.ts expectOk)
-      const conflict = e instanceof Error && e.message.endsWith(': 422') && selected.type === 'attendance'
+      // API client melempar `Error('<what> failed: <status>: <detail server>')` (api/zones.ts expectOk)
+      const conflict = e instanceof Error && selected.type === 'attendance'
+        && e.message.includes('another direction')
       setError(t(conflict ? 'zones.directionConflict' : 'zones.saveError'))
     } finally {
       setBusy(null)

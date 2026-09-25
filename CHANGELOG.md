@@ -24,6 +24,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Fix kontrak `behaviors`**: zona dengan `behaviors: []` (semua behavior di-uncheck) kini benar-benar zona visual
   saja — node tidak lagi membangkitkan analyzer dari kolom legacy; `behaviors` NULL tetap memakai fallback legacy
   (zona 15). Config push mengirim nilai `behaviors` apa adanya. Vision **204 passed**, backend **368 passed**.
+- **Fix pesan error zona**: pesan "kamera sudah punya zona absensi aktif dengan arah lain" hanya muncul bila
+  backend memang menolak karena konflik arah; 422 lain memakai pesan simpan generik. Frontend **127 passed**.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
