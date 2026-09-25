@@ -126,6 +126,19 @@ def _label_snapshot(event, payload: dict, label: str, color=None) -> None:
                           payload.get("bbox_norm"), **kwargs)
 
 
+def annotate_event_snapshot(event) -> None:
+    """Label ulang snapshot absensi yang datang belakangan (topik media).
+
+    handle_face_event jalan saat snapshot mungkin masih None (label no-op);
+    label diambil dari payload yang ia simpan (employee_name / match_reason).
+    """
+    payload = event.payload or {}
+    if payload.get("match_reason") == "no_match":
+        _label_snapshot(event, payload, "Unknown", ORANGE)
+    elif payload.get("employee_id") is not None:
+        _label_snapshot(event, payload, payload.get("employee_name") or "Unknown")
+
+
 def handle_face_event(db, event, embedding: list[float] | None = None) -> AttendanceEvent | None:
     """Match attendance event, discard embedding, then update attendance day.
 

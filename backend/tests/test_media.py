@@ -155,3 +155,70 @@ def test_consumer_media_malformed_no_crash(db):
 
 def test_consumer_subscribes_media_topic():
     assert ("isentinel/events/media", 1) in ec.EventConsumer()._subscriptions()
+
+
+# --- F5: snapshot absensi datang belakangan tetap diberi label -----------------
+
+def test_late_attendance_snapshot_labeled_with_name(db, monkeypatch):
+    from app.models.camera import Camera
+    from app.models.employee import Employee
+    from app.services import attendance
+    from app.services.face import MatchResult
+    monkeypatch.setattr(attendance, "annotate_face_crop", lambda *a, **k: None)
+    monkeypatch.setattr(attendance, "annotate_snapshot",
+                        lambda path, label, bbox, color=None: calls.append(label))
+    calls: list[str] = []
+    db.add(Camera(name="Gate", host="127.0.0.1"))
+    e = Employee(name="Budi", employee_code="E1")
+    db.add(e)
+    db.commit()
+    monkeypatch.setattr(attendance.face, "match_crop",
+                        lambda _db, _path: MatchResult(e.id, 0.9, 0.9, "matched"))
+
+    ev = {"event_id": str(uuid.uuid4()), "type": "attendance", "camera_id": 1, "severity": "info",
+          "ts_event": datetime.now(timezone.utc).isoformat(),
+          "payload": {"crop_path": "crops/x.jpg", "direction": "entry",
+                      "bbox_norm": [0.1, 0.1, 0.2, 0.2]}}
+    handle_message(db, "isentinel/events", json.dumps(ev).encode())
+    row = db.query(ec.Event).filter_by(event_id=ev["event_id"]).one()
+    assert row.snapshot_path is None  # snapshot belum ada saat attendance diproses
+
+    handle_message(db, "isentinel/events/media", json.dumps(
+        {"event_id": ev["event_id"], "snapshot_path": "snapshots/late.jpg"}).encode())
+    db.refresh(row)
+    assert row.snapshot_path == "snapshots/late.jpg"
+    assert calls == ["Budi"]
+
+
+def test_late_attendance_snapshot_unknown_orange(db, monkeypatch):
+    from app.models.camera import Camera
+    from app.services import attendance
+    from app.services.face import MatchResult
+    calls: list[tuple[str, str, object]] = []
+    db.add(Camera(name="Gate", host="127.0.0.1"))
+    db.commit()
+    monkeypatch.setattr(attendance, "annotate_face_crop", lambda *a, **k: None)
+    monkeypatch.setattr(attendance, "annotate_snapshot",
+                        lambda path, label, bbox, color=None: calls.append((label, color, bbox)))
+    monkeypatch.setattr(attendance.face, "match_crop",
+                        lambda _db, _path: MatchResult(None, None, 0.9, "no_match"))
+
+    ev = {"event_id": str(uuid.uuid4()), "type": "attendance", "camera_id": 1, "severity": "info",
+          "ts_event": datetime.now(timezone.utc).isoformat(),
+          "payload": {"crop_path": "crops/x.jpg", "direction": "entry"}}
+    handle_message(db, "isentinel/events", json.dumps(ev).encode())
+    handle_message(db, "isentinel/events/media", json.dumps(
+        {"event_id": ev["event_id"], "snapshot_path": "snapshots/late.jpg"}).encode())
+    from app.services.annotate import ORANGE
+    assert calls == [("Unknown", ORANGE, None)]
+
+
+def test_media_update_non_attendance_not_annotated(db, monkeypatch):
+    from app.services import attendance
+    calls: list = []
+    monkeypatch.setattr(attendance, "annotate_snapshot",
+                        lambda *a, **k: calls.append(1))
+    ev = _seed_event(db)
+    handle_message(db, "isentinel/events/media", json.dumps(
+        _media_payload(ev.event_id)).encode())
+    assert calls == []

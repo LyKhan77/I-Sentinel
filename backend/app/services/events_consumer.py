@@ -81,6 +81,10 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             if isinstance(offset, (int, float)) and not isinstance(offset, bool) and offset >= 0:
                 ev.payload = {**(ev.payload or {}), "clip_offset_s": offset}
             db.commit()
+            # F5: snapshot absensi bisa datang belakangan (handle_face_event sudah jalan
+            # saat snapshot masih None) — label ulang dari payload yang tersimpan.
+            if data.get("snapshot_path") and ev.type == "attendance":
+                attendance.annotate_event_snapshot(ev)
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/heartbeat"):
             name = topic.split("/")[2]
             node = db.query(Node).filter_by(name=name).first()

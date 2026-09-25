@@ -57,6 +57,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Feedback F3/F4**: Inbox menampilkan **nama zona** (zona terhapus → `#id`); Deteksi & Model mengganti tombol Reset
   override dengan tautan **"Atur zona →"** yang membuka Zona Deteksi dengan kamera itu terpilih (`?camera=`).
   Frontend **139 passed**, build 0, lint set sama; rollback: revert perubahan ini.
+- **Fix review: snapshot absensi yang datang belakangan tetap berlabel**: pesan media (topik
+  `isentinel/events/media`) yang mengisi `snapshot_path` setelah `handle_face_event` kini memicu label ulang
+  (`attendance.annotate_event_snapshot` dari payload tersimpan: nama karyawan, atau `Unknown` oranye bila
+  `no_match`). Dulu subset absensi dengan snapshot telat terkirim ke Telegram tanpa label (F5 bolong).
+  Backend **418 passed** (3 tes regresi); rollback: revert perubahan ini lalu restart API.
 
 ### Zona UX (2026-09-25)
 
