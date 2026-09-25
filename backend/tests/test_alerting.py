@@ -33,7 +33,7 @@ def broadcast(monkeypatch):
     return sent
 
 
-def _zone(db, behaviors, telegram=False, rate_limit_min=5, type="behavior", direction=None):
+def _zone(db, behaviors, telegram=False, rate_limit_min=2, type="behavior", direction=None):
     cam = Camera(name=f"cam-{uuid.uuid4().hex[:6]}", host="1.2.3.4")
     db.add(cam)
     db.commit()
@@ -44,9 +44,12 @@ def _zone(db, behaviors, telegram=False, rate_limit_min=5, type="behavior", dire
     return cam, zone
 
 
-def _event(db, cam, zone, type="intrusion", payload=None, severity="warning"):
+def _event(db, cam, zone, type="intrusion", payload=None, severity="warning", track=None):
+    event_payload = dict(payload or {})
+    if track is not None:
+        event_payload["track_id"] = track
     ev = Event(type=type, camera_id=cam.id, zone_id=zone.id if zone else None, severity=severity,
-               payload=payload or {}, ts_event=NOW)
+               payload=event_payload, ts_event=NOW)
     db.add(ev)
     db.commit()
     return ev
@@ -92,13 +95,42 @@ def test_severity_is_no_longer_a_gate(db, queued):
     assert alerting.should_alert(db, _event(db, cam, zone, severity="info"), now=NOW) == (True, "")
 
 
-def test_behavior_rate_limited_within_window(db, queued):
+def test_behavior_same_track_rate_limited_for_two_minutes(db, queued):
     cam, zone = _zone(db, INTRUSION_ON)
-    alerting.handle(db, _event(db, cam, zone), now=NOW)
-    second = alerting.handle(db, _event(db, cam, zone), now=NOW + timedelta(minutes=2))
-    third = alerting.handle(db, _event(db, cam, zone), now=NOW + timedelta(minutes=6))
-    assert (second.status, third.status) == ("rate_limited", "queued")
+    first = alerting.handle(db, _event(db, cam, zone, track=1), now=NOW)
+    second = alerting.handle(db, _event(db, cam, zone, track=1), now=NOW + timedelta(seconds=90))
+    third = alerting.handle(db, _event(db, cam, zone, track=1), now=NOW + timedelta(seconds=150))
+    assert (first.status, second.status, third.status) == ("queued", "rate_limited", "queued")
+    assert queued == [first.id, third.id]
+
+
+def test_behavior_different_tracks_queue_independently(db, queued):
+    cam, zone = _zone(db, INTRUSION_ON)
+    first = alerting.handle(db, _event(db, cam, zone, track=1), now=NOW)
+    second = alerting.handle(db, _event(db, cam, zone, track=2), now=NOW + timedelta(seconds=5))
+    assert (first.status, second.status) == ("queued", "queued")
+    assert queued == [first.id, second.id]
     assert len(queued) == 2
+
+
+def test_critical_behavior_same_track_always_queues(db, queued):
+    cam, zone = _zone(db, INTRUSION_ON)
+    alerts = [
+        alerting.handle(db, _event(db, cam, zone, severity="critical", track=1),
+                        now=NOW + timedelta(seconds=offset))
+        for offset in (0, 5, 10)
+    ]
+    assert [alert.status for alert in alerts] == ["queued", "queued", "queued"]
+    assert queued == [alert.id for alert in alerts]
+
+
+def test_missing_track_ids_share_rate_limit_bucket(db, queued):
+    cam, zone = _zone(db, INTRUSION_ON, rate_limit_min=0)
+    first = alerting.handle(db, _event(db, cam, zone, severity="info"), now=NOW)
+    second = alerting.handle(db, _event(db, cam, zone, severity="info"),
+                             now=NOW + timedelta(seconds=30))
+    assert (first.status, second.status) == ("queued", "rate_limited")
+    assert queued == [first.id]
 
 
 def test_attendance_matched_and_unknown_sent_others_skipped(db, queued):
@@ -120,16 +152,27 @@ def test_attendance_matched_not_rate_limited(db, queued):
         assert alerting.handle(db, ev, now=NOW).status == "queued"
 
 
-def test_unknown_face_rate_limit_separate_from_matched(db, queued):
+def test_unknown_face_rate_limit_per_track_separate_from_matched(db, queued):
     cam, zone = _zone(db, GATE_ON, type="attendance", direction="entry")
     matched = _event(db, cam, zone, type="attendance", severity="info",
                      payload={"match_reason": "matched", "employee_id": 1})
-    alerting.handle(db, matched, now=NOW)
-    unknown = _event(db, cam, zone, type="attendance", severity="info", payload={"match_reason": "no_match"})
-    first = alerting.handle(db, unknown, now=NOW + timedelta(minutes=1))
-    again = alerting.handle(db, _event(db, cam, zone, type="attendance", severity="info",
-                                       payload={"match_reason": "no_match"}), now=NOW + timedelta(minutes=2))
-    assert (first.type, first.status, again.status) == ("attendance_unknown", "queued", "rate_limited")
+    matched_alert = alerting.handle(db, matched, now=NOW)
+    first = alerting.handle(
+        db, _event(db, cam, zone, type="attendance", severity="info",
+                   payload={"match_reason": "no_match"}, track=1), now=NOW,
+    )
+    again = alerting.handle(
+        db, _event(db, cam, zone, type="attendance", severity="info",
+                   payload={"match_reason": "no_match"}, track=1), now=NOW + timedelta(seconds=30),
+    )
+    different = alerting.handle(
+        db, _event(db, cam, zone, type="attendance", severity="info",
+                   payload={"match_reason": "no_match"}, track=2), now=NOW + timedelta(seconds=40),
+    )
+    assert (matched_alert.status, first.type, first.status, again.status, different.status) == (
+        "queued", "attendance_unknown", "queued", "rate_limited", "queued"
+    )
+    assert queued == [matched_alert.id, first.id, different.id]
 
 
 def test_handle_never_touches_network(db, queued, monkeypatch):

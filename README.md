@@ -175,5 +175,7 @@ Yang perlu diketahui:
   `telegram_bot_token`, izin `0600`, di luar `STORAGE_ROOT`) — bukan di DB dan tidak
   pernah tampil di UI/log/response. `TELEGRAM_BOT_TOKEN` di `.env` hanya fallback.
 - **Kirim berjalan di thread terpisah** — konsumen MQTT tidak pernah menunggu
-  jaringan Telegram. Rate-limit per zona tetap (`rate_limited`), status alert
-  (`queued/sent/failed/rate_limited/not_configured`) tampil di Inbox.
+  jaringan Telegram. Rate-limit per kamera, zona, tipe, dan `track_id`: severity
+  critical tanpa batas, lainnya 2 menit; absensi tercatat tanpa batas. Event tanpa
+  `track_id` dikelompokkan bersama. Status alert (`queued/sent/failed/rate_limited/
+  not_configured`) tampil di Inbox.

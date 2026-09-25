@@ -41,6 +41,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   pesan uji, intrusion cam 357 (15:12, 15:24) dan absensi tercatat cam 365 (15:20) masuk grup sebagai foto + caption
   (alert `sent`, keputusan 0,0–2,8 s setelah event). Token **0×** di log API, `camera-secrets.json` `-rw-------`,
   0 error dispatcher. Rate-limit belum teramati di lapangan (tertutup tes unit). Tanpa screenshot (uji oleh user).
+- **Feedback F1: rate-limit Telegram per orang**: kunci kamera + zona + tipe + `track_id`;
+  severity critical tanpa batas, lainnya 2 menit, absensi tercatat tetap tanpa batas.
+  Kolom `zone.rate_limit_min` tetap ada tetapi deprecated. Backend **409 passed**;
+  rollback: revert perubahan ini lalu restart API.
 
 ### Zona UX (2026-09-25)
 

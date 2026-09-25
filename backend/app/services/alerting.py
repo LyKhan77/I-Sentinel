@@ -17,6 +17,13 @@ from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
 
+RATE_LIMIT_MIN = {"critical": 0}
+DEFAULT_RATE_LIMIT_MIN = 2
+
+
+def _track(event: Event):
+    return (event.payload or {}).get("track_id")
+
 
 def _telegram_on(zone: Zone, kind: str) -> bool:
     """Toggle per behavior; item tanpa key → flag zona; zona pra-R5 (behaviors null) → flag zona."""
@@ -39,9 +46,9 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
     """Gerbang Telegram → (boleh_kirim, alasan).
 
     Alasan: `""` (kirim) | `no_zone` | `telegram_off` | `attendance_skipped` | `rate_limited`.
-    Window rate-limit = Alert terakhir pada (camera, zone, type) dalam `zone.rate_limit_min`;
-    baris `rate_limited` dikecualikan agar suppression tidak memperpanjang window-nya sendiri.
-    Attendance `matched` melewati rate-limit (duplikat sudah dicegah cooldown/already_in absensi).
+    Window rate-limit per (camera, zone, type, track_id): critical tanpa batas,
+    severity lain 2 menit; baris `rate_limited` tidak memperpanjang window.
+    Attendance `matched` melewati rate-limit (duplikat dicegah cooldown/already_in).
     Pra-syarat: `event.camera_id` tidak None (dijaga `handle`).
     """
     now = now or datetime.now(timezone.utc)
@@ -56,7 +63,10 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
             return True, ""  # duplikat sudah dicegah cooldown/already_in absensi
         if payload.get("match_reason") != "no_match" or payload.get("employee_id") is not None:
             return False, "attendance_skipped"
-    cutoff = now - timedelta(minutes=zone.rate_limit_min)
+    window = RATE_LIMIT_MIN.get(event.severity, DEFAULT_RATE_LIMIT_MIN)
+    if window <= 0:
+        return True, ""
+    cutoff = now - timedelta(minutes=window)
     recent = (
         db.query(Alert)
         .filter(
@@ -66,9 +76,10 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
             Alert.status != "rate_limited",  # alert yang disuppres tidak ikut menahan alert berikutnya
             Alert.created_at > cutoff,
         )
-        .first()
+        .all()
     )
-    if recent is not None:
+    track = _track(event)
+    if any(a.event is not None and _track(a.event) == track for a in recent):
         return False, "rate_limited"
     return True, ""
 
