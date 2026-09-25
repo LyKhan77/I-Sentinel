@@ -49,6 +49,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `UNKNOWN FACE`, tipe baru → huruf besar), satu data per baris (Nama/Kamera/Zona/Waktu/Level), tautan klip di akhir;
   `parse_mode=HTML` dengan escape nilai, panjang tiap nilai dibatasi (tanpa memotong tag). Backend **411 passed**;
   rollback: revert perubahan ini lalu restart API.
+- **Feedback F5: label snapshot**: kotak orang di snapshot behavior berlabel jenis kejadian (`INTRUSION`/`LOITERING`/
+  `RUNNING`, tipe baru huruf besar) — bukan `ID n`; snapshot absensi diberi nama karyawan (atau `Unknown` oranye
+  untuk wajah tak dikenal) oleh backend setelah pencocokan (Pillow, best-effort) → foto Telegram ikut berlabel.
+  Pipeline wajah vision tidak berubah. Backend **415**, vision **205** passed;
+  rollback: revert perubahan ini lalu restart API **dan** vision-node.
 
 ### Zona UX (2026-09-25)
 

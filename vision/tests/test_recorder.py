@@ -167,6 +167,20 @@ def test_snapshot_draws_bbox_and_track_id(tmp_path):
     assert drawn > 20, "rect track tidak tergambar pada snapshot"
 
 
+def test_snapshot_label_is_event_type_not_track_id(tmp_path, monkeypatch):
+    import cv2
+    labels = []
+    real = cv2.putText
+    monkeypatch.setattr(cv2, "putText", lambda img, text, *a, **k: labels.append(text) or real(img, text, *a, **k))
+    rec = Recorder(1, make_cfg(tmp_path), autostart=False)
+    ok, buf = cv2.imencode(".jpg", np.full((480, 640, 3), 255, np.uint8))
+    for kind in ("intrusion", "loitering", "fall_detect"):
+        ev = {**_ev(tid=7), "type": kind}
+        rec._draw_track_box(buf.tobytes(), ev)
+    assert labels == ["INTRUSION", "LOITERING", "FALL_DETECT"]
+    rec.close()
+
+
 # --- clip insiden per kamera (pre-buffer) -------------------------------------
 
 import os

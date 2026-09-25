@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
 from app.services import face
-from app.services.annotate import annotate_face_crop
+from app.services.annotate import ORANGE, annotate_face_crop, annotate_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,14 @@ def _entered_earlier_today(db, employee_id: int, ts: datetime) -> bool:
                for r in rows)
 
 
+def _label_snapshot(event, payload: dict, label: str, color=None) -> None:
+    """Snapshot absensi diberi nama/Unknown setelah pencocokan (vision belum tahu identitas)."""
+    if event.snapshot_path:
+        kwargs = {"color": color} if color is not None else {}
+        annotate_snapshot(str(Path(settings.storage_root) / event.snapshot_path), label,
+                          payload.get("bbox_norm"), **kwargs)
+
+
 def handle_face_event(db, event, embedding: list[float] | None = None) -> AttendanceEvent | None:
     """Match attendance event, discard embedding, then update attendance day.
 
@@ -146,6 +154,8 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
     if res.employee_id is None:
         payload["employee_id"] = None
         payload["match_reason"] = res.reason
+        if res.reason == "no_match":
+            _label_snapshot(event, payload, "Unknown", ORANGE)
         logger.info("attendance: event %s tidak cocok (%s)", event.event_id, res.reason)
         return _save(db, event, payload, None)
 
@@ -153,6 +163,7 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
     payload["employee_id"] = res.employee_id
     payload["employee_name"] = emp.name if emp is not None else None
     payload["face_score"] = res.score
+    _label_snapshot(event, payload, emp.name if emp is not None else "Unknown")
     if emp is not None and crop:
         annotate_face_crop(str(Path(settings.storage_root) / crop),
                            emp.name, res.score or 0.0, payload.get("face_bbox"))

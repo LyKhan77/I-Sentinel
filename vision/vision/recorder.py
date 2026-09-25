@@ -236,8 +236,11 @@ class Recorder:
     _TRACK_COLORS = {"critical": (0, 0, 230), "warning": (0, 160, 230),
                      "info": (0, 200, 0)}
 
+    # label snapshot = jenis kejadian (feedback F5), bukan ID track
+    TYPE_LABEL = {"intrusion": "INTRUSION", "loitering": "LOITERING", "running": "RUNNING"}
+
     def _draw_track_box(self, jpeg: bytes, event: dict) -> bytes | None:
-        """Bbox track + label 'ID n' pada jpeg ring (warna = severity event).
+        """Bbox track + label jenis kejadian pada jpeg ring (warna = severity event).
 
         Mengikat visual orang-pemicu ke snapshot; bbox_norm = relatif frame.
         """
@@ -255,7 +258,7 @@ class Recorder:
             x1, y1, x2, y2 = [int(v * s) for v, s in zip(bbox, (w, h, w, h))]
             color = self._TRACK_COLORS.get(event.get("severity", "info"), (0, 200, 0))
             cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-            label = f"ID {payload.get('track_id')}"
+            label = self.TYPE_LABEL.get(event.get("type"), str(event.get("type") or "").upper())
             cv2.putText(img, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX,
                         0.6, color, 2, cv2.LINE_AA)
             ok, buf = cv2.imencode(".jpg", img)
