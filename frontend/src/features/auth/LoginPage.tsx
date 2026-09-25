@@ -1,12 +1,18 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, TextInput, InlineNotification, Stack } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { login } from '../../api/client'
 
+// Hanya path internal: tolak //host, /\\host, dan URL absolut (open redirect).
+function safeNext(next: string | null): string {
+  return next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/dashboard'
+}
+
 export default function LoginPage() {
   const { t } = useT()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({})
@@ -24,7 +30,7 @@ export default function LoginPage() {
     setApiError(false)
     try {
       await login(username, password)
-      navigate('/dashboard')
+      navigate(safeNext(params.get('next')))
     } catch {
       setApiError(true)
     } finally {

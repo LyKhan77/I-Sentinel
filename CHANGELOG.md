@@ -33,6 +33,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   antrean (dulu menunggu `get(timeout=0.5)` → setiap shutdown API dan setiap teardown TestClient tertahan; suite
   backend 164 s → 90 s); startup API mengantre ulang alert `queued` ≤ 10 menit dan menandai yang lebih tua `failed`
   "interrupted by restart" (dulu chip "MENGIRIM…" menggantung selamanya). Backend **406 passed**.
+- **Fix review: tautan Telegram selamat melewati login**: 401 mengarahkan ke `/login?next=<path asal>` dan login
+  kembali ke `next` (hanya path internal; `//host`, `/\\host`, URL absolut → `/dashboard`). Dulu petugas yang membuka
+  tautan event dari HP tanpa sesi berakhir di dashboard. Frontend **137 passed**, build 0, lint set sama.
 
 ### Zona UX (2026-09-25)
 
