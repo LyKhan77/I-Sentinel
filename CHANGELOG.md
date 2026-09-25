@@ -14,6 +14,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   dikenal (`alert.type = attendance_unknown`, rate-limit sendiri); `handle` tanpa I/O jaringan → status `queued` +
   antrean dispatcher. Consumer memproses attendance sebelum alert. Fix `GET /alerts` 500 (`camera_id` null).
   Backend **388 passed**.
+- **Dispatcher alert**: thread di proses API (start/stop di `lifespan`) mengambil antrean, menunggu snapshot ±5 s
+  (10 × 0,5 s), kirim `sendPhoto` dari `storage_root` atau teks bila snapshot tidak datang / file hilang; hasil
+  `sent` / `failed` (+ pesan Telegram) / `not_configured` di baris alert. Backend **395 passed**.
 
 ### Zona UX (2026-09-25)
 

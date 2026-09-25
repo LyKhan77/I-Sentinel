@@ -68,9 +68,12 @@ async def lifespan(app: FastAPI):
         if hasattr(gen, "__next__"): gen.close()
     consumer = EventConsumer()
     consumer.start()
+    from app.services.alert_dispatcher import dispatcher
+    dispatcher.start()
     try:
         yield
     finally:
+        dispatcher.stop()
         consumer.stop()
 
 

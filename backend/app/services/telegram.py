@@ -111,9 +111,9 @@ def _call(token: str, method: str, data: dict | None = None, files: dict | None 
         body, ctype = _multipart(data or {}, files)
     else:
         body, ctype = json.dumps(data or {}).encode(), "application/json"
-    req = urllib.request.Request(API.format(token=token, method=method), data=body,
-                                 headers={"Content-Type": ctype})
     try:
+        req = urllib.request.Request(API.format(token=token, method=method), data=body,
+                                     headers={"Content-Type": ctype})
         with _urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as exc:  # Telegram mengirim JSON di 4xx
