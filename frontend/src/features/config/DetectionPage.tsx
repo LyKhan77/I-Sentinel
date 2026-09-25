@@ -2,10 +2,21 @@ import { useEffect, useState } from 'react'
 import { Button, NumberInput, Toggle } from '@carbon/react'
 import { listCameras, updateCamera, type Camera, type CameraPayload } from '../../api/cameras'
 import { getDetectorSettings, putDetectorSettings, type DetectorSettings } from '../../api/detection'
-import { listZones } from '../../api/zones'
+import { listZones, type Zone } from '../../api/zones'
 import { useT } from '../../app/i18n'
 
 type DetectionPatch = Pick<CameraPayload, 'ai_fps' | 'confidence' | 'motion_enabled'>
+
+// Aturan sama dengan vision (node.py): zona visual (behaviors kosong) dan gate absensi tanpa arah
+// tidak membuat worker. behaviors null = zona pra-R5 → vision memakai fallback legacy.
+function runsAi(z: Zone): boolean {
+  if (!z.active) return false
+  const kinds = z.behaviors ?? []
+  if (z.type === 'attendance' || kinds.some((b) => b.kind === 'attendance')) {
+    return z.direction === 'entry' || z.direction === 'exit'
+  }
+  return z.behaviors == null || kinds.length > 0
+}
 
 export default function DetectionPage() {
   const { t } = useT()
@@ -15,11 +26,11 @@ export default function DetectionPage() {
   const [advanced, setAdvanced] = useState(false)
 
   useEffect(() => {
-    // semua kamera tampil; Status AI = jumlah zona aktif (zona aktif = AI aktif)
+    // semua kamera tampil; Status AI = jumlah zona yang benar-benar dijalankan vision
     Promise.all([listCameras(), getDetectorSettings(), listZones()])
       .then(([cams, value, zones]) => {
         const counts = new Map<number, number>()
-        for (const z of zones) if (z.active) counts.set(z.camera_id, (counts.get(z.camera_id) ?? 0) + 1)
+        for (const z of zones) if (runsAi(z)) counts.set(z.camera_id, (counts.get(z.camera_id) ?? 0) + 1)
         setCameras(cams)
         setActiveZones(counts)
         setSettings(value)

@@ -31,6 +31,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Dokumen**: README (aturan "deteksi hanya berjalan di kamera yang punya zona aktif" + chip analyzer tidak
   dipakai), ROADMAP (baris **ZU** + catatan halaman Gate Absensi dihapus), dan runbook `attendance-face-first`
   disinkronkan — tanpa perubahan kode.
+- **Fix review M1: Status AI jujur**: kolom menghitung hanya zona yang benar-benar dijalankan vision — zona visual
+  (behaviors kosong) dan gate absensi tanpa arah tidak dihitung (dulu tertulis "Aktif" walau tanpa worker). Tes
+  diperluas dulu (merah). + 2 tes backend jalur PATCH konflik arah (ubah tipe ke absensi, ubah arah gate aktif).
+  Backend **370**, frontend **127** passed, build 0, lint set sama.
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 

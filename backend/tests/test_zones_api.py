@@ -240,3 +240,28 @@ def test_attendance_gates_on_different_cameras_do_not_conflict(client):
     a, b = _camera(client, h, "cam-a"), _camera(client, h, "cam-b")
     assert _gate(client, h, a["id"], "entry").status_code == 200
     assert _gate(client, h, b["id"], "exit").status_code == 200
+
+
+def test_patch_flip_type_to_attendance_with_conflicting_direction_rejected(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    assert _gate(client, h, cam["id"], "entry").status_code == 200
+    zone = client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam["id"], "name": "b", "type": "behavior",
+        "behaviors": [{"kind": "intrusion", "trigger_seconds": 0}],
+    }, headers=h).json()
+    r = client.patch(f"/api/v1/zones/{zone['id']}", json={
+        "type": "attendance", "direction": "exit", "behaviors": GATE_BEHAVIORS,
+    }, headers=h)
+    assert r.status_code == 422
+    assert client.get(f"/api/v1/zones/{zone['id']}", headers=h).json()["type"] == "behavior"
+
+
+def test_patch_direction_of_active_gate_into_conflict_rejected(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    assert _gate(client, h, cam["id"], "entry").status_code == 200
+    other = _gate(client, h, cam["id"], "entry", name="g2").json()
+    r = client.patch(f"/api/v1/zones/{other['id']}", json={"direction": "exit"}, headers=h)
+    assert r.status_code == 422
+    assert client.get(f"/api/v1/zones/{other['id']}", headers=h).json()["direction"] == "entry"

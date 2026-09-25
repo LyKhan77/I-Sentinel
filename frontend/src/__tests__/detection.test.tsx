@@ -81,11 +81,19 @@ test('kolom override kosong bukan keadaan invalid — kosong berarti pakai nilai
 })
 
 test('tabel memuat semua kamera dengan Status AI dari zona aktif, tanpa chip analyzer', async () => {
-  const cams = [camera, { ...camera, id: 2, name: 'CAM-02' }, { ...camera, id: 3, name: 'CAM-03', enabled: false }]
+  const cams = [camera, { ...camera, id: 2, name: 'CAM-02' }, { ...camera, id: 3, name: 'CAM-03', enabled: false },
+    { ...camera, id: 4, name: 'CAM-04' }]
+  const intrusion = [{ kind: 'intrusion', trigger_seconds: 0 }]
+  const gate = [{ kind: 'attendance', trigger_seconds: 0 }]
   const zones = [
-    { id: 9, camera_id: 1, name: 'Z', type: 'behavior', polygon: [], behaviors: [], trigger_seconds: 0, active: true },
-    { id: 10, camera_id: 1, name: 'G', type: 'attendance', polygon: [], behaviors: [], trigger_seconds: 0, active: true },
-    { id: 11, camera_id: 2, name: 'Off', type: 'behavior', polygon: [], behaviors: [], trigger_seconds: 0, active: false },
+    { id: 9, camera_id: 1, name: 'Z', type: 'behavior', direction: null, polygon: [], behaviors: intrusion, trigger_seconds: 0, active: true },
+    { id: 10, camera_id: 1, name: 'G', type: 'attendance', direction: 'entry', polygon: [], behaviors: gate, trigger_seconds: 0, active: true },
+    // zona visual (tanpa behavior) tidak menjalankan AI → tidak dihitung
+    { id: 12, camera_id: 1, name: 'Visual', type: 'behavior', direction: null, polygon: [], behaviors: [], trigger_seconds: 0, active: true },
+    { id: 11, camera_id: 2, name: 'Off', type: 'behavior', direction: null, polygon: [], behaviors: intrusion, trigger_seconds: 0, active: false },
+    // hanya zona visual / gate tanpa arah → vision tidak membuat worker
+    { id: 13, camera_id: 4, name: 'Visual', type: 'behavior', direction: null, polygon: [], behaviors: [], trigger_seconds: 0, active: true },
+    { id: 14, camera_id: 4, name: 'G?', type: 'attendance', direction: null, polygon: [], behaviors: gate, trigger_seconds: 0, active: true },
   ]
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const body = url.includes('/detector-settings') ? settings
@@ -99,6 +107,7 @@ test('tabel memuat semua kamera dengan Status AI dari zona aktif, tanpa chip ana
   expect(await screen.findByTestId('ai-status-1')).toHaveTextContent('Aktif · 2 zona')
   expect(screen.getByTestId('ai-status-2')).toHaveTextContent('Tidak jalan (tanpa zona aktif)')
   expect(screen.getByTestId('ai-status-3')).toHaveTextContent('Kamera nonaktif')
+  expect(screen.getByTestId('ai-status-4')).toHaveTextContent('Tidak jalan (tanpa zona aktif)')
   expect(document.querySelectorAll('.det-chip')).toHaveLength(0)
   expect(screen.getByText('InsightFace buffalo_l')).toBeInTheDocument()
   expect(screen.getByText('lepas track setelah 3 s')).toBeInTheDocument()
