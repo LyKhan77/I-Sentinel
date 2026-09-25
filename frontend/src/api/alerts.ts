@@ -1,11 +1,11 @@
 import { apiFetch } from './client'
 
-export type AlertStatus = 'sent' | 'failed' | 'rate_limited' | 'not_configured'
+export type AlertStatus = 'sent' | 'failed' | 'rate_limited' | 'not_configured' | 'queued'
 
 export type AlertOut = {
   id: number
   event_id: number
-  camera_id: number
+  camera_id: number | null
   zone_id: number | null
   type: string
   severity: string

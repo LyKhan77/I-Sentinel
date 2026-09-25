@@ -377,9 +377,22 @@ export default function ZonesPage() {
                 )}
 
                 {selected.type === 'attendance' ? (
-                  <p data-testid="zone-attendance-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: 0 }}>
-                    {t('zones.attendanceHint')}
-                  </p>
+                  <>
+                    <p data-testid="zone-attendance-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: 0 }}>
+                      {t('zones.attendanceHint')}
+                    </p>
+                    <Toggle
+                      id="zone-telegram-attendance"
+                      size="sm"
+                      labelText={t('zones.telegram')}
+                      toggled={selected.behaviors.find((b) => b.kind === 'attendance')?.telegram ?? selected.telegram}
+                      onToggle={(v) =>
+                        patchSelected({
+                          behaviors: selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, telegram: v } : b)),
+                        })
+                      }
+                    />
+                  </>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{t('zones.behaviors')}</span>
@@ -439,6 +452,13 @@ export default function ZonesPage() {
                                 toggled={b.clip ?? selected.clip}
                                 onToggle={(v) => setBehavior(kind, { clip: v })}
                               />
+                              <Toggle
+                                id={`zone-telegram-${kind}`}
+                                size="sm"
+                                labelText={t('zones.telegram')}
+                                toggled={b.telegram ?? selected.telegram}
+                                onToggle={(v) => setBehavior(kind, { telegram: v })}
+                              />
                             </div>
                           )}
                         </div>
@@ -446,10 +466,6 @@ export default function ZonesPage() {
                     })}
                   </div>
                 )}
-                <div>
-                  <Toggle id="zone-telegram" labelText={t('zones.telegram')} toggled={false} onToggle={() => {}} disabled />
-                  <div style={{ fontSize: 12, color: 'var(--cds-text-helper)', marginTop: 4 }}>{t('zones.telegramFase3')}</div>
-                </div>
                 <Checkbox
                   id="zone-active"
                   labelText={t('zones.active')}

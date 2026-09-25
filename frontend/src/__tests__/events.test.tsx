@@ -31,10 +31,10 @@ function stubFetch(events = EVENTS) {
   })
 }
 
-function renderPage() {
+function renderPage(entry = '/events') {
   return render(
     <I18nProvider>
-      <MemoryRouter initialEntries={['/events']}>
+      <MemoryRouter initialEntries={[entry]}>
         <EventsPage />
       </MemoryRouter>
     </I18nProvider>,
@@ -377,4 +377,11 @@ test('event attendance tanpa tab Clip (attendance tidak merekam klip)', async ()
   expect(screen.getByTestId('event-tab-snapshot')).toBeInTheDocument()
   expect(screen.getByTestId('event-tab-crop')).toBeInTheDocument()
   expect(screen.queryByTestId('event-tab-clip')).not.toBeInTheDocument()
+})
+
+test('?event=<id> opens that event in the detail panel', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage('/events?event=2')
+  await screen.findByTestId('event-detail')
+  expect(screen.getByTestId('event-detail')).toHaveTextContent('loitering')
 })

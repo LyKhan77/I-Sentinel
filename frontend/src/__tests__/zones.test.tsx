@@ -321,3 +321,25 @@ test('kamera terpilih awal adalah yang sudah punya zona, bukan kamera pertama', 
     expect(screen.getByTestId('zone-rail-cam-2').getAttribute('aria-selected')).toBe('true'))
   expect(screen.getByTestId('zone-rail-cam-1').getAttribute('aria-selected')).toBe('false')
 })
+
+test('Telegram per behavior default off, dikirim di item behaviors; toggle zona lama hilang', async () => {
+  const fetchMock = await selectZone([zoneFix({ behaviors: [{ kind: 'intrusion', trigger_seconds: 0 }] })])
+  expect(document.getElementById('zone-telegram')).toBeNull()
+  const tg = document.getElementById('zone-telegram-intrusion')!
+  expect(tg).toHaveAttribute('aria-checked', 'false')
+  fireEvent.click(tg)
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'intrusion', trigger_seconds: 0, telegram: true },
+  ]))
+})
+
+test('zona absensi punya satu toggle Telegram pada behavior attendance', async () => {
+  const fetchMock = await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] })])
+  fireEvent.click(document.getElementById('zone-telegram-attendance')!)
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, telegram: true },
+  ]))
+})

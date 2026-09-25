@@ -22,6 +22,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `POST /telegram/test` (1 percobaan). Admin saja; `/status` tetap. Backend **404 passed**.
 - **Tab Notifikasi**: token bot (write-only, "Token tersimpan ✓" + Ganti), Deteksi grup → pilih → simpan, URL
   aplikasi (default alamat browser), Kirim pesan uji, status alert terakhir. Frontend **129 passed**.
+- **Zona Deteksi + Inbox**: toggle **Telegram** per behavior (default off, di samping Snapshot/Clip) dan satu toggle
+  pada zona absensi; toggle level zona "tersedia di Fase 3" dihapus. Inbox mendukung `?event=<id>` (tautan caption)
+  dan status alert `queued` ("MENGIRIM…"). Frontend **132 passed**.
 
 ### Zona UX (2026-09-25)
 

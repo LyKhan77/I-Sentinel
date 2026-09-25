@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Dropdown, InlineLoading, InlineNotification, Select, SelectItem, Tag, TextInput } from '@carbon/react'
 import { Download } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
@@ -16,18 +17,21 @@ const ALERT_KEY: Record<AlertStatus, TKey> = {
   rate_limited: 'events.alert.rate_limited',
   failed: 'events.alert.failed',
   not_configured: 'events.alert.not_configured',
+  queued: 'events.alert.queued',
 }
 const ALERT_TAG: Record<AlertStatus, string> = {
   sent: 'ev-tag--ok',
   rate_limited: 'ev-tag--warn',
   failed: 'ev-tag--err',
   not_configured: 'ev-tag--muted',
+  queued: 'ev-tag--muted',
 }
 const ALERT_BADGE: Record<AlertStatus, string> = {
   sent: 'ev-badge--sent',
   rate_limited: 'ev-badge--rate_limited',
   failed: 'ev-badge--failed',
   not_configured: 'ev-badge--not_configured',
+  queued: 'ev-badge--not_configured',
 }
 
 // Rentang waktu toolbar (mockup 03) → param `since`. `all` default: riwayat lama
@@ -61,6 +65,8 @@ function Thumb({ path, alt }: { path: string | null; alt: string }) {
 
 export default function EventsPage() {
   const { t } = useT()
+  // tautan dalam caption Telegram: /events?event=<id> → event itu terbuka di panel detail
+  const [searchParams] = useSearchParams()
   const [events, setEvents] = useState<EventOut[]>([])
   const [cams, setCams] = useState<{ id: number; name: string }[]>([])
   const [typeFilter, setTypeFilter] = useState<{ label: string } | null>(null)
@@ -68,7 +74,12 @@ export default function EventsPage() {
   const [sevFilter, setSevFilter] = useState<{ label: string } | null>(null)
   const [range, setRange] = useState<RangeId>('all')
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  // `?event=<id>` (tautan caption) dibaca saat init; tanpa param → null → default event pertama
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const raw = searchParams.get('event')
+    const n = raw == null ? NaN : Number(raw)
+    return Number.isInteger(n) && n > 0 ? n : null
+  })
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
