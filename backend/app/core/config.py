@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     access_token_expire_min: int = 480
     node_api_key: str = "CHANGE_ME"
     telegram_bot_token: str = ""
+    # deprecated: gerbang Telegram = toggle per behavior
     alert_min_severity: str = "warning"
     cam_username: str = ""
     cam_password: str = ""

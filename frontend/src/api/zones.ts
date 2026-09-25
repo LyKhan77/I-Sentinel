@@ -11,6 +11,7 @@ export type Behavior = {
   speed_limit_mps?: number
   snapshot?: boolean // kosong = ikut flag zona (data lama)
   clip?: boolean
+  telegram?: boolean // kosong = ikut flag zona / default off
 }
 
 export type Schedule = { days: number[]; start: string; end: string }

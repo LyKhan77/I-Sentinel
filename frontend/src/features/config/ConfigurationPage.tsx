@@ -6,8 +6,9 @@ import ZonesPage from './ZonesPage'
 import StoragePage from './StoragePage'
 import NodesPanel from './NodesPanel'
 import DetectionPage from './DetectionPage'
+import NotificationsPage from './NotificationsPage'
 
-const TABS = ['cameras', 'zones', 'detection', 'storage', 'nodes'] as const
+const TABS = ['cameras', 'zones', 'detection', 'notifications', 'storage', 'nodes'] as const
 type ConfigurationTab = (typeof TABS)[number]
 
 const TAB_LABEL: Record<ConfigurationTab, TKey> = {
@@ -15,6 +16,7 @@ const TAB_LABEL: Record<ConfigurationTab, TKey> = {
   zones: 'zones.title',
   storage: 'storage.title',
   detection: 'detection.title',
+  notifications: 'notifications.title',
   nodes: 'configuration.tabNodes',
 }
 
@@ -51,6 +53,7 @@ export default function ConfigurationPage() {
           <TabPanel>{tab === 'cameras' && <CamerasPage />}</TabPanel>
           <TabPanel>{tab === 'zones' && <ZonesPage />}</TabPanel>
           <TabPanel>{tab === 'detection' && <DetectionPage />}</TabPanel>
+          <TabPanel>{tab === 'notifications' && <NotificationsPage />}</TabPanel>
           <TabPanel>{tab === 'storage' && <StoragePage />}</TabPanel>
           <TabPanel>{tab === 'nodes' && <NodesPanel />}</TabPanel>
         </TabPanels>

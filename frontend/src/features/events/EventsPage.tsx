@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Dropdown, InlineLoading, InlineNotification, Select, SelectItem, Tag, TextInput } from '@carbon/react'
 import { Download } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
+import { listZones } from '../../api/zones'
 import { listEvents, type EventOut } from '../../api/events'
 import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type TelegramStatus } from '../../api/alerts'
 import { useLiveEvents } from '../../api/useWs'
@@ -16,18 +18,21 @@ const ALERT_KEY: Record<AlertStatus, TKey> = {
   rate_limited: 'events.alert.rate_limited',
   failed: 'events.alert.failed',
   not_configured: 'events.alert.not_configured',
+  queued: 'events.alert.queued',
 }
 const ALERT_TAG: Record<AlertStatus, string> = {
   sent: 'ev-tag--ok',
   rate_limited: 'ev-tag--warn',
   failed: 'ev-tag--err',
   not_configured: 'ev-tag--muted',
+  queued: 'ev-tag--muted',
 }
 const ALERT_BADGE: Record<AlertStatus, string> = {
   sent: 'ev-badge--sent',
   rate_limited: 'ev-badge--rate_limited',
   failed: 'ev-badge--failed',
   not_configured: 'ev-badge--not_configured',
+  queued: 'ev-badge--not_configured',
 }
 
 // Rentang waktu toolbar (mockup 03) → param `since`. `all` default: riwayat lama
@@ -61,14 +66,22 @@ function Thumb({ path, alt }: { path: string | null; alt: string }) {
 
 export default function EventsPage() {
   const { t } = useT()
+  // tautan dalam caption Telegram: /events?event=<id> → event itu terbuka di panel detail
+  const [searchParams] = useSearchParams()
   const [events, setEvents] = useState<EventOut[]>([])
   const [cams, setCams] = useState<{ id: number; name: string }[]>([])
+  const [zoneNames, setZoneNames] = useState<Record<number, string>>({})
   const [typeFilter, setTypeFilter] = useState<{ label: string } | null>(null)
   const [camFilter, setCamFilter] = useState<{ id: number; label: string } | null>(null)
   const [sevFilter, setSevFilter] = useState<{ label: string } | null>(null)
   const [range, setRange] = useState<RangeId>('all')
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  // `?event=<id>` (tautan caption) dibaca saat init; tanpa param → null → default event pertama
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const raw = searchParams.get('event')
+    const n = raw == null ? NaN : Number(raw)
+    return Number.isInteger(n) && n > 0 ? n : null
+  })
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
@@ -96,6 +109,9 @@ export default function EventsPage() {
     listCameras()
       .then((cs) => setCams(cs.map((c) => ({ id: c.id, name: c.name }))))
       .catch(() => setCams([]))
+    listZones()
+      .then((zs) => setZoneNames(Object.fromEntries(zs.map((z) => [z.id, z.name]))))
+      .catch(() => setZoneNames({}))
   }, [refresh])
 
   // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
@@ -110,6 +126,8 @@ export default function EventsPage() {
   const camOptions = useMemo(() => cams.map((c) => ({ id: c.id, label: c.name })), [cams])
 
   const camName = (e: EventOut) => cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`
+  // nama zona utk Inbox; zona yang sudah dihapus → #id (bukan crash)
+  const zoneName = (id: number) => zoneNames[id] ?? `#${id}`
 
   // Hasil pencocokan wajah attendance: nama + keterangan cooldown, atau Tidak dikenal.
   const faceMatch = (p: Record<string, unknown> | null): string => {
@@ -305,7 +323,7 @@ export default function EventsPage() {
                       {alertMap[e.event_id] && (
                         <span className={`ev-tag ${ALERT_TAG[alertMap[e.event_id]]}`}>{t(ALERT_KEY[alertMap[e.event_id]])}</span>
                       )}
-                      {e.zone_id != null && <span className="ev-tag">{t('events.col.zone')} {e.zone_id}</span>}
+                      {e.zone_id != null && <span className="ev-tag">{t('events.col.zone')} {zoneName(e.zone_id)}</span>}
                     </span>
                   </span>
                   <span className="ev-row__time">
@@ -412,7 +430,7 @@ export default function EventsPage() {
                 </div>
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.zone')}</dt>
-                  <dd className="ev-meta__v">{selected.zone_id ?? '—'}</dd>
+                  <dd className="ev-meta__v">{selected.zone_id != null ? zoneName(selected.zone_id) : '—'}</dd>
                 </div>
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.type')}</dt>

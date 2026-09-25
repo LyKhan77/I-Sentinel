@@ -3,6 +3,74 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Integrasi bot Telegram (2026-09-25)
+
+- **`services/telegram.py`**: klien stdlib (getMe, getUpdates → daftar grup unik, sendPhoto multipart,
+  sendMessage, retry 3× backoff), token di `secret_store` (fallback env), grup = satu baris aktif
+  `telegram_chat`, URL aplikasi di `setting`; caption (behavior, absensi tercatat, wajah tidak dikenal, fallback
+  tipe baru, ≤ 1024); token tidak pernah masuk pesan error. Tes memakai file rahasia terisolasi. Backend **381 passed**.
+- **Gerbang alert baru**: toggle `telegram` per behavior (fallback `zone.telegram`, default off; berlaku untuk tipe
+  apa pun), `ALERT_MIN_SEVERITY` bukan gerbang lagi; attendance hanya `matched` (tanpa rate-limit) dan wajah tidak
+  dikenal (`alert.type = attendance_unknown`, rate-limit sendiri); `handle` tanpa I/O jaringan → status `queued` +
+  antrean dispatcher. Consumer memproses attendance sebelum alert. Fix `GET /alerts` 500 (`camera_id` null).
+  Backend **388 passed**.
+- **Dispatcher alert**: thread di proses API (start/stop di `lifespan`) mengambil antrean, menunggu snapshot ±5 s
+  (10 × 0,5 s), kirim `sendPhoto` dari `storage_root` atau teks bila snapshot tidak datang / file hilang; hasil
+  `sent` / `failed` (+ pesan Telegram) / `not_configured` di baris alert. Backend **395 passed**.
+- **API Telegram**: `GET/PUT /telegram/settings` (token write-only, validasi format + `getMe`, 422 tanpa gema token;
+  grup; URL aplikasi; alert terakhir), `POST /telegram/discover` (grup dari `getUpdates`, 409/502),
+  `POST /telegram/test` (1 percobaan). Admin saja; `/status` tetap. Backend **404 passed**.
+- **Tab Notifikasi**: token bot (write-only, "Token tersimpan ✓" + Ganti), Deteksi grup → pilih → simpan, URL
+  aplikasi (default alamat browser), Kirim pesan uji, status alert terakhir. Frontend **129 passed**.
+- **Zona Deteksi + Inbox**: toggle **Telegram** per behavior (default off, di samping Snapshot/Clip) dan satu toggle
+  pada zona absensi; toggle level zona "tersedia di Fase 3" dihapus. Inbox mendukung `?event=<id>` (tautan caption)
+  dan status alert `queued` ("MENGIRIM…"). Frontend **132 passed**.
+- **Dokumen**: README §Alert Telegram (sambungkan bot @BotFather → grup → tab Notifikasi →
+  toggle per behavior; snapshot keluar LAN, tautan klip LAN-saja, token di `CAMERA_SECRETS_FILE`),
+  ROADMAP baris **TG** `[~] lokal selesai, PENDING deploy + verifikasi`, `.env.example`
+  (`TELEGRAM_BOT_TOKEN` = fallback, `ALERT_MIN_SEVERITY` deprecated) — tanpa perubahan kode.
+- **Fix review: dispatcher stop instan + pemulihan saat restart**: `stop()` membangunkan worker lewat sinyal di
+  antrean (dulu menunggu `get(timeout=0.5)` → setiap shutdown API dan setiap teardown TestClient tertahan; suite
+  backend 164 s → 90 s); startup API mengantre ulang alert `queued` ≤ 10 menit dan menandai yang lebih tua `failed`
+  "interrupted by restart" (dulu chip "MENGIRIM…" menggantung selamanya). Backend **406 passed**.
+- **Fix review: tautan Telegram selamat melewati login**: 401 mengarahkan ke `/login?next=<path asal>` dan login
+  kembali ke `next` (hanya path internal; `//host`, `/\\host`, URL absolut → `/dashboard`). Dulu petugas yang membuka
+  tautan event dari HP tanpa sesi berakhir di dashboard. Frontend **137 passed**, build 0, lint set sama.
+- **Deploy + verifikasi (2026-09-25)**: `00899ee` di gspe-ai3, restart `isentinel-api` saja (vision tidak berubah);
+  `GET /alerts` 200 (bug 500 tertutup). User membuat bot + grup, menghubungkan lewat tab Notifikasi; **E2E user OK**:
+  pesan uji, intrusion cam 357 (15:12, 15:24) dan absensi tercatat cam 365 (15:20) masuk grup sebagai foto + caption
+  (alert `sent`, keputusan 0,0–2,8 s setelah event). Token **0×** di log API, `camera-secrets.json` `-rw-------`,
+  0 error dispatcher. Rate-limit belum teramati di lapangan (tertutup tes unit). Tanpa screenshot (uji oleh user).
+- **Feedback F1: rate-limit Telegram per orang**: kunci kamera + zona + tipe + `track_id`;
+  severity critical tanpa batas, lainnya 2 menit, absensi tercatat tetap tanpa batas.
+  Kolom `zone.rate_limit_min` tetap ada tetapi deprecated. Backend **409 passed**;
+  rollback: revert perubahan ini lalu restart API.
+- **Feedback F2: caption rapi**: judul tebal berbahasa Inggris (`INTRUSION`, `ATTENDANCE — CHECK IN/OUT`,
+  `UNKNOWN FACE`, tipe baru → huruf besar), satu data per baris (Nama/Kamera/Zona/Waktu/Level), tautan klip di akhir;
+  `parse_mode=HTML` dengan escape nilai, panjang tiap nilai dibatasi (tanpa memotong tag). Backend **411 passed**;
+  rollback: revert perubahan ini lalu restart API.
+- **Feedback F5: label snapshot**: kotak orang di snapshot behavior berlabel jenis kejadian (`INTRUSION`/`LOITERING`/
+  `RUNNING`, tipe baru huruf besar) — bukan `ID n`; snapshot absensi diberi nama karyawan (atau `Unknown` oranye
+  untuk wajah tak dikenal) oleh backend setelah pencocokan (Pillow, best-effort) → foto Telegram ikut berlabel.
+  Pipeline wajah vision tidak berubah. Backend **415**, vision **205** passed;
+  rollback: revert perubahan ini lalu restart API **dan** vision-node.
+- **Feedback F3/F4**: Inbox menampilkan **nama zona** (zona terhapus → `#id`); Deteksi & Model mengganti tombol Reset
+  override dengan tautan **"Atur zona →"** yang membuka Zona Deteksi dengan kamera itu terpilih (`?camera=`).
+  Frontend **139 passed**, build 0, lint set sama; rollback: revert perubahan ini.
+- **Fix review: snapshot absensi yang datang belakangan tetap berlabel**: pesan media (topik
+  `isentinel/events/media`) yang mengisi `snapshot_path` setelah `handle_face_event` kini memicu label ulang
+  (`attendance.annotate_event_snapshot` dari payload tersimpan: nama karyawan, atau `Unknown` oranye bila
+  `no_match`). Dulu subset absensi dengan snapshot telat terkirim ke Telegram tanpa label (F5 bolong).
+  Backend **418 passed** (3 tes regresi); rollback: revert perubahan ini lalu restart API.
+- **Dev-deps backend**: `numpy` masuk `[dev]` (dipakai `test_attendance_logic.py`, dulu hanya terbawa lewat paket
+  `vision`). Catatan env: venv backend lokal sempat dibangun ulang tool review (`uv`) → editable `vision` hilang;
+  dipulihkan `uv pip install -e "vision[dev]"`. Backend 418, vision 205, frontend 139.
+- **Deploy + verifikasi refining (2026-09-25 17:24)**: `fce11ae` di gspe-ai3, restart `isentinel-api` + `vision-node`
+  (`started 1 worker(s)`, 0 traceback). **E2E user OK**: dua orang satu zona → dua pesan, orang sama ≤ 2 menit →
+  rate_limited, format pesan per baris + judul Inggris, label foto (jenis kejadian / nama karyawan), nama zona di Inbox,
+  tautan Atur zona. Data alert sejak deploy: intrusion warning 5 sent + 2 rate_limited, loitering 1 sent, attendance
+  1 sent; token 0× di log API.
+
 ### Zona UX (2026-09-25)
 
 - **Vision: zona aktif = AI aktif**: mask `camera.analyzers` tidak dibaca lagi; kamera tanpa zona aktif tidak

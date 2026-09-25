@@ -114,18 +114,14 @@ test('tabel memuat semua kamera dengan Status AI dari zona aktif, tanpa chip ana
   expect((document.querySelector('#fps-1') as HTMLInputElement).placeholder).toBe('5')
 })
 
-test('reset override tidak lagi mengirim analyzers', async () => {
-  const calls: { url: string; init?: RequestInit }[] = []
-  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-    calls.push({ url, init })
+test('tiap kamera punya tautan Atur zona, tanpa tombol Reset override', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone]
       : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
     return { ok: true, status: 200, json: async () => body }
   }))
   render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
-  await userEvent.click(await screen.findByRole('button', { name: 'Reset override' }))
-  await waitFor(() => {
-    const patch = calls.find((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH')
-    expect(JSON.parse(String(patch!.init!.body))).toEqual({ ai_fps: null, confidence: null, motion_enabled: null })
-  })
+  const link = await screen.findByRole('link', { name: 'Atur zona →' })
+  expect(link).toHaveAttribute('href', '/configuration?tab=zones&camera=1')
+  expect(screen.queryByRole('button', { name: 'Reset override' })).not.toBeInTheDocument()
 })

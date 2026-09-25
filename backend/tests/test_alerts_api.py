@@ -94,3 +94,13 @@ def test_telegram_status_configured_when_token_set(client, monkeypatch):
     monkeypatch.setattr(settings, "telegram_bot_token", "123:abc")
     h = _admin_headers(client)
     assert client.get("/api/v1/telegram/status", headers=h).json()["configured"] is True
+
+
+def test_list_alerts_with_null_camera_is_200(client, db):
+    ev = Event(type="system", camera_id=None, severity="critical", ts_event=datetime.now(timezone.utc))
+    db.add(ev); db.commit(); db.refresh(ev)
+    db.add(Alert(event_id=ev.id, camera_id=None, zone_id=None, type="system", severity="critical",
+                 status="not_configured"))
+    db.commit()
+    r = client.get("/api/v1/alerts", headers=_admin_headers(client))
+    assert r.status_code == 200 and r.json()[0]["camera_id"] is None

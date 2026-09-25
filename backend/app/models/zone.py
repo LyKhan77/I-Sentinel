@@ -13,7 +13,7 @@ class Zone(Base):
     polygon: Mapped[list] = mapped_column(JSON, nullable=False)
     schedule: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), default="warning")
-    rate_limit_min: Mapped[int] = mapped_column(Integer, default=5)
+    rate_limit_min: Mapped[int] = mapped_column(Integer, default=5)  # deprecated: Telegram pakai alerting.RATE_LIMIT_MIN
     loiter_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = off (deprecated: pindah ke behaviors)
     dwell_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0 = emit langsung (deprecated)
     # R5: sumber kebenaran baru — daftar behavior + trigger_seconds masing-masing.

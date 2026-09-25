@@ -12,7 +12,9 @@ export async function apiFetch(path: string, opts: RequestInit = {}): Promise<Re
     headers: rest.body && !isForm ? { 'Content-Type': 'application/json', ...headers } : headers,
   })
   if (res.status === 401 && window.location.pathname !== '/login') {
-    window.location.assign('/login')
+    // bawa tujuan asal (mis. tautan event dari Telegram) melewati halaman login
+    const next = window.location.pathname + window.location.search
+    window.location.assign(next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`)
   }
   return res
 }

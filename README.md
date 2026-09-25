@@ -147,3 +147,41 @@ sudah direkonsiliasi dengan yang berjalan di `gspe-ai3` (Fase 5 Task 12):
 password tidak tersedia di server, jadi restart service dilakukan lewat
 `kill $(cat /sys/fs/cgroup/system.slice/<unit>.service/cgroup.procs)` (unit
 memakai `Restart=always`).
+
+## Alert Telegram
+
+Kirim foto + caption kejadian ke grup staf. Tanpa dependensi baru (klien stdlib),
+tanpa migrasi DB.
+
+**Menyambungkan bot + grup** (satu kali, oleh admin):
+
+1. **@BotFather** → `/newbot` (atau pakai bot yang ada) → salin **token**
+   (`123456789:AA...`).
+2. Tambahkan bot ke **grup staf**, lalu kirim satu pesan apa pun di grup itu agar
+   bot melihat `chat_id`-nya.
+3. Buka **Konfigurasi → Notifikasi**: tempel token → **Simpan** → **Deteksi grup**
+   → pilih grup dari daftar → **Simpan** → **Kirim pesan uji**. Chip status menjadi
+   *Siap* dan pesan uji masuk ke grup.
+4. **Zona Deteksi**: nyalakan toggle **Telegram** per behavior (intrusi/loitering/
+   berlari/absensi) pada zona yang boleh mengirim alert. Tanpa toggle aktif, event
+   tetap tercatat tapi tidak dikirim.
+
+Yang perlu diketahui:
+
+- **Snapshot ikut terkirim keluar LAN** (foto kejadian diunggah ke Telegram). Tautan
+  klip hanya menunjuk aplikasi (`.../events?event=<id>`) yang bisa dibuka **dari LAN
+  saja** — Telegram tidak membawa video.
+- **Token disimpan di file rahasia server** `CAMERA_SECRETS_FILE` (key
+  `telegram_bot_token`, izin `0600`, di luar `STORAGE_ROOT`) — bukan di DB dan tidak
+  pernah tampil di UI/log/response. `TELEGRAM_BOT_TOKEN` di `.env` hanya fallback.
+- **Kirim berjalan di thread terpisah** — konsumen MQTT tidak pernah menunggu
+  jaringan Telegram. Rate-limit per kamera, zona, tipe, dan `track_id`: severity
+  critical tanpa batas, lainnya 2 menit; absensi tercatat tanpa batas. Event tanpa
+  `track_id` dikelompokkan bersama. Status alert (`queued/sent/failed/rate_limited/
+  not_configured`) tampil di Inbox.
+- **Format pesan**: foto snapshot dengan caption HTML — judul tebal berbahasa
+  Inggris (`INTRUSION`, `LOITERING`, `RUNNING`, `ATTENDANCE — CHECK IN/OUT`,
+  `UNKNOWN FACE`, tipe baru → huruf besar), lalu satu data per baris berlabel
+  Indonesia (Nama/Kamera/Zona/Waktu/Level) dan tautan klip di akhir. Kotak orang
+  pada snapshot behavior berlabel jenis kejadiannya; snapshot absensi berlabel
+  nama karyawan (atau `Unknown` oranye untuk wajah tak dikenal).

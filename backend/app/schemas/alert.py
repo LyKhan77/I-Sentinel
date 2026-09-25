@@ -5,7 +5,7 @@ from pydantic import BaseModel
 class AlertOut(BaseModel):
     id: int
     event_id: int
-    camera_id: int
+    camera_id: int | None
     zone_id: int | None
     type: str
     severity: str

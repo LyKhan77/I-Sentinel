@@ -55,16 +55,17 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 embedding = data["payload"].pop("embedding", None)
             status, ev = ingest_event(db, data)
             if status == "created" and ev is not None:
-                try:
-                    alerting.handle(db, ev)
-                except Exception:
-                    db.rollback()
-                    logger.exception("alerting failed for event %s", ev.event_id)
+                # attendance dulu: keputusan alert absensi butuh match_reason
                 try:
                     attendance.handle_face_event(db, ev, embedding=embedding)
                 except Exception:
                     db.rollback()
                     logger.exception("attendance failed for event %s", ev.event_id)
+                try:
+                    alerting.handle(db, ev)
+                except Exception:
+                    db.rollback()
+                    logger.exception("alerting failed for event %s", ev.event_id)
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
         elif topic == MEDIA_TOPIC:
             event_id = data.get("event_id")
@@ -80,6 +81,10 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             if isinstance(offset, (int, float)) and not isinstance(offset, bool) and offset >= 0:
                 ev.payload = {**(ev.payload or {}), "clip_offset_s": offset}
             db.commit()
+            # F5: snapshot absensi bisa datang belakangan (handle_face_event sudah jalan
+            # saat snapshot masih None) — label ulang dari payload yang tersimpan.
+            if data.get("snapshot_path") and ev.type == "attendance":
+                attendance.annotate_event_snapshot(ev)
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/heartbeat"):
             name = topic.split("/")[2]
             node = db.query(Node).filter_by(name=name).first()

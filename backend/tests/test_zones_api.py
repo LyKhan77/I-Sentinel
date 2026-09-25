@@ -265,3 +265,15 @@ def test_patch_direction_of_active_gate_into_conflict_rejected(client):
     r = client.patch(f"/api/v1/zones/{other['id']}", json={"direction": "exit"}, headers=h)
     assert r.status_code == 422
     assert client.get(f"/api/v1/zones/{other['id']}", headers=h).json()["direction"] == "entry"
+
+
+def test_behavior_telegram_flag_roundtrip_and_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    behaviors = [{"kind": "intrusion", "trigger_seconds": 0, "telegram": True}]
+    r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                           "behaviors": behaviors}, headers=h)
+    assert r.status_code == 200 and r.json()["behaviors"] == behaviors
+    bad = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                             "behaviors": [{"kind": "intrusion", "telegram": "ya"}]}, headers=h)
+    assert bad.status_code == 422

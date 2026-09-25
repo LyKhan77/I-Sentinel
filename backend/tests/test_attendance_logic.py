@@ -510,3 +510,23 @@ def test_entry_next_day_and_repeated_exits_are_recorded(db, monkeypatch):
     attendance.handle_face_event(db, _raw_event(db, "entry", _at(2025, 1, 7, 7, 5), VEC))
     assert db.query(AttendanceEvent).filter_by(direction="entry").count() == 2
     assert db.query(AttendanceEvent).filter_by(direction="exit").count() == 2
+
+
+def test_face_snapshot_labeled_with_name_or_unknown(db, monkeypatch):
+    calls = []
+    monkeypatch.setattr(attendance, "annotate_snapshot",
+                        lambda path, label, bbox, color=None: calls.append((path.endswith("snapshots/s.jpg"), label)))
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    monkeypatch.setattr(attendance.face, "match_crop", _matched(e.id))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), {"bbox_norm": [0.1, 0.1, 0.2, 0.2]})
+    ev.snapshot_path = "snapshots/s.jpg"
+    db.commit()
+    attendance.handle_face_event(db, ev)
+    monkeypatch.setattr(attendance.face, "match_crop", _no_match())
+    ev2 = _raw_event(db, "entry", _at(*MON, 7, 20))
+    ev2.snapshot_path = "snapshots/s.jpg"
+    db.commit()
+    attendance.handle_face_event(db, ev2)
+    assert calls == [(True, e.name), (True, "Unknown")]
