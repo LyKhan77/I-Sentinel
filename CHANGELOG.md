@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Zona UX (2026-09-25 – …)
+### Zona UX (2026-09-25)
 
 - **Vision: zona aktif = AI aktif**: mask `camera.analyzers` tidak dibaca lagi; kamera tanpa zona aktif tidak
   mendapat worker (stream tidak dibuka, tanpa YOLO → hemat GPU); flag Snapshot/Clip dibaca per behavior dengan
@@ -35,6 +35,12 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   (behaviors kosong) dan gate absensi tanpa arah tidak dihitung (dulu tertulis "Aktif" walau tanpa worker). Tes
   diperluas dulu (merah). + 2 tes backend jalur PATCH konflik arah (ubah tipe ke absensi, ubah arah gate aktif).
   Backend **370**, frontend **127** passed, build 0, lint set sama.
+- **Deploy + verifikasi (2026-09-25)**: `5d785a6` di gspe-ai3, restart `isentinel-api` lalu `vision-node` (tanpa
+  migrasi). Vision `started 7 worker(s)` → **1 worker** (cam 363, zona 15 kini jalan walau chip lama
+  `['attendance']`); CPU proses vision **70,7 % → ~5 %** (±6 menit setelah start), RSS **3,43 → 1,53 GB**, memori
+  GPU1 924 → 436 MiB; ring clip cam363 aktif, 0 error log. **E2E user OK**: tab Gate hilang (`?tab=gates` →
+  Kamera), event intrusion cam 363, Clip off per behavior, Status AI, konflik arah absensi, 390 px. Tanpa
+  screenshot evidence (uji dilakukan user).
 
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
