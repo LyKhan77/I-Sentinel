@@ -223,8 +223,6 @@ def _prepare_camera_data(
         credential_id,
         allow_disabled=current is not None and credential_id == current.credential_override_id,
     )
-    if source is None and credential is not None:
-        raise HTTPException(422, "credential override requires a stream source")
 
     if "name" in data or current is None:
         data["name"] = str(data.get("name", "")).strip()
@@ -526,8 +524,6 @@ def import_cameras(
         candidate_credential = (
             credential if credential_specified else (cam.credential_override if cam else None)
         )
-        if candidate_source is None and candidate_credential is not None:
-            entry_errors.append("credential override requires a stream source")
         if candidate_source is not None:
             host = _legacy_host(candidate_source)
         elif host is None and cam is not None:

@@ -61,6 +61,7 @@ export type ProbeResult = {
   sub: ProbeStream | null
   main_path: string | null
   sub_path: string | null
+  snapshot_jpeg_b64?: string | null
 }
 
 export type ProbePayload = {
@@ -70,6 +71,7 @@ export type ProbePayload = {
   credential_override_id?: number
   main_path?: string | null
   sub_path?: string | null
+  snapshot?: boolean
 }
 
 export type CameraPayload = {

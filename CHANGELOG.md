@@ -3,6 +3,42 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
+
+- **Halaman Kamera dirapikan**: panel "Sumber & kredensial" dihapus (`CameraSourcesPanel`); tombol
+  **Lanjutan** berisi Import CCTV, Sync go2rtc, dan **Kelola kredensial** (ubah username/password — kosong =
+  tidak diganti, nonaktifkan dengan pesan bila masih dipakai, tambah baru); kolom **Kredensial** di tabel
+  (Default (NVR) / nama profil). Frontend **129 passed**, build 0, lint set sama.
+- **Form kamera sederhana**: Nama, Lokasi (datalist), IP kamera (port opsional), Path mainstream, Path
+  substream, Kredensial (Default (NVR) / profil / "+ Kredensial baru…") + Tes koneksi dengan thumbnail;
+  peringatan sub = main; simpan tanpa tes = klik Simpan dua kali; Node (hanya bila > 1 node) + scan NVR di
+  "Lanjutan". Frontend **127 passed**.
+- **`secret_store`**: password kamera dari UI disimpan di file rahasia server (`CAMERA_SECRETS_FILE`,
+  default `~/.isentinel/camera-secrets.json`, 0600, direktori 0700, tulis atomik, ditolak bila di dalam
+  `STORAGE_ROOT`); DB hanya referensi `store:cred_<id>`, di-resolve oleh `stream_endpoint._secret`.
+  Backend **348 passed**.
+- **Profil kredensial menerima `password`** (write-only): disimpan ke `secret_store`, `secret_ref` =
+  `store:cred_<id>`; tepat satu dari `password`/`secret_ref: env:` (422 bila tidak); PATCH `password`
+  menimpa store (profil `env:` pindah ke `store:`) dan memicu sinkron go2rtc + config push; gagal tulis store
+  → 500, profil tidak dibuat. Password tidak pernah muncul di response. Backend **353 passed**.
+- **Form "Kredensial baru"** (`NewCredentialForm`, inline): Nama, Username, Password → `POST /credential-profiles`
+  (password write-only); nama duplikat → pesan khusus. API client: `password` di payload profil, `snapshot`
+  di probe. Frontend **123 passed**.
+- **Kredensial per kamera direct-host**: `resolve_stream` memakai `credential_override` walau kamera tanpa
+  stream source (13 kamera server semuanya direct-host); API kamera + probe tidak lagi menolak kombinasi itu.
+  Password khusus ter-encode di URL RTSP; referensi `store:` yang hilang → probe 422. Backend **357 passed**.
+- **Probe thumbnail**: `POST /cameras/probe` dengan `snapshot: true` mengembalikan `snapshot_jpeg_b64`
+  (1 frame SUB, atau MAIN bila SUB kosong, lebar 480, ffmpeg timeout 6 s, tidak ditulis ke disk; gagal →
+  `null`). Backend **361 passed**.
+- **Fix review: 422 tidak menggemakan password**: handler `RequestValidationError` global membuang `input`/`ctx`
+  dari error (bawaan FastAPI mengembalikan body klien mentah → password profil kamera dan password login ikut
+  kembali di response 422). `msg`/`loc` tetap. Tes merah dulu (3 kasus profil + login). Backend **363 passed**.
+- **Deploy + verifikasi (2026-09-25)**: branch `1924ef6` di gspe-ai3, restart `isentinel-api` (health ok, tanpa
+  migrasi, `vision-node` tidak disentuh); `chmod 700 ~/.isentinel`. Smoke: `/cameras` 200, profil kredensial 0,
+  422 login tanpa gema password. Kamera tanpa autentikasi (ZKteco `:8554/stream`) terbukti jalan dengan
+  Default (NVR) — ffprobe tanpa/ dengan kredensial salah sama-sama 1920×1080, NVR tanpa kredensial 401.
+  **E2E user OK** (review form, Tes koneksi, Lanjutan). Tanpa screenshot evidence (uji dilakukan user).
+
 ### Event clip pre-buffer (2026-09-24)
 
 - **`ClipRing`** (`vision/vision/clipring.py`): ffmpeg `-c copy` per kamera menulis segmen MPEG-TS 2 s

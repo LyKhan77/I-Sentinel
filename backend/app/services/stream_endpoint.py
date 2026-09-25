@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
 
 from app.core.config import settings
+from app.services import secret_store
 
 
 class StreamEndpointError(ValueError):
@@ -44,6 +45,14 @@ def path_only(value: str | None) -> str | None:
 
 
 def _secret(secret_ref: str) -> str:
+    if secret_ref.startswith("store:"):
+        try:
+            value = secret_store.get(secret_ref[len("store:"):])
+        except secret_store.SecretStoreError as exc:
+            raise StreamEndpointError("credential reference is unavailable") from exc
+        if value is None:
+            raise StreamEndpointError("credential reference is unavailable")
+        return value
     if not secret_ref.startswith("env:"):
         raise StreamEndpointError("unsupported credential reference")
     name = secret_ref[4:]
@@ -76,8 +85,11 @@ def resolve_stream(
         if not legacy_host:
             raise StreamEndpointError("camera host is empty")
         host, port = split_host_port(legacy_host)
-        username = settings.cam_username or None
-        password = settings.cam_password or None
+        if credential_override is not None:
+            username, password = _profile_credentials(credential_override)
+        else:
+            username = settings.cam_username or None
+            password = settings.cam_password or None
     else:
         if not source.enabled:
             raise StreamEndpointError("stream source is disabled")

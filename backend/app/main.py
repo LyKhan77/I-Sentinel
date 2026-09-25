@@ -1,7 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
@@ -73,6 +75,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="I-Sentinel API", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """422 tanpa `input`/`ctx`: bawaan FastAPI menggemakan body klien (password kamera/login)."""
+    errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(stream_sources_router)

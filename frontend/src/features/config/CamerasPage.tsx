@@ -28,9 +28,8 @@ import {
   type CameraImportItem,
   type CameraImportResult,
 } from '../../api/cameras'
-import { listStreamSources, type StreamSource } from '../../api/streamSources'
 import { listCredentialProfiles, type CredentialProfile } from '../../api/credentialProfiles'
-import CameraSourcesPanel from './CameraSourcesPanel'
+import CredentialProfilesModal from './CredentialProfilesModal'
 import CameraWizard from './CameraWizard'
 
 // status dot: probe_main ada → online; probe pernah gagal → offline; belum pernah → unknown
@@ -95,8 +94,9 @@ export default function CamerasPage() {
   const [editing, setEditing] = useState<Camera | null>(null)
   const [probingId, setProbingId] = useState<number | null>(null)
   const [toDelete, setToDelete] = useState<Camera | null>(null)
-  const [sources, setSources] = useState<StreamSource[]>([])
   const [profiles, setProfiles] = useState<CredentialProfile[]>([])
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [credentialsOpen, setCredentialsOpen] = useState(false)
   const importInput = useRef<HTMLInputElement>(null)
   const [importEntries, setImportEntries] = useState<CameraImportEntry[] | null>(null)
   const [importPlan, setImportPlan] = useState<CameraImportResult | null>(null)
@@ -136,12 +136,7 @@ export default function CamerasPage() {
 
   const refreshReferences = useCallback(async () => {
     try {
-      const [nextSources, nextProfiles] = await Promise.all([
-        listStreamSources(),
-        listCredentialProfiles(),
-      ])
-      setSources(nextSources)
-      setProfiles(nextProfiles)
+      setProfiles(await listCredentialProfiles())
     } catch {
       setError(t('cameras.sources.loadError'))
     }
@@ -245,6 +240,7 @@ export default function CamerasPage() {
     { key: 'name', header: t('cameras.col.name') },
     { key: 'location', header: t('cameras.col.location') },
     { key: 'streams', header: t('cameras.col.streams') },
+    { key: 'credential', header: t('cameras.col.credential') },
     { key: 'node', header: t('cameras.col.node') },
     { key: 'status', header: t('cameras.col.status') },
     { key: 'actions', header: '' },
@@ -253,36 +249,43 @@ export default function CamerasPage() {
   return (
     <>
       {isAdmin && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 14 }}>
-          <input
-            ref={importInput}
-            type="file"
-            accept=".txt,text/plain"
-            data-testid="camera-import-input"
-            style={{ display: 'none' }}
-            onChange={onImportFile}
-          />
-          <Button kind="ghost" disabled={importBusy} data-testid="camera-import-btn" onClick={() => importInput.current?.click()}>
-            {t('cameras.import.button')}
-          </Button>
-          <Button
-            kind="ghost"
-            disabled={syncBusy}
-            data-testid="go2rtc-sync"
-            onClick={syncStreams}
-            title={t('cameras.sync.hint')}
-          >
-            {t('cameras.sync.btn')}
-          </Button>
-          <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>
-        </div>
-      )}
-      {isAdmin && (
-        <CameraSourcesPanel
-          sources={sources}
-          profiles={profiles}
-          onChanged={refreshReferences}
-        />
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+            <input
+              ref={importInput}
+              type="file"
+              accept=".txt,text/plain"
+              data-testid="camera-import-input"
+              style={{ display: 'none' }}
+              onChange={onImportFile}
+            />
+            <Button kind="ghost" data-testid="camera-advanced-toggle" aria-expanded={advancedOpen}
+              onClick={() => setAdvancedOpen((v) => !v)}>
+              {t('cameras.advanced')}
+            </Button>
+            <Button onClick={() => setWizardOpen(true)}>{t('cameras.add')}</Button>
+          </div>
+          {advancedOpen && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginBottom: 14 }}>
+              <Button kind="ghost" size="sm" disabled={importBusy} data-testid="camera-import-btn" onClick={() => importInput.current?.click()}>
+                {t('cameras.import.button')}
+              </Button>
+              <Button
+                kind="ghost"
+                size="sm"
+                disabled={syncBusy}
+                data-testid="go2rtc-sync"
+                onClick={syncStreams}
+                title={t('cameras.sync.hint')}
+              >
+                {t('cameras.sync.btn')}
+              </Button>
+              <Button kind="ghost" size="sm" data-testid="camera-manage-credentials" onClick={() => setCredentialsOpen(true)}>
+                {t('cameras.manageCredentials')}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {error && (
@@ -334,6 +337,7 @@ export default function CamerasPage() {
                           <StreamLine label="MAIN" stream={cam.probe_main} />
                           <StreamLine label="SUB" stream={cam.probe_sub} />
                         </TableCell>
+                        <TableCell>{cam.credential_override?.name ?? t('cameras.wizard.credentialDefault')}</TableCell>
                         <TableCell>{cam.node_id != null ? <Tag size="sm">node {cam.node_id}</Tag> : '—'}</TableCell>
                         <TableCell>
                           <span style={{ color: DOT_COLOR[kind] }}>●</span>{' '}
@@ -370,7 +374,7 @@ export default function CamerasPage() {
                   })}
                   {cams.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5}>{t('cameras.empty')}</TableCell>
+                      <TableCell colSpan={7}>{t('cameras.empty')}</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -383,6 +387,9 @@ export default function CamerasPage() {
       {(wizardOpen || editing) && (
         <CameraWizard
           camera={editing ?? undefined}
+          profiles={profiles}
+          locations={[...new Set(cams.map((c) => c.location).filter((l): l is string => !!l))].sort()}
+          onProfilesChanged={() => void refreshReferences()}
           onClose={() => {
             setWizardOpen(false)
             setEditing(null)
@@ -393,6 +400,11 @@ export default function CamerasPage() {
             void refresh()
           }}
         />
+      )}
+
+      {credentialsOpen && (
+        <CredentialProfilesModal profiles={profiles} onClose={() => setCredentialsOpen(false)}
+          onChanged={() => void refreshReferences()} />
       )}
 
       <Modal

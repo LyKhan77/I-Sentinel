@@ -11,7 +11,8 @@ export type CredentialProfile = {
 export type CredentialProfilePayload = {
   name: string
   username?: string
-  secret_ref: string
+  secret_ref?: string // env:NAMA (lama)
+  password?: string   // write-only → file rahasia server
   enabled?: boolean
 }
 

@@ -580,3 +580,69 @@ def test_patch_camera_detection_settings_validates_and_pushes(client, monkeypatc
     assert pushed == [camera["id"]]
     assert client.patch(f"/api/v1/cameras/{camera['id']}", json={"ai_fps": 0.4}, headers=h).status_code == 422
     assert client.patch(f"/api/v1/cameras/{camera['id']}", json={"analyzers": ["bad"]}, headers=h).status_code == 422
+
+
+def test_direct_host_camera_accepts_credential_override(client):
+    from unittest.mock import patch  # pola file ini: import lokal
+
+    h = _admin_headers(client)
+    profile = client.post(
+        "/api/v1/credential-profiles",
+        json={"name": "zk", "username": "admin", "secret_ref": "env:CAMERA_CRED_ZK"},
+        headers=h,
+    ).json()
+    with patch("app.api.cameras.sync_camera"), patch("app.api.cameras._config_push"):
+        r = client.post(
+            "/api/v1/cameras",
+            json={"name": "ZK", "host": "192.168.2.179:8554", "main_path": "/stream",
+                  "credential_override_id": profile["id"]},
+            headers=h,
+        )
+    assert r.status_code == 200
+    assert r.json()["credential_override_id"] == profile["id"]
+    assert r.json()["credential_override"]["name"] == "zk"
+
+
+def test_probe_direct_host_with_credential_override(client, monkeypatch):
+    from unittest.mock import patch  # pola file ini: import lokal
+
+    monkeypatch.setenv("CAMERA_CRED_ZK", "zk-pass")
+    h = _admin_headers(client)
+    profile = client.post(
+        "/api/v1/credential-profiles",
+        json={"name": "zk", "username": "admin", "secret_ref": "env:CAMERA_CRED_ZK"},
+        headers=h,
+    ).json()
+    seen = {}
+
+    def fake_probe(stream, snapshot=False):
+        seen["stream"] = stream
+        return {"main": None, "sub": None, "main_path": stream.main_path, "sub_path": stream.sub_path}
+
+    with patch("app.api.probe.probe_exact", side_effect=fake_probe):
+        r = client.post(
+            "/api/v1/cameras/probe",
+            json={"host": "192.168.2.179:8554", "main_path": "/stream",
+                  "credential_override_id": profile["id"]},
+            headers=h,
+        )
+    assert r.status_code == 200
+    assert (seen["stream"].username, seen["stream"].password) == ("admin", "zk-pass")
+
+
+def test_probe_missing_store_secret_is_422(client, db, tmp_path, monkeypatch):
+    from app.core.config import settings
+    from app.models.credential_profile import CredentialProfile
+
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path / "media"))
+    monkeypatch.setattr(settings, "camera_secrets_file", str(tmp_path / "s" / "cams.json"))
+    lost = CredentialProfile(name="lost", username="admin", secret_ref="store:cred_999")
+    db.add(lost)
+    db.commit()
+    r = client.post(
+        "/api/v1/cameras/probe",
+        json={"host": "10.0.0.9", "main_path": "/main", "credential_override_id": lost.id},
+        headers=_admin_headers(client),
+    )
+    assert r.status_code == 422
+    assert "unavailable" in r.json()["detail"]

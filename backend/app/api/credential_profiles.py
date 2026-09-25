@@ -14,6 +14,7 @@ from app.schemas.credential_profile import (
     CredentialProfileOut,
     CredentialProfilePatch,
 )
+from app.services import secret_store
 from app.services.go2rtc import sync_camera
 
 
@@ -60,6 +61,15 @@ def _refresh_cameras(db: Session, profile_id: int) -> None:
             logger.warning("config push after credential mutation failed", exc_info=True)
 
 
+def _store_password(key: str, password: str) -> None:
+    """Tulis password ke secret store; gagal → 500, profil tidak tersimpan."""
+    try:
+        secret_store.put(key, password)
+    except secret_store.SecretStoreError as exc:
+        logger.error("credential store write failed: %s", exc)
+        raise HTTPException(500, "failed to store credential") from exc
+
+
 @router.get("", response_model=list[CredentialProfileOut])
 def list_profiles(user=Depends(get_current_user), db: Session = Depends(get_db)):
     return db.query(CredentialProfile).order_by(CredentialProfile.name).all()
@@ -77,12 +87,21 @@ def create_profile(
     if _duplicate_name(db, name):
         raise HTTPException(409, "credential profile name already exists")
     profile = CredentialProfile(
-        **body.model_dump(exclude={"name", "username", "secret_ref"}),
+        **body.model_dump(exclude={"name", "username", "secret_ref", "password"}),
         name=name,
         username=body.username.strip(),
-        secret_ref=body.secret_ref,
+        secret_ref=body.secret_ref or "store:pending",
     )
     db.add(profile)
+    db.flush()  # butuh id untuk key store
+    if body.password is not None:
+        key = f"cred_{profile.id}"
+        try:
+            _store_password(key, body.password)
+        except HTTPException:
+            db.rollback()
+            raise
+        profile.secret_ref = f"store:{key}"
     db.commit()
     db.refresh(profile)
     return profile
@@ -99,6 +118,12 @@ def update_profile(
     if profile is None:
         raise HTTPException(404, "credential profile not found")
     data = body.model_dump(exclude_unset=True)
+    password = data.pop("password", None)
+    if password is not None:
+        ref = profile.secret_ref or ""
+        key = ref[len("store:"):] if ref.startswith("store:") else f"cred_{profile.id}"
+        _store_password(key, password)
+        data["secret_ref"] = f"store:{key}"
     if "name" in data:
         data["name"] = data["name"].strip()
         if not data["name"]:
