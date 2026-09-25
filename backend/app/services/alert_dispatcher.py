@@ -3,8 +3,8 @@
 Per alert: tunggu snapshot event (media datang ±0,5 s setelah event) maksimal ~5 s, lalu
 sendPhoto (file dari storage_root) atau sendMessage teks. Hasil ditulis ke baris alert.
 Satu worker → worst-case satu alert menahan antrean ±5 s polling + retry kirim (~48 s); cukup untuk
-LAN skala kecil karena `alerting.should_alert` sudah rate-limit per (kamera, zona, tipe). Baris `queued`
-hanya terkirim selama dispatcher berjalan (antrean in-memory, tanpa pemulihan saat restart).
+LAN skala kecil karena `alerting.should_alert` sudah rate-limit per (kamera, zona, tipe). Antrean in-memory;
+saat startup `recover` mengantre ulang baris `queued` ≤ 10 menit dan menandai yang lebih tua `failed`.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import os
 import queue
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -23,6 +24,8 @@ from app.services import telegram
 
 logger = logging.getLogger(__name__)
 QUEUE_MAX = 200
+RECOVER_WINDOW = timedelta(minutes=10)  # alert queued lebih tua dari ini basi → failed
+_WAKE = object()  # sinyal stop: bangunkan worker yang sedang menunggu get()
 
 
 class AlertDispatcher:
@@ -53,9 +56,29 @@ class AlertDispatcher:
 
     def stop(self) -> None:
         self._stopped.set()
+        try:
+            self._q.put_nowait(_WAKE)
+        except queue.Full:
+            pass  # worker sibuk memproses; ia akan melihat _stopped setelah item berjalan
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
+
+    def recover(self, db, now: datetime | None = None) -> int:
+        """Startup: antrean in-memory hilang saat restart → antre ulang 'queued' yang masih segar,
+        tandai yang basi 'failed'. Mengembalikan jumlah yang diantre ulang."""
+        now = now or datetime.now(timezone.utc)
+        requeued = 0
+        for alert in db.query(Alert).filter(Alert.status == "queued").order_by(Alert.id):
+            created = alert.created_at
+            if created is not None and created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)  # SQLite mengembalikan naive
+            if created is not None and now - created <= RECOVER_WINDOW and self.enqueue(alert.id):
+                requeued += 1
+            else:
+                alert.status, alert.error = "failed", "interrupted by restart"
+        db.commit()
+        return requeued
 
     def join_queue(self, timeout: float) -> None:
         """Tes: tunggu antrean kosong dan item terakhir selesai diproses."""
@@ -69,6 +92,9 @@ class AlertDispatcher:
             try:
                 alert_id = self._q.get(timeout=0.5)
             except queue.Empty:
+                continue
+            if alert_id is _WAKE:
+                self._q.task_done()
                 continue
             self._pump(alert_id)
 

@@ -145,3 +145,35 @@ def test_snapshot_path_outside_root_sends_text(db, tmp_path, sent, monkeypatch):
         AlertDispatcher(snapshot_polls=1, poll_s=0, sleep=lambda s: None).process(alert.id, db)
         db.refresh(alert)
         assert alert.status == "sent" and sent[0]["photo"] is None
+
+
+def test_stop_returns_immediately_when_idle():
+    """Shutdown API (dan teardown tiap TestClient) tidak boleh menunggu timeout get() antrean."""
+    import time as _time
+    d = AlertDispatcher()
+    d.start()
+    _time.sleep(0.05)  # biarkan worker masuk ke get() yang memblok
+    t0 = _time.monotonic()
+    d.stop()
+    assert _time.monotonic() - t0 < 0.2
+
+
+def test_recover_requeues_recent_and_fails_stale_queued(db, tmp_path, monkeypatch):
+    """Antrean in-memory hilang saat API restart: baris 'queued' tidak boleh menggantung selamanya."""
+    from datetime import timedelta
+    now = datetime(2026, 9, 25, 5, 0, tzinfo=timezone.utc)
+    recent = _alert(db, tmp_path, monkeypatch)
+    recent.created_at = now - timedelta(minutes=3)
+    stale_ev = Event(type="intrusion", camera_id=recent.camera_id, zone_id=recent.zone_id,
+                     severity="warning", ts_event=now)
+    db.add(stale_ev); db.commit()
+    stale = Alert(event_id=stale_ev.id, camera_id=recent.camera_id, zone_id=recent.zone_id,
+                  type="intrusion", severity="warning", status="queued",
+                  created_at=now - timedelta(minutes=30))
+    db.add(stale); db.commit()
+
+    d = AlertDispatcher()
+    assert d.recover(db, now=now) == 1
+    db.refresh(recent); db.refresh(stale)
+    assert recent.status == "queued" and d._q.get_nowait() == recent.id
+    assert (stale.status, stale.error) == ("failed", "interrupted by restart")

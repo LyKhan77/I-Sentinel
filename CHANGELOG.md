@@ -29,6 +29,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   toggle per behavior; snapshot keluar LAN, tautan klip LAN-saja, token di `CAMERA_SECRETS_FILE`),
   ROADMAP baris **TG** `[~] lokal selesai, PENDING deploy + verifikasi`, `.env.example`
   (`TELEGRAM_BOT_TOKEN` = fallback, `ALERT_MIN_SEVERITY` deprecated) — tanpa perubahan kode.
+- **Fix review: dispatcher stop instan + pemulihan saat restart**: `stop()` membangunkan worker lewat sinyal di
+  antrean (dulu menunggu `get(timeout=0.5)` → setiap shutdown API dan setiap teardown TestClient tertahan; suite
+  backend 164 s → 90 s); startup API mengantre ulang alert `queued` ≤ 10 menit dan menandai yang lebih tua `failed`
+  "interrupted by restart" (dulu chip "MENGIRIM…" menggantung selamanya). Backend **406 passed**.
 
 ### Zona UX (2026-09-25)
 

@@ -61,6 +61,12 @@ async def lifespan(app: FastAPI):
             logger.info("go2rtc sync at startup: %s", sync_all(db))
         except Exception:
             logger.warning("go2rtc sync at startup failed", exc_info=True)
+        # Antrean alert in-memory hilang saat restart: antre ulang 'queued' yang masih segar.
+        try:
+            from app.services.alert_dispatcher import dispatcher as _dispatcher
+            logger.info("alert recover at startup: %s requeued", _dispatcher.recover(db))
+        except Exception:
+            logger.warning("alert recover at startup failed", exc_info=True)
     except Exception:
         logger.warning("republish_all at startup failed", exc_info=True)
     finally:
