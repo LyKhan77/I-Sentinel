@@ -144,12 +144,14 @@ def _node_with(cam: dict):
     return VisionNode(cfg=cfg, transport=object(), source_factory=lambda c: None)
 
 
-def test_make_analyzers_from_behaviors_master_filters():
+def test_camera_analyzers_mask_is_ignored():
+    """Zona = aturan: chip kamera lama tidak boleh mematikan behavior zona."""
     cam = {"camera_id": 1, "source_url": "test://1", "zones": [BEHAVIOR_ZONE],
-           "analyzers": ["intrusion"]}
+           "analyzers": ["attendance"]}
     node = _node_with(cam)
     cams = node._cameras_from_config({"cameras": [cam]})
-    assert [type(a).__name__ for a in node._make_analyzers(cams[0])] == ["IntrusionAnalyzer"]
+    kinds = sorted(type(a).__name__ for a in node._make_analyzers(cams[0]))
+    assert kinds == ["IntrusionAnalyzer", "LoiteringAnalyzer"]
 
 
 def test_make_analyzers_all_behaviors_when_master_none():
@@ -158,14 +160,6 @@ def test_make_analyzers_all_behaviors_when_master_none():
     cams = node._cameras_from_config({"cameras": [cam]})
     kinds = sorted(type(a).__name__ for a in node._make_analyzers(cams[0]))
     assert kinds == ["IntrusionAnalyzer", "LoiteringAnalyzer"]
-
-
-def test_make_analyzers_empty_master_means_no_analyzer():
-    cam = {"camera_id": 1, "source_url": "test://1", "zones": [BEHAVIOR_ZONE],
-           "analyzers": []}
-    node = _node_with(cam)
-    cams = node._cameras_from_config({"cameras": [cam]})
-    assert node._make_analyzers(cams[0]) == []
 
 
 def test_legacy_zone_without_behaviors_still_builds_analyzers():
@@ -178,6 +172,32 @@ def test_legacy_zone_without_behaviors_still_builds_analyzers():
     cams = node._cameras_from_config({"cameras": [cam]})
     kinds = sorted(type(a).__name__ for a in node._make_analyzers(cams[0]))
     assert kinds == ["IntrusionAnalyzer", "LoiteringAnalyzer"]
+
+
+def test_behavior_media_flags_override_zone():
+    zone = {**BEHAVIOR_ZONE, "snapshot": True, "clip": True,
+            "behaviors": [{"kind": "intrusion", "trigger_seconds": 0, "clip": False},
+                          {"kind": "loitering", "trigger_seconds": 30, "snapshot": False}]}
+    permissive = {**BEHAVIOR_ZONE, "id": 22, "snapshot": False, "clip": False,
+                  "behaviors": [{"kind": "running", "trigger_seconds": 0,
+                                 "speed_limit_mps": 2.0,
+                                 "snapshot": True, "clip": True}]}
+    cam = {"camera_id": 1, "source_url": "test://1", "meters_per_pixel": 0.01,
+           "zones": [zone, permissive]}
+    node = _node_with(cam)
+    media = {type(a).__name__: a.media for a in node._make_analyzers(node._cameras_from_config({"cameras": [cam]})[0])}
+    assert media == {"IntrusionAnalyzer": {"snapshot": True, "clip": False},
+                     "LoiteringAnalyzer": {"snapshot": False, "clip": True},
+                     "RunningAnalyzer": {"snapshot": True, "clip": True}}
+
+
+def test_behavior_media_falls_back_to_zone_flags():
+    zone = {**BEHAVIOR_ZONE, "snapshot": False, "clip": False,
+            "behaviors": [{"kind": "intrusion", "trigger_seconds": 0}]}
+    cam = {"camera_id": 1, "source_url": "test://1", "zones": [zone]}
+    node = _node_with(cam)
+    [az] = node._make_analyzers(node._cameras_from_config({"cameras": [cam]})[0])
+    assert az.media == {"snapshot": False, "clip": False}
 
 
 def test_camera_confidence_overrides_global():
@@ -294,6 +314,20 @@ def test_attendance_only_camera_runs_face_worker_without_yolo(tmp_path):
     assert urls == ["rtsp://h:8554/cam_363_main"]
     assert det_calls == []
     assert node._face_settings.min_frames == 5 and node._face_settings.min_width_px == 80.0
+
+
+def test_camera_without_active_zone_gets_no_worker(tmp_path):
+    inactive = {**BEHAVIOR_ZONE, "active": False}
+    for zones in ([], [inactive]):
+        _, workers, urls, det_calls = _wired_node(tmp_path, zones)
+        assert workers == [] and urls == [] and det_calls == []
+
+
+def test_behavior_zone_runs_yolo_even_when_camera_mask_excludes_it(tmp_path):
+    _, workers, urls, det_calls = _wired_node(tmp_path, [BEHAVIOR_ZONE], analyzers=["attendance"])
+    assert [type(w).__name__ for w in workers] == ["CameraWorker"]
+    assert urls == ["rtsp://h:8554/cam_363"]
+    assert det_calls == [363]
 
 
 def test_mixed_camera_runs_both_workers_sharing_one_recorder(tmp_path, monkeypatch):

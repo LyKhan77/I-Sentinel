@@ -3,6 +3,12 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Zona UX (2026-09-25 – …)
+
+- **Vision: zona aktif = AI aktif**: mask `camera.analyzers` tidak dibaca lagi; kamera tanpa zona aktif tidak
+  mendapat worker (stream tidak dibuka, tanpa YOLO → hemat GPU); flag Snapshot/Clip dibaca per behavior dengan
+  fallback flag zona (zona lama berperilaku sama). Vision **203 passed**.
+
 ### Pendaftaran kamera sederhana (2026-09-24 – 2026-09-25)
 
 - **Halaman Kamera dirapikan**: panel "Sumber & kredensial" dihapus (`CameraSourcesPanel`); tombol

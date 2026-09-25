@@ -72,7 +72,8 @@ class FakeTransport:
 
 def test_heartbeat_payload_carries_hw_and_modules(fake_nvml):
     fake_nvml([("NVIDIA GeForce RTX 4090", 9000, 24564, 12, [])])
-    cfg = NodeSettings(node_id="n1", heartbeat_s=100.0, cameras_json=json.dumps([
+    cfg = NodeSettings(node_id="n1", heartbeat_s=100.0, emit_person_detect=True,
+                       cameras_json=json.dumps([
         {"camera_id": 1, "source_url": "test://1"}]))
     node = VisionNode(cfg=cfg,
                       detector_factory=lambda cid: PersonDetector("yolo26s.pt"),

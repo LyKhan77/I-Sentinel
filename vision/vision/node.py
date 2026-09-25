@@ -276,13 +276,14 @@ class VisionNode:
         """Build person behavior analyzers; FaceGateWorker handles attendance separately."""
         out = []
         for z in cam.zones:
-            media = {"snapshot": z.get("snapshot", True), "clip": z.get("clip", True)}
             for b in behaviors_of(z):
                 kind = b.get("kind")
                 if kind == "attendance":
-                    continue  # FaceGateWorker owns this zone, regardless of camera master
-                if cam.analyzers is not None and kind not in cam.analyzers:
-                    continue
+                    continue  # FaceGateWorker owns this zone
+                # zona = satu-satunya aturan: mask camera.analyzers (lama) tidak dibaca lagi.
+                # Media per behavior; zona lama tanpa key per behavior → flag zona.
+                media = {"snapshot": b.get("snapshot", z.get("snapshot", True)),
+                         "clip": b.get("clip", z.get("clip", True))}
                 spec = dict(z)
                 spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
                 if kind == "intrusion":
@@ -379,20 +380,21 @@ class VisionNode:
         self._await_config |= bool(cameras)
         for cam in cameras:
             analyzers = self._make_analyzers(cam)
-            gates = attendance_zones(cam)
-            if gates and not analyzers and self.face is None:
-                continue  # no worker to own a recorder when face support is disabled
+            gates = attendance_zones(cam) if self.face is not None else []
+            run_yolo = bool(analyzers) or self.cfg.emit_person_detect
+            if not run_yolo and not gates:
+                continue  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
             recorder = None
             if self.cfg.api_key:  # production: upload blobs to backend
                 from .recorder import Recorder
                 ring = None
-                if (analyzers or not gates) and self._wants_clip(analyzers):
+                if run_yolo and self._wants_clip(analyzers):
                     from . import clipring
                     ring = clipring.ClipRing(cam.camera_id, main_stream_url(cam.source_url),
                                              self.cfg.clip_ring_dir)
                     ring.start()
                 recorder = Recorder(cam.camera_id, self.cfg, self.transport, clip_ring=ring)
-            if analyzers or not gates:
+            if run_yolo:
                 w = CameraWorker(cam, self.detector_factory, self.transport,
                                  threading.Event(), self.cfg.node_id,
                                  analyzers=analyzers, recorder=recorder,
@@ -401,7 +403,7 @@ class VisionNode:
                 w.source = self.source_factory(cam)
                 w.start()
                 self._workers.append(w)
-            if gates and self.face is not None:
+            if gates:
                 fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
                                     self.cfg.node_id, self._face_settings,
                                     recorder=recorder, motion=cam.motion)
