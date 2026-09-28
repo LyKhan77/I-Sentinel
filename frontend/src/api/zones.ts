@@ -2,19 +2,22 @@ import { apiFetch } from './client'
 
 export type ZoneType = 'attendance' | 'behavior'
 
-export type BehaviorKind = 'intrusion' | 'loitering' | 'running'
+export type BehaviorKind = 'intrusion' | 'loitering' | 'running' | 'idle_zone' | 'crowd'
 
 /** Satu behavior zona; `trigger_seconds` = lama di zona sebelum event terbit (0 = langsung). */
 export type Behavior = {
   kind: BehaviorKind | 'attendance'
   trigger_seconds: number
   speed_limit_mps?: number
+  min_count?: number // crowd
+  reminder_minutes?: number // idle/crowd; 0 disables reminders
   snapshot?: boolean // kosong = ikut flag zona (data lama)
   clip?: boolean
   telegram?: boolean // kosong = ikut flag zona / default off
 }
 
 export type Schedule = { days: number[]; start: string; end: string }
+export type ZoneSchedule = Schedule | { shift_id: number }
 
 export type Zone = {
   id: number
@@ -23,7 +26,7 @@ export type Zone = {
   type: ZoneType
   direction: 'entry' | 'exit' | null
   polygon: [number, number][]
-  schedule: Schedule | null
+  schedule: ZoneSchedule | null
   severity: 'critical' | 'warning'
   rate_limit_min: number
   trigger_seconds: number
@@ -40,7 +43,7 @@ export type ZonePayload = {
   type?: ZoneType
   direction?: 'entry' | 'exit' | null
   polygon?: [number, number][]
-  schedule?: Schedule | null
+  schedule?: ZoneSchedule | null
   severity?: 'critical' | 'warning'
   trigger_seconds?: number
   behaviors?: Behavior[]

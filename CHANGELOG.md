@@ -22,6 +22,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   hapus shift yang dipakai zona → 409 dengan nama zona. Backend **429 passed**.
 - **Caption idle/crowd**: judul `IDLE ZONE` / `CROWD`, baris `Kosong: n menit` / `Jumlah: n orang (min m)`,
   pengingat ditandai `(pengingat ke-n)`. Backend **430 passed**.
+- **Zona Deteksi**: baris **Zona kosong (Idle)** (kosong selama, pengingat; clip default off) dan **Kerumunan
+  (Crowd)** (minimal orang, selama, pengingat); jadwal **Ikut shift** (`{shift_id}`) di samping 24/7 dan jam manual.
+  Frontend **142 passed**, build 0, lint set rule+file sama.
 
 ### Fix geometri zona (2026-09-28)
 
