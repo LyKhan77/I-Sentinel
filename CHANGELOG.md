@@ -32,6 +32,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   **435 passed** (baseline 432), vision **223 passed, 3 deselected** (baseline 223), frontend **161 passed**
   (baseline 142), build 0, lint set rule+file lama (1 warning pindah file: `set-state-in-effect`
   `LiveViewPage.tsx` → `useLiveCameras.ts`, kode sama ikut refactor Task 3).
+- **Review perencana — snapshot segar saat tile masuk layar lagi**: tile yang kembali terlihat (auto-scroll ke atas)
+  dulu menampilkan snapshot dari cache browser sejak halaman dibuka (bisa berjam-jam) selama stream menyambung;
+  kini `_t` dinaikkan saat masuk layar → snapshot baru. Tes IO diperluas (merah sebelum fix). Frontend
+  **161 passed**, backend **435**, vision **223** (3 deselected), build 0, lint set sama.
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 

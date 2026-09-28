@@ -83,6 +83,13 @@ export function CameraTile({ cam, live, big, tv, onClick }: { cam: Camera; live:
     const timer = setInterval(() => setTick((v) => v + 1), SNAPSHOT_REFRESH_MS)
     return () => clearInterval(timer)
   }, [streaming, inView, live?.snapshot])
+  // Masuk layar lagi (auto-scroll kembali ke atas) → minta snapshot baru untuk masa menyambung;
+  // URL _t lama tersaji dari cache browser dan bisa berjam-jam usianya.
+  const wasInView = useRef(inView)
+  useEffect(() => {
+    if (inView && !wasInView.current) setTick((v) => v + 1)
+    wasInView.current = inView
+  }, [inView])
   const showSnap = !!snapSrc && (!streaming || !playing)
 
   return (

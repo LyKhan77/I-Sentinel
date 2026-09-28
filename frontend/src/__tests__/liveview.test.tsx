@@ -410,6 +410,10 @@ test('tile di luar layar tidak streaming; masuk layar → streaming, keluar → 
     expect(el!.mode).toBe('webrtc,mse')
     act(() => io.fire(false))
     expect(document.querySelector('video-stream')).toBeNull()
+    // masuk layar lagi → snapshot baru (URL cache-busting berganti), bukan gambar cache sejak halaman dibuka
+    const before = (screen.getByAltText('CAM-01') as HTMLImageElement).src
+    act(() => io.fire(true))
+    expect((screen.getByAltText('CAM-01') as HTMLImageElement).src).not.toBe(before)
   } finally {
     vi.unstubAllGlobals()
   }
