@@ -29,6 +29,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   kosong terbaru; crowd me-reset bila jumlah pulih setelah jeda > 2 s; parameter yang absen memakai default
   idle/crowd; pengingat Telegram berkala tidak ditahan rate-limit 2 menit; ingest internal menerima kedua tipe.
   Backend **432 passed**, vision **223 passed** (3 deselected).
+- **Dokumen + verifikasi akhir**: README menjelaskan parameter, pengingat, jadwal ikut shift dan batas shift malam;
+  ROADMAP menandai lokal selesai, deploy serta uji lapangan tertunda. Suite akhir: backend **432 passed**
+  (baseline 423), vision **223 passed, 3 deselected** (baseline 205), frontend **142 passed**
+  (baseline 140), build 0, lint set rule+file lama; Zona Deteksi 390 px overflow 0 (lima behavior).
 
 ### Fix geometri zona (2026-09-28)
 
