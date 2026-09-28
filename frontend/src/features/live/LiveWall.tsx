@@ -7,19 +7,25 @@ import type { LiveInfo } from '../../api/events'
 import { listZones, type Zone } from '../../api/zones'
 import { useLiveEvents } from '../../api/useWs'
 import { playerMode } from './playerMode'
+import { useInView } from './useInView'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
 
 const SNAPSHOT_REFRESH_MS = 2000
 // Batas tunggu transport streaming (webrtc → mse) sebelum tile jatuh ke snapshot.
 const STREAM_TIMEOUT_MS = 10000
+const STREAM_RETRY_MS = 60000 // tile gagal stream mencoba lagi (TV 24/7 pulih sendiri)
 
 // Tile streaming: <video-stream> (player resmi go2rtc) mode webrtc,mse.
 // Kalau playing tidak terjadi dalam STREAM_TIMEOUT_MS → fallback ke snapshot
-// proxy 2 detik (jalur lama Fase 4e yang tetap berlaku).
-export function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo | null; big?: boolean; tv?: boolean; onClick?: () => void }) {
+// proxy 2 detik; dicoba ulang tiap STREAM_RETRY_MS (TV 24/7 pulih sendiri).
+// Hanya tile dekat viewport yang men-decode video (Pi 5 tanpa decoder H.264 hardware).
+export function CameraTile({ cam, live, big, tv: _tv, onClick }: { cam: Camera; live: LiveInfo | null; big?: boolean; tv?: boolean; onClick?: () => void }) {
   const { t } = useT()
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const inView = useInView(rootRef, !!big) // tile modal selalu terlihat
   const [streamFailed, setStreamFailed] = useState(false)
+  const [playing, setPlaying] = useState(false)
   const [tick, setTick] = useState(0)
   const [imgFailed, setImgFailed] = useState(false)
   const [mode, setMode] = useState<'WebRTC' | 'MSE' | null>(null)
@@ -29,29 +35,37 @@ export function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: Liv
   const online = cam.status === 'online'
   // Tanpa WebSocket (mis. environment test) → snapshot langsung.
   const canStream = !!ws && online && typeof WebSocket !== 'undefined'
-  const streaming = canStream && !streamFailed
+  const streaming = canStream && !streamFailed && inView
 
+  // deps [streaming, ws]: <video-stream> di-mount ulang saat masuk layar / coba ulang → src harus diset lagi
   useEffect(() => {
-    if (!canStream || !elRef.current) return
+    if (!streaming || !elRef.current) return
     const el = elRef.current
-    let playing = false
+    let ok = false
     el.mode = 'webrtc,mse'
     el.src = ws
     const video = el.querySelector('video')
     const onPlaying = () => {
-      playing = true
+      ok = true
+      setPlaying(true)
       clearTimeout(timer)
     }
     const timer = setTimeout(() => {
-      if (!playing) setStreamFailed(true)
+      if (!ok) setStreamFailed(true)
     }, STREAM_TIMEOUT_MS)
     video?.addEventListener('playing', onPlaying)
     return () => {
       video?.removeEventListener('playing', onPlaying)
       clearTimeout(timer)
+      setPlaying(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ws string stabil per kamera; retry lewat refresh /live
-  }, [canStream, ws])
+  }, [streaming, ws])
+
+  useEffect(() => {
+    if (!streamFailed) return
+    const timer = setTimeout(() => setStreamFailed(false), STREAM_RETRY_MS)
+    return () => clearTimeout(timer)
+  }, [streamFailed])
 
   // Badge transport aktif (hanya tile besar): baca video srcObject/src tiap detik.
   useEffect(() => {
@@ -63,14 +77,17 @@ export function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: Liv
   // Interval cache-busting hanya dipakai mode snapshot.
   const sep = live?.snapshot?.includes('?') ? '&' : '?'
   const snapSrc = live?.snapshot && !imgFailed ? `${live.snapshot}${sep}_t=${tick}` : null
+  // snapshot berkala hanya untuk tile terlihat yang tidak streaming; tile di luar layar = gambar terakhir
   useEffect(() => {
-    if (streaming || !live?.snapshot) return
+    if (streaming || !inView || !live?.snapshot) return
     const timer = setInterval(() => setTick((v) => v + 1), SNAPSHOT_REFRESH_MS)
     return () => clearInterval(timer)
-  }, [streaming, live?.snapshot])
+  }, [streaming, inView, live?.snapshot])
+  const showSnap = !!snapSrc && (!streaming || !playing)
 
   return (
     <div
+      ref={rootRef}
       data-testid={`cam-tile-${cam.id}`}
       data-big={big ? 'big' : undefined}
       onClick={onClick}
@@ -85,21 +102,22 @@ export function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: Liv
         overflow: 'hidden',
       }}
     >
-      {streaming ? (
-        // fill (bukan cover): tampilkan frame penuh — substream NVR 4:3 anamorfik = frame 16:9,
-        // dan overlay zona debugger harus memakai geometri frame yang sama dengan vision
+      {streaming && (
+        // fill (bukan cover): frame penuh — overlay zona debugger memakai geometri frame yang sama dengan vision
         <video-stream
           ref={elRef}
-          style={{ width: '100%', height: '100%', objectFit: 'fill', background: '#000' }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
+            background: '#000', opacity: playing ? 1 : 0 }}
         />
-      ) : snapSrc ? (
+      )}
+      {showSnap ? (
         <img
-          src={snapSrc}
+          src={snapSrc!}
           alt={cam.name}
           onError={() => setImgFailed(true)}
-          style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }}
         />
-      ) : (
+      ) : !streaming && (
         <div
           style={{
             display: 'flex',
@@ -116,7 +134,7 @@ export function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: Liv
         </div>
       )}
 
-      {snapSrc && !streaming && (
+      {showSnap && !streaming && (
         <span
           style={{
             position: 'absolute',

@@ -11,6 +11,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Pengaturan Live View per layar**: `screenPrefs` (kolom, pilihan kamera `all`/`some`, auto-scroll) disimpan per
   `?screen=` di `localStorage` (`isentinel_live_screen:<nama>`), nilai rusak → default per field, kunci lama
   `isentinel_live_cols` jadi default layar `default`. Frontend **149 passed**.
+- **Tile Live View hemat & pulih sendiri**: grid dipisah ke `LiveWall`/`useLiveCameras`; `<video-stream>` hanya
+  di-mount untuk tile dekat layar (`IntersectionObserver`, pra-muat 50 % viewport), tile lain snapshot terakhir;
+  snapshot tampil sampai video `playing`; tile gagal stream dicoba ulang tiap 60 s (dulu snapshot selamanya; efek
+  stream kini `[streaming, ws]`). Frontend **151 passed**, build 0, lint set rule+file sama.
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 

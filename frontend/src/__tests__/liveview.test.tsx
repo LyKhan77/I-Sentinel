@@ -86,6 +86,9 @@ test('tile streaming: kamera online memakai video-stream, snapshot hanya fallbac
   expect(streamEl).not.toBeNull()
   // frame penuh (tanpa crop) agar overlay zona debugger = geometri vision
   expect(streamEl!.style.objectFit).toBe('fill')
+  // selama menyambung snapshot tampil di bawah video (tanpa kotak hitam); hilang setelah playing
+  expect(screen.getByAltText('CAM-01')).toBeInTheDocument()
+  act(() => { streamEl!.querySelector('video')!.dispatchEvent(new Event('playing')) })
   expect(screen.queryByAltText('CAM-01')).not.toBeInTheDocument()
 
   // kamera /live gagal → tile tanpa img snapshot dan tanpa streaming
@@ -314,4 +317,61 @@ test('event attendance lama (polling awal) tidak menamai track baru dengan id sa
     new Date(Date.now() - 3600_000).toISOString())
   await faceBox()
   expect(screen.getByTestId('debug-overlay')).not.toHaveTextContent('Angly')
+})
+
+class FakeIO {
+  static all: FakeIO[] = []
+  cb: IntersectionObserverCallback
+  el: Element | null = null
+  constructor(cb: IntersectionObserverCallback) {
+    this.cb = cb
+    FakeIO.all.push(this)
+  }
+  observe(el: Element) { this.el = el }
+  unobserve() {}
+  disconnect() {}
+  fire(isIntersecting: boolean) {
+    this.cb([{ isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+  }
+}
+
+test('tile di luar layar tidak streaming; masuk layar → streaming, keluar → berhenti', async () => {
+  FakeIO.all = []
+  vi.stubGlobal('IntersectionObserver', FakeIO)
+  vi.stubGlobal('fetch', stubFetch())
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+  try {
+    renderPage()
+    expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+    expect(document.querySelector('video-stream')).toBeNull()
+    expect(screen.getByAltText('CAM-01')).toBeInTheDocument() // snapshot terakhir
+    const io = FakeIO.all.find((o) => o.el === screen.getByTestId('cam-tile-1'))!
+    act(() => io.fire(true))
+    const el = document.querySelector('video-stream') as (HTMLElement & { mode?: string }) | null
+    expect(el).not.toBeNull()
+    expect(el!.mode).toBe('webrtc,mse')
+    act(() => io.fire(false))
+    expect(document.querySelector('video-stream')).toBeNull()
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+test('stream gagal → snapshot, dicoba ulang setelah 60 detik', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('fetch', stubFetch())
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+  try {
+    renderPage()
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(document.querySelector('video-stream')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000) })
+    const el = document.querySelector('video-stream') as (HTMLElement & { mode?: string }) | null
+    expect(el).not.toBeNull()
+    expect(el!.mode).toBe('webrtc,mse') // efek stream jalan lagi di elemen baru
+  } finally {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  }
 })
