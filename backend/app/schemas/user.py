@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 class UserOut(BaseModel):
@@ -5,6 +6,9 @@ class UserOut(BaseModel):
     username: str
     role: str
     locale: str
+    is_active: bool = True
+    created_at: datetime | None = None
+    last_login_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 class LoginIn(BaseModel):

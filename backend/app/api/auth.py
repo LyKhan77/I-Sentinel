@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -35,7 +36,7 @@ def _check_lock(key: tuple[str, str]) -> None:
         )
 
 def _login(user: User, response: Response) -> dict:
-    token = create_access_token(user.id, user.role)
+    token = create_access_token(user.id, user.role, user.token_version)
     # secure=True: browser only sends over HTTPS; also keeps httpx test client from
     # auto-replaying the cookie on unauthenticated requests
     set_auth_cookie(response, token)
@@ -50,7 +51,12 @@ def login(body: LoginIn, response: Response, request: Request, db: Session = Dep
     if not user or len(body.password.encode()) > 72 or not verify_password(body.password, user.password_hash):
         _FAILURES.setdefault(key, []).append(time.monotonic())
         raise HTTPException(401, "invalid credentials")
+    if not user.is_active:
+        # hanya pemegang password benar yang tahu akunnya nonaktif
+        raise HTTPException(403, "account disabled")
     _FAILURES.pop(key, None)
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
     return _login(user, response)
 
 @router.post("/logout")

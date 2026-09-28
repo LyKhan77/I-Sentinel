@@ -7,6 +7,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
 - **Migrasi `0018_user_status`**: `user.is_active` (default true), `user.token_version` (default 0),
   `user.last_login_at`; downgrade lewat batch. Backend **436 passed**. Rollback: `alembic downgrade 0017`.
+- **Pencabutan sesi**: JWT membawa klaim `tv` (`token_version`); `get_current_user` menolak akun nonaktif dan versi
+  token lama (termasuk sesi bergulir); token tanpa `tv` = versi 0 (tanpa logout massal saat deploy). Login akun
+  nonaktif → 403 `account disabled` hanya bila password benar; `last_login_at` terisi. Backend **441 passed**.
 
 ### Live View mode TV (2026-09-28)
 
