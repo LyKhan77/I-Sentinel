@@ -18,6 +18,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Pemilih kamera Live View**: dropdown lokasi diganti checkbox per kamera dikelompokkan per lokasi (grup
   indeterminate, Semua/Kosongkan, "Kamera (n/m)"); disimpan di layar `default`; pilihan kosong → pesan + tombol
   pemilih. Frontend **153 passed**, build 0, lint set rule+file sama.
+- **Auto-scroll + idle**: `stepScroll` (turun px/s dengan posisi pecahan, jeda 5 s di dasar, kembali ke atas, jeda
+  5 s; konten muat → diam; frame tertunda dibatasi 100 ms), `useAutoScroll` (rAF di dokumen, sinkron ulang setelah
+  jeda), `useIdle`. Frontend **157 passed**, build 0, lint set rule+file sama.
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 
