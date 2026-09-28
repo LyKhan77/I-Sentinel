@@ -5,6 +5,7 @@ import {
   HeaderMenuButton,
   HeaderName,
   HeaderGlobalBar,
+  InlineNotification,
   SideNav,
   SideNavItems,
   SideNavLink,
@@ -18,9 +19,11 @@ import {
   ScanAlt,
   Settings,
   Logout,
+  Password,
 } from '@carbon/icons-react'
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
+import ChangePasswordModal from '../features/auth/ChangePasswordModal'
 
 const COLLAPSE_KEY = 'isentinel_sidenav_collapsed'
 const DESKTOP_QUERY = '(min-width: 1056px)' // breakpoint lg Carbon
@@ -72,6 +75,8 @@ export default function AppShell() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [me, setMe] = useState<Me | null>(null)
+  const [pwOpen, setPwOpen] = useState(false)
+  const [pwDone, setPwDone] = useState(false)
 
   useEffect(() => {
     getMe().then(setMe).catch(() => setMe(null)) // ponytail: jsdom fetch → rejected promise; ganti router-guard data saat Fase berikutnya
@@ -175,6 +180,13 @@ export default function AppShell() {
                 </span>
               </>
             )}
+            {me && (
+              <button type="button" className="app-sidenav-user__logout" data-testid="change-password-open"
+                aria-label={t('pw.title')} title={t('pw.title')} onClick={() => setPwOpen(true)}>
+                <Password size={16} />
+                <span className="app-sidenav-user__logout-text">{t('pw.short')}</span>
+              </button>
+            )}
             <button
               type="button"
               className="app-sidenav-user__logout"
@@ -196,8 +208,12 @@ export default function AppShell() {
         id="main-content"
         className={rail ? 'app-main app-main--rail' : 'app-main'}
       >
+        {pwDone && (
+          <InlineNotification kind="success" lowContrast title={t('pw.done')} onCloseButtonClick={() => setPwDone(false)} />
+        )}
         <Outlet context={me} />
       </main>
+      {pwOpen && <ChangePasswordModal onClose={(changed) => { setPwOpen(false); setPwDone(changed) }} />}
     </>
   )
 }

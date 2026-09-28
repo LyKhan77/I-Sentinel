@@ -24,9 +24,21 @@ export async function login(username: string, password: string): Promise<Me> {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   })
-  if (!res.ok) throw new Error(res.status === 401 ? 'invalid' : `login failed: ${res.status}`)
+  if (!res.ok) {
+    throw new Error(res.status === 401 ? 'invalid' : res.status === 403 ? 'disabled' : `login failed: ${res.status}`)
+  }
   const data = await res.json()
   return data.user
+}
+
+/** 400 = password lama salah (bukan 401 → tidak melempar ke /login); cookie baru ditulis server. */
+export async function changePassword(current: string, next: string): Promise<void> {
+  const res = await apiFetch('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: current, new_password: next }),
+  })
+  if (res.ok) return
+  throw new Error(res.status === 400 ? 'wrong' : res.status === 429 ? 'locked' : 'invalid')
 }
 
 export async function getMe(): Promise<Me | null> {

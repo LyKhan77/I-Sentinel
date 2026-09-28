@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({})
-  const [apiError, setApiError] = useState(false)
+  const [apiError, setApiError] = useState<'invalid' | 'disabled' | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function onSubmit(e: FormEvent) {
@@ -27,12 +27,12 @@ export default function LoginPage() {
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
     setBusy(true)
-    setApiError(false)
+    setApiError(null)
     try {
       await login(username, password)
       navigate(safeNext(params.get('next')))
-    } catch {
-      setApiError(true)
+    } catch (e) {
+      setApiError((e as Error).message === 'disabled' ? 'disabled' : 'invalid')
     } finally {
       setBusy(false)
     }
@@ -53,9 +53,9 @@ export default function LoginPage() {
           <InlineNotification
             kind="error"
             lowContrast
-            title={t('login.invalid')}
+            title={t(apiError === 'disabled' ? 'login.disabled' : 'login.invalid')}
             subtitle=""
-            onCloseButtonClick={() => setApiError(false)}
+            onCloseButtonClick={() => setApiError(null)}
           />
         )}
         <form onSubmit={onSubmit}>
