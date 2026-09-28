@@ -20,6 +20,13 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   password, nonaktifkan dengan konfirmasi, aktifkan, hapus); akun sendiri ditandai "(Anda)" dan aksi berbahayanya
   nonaktif; modal tambah user dengan validasi klien = backend; pesan 409 server dipetakan ke teks. Frontend
   **165 passed**, build 0, lint set sama.
+- **Ganti password sendiri (UI) + login nonaktif**: tombol "Ganti password" di kartu akun sidebar (semua role) →
+  modal lama/baru/konfirmasi, pesan password lama salah/terkunci, notifikasi sukses; login akun nonaktif
+  menampilkan "Akun dinonaktifkan — hubungi admin". Frontend **169 passed**, build 0, lint set sama.
+- **Dokumentasi**: README bagian User management (role, nonaktif/aktif, reset, ganti sendiri, aturan
+  password, pencabutan sesi); runbook TV: akun TV = viewer + perangkat hilang; ROADMAP baris UM.
+  Suite akhir: backend **448 passed**, vision **223 passed (3 deselected)**, frontend **169 passed**,
+  build 0, lint set sama.
 
 ### Live View mode TV (2026-09-28)
 

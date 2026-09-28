@@ -179,6 +179,25 @@ untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
 - **Sesi bergulir 48 jam**: cookie login diperpanjang otomatis selama halaman aktif
   me-refresh (`ACCESS_TOKEN_EXPIRE_MIN`, default 2880) — TV tidak logout tiba-tiba.
 
+## User management
+
+Tab **User** di Konfigurasi (admin-only): daftar username, role, status, dibuat, login terakhir;
+tombol **+ Tambah user**, dan per baris: jadikan admin/viewer, reset password, nonaktifkan/aktifkan,
+hapus. Akun sendiri ditandai "(Anda)" — ubah role/nonaktif/hapus dinonaktifkan untuk diri sendiri.
+
+- **2 role**: `admin` (semua konfigurasi + enrollment + koreksi) dan `viewer` (read-only semua
+  menu). Akun TV sebaiknya `viewer` khusus.
+- **Nonaktifkan/aktifkan**: akun nonaktif tidak bisa login (pesan khusus hanya muncul untuk
+  pemegang password benar) dan sesi aktifnya langsung ditolak.
+- **Reset password** (admin) dan **ganti password sendiri** (tombol **Password** di kartu akun
+  sidebar, semua role) menaikkan `token_version` → semua sesi lain user itu keluar; browser yang
+  mengganti password tetap login (cookie baru dari server).
+- **Aturan password**: minimal 8 karakter, maksimal 72 byte (batas bcrypt); konfirmasi divalidasi
+  di form. Username: 3–64 karakter `[A-Za-z0-9._-]`.
+- **Pencabutan sesi**: JWT membawa klaim versi (`tv`); token versi lama atau akun nonaktif → 401.
+  Token yang terbit sebelum fitur ini (tanpa `tv`) tetap berlaku sampai password diganti/akun
+  dinonaktifkan — deploy tidak mengeluarkan semua orang.
+
 ## Alert Telegram
 
 Kirim foto + caption kejadian ke grup staf. Tanpa dependensi baru (klien stdlib),
