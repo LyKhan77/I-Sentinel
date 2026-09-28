@@ -30,6 +30,8 @@ Tambahkan kedua perintah (diakhiri `&`) ke `~/.config/labwc/autostart` (Wayland/
 ## Operasional
 - Gerakkan mouse → toolbar muncul: kolom, **Kamera (n/m)**, gulir otomatis + kecepatan, Keluar.
 - Sesi login diperpanjang otomatis selama halaman terbuka (48 jam tanpa aktivitas → login ulang).
+- Akun TV sebaiknya `viewer` khusus; perangkat hilang → nonaktifkan akun / reset password dari
+  Konfigurasi → User (sesi langsung ditolak).
 - Tile yang putus kembali streaming sendiri ≤ 60 s. Beban: pantau `top` di Pi; turunkan kolom bila CPU > 85 %.
 
 ## Rollback

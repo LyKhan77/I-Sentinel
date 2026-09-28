@@ -3,6 +3,44 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### User management (2026-09-28)
+
+- **Migrasi `0018_user_status`**: `user.is_active` (default true), `user.token_version` (default 0),
+  `user.last_login_at`; downgrade lewat batch. Backend **436 passed**. Rollback: `alembic downgrade 0017`.
+- **Pencabutan sesi**: JWT membawa klaim `tv` (`token_version`); `get_current_user` menolak akun nonaktif dan versi
+  token lama (termasuk sesi bergulir); token tanpa `tv` = versi 0 (tanpa logout massal saat deploy). Login akun
+  nonaktif → 403 `account disabled` hanya bila password benar; `last_login_at` terisi. Backend **441 passed**.
+- **API user ketat**: `UserPatch` (`extra="forbid"`, role `admin|viewer`), password ≥ 8 / ≤ 72 byte, username
+  `[A-Za-z0-9._-]{3,64}`; reset password & nonaktif menaikkan `token_version`; admin tidak bisa mengubah role,
+  menonaktifkan, atau menghapus akun sendiri; pengaman admin aktif terakhir. Backend **445 passed**.
+- **Ganti password sendiri**: `POST /auth/change-password` (semua role); password lama salah → 400 dan dihitung ke
+  batas percobaan login (429); sukses menaikkan `token_version` (perangkat lain keluar) dan menulis cookie baru
+  (browser ini tetap login, menang atas cookie perpanjangan). Backend **448 passed**.
+- **Tab User (Konfigurasi)**: tabel username/role/status/dibuat/login terakhir + aksi (jadikan admin/viewer, reset
+  password, nonaktifkan dengan konfirmasi, aktifkan, hapus); akun sendiri ditandai "(Anda)" dan aksi berbahayanya
+  nonaktif; modal tambah user dengan validasi klien = backend; pesan 409 server dipetakan ke teks. Frontend
+  **165 passed**, build 0, lint set sama.
+- **Ganti password sendiri (UI) + login nonaktif**: tombol "Ganti password" di kartu akun sidebar (semua role) →
+  modal lama/baru/konfirmasi, pesan password lama salah/terkunci, notifikasi sukses; login akun nonaktif
+  menampilkan "Akun dinonaktifkan — hubungi admin". Frontend **169 passed**, build 0, lint set sama.
+- **Dokumentasi**: README bagian User management (role, nonaktif/aktif, reset, ganti sendiri, aturan
+  password, pencabutan sesi); runbook TV: akun TV = viewer + perangkat hilang; ROADMAP baris UM.
+  Suite akhir: backend **448 passed**, vision **223 passed (3 deselected)**, frontend **169 passed**,
+  build 0, lint set sama.
+- **Review perencana — WebSocket ikut pencabutan sesi**: `/api/v1/ws/events` dulu hanya memeriksa tanda tangan
+  JWT, jadi token akun nonaktif / versi lama masih bisa berlangganan event realtime (nama karyawan, deteksi).
+  Helper `session_user` (deps) kini dipakai REST dan WS; handshake ditolak 1008. Tes merah sebelum fix.
+  Backend **449 passed**, vision **223**, frontend **169**, build 0.
+- **Feedback uji user**: ganti password sendiri **khusus admin** (`POST /auth/change-password` →
+  `require_admin`, viewer 403; tombol sidebar hanya untuk admin) — password viewer/akun TV diatur admin lewat
+  reset; halaman login memakai `PasswordInput` (tampilkan/sembunyikan password, label i18n). Backend
+  **450 passed**, frontend **171 passed**, build 0, lint set sama. Rollback: revert commit + restart API.
+- **Deploy + verifikasi user (2026-09-28)**: server `gspe-ai3` di `64f68b4`, alembic `0017 → 0018`, restart
+  isentinel-api (health ok). Uji user OK: tambah user, nonaktifkan → sesi viewer keluar + pesan login khusus,
+  aktifkan, reset password → sesi lama keluar, ganti password admin tetap login, aksi akun sendiri nonaktif,
+  viewer tanpa tombol Password, tampilkan/sembunyikan password di login. Rollback: `git revert -m 1 <merge>` +
+  `alembic downgrade 0017` + restart API.
+
 ### Live View mode TV (2026-09-28)
 
 - **Sesi bergulir 48 jam**: `get_current_user` menerbitkan cookie baru bila token cookie lewat separuh umur (Bearer

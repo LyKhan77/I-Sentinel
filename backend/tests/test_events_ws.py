@@ -65,6 +65,31 @@ def test_ws_rejects_bad_cookie(client):
         assert getattr(e, "code", None) == 1008
 
 
+def _ws_rejected(client, path: str) -> bool:
+    """True bila handshake ditutup 1008 (tidak menunggu event: koneksi diterima = gagal cepat)."""
+    try:
+        with client.websocket_connect(path):
+            return False
+    except Exception as e:
+        return getattr(e, "code", None) == 1008
+
+
+def test_ws_rejects_disabled_account_and_revoked_token(client):
+    """Event realtime (nama karyawan, deteksi) tidak boleh mengalir ke sesi yang sudah dicabut."""
+    admin = {"Authorization": f"Bearer {_login(client)}"}
+    client.cookies.clear()
+    uid = client.post("/api/v1/users", json={"username": "tv-uji", "password": "rahasia123", "role": "viewer"},
+                      headers=admin).json()["id"]
+    tok = client.post("/api/v1/auth/login", json={"username": "tv-uji", "password": "rahasia123"}).json()["token"]
+    client.cookies.clear()
+    client.patch(f"/api/v1/users/{uid}", json={"password": "baru-rahasia-1"}, headers=admin)
+    assert _ws_rejected(client, f"/api/v1/ws/events?token={tok}")  # versi token lama
+    tok2 = client.post("/api/v1/auth/login", json={"username": "tv-uji", "password": "baru-rahasia-1"}).json()["token"]
+    client.cookies.clear()
+    client.patch(f"/api/v1/users/{uid}", json={"is_active": False}, headers=admin)
+    assert _ws_rejected(client, f"/api/v1/ws/events?token={tok2}")  # akun nonaktif
+
+
 def test_ws_query_token_still_works(client):
     tok = _login(client)
     client.cookies.clear()

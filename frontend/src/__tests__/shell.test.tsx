@@ -101,7 +101,7 @@ test('login page validates empty submit', async () => {
     </I18nProvider>,
   )
   // klik tombol tanpa isi → pesan validasi muncul, tidak ada fetch
-  await userEvent.click(screen.getByRole('button'))
+  await userEvent.click(screen.getByRole('button', { name: /masuk|login|sign in/i }))
   expect(screen.getAllByText(/wajib/i).length).toBeGreaterThan(0)
 })
 

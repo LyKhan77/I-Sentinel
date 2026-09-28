@@ -7,9 +7,11 @@ from app.core.config import settings
 def hash_password(pw: str) -> str: return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 def verify_password(pw: str, h: str) -> bool: return bcrypt.checkpw(pw.encode(), h.encode())
 
-def create_access_token(user_id: int, role: str) -> str:
+def create_access_token(user_id: int, role: str, token_version: int = 0) -> str:
     exp = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_min)
-    return jwt.encode({"sub": str(user_id), "role": role, "exp": exp}, settings.jwt_secret, settings.jwt_algorithm)
+    # tv: versi sesi user; naik saat password diganti / akun dinonaktifkan → token lama ditolak
+    return jwt.encode({"sub": str(user_id), "role": role, "tv": token_version, "exp": exp},
+                      settings.jwt_secret, settings.jwt_algorithm)
 
 def decode_token(token: str) -> dict | None:
     try: return jwt.decode(token, settings.jwt_secret, [settings.jwt_algorithm])

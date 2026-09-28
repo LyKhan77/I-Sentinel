@@ -30,7 +30,7 @@ def test_me_requires_auth(client):
 def test_create_user_admin_only(client):
     tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
     h = {"Authorization": f"Bearer {tok}"}
-    assert client.post("/api/v1/users", json={"username": "v1", "password": "pw12345", "role": "viewer"}, headers=h).status_code == 200
+    assert client.post("/api/v1/users", json={"username": "uji-v1", "password": "rahasia123", "role": "viewer"}, headers=h).status_code == 200
     assert client.get("/api/v1/users").status_code == 401  # tanpa token
 
 def test_delete_last_admin_blocked(client):
@@ -53,20 +53,20 @@ def _admin_headers(client):
 
 def test_patch_password_too_long_rejected(client):
     h = _admin_headers(client)
-    r = client.post("/api/v1/users", json={"username": "v1", "password": "pw12345", "role": "viewer"}, headers=h)
+    r = client.post("/api/v1/users", json={"username": "uji-v1", "password": "rahasia123", "role": "viewer"}, headers=h)
     uid = r.json()["id"]
     r = client.patch(f"/api/v1/users/{uid}", json={"password": "x" * 73}, headers=h)
     assert r.status_code == 422
 
 def test_patch_role_invalid_rejected(client):
     h = _admin_headers(client)
-    r = client.post("/api/v1/users", json={"username": "v2", "password": "pw12345", "role": "viewer"}, headers=h)
+    r = client.post("/api/v1/users", json={"username": "uji-v2", "password": "rahasia123", "role": "viewer"}, headers=h)
     uid = r.json()["id"]
     assert client.patch(f"/api/v1/users/{uid}", json={"role": "superuser"}, headers=h).status_code == 422
 
 def test_create_user_invalid_role_rejected(client):
     h = _admin_headers(client)
-    assert client.post("/api/v1/users", json={"username": "v3", "password": "pw12345", "role": "root"}, headers=h).status_code == 422
+    assert client.post("/api/v1/users", json={"username": "uji-v3", "password": "rahasia123", "role": "root"}, headers=h).status_code == 422
 
 
 def _token_with(uid: int, minutes_left: float) -> str:
