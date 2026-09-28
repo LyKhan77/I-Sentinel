@@ -3,6 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Behavior Idle Zone + Crowd (2026-09-28 – …)
+
+- **Fix jadwal zona**: frame live membawa ts monotonic, tetapi jadwal intrusion membacanya sebagai epoch (hari/jam
+  dari 1970 + uptime) → jadwal intrusion salah di produksi (belum berdampak: 0 zona berjadwal). Helper bersama
+  `analyzers/base.py`: `wall_time`, `schedule_active`, `persons_in_zone` (+ `point_in_polygon`/`ground_point` dipindah,
+  tetap di-re-export dari `intrusion`). Vision **209 passed**.
+
 ### Fix geometri zona (2026-09-28)
 
 - **Koordinat zona = frame penuh**: editor Zona Deteksi dan tile/modal Live View memakai `object-fit: fill` (dulu

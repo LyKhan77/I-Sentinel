@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
-from .analyzers.base import Analyzer
+from .analyzers.base import Analyzer, wall_time
 from .face_quality import FaceSettings
 from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
@@ -29,12 +29,8 @@ DEFAULT_W, DEFAULT_H = 640, 480
 
 
 def _iso(ts: float) -> str:
-    # Terima timestamp WALL-CLOCK. Pipeline (source) memakai monotonic untuk pacing;
-    # konversi monotonic → wall clock dilakukan di sini bila nilai jelas monotonic
-    # (jauh di bawah epoch tahun ini). time.time() aman utk heartbeat.
-    if ts < 1_700_000_000:  # monotonic (detik sejak boot) → tambah offset epoch
-        ts += time.time() - time.monotonic()
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    """Format epoch or live-frame monotonic timestamp in UTC."""
+    return datetime.fromtimestamp(wall_time(ts), tz=timezone.utc).isoformat()
 
 
 def main_stream_name(source_url: str) -> str | None:
