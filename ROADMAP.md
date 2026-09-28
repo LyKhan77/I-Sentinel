@@ -25,7 +25,7 @@
 | ZU | Zona UX (zona = aturan, Gate Absensi dihapus, Snapshot/Clip per behavior) | [x] selesai | 2026-09-25 | Deploy gspe-ai3 `5d785a6`, E2E user OK; worker vision 7 → 1, CPU vision 70,7 % → ~5 %, RSS 3,43 → 1,5 GB; backend 370, vision 204, frontend 127 | `21826e7..` |
 | TG | Integrasi bot Telegram (foto + caption, toggle per behavior, tab Notifikasi) | [x] selesai | 2026-09-25 | Deploy gspe-ai3 `fce11ae` (+ refining feedback: rate-limit per orang, caption per baris, label foto, nama zona), E2E user OK: pesan uji + intrusion + absensi tercatat masuk grup dengan foto; token 0× di log, file rahasia 0600; backend 406, vision 204, frontend 137 | `277584a..` |
 | BH | Behavior Idle Zone + Crowd (+ jadwal ikut shift) | [x] deploy + verifikasi lapangan user 2026-09-28 | — | Spec + plan 2026-09-28; backend 432, vision 223 (3 deselected), frontend 142, build 0, lint set lama; Zona Deteksi 390px overflow 0; review eksekutor 6 temuan + perencana 1 (toleransi crowd 5 s) diperbaiki; uji lapangan Idle/Crowd/pengingat/snapshot/Telegram/jadwal shift OK | `9f9b7ee..127b779` |
-| TV | Live View mode TV (kiosk, filter kamera, auto-scroll, sesi bergulir) | [~] lokal selesai, PENDING deploy + verifikasi | — | spec + plan 2026-09-28 | | 
+| TV | Live View mode TV (kiosk, filter kamera, auto-scroll, sesi bergulir) | [x] deploy + verifikasi user (browser desktop) 2026-09-28; uji Raspberry Pi menunggu server production | — | spec + plan 2026-09-28; backend 435, vision 223 (3 deselected), frontend 161, build 0, lint set lama; review perencana: snapshot segar saat tile masuk layar lagi | `a048301..762bde7` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton

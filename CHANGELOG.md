@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Live View mode TV (2026-09-28 – …)
+### Live View mode TV (2026-09-28)
 
 - **Sesi bergulir 48 jam**: `get_current_user` menerbitkan cookie baru bila token cookie lewat separuh umur (Bearer
   tidak diubah); default `ACCESS_TOKEN_EXPIRE_MIN` 480 → 2880. Layar TV yang me-refresh Live View tidak logout.
@@ -36,6 +36,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   dulu menampilkan snapshot dari cache browser sejak halaman dibuka (bisa berjam-jam) selama stream menyambung;
   kini `_t` dinaikkan saat masuk layar → snapshot baru. Tes IO diperluas (merah sebelum fix). Frontend
   **161 passed**, backend **435**, vision **223** (3 deselected), build 0, lint set sama.
+- **Deploy + verifikasi user (2026-09-28)**: server `gspe-ai3` di `762bde7`, restart isentinel-api (health ok,
+  `.env` tanpa `ACCESS_TOKEN_EXPIRE_MIN` → 2880 berlaku). Uji user di browser desktop OK: pemilih kamera, mode TV
+  kiosk + toolbar auto-hide, auto-scroll, dua layar `?screen=A/B`, pulih setelah offline, stream hanya tile terlihat.
+  Uji Raspberry Pi 2 monitor menunggu server production (runbook `docs/runbooks/live-view-tv-pi.md`). Rollback:
+  `git revert -m 1 <merge>` + restart API.
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 
