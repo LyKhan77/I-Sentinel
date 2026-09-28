@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Behavior Idle Zone + Crowd (2026-09-28 – …)
+### Behavior Idle Zone + Crowd (2026-09-28)
 
 - **Fix jadwal zona**: frame live membawa ts monotonic, tetapi jadwal intrusion membacanya sebagai epoch (hari/jam
   dari 1970 + uptime) → jadwal intrusion salah di produksi (belum berdampak: 0 zona berjadwal). Helper bersama
@@ -37,6 +37,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   satu deteksi meleset + jitter > 2 s dulu me-reset durasi dan menunda alert. `GRACE_S` 2 → 5 s (> 2× force
   interval); tes jitter (merah di 2 s) + tes reset disesuaikan. Vision **223 passed** (3 deselected).
   Rollback: `git revert` commit ini + restart vision-node.
+- **Deploy + verifikasi lapangan (2026-09-28)**: server `gspe-ai3` di `127b779`, restart isentinel-api + vision-node
+  (health ok, TZ server WIB, tanpa migrasi). Uji user OK: Idle (alert + pengingat, siaga saat orang masuk), Crowd
+  (alert, snapshot semua kotak `CROWD (n)`), caption Telegram, jadwal ikut shift. Rollback: `git revert -m 1 <merge>`
+  + restart kedua service; ubah/hapus behavior `idle_zone`/`crowd` dan `schedule.shift_id` sebelum kembali ke kode lama.
 
 ### Fix geometri zona (2026-09-28)
 
