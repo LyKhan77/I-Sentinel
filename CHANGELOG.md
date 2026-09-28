@@ -16,6 +16,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Snapshot idle/crowd**: crowd menggambar semua kotak orang + label `CROWD (n)`; idle menggambar garis poligon zona
   + label `IDLE ZONE`. Vision **219 passed**.
 
+- **Backend idle/crowd + jadwal ikut shift**: kind `idle_zone`/`crowd` (crowd wajib `min_count` ≥ 1,
+  `reminder_minutes` ≥ 0); `schedule` boleh `{"shift_id": N}` (shift tak ada → 422), di-resolve ke
+  `{days, start, end}` saat config push (shift hilang → `null` + warning); ubah shift → push ulang kamera terkait;
+  hapus shift yang dipakai zona → 409 dengan nama zona. Backend **429 passed**.
+
 ### Fix geometri zona (2026-09-28)
 
 - **Koordinat zona = frame penuh**: editor Zona Deteksi dan tile/modal Live View memakai `object-fit: fill` (dulu

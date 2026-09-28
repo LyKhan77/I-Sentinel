@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 VALID_TYPES = {"free", "restricted", "absensi", "behavior", "attendance"}
-VALID_BEHAVIOR_KINDS = {"intrusion", "loitering", "running", "attendance"}
+VALID_BEHAVIOR_KINDS = {"intrusion", "loitering", "running", "attendance", "idle_zone", "crowd"}
 VALID_DIRECTIONS = {"entry", "exit"}
 VALID_DAYS = set(range(1, 8))
 
@@ -24,6 +24,14 @@ def _validate_behaviors(v: list | None) -> list | None:
         for flag in ("snapshot", "clip", "telegram"):
             if flag in b and not isinstance(b[flag], bool):
                 raise ValueError(f"{flag} must be a boolean")
+        min_count = b.get("min_count")
+        if b.get("kind") == "crowd" and min_count is None:
+            raise ValueError("crowd requires min_count")
+        if min_count is not None and (not isinstance(min_count, int) or isinstance(min_count, bool) or min_count < 1):
+            raise ValueError("min_count must be an int >= 1")
+        reminder = b.get("reminder_minutes")
+        if reminder is not None and (not isinstance(reminder, int) or isinstance(reminder, bool) or reminder < 0):
+            raise ValueError("reminder_minutes must be an int >= 0")
     return v
 
 
@@ -41,11 +49,16 @@ def _validate_polygon(v: list) -> list:
 def _validate_schedule(v: dict | None) -> dict | None:
     if v is None:
         return v
+    if isinstance(v, dict) and set(v) == {"shift_id"}:
+        sid = v["shift_id"]
+        if not isinstance(sid, int) or isinstance(sid, bool) or sid < 1:
+            raise ValueError("schedule.shift_id must be a positive int")
+        return v
     if (not isinstance(v, dict) or set(v) != {"days", "start", "end"}
             or not isinstance(v["days"], list)
             or not all(isinstance(d, int) and d in VALID_DAYS for d in v["days"])
             or not isinstance(v["start"], str) or not isinstance(v["end"], str)):
-        raise ValueError('schedule must be {"days": [1-7], "start": "HH:MM", "end": "HH:MM"}')
+        raise ValueError('schedule must be {"days": [1-7], "start": "HH:MM", "end": "HH:MM"} or {"shift_id": N}')
     for t in (v["start"], v["end"]):
         parts = t.split(":")
         if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2 \
