@@ -16,6 +16,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Ganti password sendiri**: `POST /auth/change-password` (semua role); password lama salah → 400 dan dihitung ke
   batas percobaan login (429); sukses menaikkan `token_version` (perangkat lain keluar) dan menulis cookie baru
   (browser ini tetap login, menang atas cookie perpanjangan). Backend **448 passed**.
+- **Tab User (Konfigurasi)**: tabel username/role/status/dibuat/login terakhir + aksi (jadikan admin/viewer, reset
+  password, nonaktifkan dengan konfirmasi, aktifkan, hapus); akun sendiri ditandai "(Anda)" dan aksi berbahayanya
+  nonaktif; modal tambah user dengan validasi klien = backend; pesan 409 server dipetakan ke teks. Frontend
+  **165 passed**, build 0, lint set sama.
 
 ### Live View mode TV (2026-09-28)
 

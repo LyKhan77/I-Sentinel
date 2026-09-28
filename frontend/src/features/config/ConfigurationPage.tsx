@@ -1,14 +1,16 @@
 import { Tab, TabList, TabPanel, TabPanels, Tabs } from '@carbon/react'
-import { useSearchParams } from 'react-router-dom'
+import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { useT, type TKey } from '../../app/i18n'
+import type { Me } from '../../api/client'
 import CamerasPage from './CamerasPage'
 import ZonesPage from './ZonesPage'
 import StoragePage from './StoragePage'
 import NodesPanel from './NodesPanel'
 import DetectionPage from './DetectionPage'
 import NotificationsPage from './NotificationsPage'
+import UsersPage from './UsersPage'
 
-const TABS = ['cameras', 'zones', 'detection', 'notifications', 'storage', 'nodes'] as const
+const TABS = ['cameras', 'zones', 'detection', 'notifications', 'storage', 'nodes', 'users'] as const
 type ConfigurationTab = (typeof TABS)[number]
 
 const TAB_LABEL: Record<ConfigurationTab, TKey> = {
@@ -18,11 +20,13 @@ const TAB_LABEL: Record<ConfigurationTab, TKey> = {
   detection: 'detection.title',
   notifications: 'notifications.title',
   nodes: 'configuration.tabNodes',
+  users: 'users.title',
 }
 
 export default function ConfigurationPage() {
   const { t } = useT()
   const [params, setParams] = useSearchParams()
+  const me = useOutletContext<Me | null>()
   // ponytail: nilai `tab` di luar daftar → cameras; hanya panel terpilih yang di-mount agar panel non-aktif tidak memanggil API
   const raw = params.get('tab')
   const tab: ConfigurationTab = TABS.includes(raw as ConfigurationTab) ? (raw as ConfigurationTab) : 'cameras'
@@ -56,6 +60,7 @@ export default function ConfigurationPage() {
           <TabPanel>{tab === 'notifications' && <NotificationsPage />}</TabPanel>
           <TabPanel>{tab === 'storage' && <StoragePage />}</TabPanel>
           <TabPanel>{tab === 'nodes' && <NodesPanel />}</TabPanel>
+          <TabPanel>{tab === 'users' && <UsersPage meId={me?.id} />}</TabPanel>
         </TabPanels>
       </Tabs>
     </div>
