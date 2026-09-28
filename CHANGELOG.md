@@ -20,6 +20,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `reminder_minutes` ≥ 0); `schedule` boleh `{"shift_id": N}` (shift tak ada → 422), di-resolve ke
   `{days, start, end}` saat config push (shift hilang → `null` + warning); ubah shift → push ulang kamera terkait;
   hapus shift yang dipakai zona → 409 dengan nama zona. Backend **429 passed**.
+- **Caption idle/crowd**: judul `IDLE ZONE` / `CROWD`, baris `Kosong: n menit` / `Jumlah: n orang (min m)`,
+  pengingat ditandai `(pengingat ke-n)`. Backend **430 passed**.
 
 ### Fix geometri zona (2026-09-28)
 

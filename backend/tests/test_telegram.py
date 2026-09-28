@@ -86,6 +86,19 @@ def test_caption_behavior_layout():
     ]
 
 
+def test_caption_idle_and_crowd_with_reminder():
+    idle = _event(type="idle_zone", payload={"idle_s": 750, "reminder": 0})
+    lines = telegram.format_caption(idle, "Pos Depan", "Pos-1", None, tz=WIB).splitlines()
+    assert lines[0] == "🚨 <b>IDLE ZONE</b>"
+    assert "<b>Kosong</b>: 12 menit" in lines
+    crowd = _event(type="crowd", payload={"count": 7, "min_count": 5, "reminder": 2})
+    lines = telegram.format_caption(crowd, "Kantin", "Antrean", None, tz=WIB).splitlines()
+    assert lines[0] == "🚨 <b>CROWD</b> (pengingat ke-2)"
+    assert "<b>Jumlah</b>: 7 orang (min 5)" in lines
+    short = _event(type="idle_zone", payload={"idle_s": 45})
+    assert "<b>Kosong</b>: 45 detik" in telegram.format_caption(short, "C", None, None, tz=WIB)
+
+
 def test_caption_attendance_check_in_out_and_unknown():
     matched = _event(type="attendance", severity="info", payload={
         "match_reason": "matched", "direction": "exit", "employee_name": "Budi Santoso"})
