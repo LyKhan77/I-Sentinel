@@ -9,6 +9,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   dari 1970 + uptime) → jadwal intrusion salah di produksi (belum berdampak: 0 zona berjadwal). Helper bersama
   `analyzers/base.py`: `wall_time`, `schedule_active`, `persons_in_zone` (+ `point_in_polygon`/`ground_point` dipindah,
   tetap di-re-export dari `intrusion`). Vision **209 passed**.
+- **Analyzer Idle Zone + Crowd**: idle = zona kosong ≥ `trigger_seconds` dalam jadwal → event + pengingat tiap
+  `reminder_minutes` (0 = sekali), siaga lagi saat ada orang; crowd = ≥ `min_count` orang ≥ `trigger_seconds`,
+  toleransi turun sesaat 2 s, pengingat sama. Event tanpa track didukung node (`bbox_norm` None, dedup key per
+  pengingat `r<n>`). Vision **218 passed**.
 
 ### Fix geometri zona (2026-09-28)
 

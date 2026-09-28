@@ -66,7 +66,7 @@ def _make_event(camera_id: int, track, ts: float) -> dict:
             "direction": None,
             "employee_id": None,
             "face_score": None,
-            "bbox_norm": list(track.bbox),
+            "bbox_norm": list(track.bbox) if track.bbox is not None else None,
             "snapshot_crop": None,
         },
         "dedup_key": f"{camera_id}:person_detect:{track.id}:{int(ts // DEDUP_BUCKET_S)}",
@@ -81,7 +81,10 @@ def _merge_event(camera_id: int, node_id: str, partial: dict, ts: float) -> dict
     base["zone_id"] = partial["zone_id"]
     base["severity"] = partial["severity"]
     base["payload"].update(partial["payload"])
-    base["dedup_key"] = f"{camera_id}:{partial['type']}:{partial['payload']['track_id']}:{int(ts // DEDUP_BUCKET_S)}"
+    track = partial["payload"].get("track_id")
+    # Trackless zone events use a distinct key for every reminder.
+    key = track if track is not None else f"r{partial['payload'].get('reminder', 0)}"
+    base["dedup_key"] = f"{camera_id}:{partial['type']}:{key}:{int(ts // DEDUP_BUCKET_S)}"
     return base
 
 
@@ -89,8 +92,8 @@ class _PartialTrack:
     """Adapts a partial dict to the track-like interface _make_event expects."""
 
     def __init__(self, partial: dict):
-        self.id = partial["payload"]["track_id"]
-        self.bbox = partial["payload"]["bbox_norm"]
+        self.id = partial["payload"].get("track_id")
+        self.bbox = partial["payload"].get("bbox_norm")
 
 
 class CameraWorker(threading.Thread):
@@ -282,6 +285,8 @@ class VisionNode:
                          "clip": b.get("clip", z.get("clip", True))}
                 spec = dict(z)
                 spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
+                spec["reminder_minutes"] = b.get("reminder_minutes", 0) or 0
+                spec["min_count"] = b.get("min_count", 5)
                 if kind == "intrusion":
                     out.append(self._with_media(ANALYZERS["intrusion"](spec), media))
                 elif kind == "loitering":
@@ -301,6 +306,8 @@ class VisionNode:
                     else:
                         out.append(self._with_media(
                             ANALYZERS["running"](spec, cam.meters_per_pixel), media))
+                elif kind in ("idle_zone", "crowd"):
+                    out.append(self._with_media(ANALYZERS[kind](spec), media))
         return out
 
     @staticmethod
