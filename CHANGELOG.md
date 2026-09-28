@@ -3,6 +3,19 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Fix geometri zona (2026-09-28)
+
+- **Koordinat zona = frame penuh**: editor Zona Deteksi dan tile/modal Live View memakai `object-fit: fill` (dulu
+  `cover` di kotak 16:9). Substream NVR 640×480 adalah frame 16:9 anamorfik (dibuktikan: sub direntang 16:9 = main
+  1920×1080, OSD sejajar); `cover` memotong 12,5 % atas-bawah sehingga titik zona tersimpan relatif ke tampilan
+  terpotong sementara vision memakainya sebagai frame penuh → zona di deteksi bergeser dan overlay debugger tampak
+  tidak sesuai. Migrasi data `0017_zone_full_frame` memetakan polygon lama ke frame penuh per rasio probe kamera
+  (4:3 → `y' = 0,125 + 0,75·y`; 16:9 tetap; probe tak diketahui dilewati; downgrade = kebalikan), dites di tabel
+  nyata lewat konteks Alembic. Backend **423**, vision 205, frontend **140** passed, build 0, lint set sama.
+- **Deploy + verifikasi (2026-09-28 09:27)**: `alembic 0016→0017` di gspe-ai3 (zona 15/14/6 dikonversi, zona 12
+  16:9 tetap; cadangan poligon lama di `temp/zones-before-0017.json`), restart API, vision menerima config baru.
+  **Cek visual user OK**: editor tidak lagi melar, overlay debugger Live View sama persis dengan editor.
+
 ### Integrasi bot Telegram (2026-09-25)
 
 - **`services/telegram.py`**: klien stdlib (getMe, getUpdates → daftar grup unik, sendPhoto multipart,

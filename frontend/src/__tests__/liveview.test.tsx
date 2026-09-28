@@ -82,8 +82,10 @@ test('tile streaming: kamera online memakai video-stream, snapshot hanya fallbac
 
   expect(await screen.findByText('CAM-01')).toBeInTheDocument()
   // kamera online + /live sukses → <video-stream> (webrtc,mse), bukan img snapshot
-  const streamEl = document.querySelector('video-stream')
+  const streamEl = document.querySelector('video-stream') as HTMLElement | null
   expect(streamEl).not.toBeNull()
+  // frame penuh (tanpa crop) agar overlay zona debugger = geometri vision
+  expect(streamEl!.style.objectFit).toBe('fill')
   expect(screen.queryByAltText('CAM-01')).not.toBeInTheDocument()
 
   // kamera /live gagal → tile tanpa img snapshot dan tanpa streaming
@@ -107,6 +109,7 @@ test('fallback: streaming yang tidak playing dalam 10 detik jatuh ke snapshot pr
       await vi.advanceTimersByTimeAsync(10000)
     })
     const img = screen.getByAltText('CAM-01') as HTMLImageElement
+    expect(img.style.objectFit).toBe('fill')
     expect(img.src).toContain('frame.jpeg?src=cam_1')
     expect(document.querySelector('video-stream')).toBeNull()
   } finally {
