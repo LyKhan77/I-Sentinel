@@ -388,6 +388,84 @@ html {
   }
 }
 
+.lv-picker {
+  position: relative;
+}
+
+.lv-picker__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  width: min(320px, calc(100vw - 32px));
+  max-height: 60vh;
+  overflow: auto;
+  padding: 8px 12px;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.lv-picker__actions {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.lv-picker__group {
+  margin-bottom: 8px;
+}
+
+.lv-picker__cam {
+  margin-left: 24px;
+}
+
+@media (max-width: 671px) {
+  .lv-picker__panel {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    top: 120px;
+    width: auto;
+  }
+}
+
+.lv-tv {
+  min-height: 100vh;
+  background: #000;
+}
+
+.lv-tv--idle,
+.lv-tv--idle * {
+  cursor: none;
+}
+
+.lv-tv__bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(22, 22, 22, 0.92);
+  color: var(--cds-text-primary);
+}
+
+.lv-tv__msg {
+  padding: 96px 16px;
+  color: #8d8d8d;
+  text-align: center;
+}
+
+.lv-grid--tv {
+  gap: 2px;
+  border: 0;
+  background: #000;
+}
+
 /* Editor zona + panel properti (mockup 06): dua kolom di desktop. Di layar
    sempit kolom panel cuma menyisakan kanvas yang tak terbaca, jadi keduanya
    ditumpuk satu kolom dan divider vertikal pindah jadi garis atas panel. */

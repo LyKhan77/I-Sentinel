@@ -3,6 +3,45 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Live View mode TV (2026-09-28)
+
+- **Sesi bergulir 48 jam**: `get_current_user` menerbitkan cookie baru bila token cookie lewat separuh umur (Bearer
+  tidak diubah); default `ACCESS_TOKEN_EXPIRE_MIN` 480 → 2880. Layar TV yang me-refresh Live View tidak logout.
+  Backend **435 passed**. Rollback: revert commit + restart API.
+- **Pengaturan Live View per layar**: `screenPrefs` (kolom, pilihan kamera `all`/`some`, auto-scroll) disimpan per
+  `?screen=` di `localStorage` (`isentinel_live_screen:<nama>`), nilai rusak → default per field, kunci lama
+  `isentinel_live_cols` jadi default layar `default`. Frontend **149 passed**.
+- **Tile Live View hemat & pulih sendiri**: grid dipisah ke `LiveWall`/`useLiveCameras`; `<video-stream>` hanya
+  di-mount untuk tile dekat layar (`IntersectionObserver`, pra-muat 50 % viewport), tile lain snapshot terakhir;
+  snapshot tampil sampai video `playing`; tile gagal stream dicoba ulang tiap 60 s (dulu snapshot selamanya; efek
+  stream kini `[streaming, ws]`). Frontend **151 passed**, build 0, lint set rule+file sama.
+- **Pemilih kamera Live View**: dropdown lokasi diganti checkbox per kamera dikelompokkan per lokasi (grup
+  indeterminate, Semua/Kosongkan, "Kamera (n/m)"); disimpan di layar `default`; pilihan kosong → pesan + tombol
+  pemilih. Frontend **153 passed**, build 0, lint set rule+file sama.
+- **Auto-scroll + idle**: `stepScroll` (turun px/s dengan posisi pecahan, jeda 5 s di dasar, kembali ke atas, jeda
+  5 s; konten muat → diam; frame tertunda dibatasi 100 ms), `useAutoScroll` (rAF di dokumen, sinkron ulang setelah
+  jeda), `useIdle`. Frontend **157 passed**, build 0, lint set rule+file sama.
+- **Mode TV (kiosk)**: route `/live/tv?screen=<nama>` di luar AppShell; toolbar auto-hide 4 s (kursor ikut hilang):
+  kolom, pemilih kamera, gulir otomatis + kecepatan, keluar; auto-scroll jeda saat operator aktif (lanjut 10 s),
+  pemilih/debugger terbuka; teks tile membesar di 2K/4K; tombol **Mode TV** di Live View (fullscreen bila
+  diizinkan). Frontend **161 passed**, build 0, lint set sama. Cek visual CDP Chrome headless (stub API):
+  `/live/tv?screen=A` 1920×1080/2560×1440/3840×2160 = 3 kolom, 1080×1920 = 2 kolom, semua tanpa overflow
+  horizontal; `/live` 390×844 `scrollWidth=390`.
+- **Dokumen + suite penuh**: runbook `docs/runbooks/live-view-tv-pi.md` (Chromium kiosk 2 monitor, autostart,
+  operasional, rollback), README §Live View & Mode TV, ROADMAP baris **TV** `[~]`. Suite akhir: backend
+  **435 passed** (baseline 432), vision **223 passed, 3 deselected** (baseline 223), frontend **161 passed**
+  (baseline 142), build 0, lint set rule+file lama (1 warning pindah file: `set-state-in-effect`
+  `LiveViewPage.tsx` → `useLiveCameras.ts`, kode sama ikut refactor Task 3).
+- **Review perencana — snapshot segar saat tile masuk layar lagi**: tile yang kembali terlihat (auto-scroll ke atas)
+  dulu menampilkan snapshot dari cache browser sejak halaman dibuka (bisa berjam-jam) selama stream menyambung;
+  kini `_t` dinaikkan saat masuk layar → snapshot baru. Tes IO diperluas (merah sebelum fix). Frontend
+  **161 passed**, backend **435**, vision **223** (3 deselected), build 0, lint set sama.
+- **Deploy + verifikasi user (2026-09-28)**: server `gspe-ai3` di `762bde7`, restart isentinel-api (health ok,
+  `.env` tanpa `ACCESS_TOKEN_EXPIRE_MIN` → 2880 berlaku). Uji user di browser desktop OK: pemilih kamera, mode TV
+  kiosk + toolbar auto-hide, auto-scroll, dua layar `?screen=A/B`, pulih setelah offline, stream hanya tile terlihat.
+  Uji Raspberry Pi 2 monitor menunggu server production (runbook `docs/runbooks/live-view-tv-pi.md`). Rollback:
+  `git revert -m 1 <merge>` + restart API.
+
 ### Behavior Idle Zone + Crowd (2026-09-28)
 
 - **Fix jadwal zona**: frame live membawa ts monotonic, tetapi jadwal intrusion membacanya sebagai epoch (hari/jam

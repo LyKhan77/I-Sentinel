@@ -1,6 +1,9 @@
-from fastapi import Depends, HTTPException, Request
+from datetime import datetime, timezone
+
+from fastapi import Depends, HTTPException, Request, Response
+from app.core.config import settings
 from app.core.db import get_db
-from app.core.security import decode_token
+from app.core.security import create_access_token, decode_token
 from app.models.user import User
 
 COOKIE = "isentinel_token"
@@ -11,12 +14,21 @@ def _token_from(request: Request) -> str | None:
     h = request.headers.get("Authorization", "")
     return h[7:] if h.startswith("Bearer ") else None
 
-def get_current_user(request: Request, db=Depends(get_db)) -> User:
+def set_auth_cookie(response: Response, token: str) -> None:
+    """Cookie sesi httpOnly (dipakai login dan perpanjangan sesi)."""
+    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure)
+
+def get_current_user(request: Request, response: Response, db=Depends(get_db)) -> User:
     tok = _token_from(request)
     payload = decode_token(tok) if tok else None
     if not payload: raise HTTPException(401, "not authenticated")
     user = db.get(User, int(payload["sub"]))
     if not user: raise HTTPException(401, "user gone")
+    # Sesi bergulir: token cookie yang lewat separuh umurnya diganti baru, jadi layar TV yang
+    # terus me-refresh tidak pernah logout. Bearer (skrip/API) tidak diubah.
+    remaining_s = payload["exp"] - datetime.now(timezone.utc).timestamp()
+    if request.cookies.get(COOKIE) == tok and remaining_s < settings.access_token_expire_min * 30:
+        set_auth_cookie(response, create_access_token(user.id, user.role))
     return user
 
 def require_admin(user: User = Depends(get_current_user)) -> User:

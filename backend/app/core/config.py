@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "CHANGE_ME"
     cookie_secure: bool = False  # true di belakang reverse proxy HTTPS; false agar LAN HTTP bisa login
     jwt_algorithm: str = "HS256"
-    access_token_expire_min: int = 480
+    access_token_expire_min: int = 2880  # 48 jam; diperpanjang otomatis (sesi bergulir)
     node_api_key: str = "CHANGE_ME"
     telegram_bot_token: str = ""
     # deprecated: gerbang Telegram = toggle per behavior
