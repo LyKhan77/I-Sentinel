@@ -15,6 +15,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   di-mount untuk tile dekat layar (`IntersectionObserver`, pra-muat 50 % viewport), tile lain snapshot terakhir;
   snapshot tampil sampai video `playing`; tile gagal stream dicoba ulang tiap 60 s (dulu snapshot selamanya; efek
   stream kini `[streaming, ws]`). Frontend **151 passed**, build 0, lint set rule+file sama.
+- **Pemilih kamera Live View**: dropdown lokasi diganti checkbox per kamera dikelompokkan per lokasi (grup
+  indeterminate, Semua/Kosongkan, "Kamera (n/m)"); disimpan di layar `default`; pilihan kosong → pesan + tombol
+  pemilih. Frontend **153 passed**, build 0, lint set rule+file sama.
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 

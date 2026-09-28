@@ -7,8 +7,9 @@ import LiveViewPage from '../features/live/LiveViewPage'
 import { playerMode } from '../features/live/playerMode'
 
 const CAMS = [
-  { id: 1, name: 'CAM-01', location: null, host: '192.168.1.101', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null },
-  { id: 2, name: 'CAM-02', location: null, host: '192.168.1.102', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'offline', probe_main: null, probe_sub: null },
+  { id: 1, name: 'CAM-01', location: 'Gudang', host: '192.168.1.101', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null },
+  { id: 2, name: 'CAM-02', location: 'Gudang', host: '192.168.1.102', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'offline', probe_main: null, probe_sub: null },
+  { id: 3, name: 'CAM-03', location: null, host: '192.168.1.103', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null },
 ]
 
 function stubFetch() {
@@ -23,6 +24,7 @@ function stubFetch() {
       }
     }
     if (u.endsWith('/cameras/2/live')) return { ok: false, status: 503, json: () => Promise.resolve(null) }
+    if (u.endsWith('/cameras/3/live')) return { ok: false, status: 503, json: () => Promise.resolve(null) }
     return { ok: false, status: 404, json: () => Promise.resolve(null) }
   })
 }
@@ -50,11 +52,11 @@ test('jumlah kolom: default 3, pilihan persist, nilai ngawur di localStorage jat
   expect(document.querySelector('.lv-grid')).toHaveStyle({ '--lv-cols': '3' })
   unmount()
 
-  // pilih 2 → tersimpan
+  // pilih 2 → tersimpan di pengaturan layar default
   renderPage()
   expect(await screen.findByText('CAM-01')).toBeInTheDocument()
   await userEvent.click(screen.getByTestId('live-cols-2'))
-  expect(localStorage.getItem('isentinel_live_cols')).toBe('2')
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:default')!).cols).toBe(2)
   expect(screen.getByTestId('live-cols-2')).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByTestId('live-cols-3')).toHaveAttribute('aria-pressed', 'false')
   expect(document.querySelector('.lv-grid')).toHaveStyle({ '--lv-cols': '2' })
@@ -131,8 +133,8 @@ test('click tile membuka modal debugger (bukan big-on-top)', async () => {
   // modal terbuka: heading + toggle zones/bbox + overlay + stream tile di dalam modal
   expect(await screen.findByTestId('live-modal')).toBeInTheDocument()
   expect(screen.getByTestId('debug-overlay')).toBeInTheDocument()
-  // grid tetap 2 tile (tile tidak di-pause)
-  expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(2)
+  // grid tetap menampilkan semua tile (tile tidak di-pause)
+  expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(3)
 })
 
 test('WS detections renders kind-specific boxes and labels for the modal camera', async () => {
@@ -199,8 +201,9 @@ test('kamera nonaktif tidak dirender di grid', async () => {
 
   expect(await screen.findByText('CAM-01')).toBeInTheDocument()
   expect(screen.queryByText('CAM-OFF')).not.toBeInTheDocument()
-  expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(2)
-})
+  expect(document.querySelectorAll('.lv-grid [data-testid^="cam-tile-"]').length).toBe(3)
+}
+)
 
 test('kotak deteksi hilang sendiri bila tidak diperbarui 1 detik', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
@@ -317,6 +320,40 @@ test('event attendance lama (polling awal) tidak menamai track baru dengan id sa
     new Date(Date.now() - 3600_000).toISOString())
   await faceBox()
   expect(screen.getByTestId('debug-overlay')).not.toHaveTextContent('Angly')
+})
+
+test('pemilih kamera: per lokasi, uncheck menyembunyikan tile dan tersimpan di layar default', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('live-picker-open'))
+  expect(screen.getByTestId('live-picker-open')).toHaveTextContent('3/3')
+  await userEvent.click(screen.getByLabelText('CAM-02'))
+  expect(screen.queryByTestId('cam-tile-2')).not.toBeInTheDocument()
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:default')!).cameras).toEqual({ mode: 'some', ids: [1, 3] })
+  // grup setengah terpilih (indeterminate) → klik memilih seluruh grup → kembali "all"
+  await userEvent.click(screen.getByLabelText('Gudang'))
+  expect(screen.getByTestId('cam-tile-2')).toBeInTheDocument()
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:default')!).cameras).toEqual({ mode: 'all' })
+  // grup penuh → klik membuang seluruh grup; kamera tanpa lokasi ada di "Lainnya"
+  await userEvent.click(screen.getByLabelText('Gudang'))
+  expect(screen.queryByTestId('cam-tile-1')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('cam-tile-2')).not.toBeInTheDocument()
+  expect(screen.getByTestId('cam-tile-3')).toBeInTheDocument()
+  expect(screen.getByLabelText('Lainnya')).toBeChecked()
+  vi.unstubAllGlobals()
+})
+
+test('pilihan kosong → pesan + tombol pemilih; Semua memulihkan', async () => {
+  localStorage.setItem('isentinel_live_screen:default', JSON.stringify({ cameras: { mode: 'some', ids: [] } }))
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  expect(await screen.findByTestId('live-empty-selection')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('live-empty-open'))
+  await userEvent.click(screen.getByTestId('live-picker-all'))
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(screen.getByTestId('cam-tile-3')).toBeInTheDocument()
+  vi.unstubAllGlobals()
 })
 
 class FakeIO {
