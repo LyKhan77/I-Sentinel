@@ -38,10 +38,10 @@ def viewer_headers(client):
     """
     client.post(
         "/api/v1/users",
-        json={"username": "vw", "password": "pw12345", "role": "viewer"},
+        json={"username": "viewer", "password": "rahasia123", "role": "viewer"},
         headers=admin_headers(client),
     )
-    tok = client.post("/api/v1/auth/login", json={"username": "vw", "password": "pw12345"}).json()["token"]
+    tok = client.post("/api/v1/auth/login", json={"username": "viewer", "password": "rahasia123"}).json()["token"]
     return {"Authorization": f"Bearer {tok}"}
 
 

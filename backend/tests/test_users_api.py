@@ -102,3 +102,46 @@ def test_login_sets_last_login_and_listing_hides_secrets(client):
     assert rows["tv-uji"]["last_login_at"] is not None and rows["tv-uji"]["is_active"] is True
     assert "created_at" in rows["tv-uji"]
     assert not {"password_hash", "token_version", "password"} & set(rows["tv-uji"])
+
+
+def test_create_validation(client):
+    h = _h(client)
+    for body in ({"username": "ab", "password": PW},                     # username < 3
+                 {"username": "a b c", "password": PW},                  # spasi
+                 {"username": "okuser", "password": "pendek7"},          # < 8
+                 {"username": "okuser", "password": "é" * 37},          # 74 byte
+                 {"username": "okuser", "password": PW, "role": "operator"}):
+        assert client.post("/api/v1/users", json=body, headers=h).status_code == 422, body
+    _create(client, h, username="okuser")
+    r = client.post("/api/v1/users", json={"username": "okuser", "password": PW}, headers=h)
+    assert r.status_code == 409 and r.json()["detail"] == "username taken"
+
+
+def test_patch_validation(client):
+    h = _h(client)
+    u = _create(client, h)
+    for body in ({"password_hash": "x"}, {"token_version": 0}, {"role": "operator"},
+                 {"password": "pendek7"}, {"is_active": "nanti"}):
+        assert client.patch(f"/api/v1/users/{u['id']}", json=body, headers=h).status_code == 422, body
+    assert _login(client, "tv-uji", PW).status_code == 200  # tidak ada yang tersimpan
+
+
+def test_self_guards(client):
+    h = _h(client)
+    me = client.get("/api/v1/auth/me", headers=h).json()
+    _create(client, h, username="admin2", role="admin")  # admin lain aktif → bukan kasus admin terakhir
+    cases = [({"role": "viewer"}, "cannot change your own role"), ({"is_active": False}, "cannot deactivate yourself")]
+    for body, detail in cases:
+        r = client.patch(f"/api/v1/users/{me['id']}", json=body, headers=h)
+        assert r.status_code == 409 and r.json()["detail"] == detail
+    r = client.delete(f"/api/v1/users/{me['id']}", headers=h)
+    assert r.status_code == 409 and r.json()["detail"] == "cannot delete yourself"
+
+
+def test_admin_manages_other_user(client):
+    h = _h(client)
+    u = _create(client, h)
+    assert client.patch(f"/api/v1/users/{u['id']}", json={"role": "admin"}, headers=h).json()["role"] == "admin"
+    assert client.patch(f"/api/v1/users/{u['id']}", json={"role": "viewer"}, headers=h).json()["role"] == "viewer"
+    assert client.delete(f"/api/v1/users/{u['id']}", headers=h).status_code == 200
+    assert _login(client, "tv-uji", PW).status_code == 401

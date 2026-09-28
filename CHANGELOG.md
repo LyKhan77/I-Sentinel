@@ -10,6 +10,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Pencabutan sesi**: JWT membawa klaim `tv` (`token_version`); `get_current_user` menolak akun nonaktif dan versi
   token lama (termasuk sesi bergulir); token tanpa `tv` = versi 0 (tanpa logout massal saat deploy). Login akun
   nonaktif → 403 `account disabled` hanya bila password benar; `last_login_at` terisi. Backend **441 passed**.
+- **API user ketat**: `UserPatch` (`extra="forbid"`, role `admin|viewer`), password ≥ 8 / ≤ 72 byte, username
+  `[A-Za-z0-9._-]{3,64}`; reset password & nonaktif menaikkan `token_version`; admin tidak bisa mengubah role,
+  menonaktifkan, atau menghapus akun sendiri; pengaman admin aktif terakhir. Backend **445 passed**.
 
 ### Live View mode TV (2026-09-28)
 
