@@ -158,6 +158,27 @@ password tidak tersedia di server, jadi restart service dilakukan lewat
 `kill $(cat /sys/fs/cgroup/system.slice/<unit>.service/cgroup.procs)` (unit
 memakai `Restart=always`).
 
+## Live View & Mode TV
+
+Live View (halaman **Live**) menampilkan grid kamera: pilih 2/3/4 kolom, dan pilih kamera
+mana yang tampil lewat **Kamera (n/m)** (checkbox per kamera, dikelompokkan per lokasi).
+Pengaturan ini tersimpan per layar di `localStorage`.
+
+Tombol **Mode TV** membuka kiosk `/live/tv?screen=<nama>` — tanpa header/side-nav,
+untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
+
+- **Pengaturan per layar**: `?screen=A` dan `?screen=B` menyimpan kolom/pilihan/auto-scroll
+  terpisah (dua jendela TV di satu Pi). `?screen=` tidak dikenal → `default`.
+- **Stream hanya tile terlihat**: tile di luar viewport menampilkan snapshot terakhir;
+  `<video-stream>` hanya di-mount untuk tile dekat layar (pra-muat 50 % viewport).
+- **Pulih sendiri**: tile yang gagal stream dicoba ulang tiap 60 detik; snapshot tampil
+  sampai video benar-benar `playing`.
+- **Auto-scroll**: gulir halus turun, jeda 5 detik di dasar, kembali ke atas. Berhenti
+  saat operator aktif (mouse/keyboard; lanjut 10 s setelah diam) atau pemilih/debugger
+  terbuka. Toolbar auto-hide 4 detik (kursor ikut disembunyikan).
+- **Sesi bergulir 48 jam**: cookie login diperpanjang otomatis selama halaman aktif
+  me-refresh (`ACCESS_TOKEN_EXPIRE_MIN`, default 2880) — TV tidak logout tiba-tiba.
+
 ## Alert Telegram
 
 Kirim foto + caption kejadian ke grup staf. Tanpa dependensi baru (klien stdlib),

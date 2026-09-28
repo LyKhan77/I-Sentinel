@@ -27,6 +27,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   diizinkan). Frontend **161 passed**, build 0, lint set sama. Cek visual CDP Chrome headless (stub API):
   `/live/tv?screen=A` 1920×1080/2560×1440/3840×2160 = 3 kolom, 1080×1920 = 2 kolom, semua tanpa overflow
   horizontal; `/live` 390×844 `scrollWidth=390`.
+- **Dokumen + suite penuh**: runbook `docs/runbooks/live-view-tv-pi.md` (Chromium kiosk 2 monitor, autostart,
+  operasional, rollback), README §Live View & Mode TV, ROADMAP baris **TV** `[~]`. Suite akhir: backend
+  **435 passed** (baseline 432), vision **223 passed, 3 deselected** (baseline 223), frontend **161 passed**
+  (baseline 142), build 0, lint set rule+file lama (1 warning pindah file: `set-state-in-effect`
+  `LiveViewPage.tsx` → `useLiveCameras.ts`, kode sama ikut refactor Task 3).
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 
