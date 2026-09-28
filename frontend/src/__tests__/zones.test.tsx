@@ -357,3 +357,12 @@ test('?camera=<id> memilih kamera itu', async () => {
     window.history.pushState({}, '', '/')
   }
 })
+
+
+test('snapshot editor menampilkan frame penuh (object-fit fill), bukan dipotong cover', async () => {
+  vi.stubGlobal('fetch', stubFetch({ zones: [] }))
+  render(<I18nProvider><ZonesPage /></I18nProvider>)
+  const svg = await screen.findByTestId('zone-svg')
+  await waitFor(() => expect(svg.parentElement!.querySelector('img')).not.toBeNull())
+  expect(svg.parentElement!.querySelector('img')!.style.objectFit).toBe('fill')
+})

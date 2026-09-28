@@ -95,16 +95,18 @@ function CameraTile({ cam, live, big, onClick }: { cam: Camera; live: LiveInfo |
       }}
     >
       {streaming ? (
+        // fill (bukan cover): tampilkan frame penuh — substream NVR 4:3 anamorfik = frame 16:9,
+        // dan overlay zona debugger harus memakai geometri frame yang sama dengan vision
         <video-stream
           ref={elRef}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }}
+          style={{ width: '100%', height: '100%', objectFit: 'fill', background: '#000' }}
         />
       ) : snapSrc ? (
         <img
           src={snapSrc}
           alt={cam.name}
           onError={() => setImgFailed(true)}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          style={{ width: '100%', height: '100%', objectFit: 'fill' }}
         />
       ) : (
         <div

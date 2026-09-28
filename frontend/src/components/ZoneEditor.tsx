@@ -180,11 +180,12 @@ export default function ZoneEditor({ cameraId, initialZones, onChange, selectedI
             {t('live.noSnapshot')}
           </div>
         ) : (
+          // fill: titik zona = koordinat frame penuh (vision). cover dulu memotong frame 4:3
           <img
             src={`${snapshot}${tick}`}
             alt=""
             onError={() => setImgFailed(true)}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }}
           />
         )}
         <svg

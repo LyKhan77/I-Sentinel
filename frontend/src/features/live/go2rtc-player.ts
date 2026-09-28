@@ -4,7 +4,7 @@
 // (polanya sama dengan ActivityTracking-AI yang sudah terbukti di LAN yang sama).
 // Deklarasi tipenya di video-rtc.d.ts. Wrapper di bawah hanya menyetel perilaku
 // tile: tanpa kontrol bawaan (tile punya overlay sendiri, fullscreen via dblclick),
-// muted autoplay, object-fit cover.
+// muted autoplay, object-fit fill (frame penuh, tanpa crop).
 import 'react'
 
 import { VideoRTC } from './video-rtc.js'
@@ -14,7 +14,7 @@ class VideoStream extends VideoRTC {
     super.oninit()
     this.video.controls = false
     this.video.muted = true
-    this.video.style.objectFit = 'cover'
+    this.video.style.objectFit = 'fill' // frame penuh, lihat CameraTile
     this.media = 'video' // tanpa audio decode; tile selalu muted
   }
 }
