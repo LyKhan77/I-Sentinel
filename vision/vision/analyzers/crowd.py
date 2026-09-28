@@ -38,6 +38,9 @@ class CrowdAnalyzer(Analyzer):
                 if ts - self._below_since > GRACE_S:
                     self._reset()
             return []
+        # Recheck on recovery: the next low-count frame may never arrive.
+        if self._below_since is not None and ts - self._below_since > GRACE_S:
+            self._reset()
         self._below_since = None
         if self._since is None:
             self._since = ts

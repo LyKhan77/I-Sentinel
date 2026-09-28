@@ -82,8 +82,8 @@ def _merge_event(camera_id: int, node_id: str, partial: dict, ts: float) -> dict
     base["severity"] = partial["severity"]
     base["payload"].update(partial["payload"])
     track = partial["payload"].get("track_id")
-    # Trackless zone events use a distinct key for every reminder.
-    key = track if track is not None else f"r{partial['payload'].get('reminder', 0)}"
+    # Distinguish zones as well as reminders; keep tracked-event keys unchanged.
+    key = track if track is not None else f"r{partial['payload'].get('reminder', 0)}:z{partial['zone_id']}"
     base["dedup_key"] = f"{camera_id}:{partial['type']}:{key}:{int(ts // DEDUP_BUCKET_S)}"
     return base
 
@@ -108,6 +108,9 @@ class CameraWorker(threading.Thread):
         self.stop_event = stop_event
         self.node_id = node_id
         self.analyzers = analyzers or []
+        self._snapshot_empty_zone = any(isinstance(a, ANALYZERS["idle_zone"]) and
+                                        getattr(a, "media", {}).get("snapshot", True)
+                                        for a in self.analyzers)
         self.recorder = recorder
         self.emit_person_detect = emit_person_detect
         motion = motion or {}
@@ -151,7 +154,7 @@ class CameraWorker(threading.Thread):
                         for t in tracks
                     ], kind="person")
                 if self.recorder is not None:
-                    if detections and frame.data is not None:
+                    if (detections or self._snapshot_empty_zone) and frame.data is not None:
                         try:
                             import cv2
                             ok, enc = cv2.imencode(".jpg", frame.data)
@@ -284,9 +287,12 @@ class VisionNode:
                 media = {"snapshot": b.get("snapshot", z.get("snapshot", True)),
                          "clip": b.get("clip", z.get("clip", True))}
                 spec = dict(z)
-                spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
-                spec["reminder_minutes"] = b.get("reminder_minutes", 0) or 0
-                spec["min_count"] = b.get("min_count", 5)
+                if kind in ("idle_zone", "crowd"):
+                    spec["trigger_seconds"] = b.get("trigger_seconds", 300 if kind == "idle_zone" else 30)
+                    spec["reminder_minutes"] = b.get("reminder_minutes", 15)
+                    spec["min_count"] = b.get("min_count", 5)
+                else:
+                    spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
                 if kind == "intrusion":
                     out.append(self._with_media(ANALYZERS["intrusion"](spec), media))
                 elif kind == "loitering":

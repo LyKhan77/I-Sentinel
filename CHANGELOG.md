@@ -25,6 +25,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Zona Deteksi**: baris **Zona kosong (Idle)** (kosong selama, pengingat; clip default off) dan **Kerumunan
   (Crowd)** (minimal orang, selama, pengingat); jadwal **Ikut shift** (`{shift_id}`) di samping 24/7 dan jam manual.
   Frontend **142 passed**, build 0, lint set rule+file sama.
+- **Review regresi behavior**: dedup event tanpa track dibedakan per zona + pengingat; snapshot idle mengambil frame
+  kosong terbaru; crowd me-reset bila jumlah pulih setelah jeda > 2 s; parameter yang absen memakai default
+  idle/crowd; pengingat Telegram berkala tidak ditahan rate-limit 2 menit; ingest internal menerima kedua tipe.
+  Backend **432 passed**, vision **223 passed** (3 deselected).
 
 ### Fix geometri zona (2026-09-28)
 

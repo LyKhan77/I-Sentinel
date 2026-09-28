@@ -103,3 +103,35 @@ def test_make_analyzers_builds_new_kinds_with_params():
     idle, crowd = azs
     assert (type(idle).__name__, idle.trigger, idle.reminder_s, idle.media["clip"]) == ("IdleZoneAnalyzer", 300.0, 900.0, False)
     assert (type(crowd).__name__, crowd.min_count, crowd.trigger, crowd.reminder_s) == ("CrowdAnalyzer", 7, 30.0, 0.0)
+
+
+def test_trackless_events_from_different_zones_do_not_collide():
+    from vision.node import _merge_event
+    partial = {"zone_id": 3, "type": "idle_zone", "severity": "warning",
+               "payload": {"track_id": None, "bbox_norm": None, "reminder": 0}}
+    first = _merge_event(9, "n", partial, T0)
+    second = _merge_event(9, "n", {**partial, "zone_id": 4}, T0)
+    assert first["dedup_key"] != second["dedup_key"]
+    assert _merge_event(9, "n", {**partial, "payload": {**partial["payload"], "reminder": 1}}, T0)["dedup_key"] != first["dedup_key"]
+    tracked = _merge_event(9, "n", {**partial, "type": "intrusion",
+                                    "payload": {"track_id": 7, "bbox_norm": [0.1, 0.2, 0.3, 0.4]}}, T0)
+    assert tracked["dedup_key"] == f"9:intrusion:7:{int(T0 // 10)}"
+
+
+def test_missing_behavior_params_use_new_kind_defaults():
+    from vision.config import NodeSettings
+    from vision.node import VisionNode
+    z = zone(id=5, type="behavior", active=True,
+             behaviors=[{"kind": "idle_zone"}, {"kind": "crowd", "min_count": 2}])
+    node = VisionNode(NodeSettings(face_embed=False), transport=object(), source_factory=lambda c: None)
+    idle, crowd = node._make_analyzers(node._cameras_from_config(
+        {"cameras": [{"camera_id": 1, "source_url": "test://1", "zones": [z]}]})[0])
+    assert (idle.trigger, idle.reminder_s) == (300.0, 900.0)
+    assert (crowd.trigger, crowd.reminder_s, crowd.min_count) == (30.0, 900.0, 2)
+
+
+def test_crowd_recovery_after_long_gap_rearms():
+    az = CrowdAnalyzer(zone(min_count=2, trigger_seconds=10, reminder_minutes=0))
+    two, one = [T(1, 0.3), T(2, 0.7)], [T(1, 0.3)]
+    assert run(az, [(0, two), (2, two), (4, one), (6, one), (8, two), (10, two),
+                    (16, two), (18, two)]) == [(18, "crowd", 0)]

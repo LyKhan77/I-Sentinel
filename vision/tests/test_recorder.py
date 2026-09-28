@@ -451,6 +451,35 @@ def test_failed_upload_still_removes_local_clip(tmp_path):
     assert t.media == []
 
 
+def test_idle_worker_keeps_current_empty_frame_for_snapshot():
+    from vision.analyzers.idle_zone import IdleZoneAnalyzer
+
+    class Capture:
+        def __init__(self):
+            self.frames = []
+            self.at_event = []
+
+        def push_jpeg(self, ts, jpeg):
+            self.frames.append(jpeg)
+
+        def enqueue(self, ev):
+            self.at_event.append((ev["type"], len(self.frames)))
+
+        def touch(self, ids):
+            pass
+
+    rec = Capture()
+    t = FakeTransport()
+    az = IdleZoneAnalyzer({"id": 1, "polygon": [[0, 0], [1, 0], [1, 1]], "trigger_seconds": 0})
+    w = CameraWorker(CameraCfg(camera_id=1, source_url="test://1"), lambda cid: MockDetector([[]] * 3),
+                     t, threading.Event(), "n", analyzers=[az], recorder=rec)
+    w.source = FrameSource.from_frames([np.zeros((4, 4, 3), dtype=np.uint8)] * 3, fps=100.0)
+    w.start()
+    w.join(timeout=10)
+    assert rec.frames and rec.frames[0].startswith(b"\xff\xd8")
+    assert rec.at_event == [("idle_zone", 1)]
+
+
 # --- R3: worker memberi track id ke recorder tiap frame ----------------------
 
 def test_worker_touches_recorder_with_track_ids():

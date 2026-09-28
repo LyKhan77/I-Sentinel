@@ -67,6 +67,10 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
             return True, ""  # duplikat sudah dicegah cooldown/already_in absensi
         if payload.get("match_reason") != "no_match" or payload.get("employee_id") is not None:
             return False, "attendance_skipped"
+    # Indexed reminders are generated once per episode by the analyzers; their
+    # configured interval may be shorter than the normal two-minute debounce.
+    if event.type in ("idle_zone", "crowd") and (event.payload or {}).get("reminder", 0) > 0:
+        return True, ""
     window = RATE_LIMIT_MIN.get(event.severity, DEFAULT_RATE_LIMIT_MIN)
     if window <= 0:
         return True, ""
