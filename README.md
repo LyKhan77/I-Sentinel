@@ -38,7 +38,7 @@ isentinel/
 ├── vision/                   # vision-node (deployable ke Jetson, minimal deps)
 │   ├── node.py
 │   ├── pipeline/             # source(go2rtc) → detector(YOLO) → tracker(ByteTrack) → emit
-│   ├── analyzers/            # intrusion.py, loitering.py, running.py (face: face_worker.py di vision/vision/)
+│   ├── analyzers/            # intrusion, loitering, running, idle_zone, crowd (face: face_worker.py)
 │   ├── transport/            # mqtt client + disk queue store-and-forward
 │   └── tests/
 ├── frontend/                 # React 19 + Vite + Carbon (9 halaman)
@@ -137,6 +137,16 @@ Aturan yang perlu diketahui:
   di satu tempat — tab **Zona Deteksi** — termasuk Snapshot/Clip per behavior; kamera tanpa zona
   aktif tetap bisa dipantau di Live View, tetapi tidak menghasilkan event/klip. Chip analyzer
   per kamera (kolom `camera.analyzers`) sudah tidak dipakai.
+- **Zona kosong (Idle Zone)**: aktif bila tak ada orang di poligon selama `trigger_seconds` (default
+  300 detik). **Kerumunan (Crowd)**: aktif bila jumlah orang di poligon mencapai `min_count` (default 5)
+  selama `trigger_seconds` (default 30 detik); penurunan jumlah ≤ 5 detik ditoleransi. Keduanya
+  mengirim event awal, lalu pengingat tiap `reminder_minutes` (default 15; 0 = tanpa pengingat)
+  selama kondisi berlanjut; pulih → siaga lagi. Snapshot idle menggambar poligon, crowd
+  menggambar semua kotak orang. Clip idle default mati saat behavior baru dicentang.
+- Jadwal zona: **24/7**, **Jam tertentu**, atau **Ikut shift** (satu shift). Pilihan shift
+  mengikuti perubahan jam/hari shift lewat config push; shift yang dipakai zona tidak bisa dihapus.
+  Jadwal manual dan shift memakai jam dinding lokal (termasuk frame vision bertimestamp monotonic).
+  Shift malam/jadwal lintas tengah malam belum didukung; gunakan rentang dalam satu hari.
 
 Detail migrasi skema: `docs/runbooks/camera-management-migration.md`.
 
@@ -163,8 +173,8 @@ tanpa migrasi DB.
    → pilih grup dari daftar → **Simpan** → **Kirim pesan uji**. Chip status menjadi
    *Siap* dan pesan uji masuk ke grup.
 4. **Zona Deteksi**: nyalakan toggle **Telegram** per behavior (intrusi/loitering/
-   berlari/absensi) pada zona yang boleh mengirim alert. Tanpa toggle aktif, event
-   tetap tercatat tapi tidak dikirim.
+   berlari/Idle Zone/Crowd/absensi) pada zona yang boleh mengirim alert. Tanpa toggle aktif,
+   event tetap tercatat tapi tidak dikirim.
 
 Yang perlu diketahui:
 
@@ -176,12 +186,14 @@ Yang perlu diketahui:
   pernah tampil di UI/log/response. `TELEGRAM_BOT_TOKEN` di `.env` hanya fallback.
 - **Kirim berjalan di thread terpisah** — konsumen MQTT tidak pernah menunggu
   jaringan Telegram. Rate-limit per kamera, zona, tipe, dan `track_id`: severity
-  critical tanpa batas, lainnya 2 menit; absensi tercatat tanpa batas. Event tanpa
-  `track_id` dikelompokkan bersama. Status alert (`queued/sent/failed/rate_limited/
-  not_configured`) tampil di Inbox.
+  critical tanpa batas, lainnya 2 menit; absensi tercatat tanpa batas. Pengingat
+  Idle Zone/Crowd mengikuti interval yang diatur, termasuk interval < 2 menit.
+  Event tanpa `track_id` dikelompokkan per kamera/zona/tipe. Status alert
+  (`queued/sent/failed/rate_limited/not_configured`) tampil di Inbox.
 - **Format pesan**: foto snapshot dengan caption HTML — judul tebal berbahasa
-  Inggris (`INTRUSION`, `LOITERING`, `RUNNING`, `ATTENDANCE — CHECK IN/OUT`,
-  `UNKNOWN FACE`, tipe baru → huruf besar), lalu satu data per baris berlabel
-  Indonesia (Nama/Kamera/Zona/Waktu/Level) dan tautan klip di akhir. Kotak orang
-  pada snapshot behavior berlabel jenis kejadiannya; snapshot absensi berlabel
-  nama karyawan (atau `Unknown` oranye untuk wajah tak dikenal).
+  Inggris (`INTRUSION`, `LOITERING`, `RUNNING`, `IDLE ZONE`, `CROWD`,
+  `ATTENDANCE — CHECK IN/OUT`, `UNKNOWN FACE`), lalu satu data per baris berlabel
+  Indonesia (Nama/Kamera/Zona/Waktu/Level; idle: durasi kosong, crowd: jumlah orang)
+  dan tautan klip di akhir. Pengingat ditandai di judul. Snapshot behavior berlabel
+  jenis kejadian; snapshot absensi berlabel nama karyawan (atau `Unknown` oranye
+  untuk wajah tak dikenal).

@@ -277,3 +277,40 @@ def test_behavior_telegram_flag_roundtrip_and_validation(client):
     bad = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
                                              "behaviors": [{"kind": "intrusion", "telegram": "ya"}]}, headers=h)
     assert bad.status_code == 422
+
+
+def _behavior_zone(client, h, cam_id, behaviors, schedule=None):
+    return client.post("/api/v1/zones", json={**VALID, "camera_id": cam_id, "type": "behavior",
+                                              "behaviors": behaviors, "schedule": schedule}, headers=h)
+
+
+def test_idle_and_crowd_kinds_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    ok = _behavior_zone(client, h, cam["id"], [
+        {"kind": "idle_zone", "trigger_seconds": 300, "reminder_minutes": 15},
+        {"kind": "crowd", "trigger_seconds": 30, "min_count": 5, "reminder_minutes": 0}])
+    assert ok.status_code == 200
+    for bad in ([{"kind": "crowd", "trigger_seconds": 30}],
+                [{"kind": "crowd", "trigger_seconds": 30, "min_count": 0}],
+                [{"kind": "idle_zone", "trigger_seconds": 60, "reminder_minutes": -1}],
+                [{"kind": "idle_zone", "trigger_seconds": 60, "reminder_minutes": "15"}]):
+        assert _behavior_zone(client, h, cam["id"], bad).status_code == 422
+
+
+def test_zone_schedule_follows_shift(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    shift = client.post("/api/v1/shifts", json={"name": "Pagi", "start_time": "08:00", "end_time": "17:00"},
+                        headers=h).json()
+    r = _behavior_zone(client, h, cam["id"], [{"kind": "idle_zone", "trigger_seconds": 60}],
+                       schedule={"shift_id": shift["id"]})
+    assert r.status_code == 200 and r.json()["schedule"] == {"shift_id": shift["id"]}
+
+
+def test_zone_schedule_unknown_shift_422(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    r = _behavior_zone(client, h, cam["id"], [], schedule={"shift_id": 999})
+    assert r.status_code == 422 and "shift" in str(r.json()["detail"])
+    assert _behavior_zone(client, h, cam["id"], [], schedule={"shift_id": "x"}).status_code == 422

@@ -299,3 +299,20 @@ def test_toggle_active_refreshes_face_gallery(client, db, monkeypatch):
     assert face.gallery.size() == 0
     assert client.patch(f"/api/v1/employees/{eid}", json={"active": True}, headers=h).status_code == 200
     assert face.gallery.size() == 1
+
+
+def test_shift_used_by_zone_blocks_delete_and_patch_repushes(client, monkeypatch):
+    import app.api.shifts as shifts_api
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    shift = _shift(client, h).json()
+    r = client.post("/api/v1/zones", json={"camera_id": cam["id"], "name": "Pos Satpam", "type": "behavior",
+                                           "polygon": [[0.1, 0.1], [0.5, 0.1], [0.5, 0.5]],
+                                           "behaviors": [], "schedule": {"shift_id": shift["id"]}}, headers=h)
+    assert r.status_code == 200
+    pushed = []
+    monkeypatch.setattr(shifts_api, "publish_node_config_for_camera", lambda db, cid: pushed.append(cid) or True, raising=False)
+    assert client.patch(f"/api/v1/shifts/{shift['id']}", json={"end_time": "18:00"}, headers=h).status_code == 200
+    assert pushed == [cam["id"]]
+    r = client.delete(f"/api/v1/shifts/{shift['id']}", headers=h)
+    assert r.status_code == 409 and "Pos Satpam" in r.json()["detail"]

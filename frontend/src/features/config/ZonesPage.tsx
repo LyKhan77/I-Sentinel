@@ -7,6 +7,8 @@ import {
   InlineNotification,
   Modal,
   NumberInput,
+  Select,
+  SelectItem,
   RadioButton,
   RadioButtonGroup,
   Tag,
@@ -17,21 +19,28 @@ import {
 import { Delete, Save } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
+import { listShifts, type Shift } from '../../api/employees'
 import {
   createZone,
   deleteZone,
   listZones,
   updateZone,
   type Behavior,
+  type Schedule,
   type BehaviorKind,
   type Zone,
   type ZoneType,
 } from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
 
-const BEHAVIOR_KINDS: BehaviorKind[] = ['intrusion', 'loitering', 'running']
-// ponytail: node melewati analyzer running bila speed_limit_mps = 0 → default masuk akal saat dicentang
+const BEHAVIOR_KINDS: BehaviorKind[] = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd']
 const DEFAULT_SPEED_MPS = 2
+const BEHAVIOR_DEFAULTS: Partial<Record<BehaviorKind, Partial<Behavior>>> = {
+  running: { speed_limit_mps: DEFAULT_SPEED_MPS },
+  // Empty-zone clips are usually uninformative; users can explicitly enable them.
+  idle_zone: { trigger_seconds: 300, reminder_minutes: 15, clip: false },
+  crowd: { trigger_seconds: 30, min_count: 5, reminder_minutes: 15 },
+}
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] // 1=Senin .. 7=Minggu (backend VALID_DAYS)
 const DAY_LABEL: Record<number, TKey> = {
@@ -49,6 +58,7 @@ export default function ZonesPage() {
   const [cams, setCams] = useState<Camera[]>([])
   const [cam, setCam] = useState<{ id: number; label: string } | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
+  const [shifts, setShifts] = useState<Shift[]>([])
   const [allZones, setAllZones] = useState<Zone[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -65,6 +75,7 @@ export default function ZonesPage() {
   }, [toast])
 
   useEffect(() => {
+    listShifts().then(setShifts).catch(() => setShifts([]))
     Promise.all([listCameras(), listZones().catch(() => [])])
       .then(([cs, all]) => {
         setCams(cs)
@@ -108,7 +119,7 @@ export default function ZonesPage() {
       return {
         kind,
         trigger_seconds: 0,
-        ...(kind === 'running' ? { speed_limit_mps: DEFAULT_SPEED_MPS } : {}),
+        ...BEHAVIOR_DEFAULTS[kind],
         ...current,
         ...patch,
       }
@@ -167,6 +178,7 @@ export default function ZonesPage() {
   const schedItems = [
     { id: 'always', label: t('zones.sched247') },
     { id: 'hours', label: t('zones.schedHours') },
+    { id: 'shift', label: t('zones.schedShift'), disabled: shifts.length === 0 },
   ]
 
   return (
@@ -325,37 +337,45 @@ export default function ZonesPage() {
                   onChange={({ selectedItem }) => selectedItem && patchSelected({ severity: selectedItem.id })}
                 />
 
-                {/* jadwal: 24/7 atau jam kerja + hari */}
+                {/* Zone schedule: always, manual hours, or a single shift. */}
                 <Dropdown
                   id="zone-schedule-mode"
                   titleText={t('zones.schedule')}
                   label={t('events.filterAll')}
                   items={schedItems}
-                  selectedItem={selected.schedule ? schedItems[1] : schedItems[0]}
-                  onChange={({ selectedItem }) =>
-                    selectedItem &&
-                    patchSelected({ schedule: selectedItem.id === 'hours' ? { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00' } : null })
-                  }
+                  selectedItem={schedItems.find((i) => i.id === (!selected.schedule ? 'always' : 'shift_id' in selected.schedule ? 'shift' : 'hours'))}
+                  onChange={({ selectedItem }) => {
+                    if (!selectedItem || (selectedItem.id === 'shift' && !shifts.length)) return
+                    patchSelected({ schedule: selectedItem.id === 'hours'
+                      ? { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00' }
+                      : selectedItem.id === 'shift' ? { shift_id: shifts[0].id } : null })
+                  }}
                 />
-                {selected.schedule && (
+                {selected.schedule && 'shift_id' in selected.schedule && (
+                  <Select id="zone-sched-shift" labelText={t('zones.shift')} value={selected.schedule.shift_id}
+                    onChange={(e) => patchSelected({ schedule: { shift_id: Number(e.target.value) } })}>
+                    {shifts.map((s) => <SelectItem key={s.id} value={s.id} text={`${s.name} (${s.start_time}–${s.end_time})`} />)}
+                  </Select>
+                )}
+                {selected.schedule && 'days' in selected.schedule && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <TextInput
                         id="zone-sched-start"
                         labelText={t('zones.start')}
                         value={selected.schedule.start}
-                        onChange={(e) => patchSelected({ schedule: { ...selected.schedule!, start: e.target.value } })}
+                        onChange={(e) => patchSelected({ schedule: { ...(selected.schedule as Schedule), start: e.target.value } })}
                       />
                       <TextInput
                         id="zone-sched-end"
                         labelText={t('zones.end')}
                         value={selected.schedule.end}
-                        onChange={(e) => patchSelected({ schedule: { ...selected.schedule!, end: e.target.value } })}
+                        onChange={(e) => patchSelected({ schedule: { ...(selected.schedule as Schedule), end: e.target.value } })}
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       {DAYS.map((d) => {
-                        const on = selected.schedule!.days.includes(d)
+                        const on = selected.schedule !== null && 'days' in selected.schedule && selected.schedule.days.includes(d)
                         return (
                           <Tag
                             key={d}
@@ -365,8 +385,9 @@ export default function ZonesPage() {
                             onClick={() =>
                               patchSelected({
                                 schedule: {
-                                  ...selected.schedule!,
-                                  days: on ? selected.schedule!.days.filter((x) => x !== d) : [...selected.schedule!.days, d],
+                                  ...(selected.schedule as Schedule),
+                                  days: on ? (selected.schedule as Schedule).days.filter((x) => x !== d)
+                                    : [...(selected.schedule as Schedule).days, d],
                                 },
                               })
                             }
@@ -416,8 +437,8 @@ export default function ZonesPage() {
                                 id={`zone-trigger-${kind}`}
                                 data-testid={`zone-trigger-${kind}`}
                                 size="sm"
-                                label={t('zones.trigger')}
-                                helperText={t('zones.triggerHint')}
+                                label={t(kind === 'idle_zone' ? 'zones.idleSeconds' : kind === 'crowd' ? 'zones.crowdSeconds' : 'zones.trigger')}
+                                helperText={kind === 'idle_zone' || kind === 'crowd' ? undefined : t('zones.triggerHint')}
                                 min={0}
                                 step={1}
                                 value={b.trigger_seconds}
@@ -440,6 +461,23 @@ export default function ZonesPage() {
                                     if (n >= 0) setBehavior('running', { speed_limit_mps: n })
                                   }}
                                 />
+                              )}
+                              {kind === 'crowd' && (
+                                <NumberInput id="zone-min-count" data-testid="zone-min-count" size="sm"
+                                  label={t('zones.minCount')} min={1} step={1} value={b.min_count ?? 5}
+                                  onChange={(_, state) => {
+                                    const n = Number(state.value)
+                                    if (Number.isInteger(n) && n >= 1) setBehavior('crowd', { min_count: n })
+                                  }} />
+                              )}
+                              {(kind === 'idle_zone' || kind === 'crowd') && (
+                                <NumberInput id={`zone-reminder-${kind}`} data-testid={`zone-reminder-${kind}`} size="sm"
+                                  label={t('zones.reminder')} helperText={t('zones.reminderHint')} min={0} step={1}
+                                  value={b.reminder_minutes ?? 15}
+                                  onChange={(_, state) => {
+                                    const n = Number(state.value)
+                                    if (Number.isInteger(n) && n >= 0) setBehavior(kind, { reminder_minutes: n })
+                                  }} />
                               )}
                               <Toggle
                                 id={`zone-snapshot-${kind}`}

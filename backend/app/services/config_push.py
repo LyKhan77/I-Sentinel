@@ -8,10 +8,22 @@ from app.core.config import settings
 from app.models.camera import Camera
 from app.models.node import Node
 from app.models.zone import Zone
+from app.models.shift import Shift
 from app.models.detector_setting import DetectorSetting
 from app.services.stream_endpoint import StreamEndpointError, build_rtsp_url, resolve_camera_stream
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_schedule(db: Session, schedule: dict | None) -> dict | None:
+    """Resolve a zone's shift schedule into the wall-clock window sent to vision."""
+    if isinstance(schedule, dict) and "shift_id" in schedule:
+        shift = db.get(Shift, schedule["shift_id"])
+        if shift is None:
+            logger.warning("zone schedule refers to missing shift %s; sent as 24/7", schedule["shift_id"])
+            return None
+        return {"days": list(shift.workdays or []), "start": shift.start_time, "end": shift.end_time}
+    return schedule
 
 
 def build_node_config(db: Session, node: Node) -> dict:
@@ -51,7 +63,7 @@ def build_node_config(db: Session, node: Node) -> dict:
                 "type": z.type,
                 "direction": z.direction,
                 "polygon": z.polygon,
-                "schedule": z.schedule,
+                "schedule": resolve_schedule(db, z.schedule),
                 "severity": z.severity,
                 "rate_limit_min": z.rate_limit_min,
                 "behaviors": z.behaviors,

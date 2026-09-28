@@ -133,6 +133,16 @@ def test_missing_track_ids_share_rate_limit_bucket(db, queued):
     assert queued == [first.id]
 
 
+def test_short_interval_reminders_bypass_rate_limit_only_for_idle_crowd(db, queued):
+    for kind in ("idle_zone", "crowd"):
+        cam, zone = _zone(db, [{"kind": kind, "trigger_seconds": 30, "reminder_minutes": 1, "telegram": True}])
+        initial = alerting.handle(db, _event(db, cam, zone, type=kind, payload={"reminder": 0}), now=NOW)
+        reminder = alerting.handle(db, _event(db, cam, zone, type=kind, payload={"reminder": 1}),
+                                   now=NOW + timedelta(seconds=60))
+        assert (initial.status, reminder.status) == ("queued", "queued")
+    assert len(queued) == 4
+
+
 def test_attendance_matched_and_unknown_sent_others_skipped(db, queued):
     cam, zone = _zone(db, GATE_ON, type="attendance", direction="entry")
     for reason, employee in (("matched", 1), ("no_match", None)):

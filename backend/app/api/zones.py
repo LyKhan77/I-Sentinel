@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.api.deps import get_current_user, require_admin
 from app.models.zone import Zone
+from app.models.shift import Shift
 from app.schemas.zone import ZoneIn, ZonePatch, ZoneOut
 import logging
 
@@ -39,6 +40,14 @@ def _check_direction_conflict(db: Session, zone: Zone) -> None:
         raise HTTPException(422, "camera already has an active attendance zone with another direction")
 
 
+def _check_shift(db: Session, zone: Zone) -> None:
+    """Reject references to shifts that do not exist at save time."""
+    sched = zone.schedule
+    if isinstance(sched, dict) and "shift_id" in sched and db.get(Shift, sched["shift_id"]) is None:
+        db.rollback()
+        raise HTTPException(422, "schedule shift not found")
+
+
 @router.get("", response_model=list[ZoneOut])
 def list_zones(camera_id: int | None = None, user=Depends(get_current_user), db: Session = Depends(get_db)):
     q = db.query(Zone)
@@ -50,6 +59,7 @@ def list_zones(camera_id: int | None = None, user=Depends(get_current_user), db:
 def create_zone(body: ZoneIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     zone = Zone(**body.model_dump())
     _check_direction_conflict(db, zone)
+    _check_shift(db, zone)
     db.add(zone); db.commit(); db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone
@@ -71,6 +81,7 @@ def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db:
     if zone.type in ("absensi", "attendance") and not zone.direction:
         raise HTTPException(422, "direction (entry|exit) required for attendance zone")
     _check_direction_conflict(db, zone)
+    _check_shift(db, zone)
     db.commit(); db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone

@@ -92,6 +92,16 @@ def test_schedule_wrong_day_no_events():
     assert az.on_frame(ts, one_track(1, (0.5, 0.5)), 640, 480) == []
 
 
+def test_intrusion_schedule_with_monotonic_ts(monkeypatch):
+    from vision.analyzers import base
+    monkeypatch.setattr(base.time, "time", lambda: datetime(2024, 1, 15, 3, 0).timestamp())
+    monkeypatch.setattr(base.time, "monotonic", lambda: 777.0)
+    inside = IntrusionAnalyzer(zone(schedule={"days": [1], "start": "02:00", "end": "04:00"}))
+    outside = IntrusionAnalyzer(zone(schedule={"days": [1], "start": "04:00", "end": "05:00"}))
+    assert len(inside.on_frame(777.0, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+    assert outside.on_frame(777.0, one_track(1, (0.5, 0.5)), 640, 480) == []
+
+
 def test_lost_track_state_cleaned():
     az = IntrusionAnalyzer(zone())
     ts = datetime(2024, 1, 15, 10, 0).timestamp()

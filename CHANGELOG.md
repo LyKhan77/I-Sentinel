@@ -3,6 +3,45 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Behavior Idle Zone + Crowd (2026-09-28)
+
+- **Fix jadwal zona**: frame live membawa ts monotonic, tetapi jadwal intrusion membacanya sebagai epoch (hari/jam
+  dari 1970 + uptime) → jadwal intrusion salah di produksi (belum berdampak: 0 zona berjadwal). Helper bersama
+  `analyzers/base.py`: `wall_time`, `schedule_active`, `persons_in_zone` (+ `point_in_polygon`/`ground_point` dipindah,
+  tetap di-re-export dari `intrusion`). Vision **209 passed**.
+- **Analyzer Idle Zone + Crowd**: idle = zona kosong ≥ `trigger_seconds` dalam jadwal → event + pengingat tiap
+  `reminder_minutes` (0 = sekali), siaga lagi saat ada orang; crowd = ≥ `min_count` orang ≥ `trigger_seconds`,
+  toleransi turun sesaat 2 s, pengingat sama. Event tanpa track didukung node (`bbox_norm` None, dedup key per
+  pengingat `r<n>`). Vision **218 passed**.
+- **Snapshot idle/crowd**: crowd menggambar semua kotak orang + label `CROWD (n)`; idle menggambar garis poligon zona
+  + label `IDLE ZONE`. Vision **219 passed**.
+
+- **Backend idle/crowd + jadwal ikut shift**: kind `idle_zone`/`crowd` (crowd wajib `min_count` ≥ 1,
+  `reminder_minutes` ≥ 0); `schedule` boleh `{"shift_id": N}` (shift tak ada → 422), di-resolve ke
+  `{days, start, end}` saat config push (shift hilang → `null` + warning); ubah shift → push ulang kamera terkait;
+  hapus shift yang dipakai zona → 409 dengan nama zona. Backend **429 passed**.
+- **Caption idle/crowd**: judul `IDLE ZONE` / `CROWD`, baris `Kosong: n menit` / `Jumlah: n orang (min m)`,
+  pengingat ditandai `(pengingat ke-n)`. Backend **430 passed**.
+- **Zona Deteksi**: baris **Zona kosong (Idle)** (kosong selama, pengingat; clip default off) dan **Kerumunan
+  (Crowd)** (minimal orang, selama, pengingat); jadwal **Ikut shift** (`{shift_id}`) di samping 24/7 dan jam manual.
+  Frontend **142 passed**, build 0, lint set rule+file sama.
+- **Review regresi behavior**: dedup event tanpa track dibedakan per zona + pengingat; snapshot idle mengambil frame
+  kosong terbaru; crowd me-reset bila jumlah pulih setelah jeda > 2 s; parameter yang absen memakai default
+  idle/crowd; pengingat Telegram berkala tidak ditahan rate-limit 2 menit; ingest internal menerima kedua tipe.
+  Backend **432 passed**, vision **223 passed** (3 deselected).
+- **Dokumen + verifikasi akhir**: README menjelaskan parameter, pengingat, jadwal ikut shift dan batas shift malam;
+  ROADMAP menandai lokal selesai, deploy serta uji lapangan tertunda. Suite akhir: backend **432 passed**
+  (baseline 423), vision **223 passed, 3 deselected** (baseline 205), frontend **142 passed**
+  (baseline 140), build 0, lint set rule+file lama; Zona Deteksi 390 px overflow 0 (lima behavior).
+- **Review perencana — toleransi crowd 5 s**: kerumunan diam hanya diinferensi tiap ~2 s (frame paksa motion gate);
+  satu deteksi meleset + jitter > 2 s dulu me-reset durasi dan menunda alert. `GRACE_S` 2 → 5 s (> 2× force
+  interval); tes jitter (merah di 2 s) + tes reset disesuaikan. Vision **223 passed** (3 deselected).
+  Rollback: `git revert` commit ini + restart vision-node.
+- **Deploy + verifikasi lapangan (2026-09-28)**: server `gspe-ai3` di `127b779`, restart isentinel-api + vision-node
+  (health ok, TZ server WIB, tanpa migrasi). Uji user OK: Idle (alert + pengingat, siaga saat orang masuk), Crowd
+  (alert, snapshot semua kotak `CROWD (n)`), caption Telegram, jadwal ikut shift. Rollback: `git revert -m 1 <merge>`
+  + restart kedua service; ubah/hapus behavior `idle_zone`/`crowd` dan `schedule.shift_id` sebelum kembali ke kode lama.
+
 ### Fix geometri zona (2026-09-28)
 
 - **Koordinat zona = frame penuh**: editor Zona Deteksi dan tile/modal Live View memakai `object-fit: fill` (dulu

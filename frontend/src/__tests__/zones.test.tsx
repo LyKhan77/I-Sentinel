@@ -23,6 +23,9 @@ function stubFetch(opts: { zones?: Zone[]; created?: Zone; patchStatus?: number;
         json: () => Promise.resolve({ camera_id: 1, streams: { sub: 'cam_1' }, snapshot: 'http://192.168.2.10:1984/api/frame.jpeg?src=cam_1' }),
       }
     }
+    if (u.endsWith('/shifts')) return { ok: true, status: 200, json: () => Promise.resolve([
+      { id: 3, name: 'Shift 1', start_time: '08:00', end_time: '17:00', tolerance_min: 15, workdays: [1, 2, 3, 4, 5] },
+    ]) }
     if (u.includes('/zones') && (init?.method ?? 'GET') === 'GET') {
       return { ok: true, status: 200, json: () => Promise.resolve(zones) }
     }
@@ -196,6 +199,29 @@ test('tipe Behavior: tiap behavior terpilih punya trigger sendiri, dikirim sebag
       { kind: 'loitering', trigger_seconds: 30 },
     ]),
   )
+})
+
+test('Idle dan Crowd: default saat dicentang, dikirim di behaviors', async () => {
+  const fetchMock = await selectZone([zoneFix()])
+  fireEvent.click(screen.getByTestId('zone-behavior-idle_zone'))
+  fireEvent.click(screen.getByTestId('zone-behavior-crowd'))
+  fireEvent.change(await screen.findByTestId('zone-min-count'), { target: { value: '8' } })
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'idle_zone', trigger_seconds: 300, reminder_minutes: 15, clip: false },
+    { kind: 'crowd', trigger_seconds: 30, min_count: 8, reminder_minutes: 15 },
+  ]))
+})
+
+test('jadwal Ikut shift mengirim shift_id', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix()])
+  fireEvent.click(screen.getByText('24/7'))
+  fireEvent.click(await screen.findByText('Ikut shift'))
+  const select = (await screen.findByLabelText('Shift')) as HTMLSelectElement
+  expect(select.value).toBe('3')
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual({ shift_id: 3 }))
 })
 
 test('behavior running membawa speed_limit_mps sendiri', async () => {

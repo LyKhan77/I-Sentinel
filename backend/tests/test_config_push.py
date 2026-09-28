@@ -335,3 +335,25 @@ def test_build_node_config_camera_uses_global_defaults(db):
     assert cam["confidence"] == settings.detector_conf
     assert "analyzers" not in cam
     assert cam["motion"]["enabled"] is True
+
+
+def test_config_push_resolves_shift_schedule(db):
+    from app.models.shift import Shift
+    n = _node(db)
+    cam = _cam(db, n.id)
+    sh = Shift(name="Pagi", start_time="08:00", end_time="17:00", workdays=[1, 2, 3, 4, 5]); db.add(sh); db.commit()
+    db.add(Zone(camera_id=cam.id, name="Pos", type="behavior", polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[{"kind": "idle_zone", "trigger_seconds": 60}], schedule={"shift_id": sh.id}))
+    db.commit()
+    zone = config_push.build_node_config(db, n)["cameras"][0]["zones"][0]
+    assert zone["schedule"] == {"days": [1, 2, 3, 4, 5], "start": "08:00", "end": "17:00"}
+
+
+def test_config_push_missing_shift_sends_null(db, caplog):
+    n = _node(db)
+    cam = _cam(db, n.id)
+    db.add(Zone(camera_id=cam.id, name="Pos", type="behavior", polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[], schedule={"shift_id": 424242}))
+    db.commit()
+    assert config_push.build_node_config(db, n)["cameras"][0]["zones"][0]["schedule"] is None
+    assert "424242" in caplog.text

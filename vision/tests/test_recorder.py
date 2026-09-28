@@ -181,6 +181,26 @@ def test_snapshot_label_is_event_type_not_track_id(tmp_path, monkeypatch):
     rec.close()
 
 
+def test_snapshot_crowd_boxes_and_idle_polygon(tmp_path, monkeypatch):
+    import cv2
+    labels, rects, polys = [], [], []
+    real_put, real_rect, real_poly = cv2.putText, cv2.rectangle, cv2.polylines
+    monkeypatch.setattr(cv2, "putText", lambda img, text, *a, **k: labels.append(text) or real_put(img, text, *a, **k))
+    monkeypatch.setattr(cv2, "rectangle", lambda img, *a, **k: rects.append(a[:2]) or real_rect(img, *a, **k))
+    monkeypatch.setattr(cv2, "polylines", lambda img, pts, *a, **k: polys.append(pts) or real_poly(img, pts, *a, **k))
+    rec = Recorder(1, make_cfg(tmp_path), autostart=False)
+    ok, buf = cv2.imencode(".jpg", np.full((480, 640, 3), 255, np.uint8))
+    crowd = {"type": "crowd", "severity": "warning",
+             "payload": {"count": 3, "bboxes": [[0.1, 0.1, 0.2, 0.4], [0.3, 0.1, 0.4, 0.4], [0.5, 0.1, 0.6, 0.4]]}}
+    assert rec._draw_track_box(buf.tobytes(), crowd) is not None
+    assert len(rects) == 3 and labels == ["CROWD (3)"]
+    idle = {"type": "idle_zone", "severity": "warning",
+            "payload": {"zone_polygon": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]}}
+    assert rec._draw_track_box(buf.tobytes(), idle) is not None
+    assert len(polys) == 1 and labels[-1] == "IDLE ZONE"
+    rec.close()
+
+
 # --- clip insiden per kamera (pre-buffer) -------------------------------------
 
 import os
@@ -429,6 +449,35 @@ def test_failed_upload_still_removes_local_clip(tmp_path):
     rec.tick()
     assert os.listdir(tmp_path / "data" / "outbox") == []
     assert t.media == []
+
+
+def test_idle_worker_keeps_current_empty_frame_for_snapshot():
+    from vision.analyzers.idle_zone import IdleZoneAnalyzer
+
+    class Capture:
+        def __init__(self):
+            self.frames = []
+            self.at_event = []
+
+        def push_jpeg(self, ts, jpeg):
+            self.frames.append(jpeg)
+
+        def enqueue(self, ev):
+            self.at_event.append((ev["type"], len(self.frames)))
+
+        def touch(self, ids):
+            pass
+
+    rec = Capture()
+    t = FakeTransport()
+    az = IdleZoneAnalyzer({"id": 1, "polygon": [[0, 0], [1, 0], [1, 1]], "trigger_seconds": 0})
+    w = CameraWorker(CameraCfg(camera_id=1, source_url="test://1"), lambda cid: MockDetector([[]] * 3),
+                     t, threading.Event(), "n", analyzers=[az], recorder=rec)
+    w.source = FrameSource.from_frames([np.zeros((4, 4, 3), dtype=np.uint8)] * 3, fps=100.0)
+    w.start()
+    w.join(timeout=10)
+    assert rec.frames and rec.frames[0].startswith(b"\xff\xd8")
+    assert rec.at_event == [("idle_zone", 1)]
 
 
 # --- R3: worker memberi track id ke recorder tiap frame ----------------------

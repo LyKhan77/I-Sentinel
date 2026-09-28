@@ -27,7 +27,8 @@ CAPTION_MAX = 1024  # batas caption sendPhoto
 ERROR_MAX = 250  # maksimum panjang pesan TelegramError (kolom alert.error String(255))
 CHAT_LABEL_MAX = 64  # maksimum TelegramChat.label (kolom String(64))
 TEST_TEXT = "✅ Tes I-Sentinel — bot terhubung ke grup ini."
-TYPE_TITLE = {"intrusion": "INTRUSION", "loitering": "LOITERING", "running": "RUNNING"}
+TYPE_TITLE = {"intrusion": "INTRUSION", "loitering": "LOITERING", "running": "RUNNING",
+              "idle_zone": "IDLE ZONE", "crowd": "CROWD"}
 FIELD_MAX = 120  # nilai per baris dibatasi sebelum escape → caption selalu < CAPTION_MAX
 
 _urlopen = urllib.request.urlopen  # hook tes
@@ -190,9 +191,16 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
         title = "⚠️ <b>UNKNOWN FACE</b>"
     else:
         title = f"🚨 <b>{val(TYPE_TITLE.get(event.type, str(event.type).upper()))}</b>"
+        if payload.get("reminder"):
+            title += f" (pengingat ke-{int(payload['reminder'])})"
     rows.append(("Kamera", camera_name))
     if zone_name:
         rows.append(("Zona", zone_name))
+    if event.type == "idle_zone" and payload.get("idle_s") is not None:
+        secs = int(payload["idle_s"])
+        rows.append(("Kosong", f"{secs // 60} menit" if secs >= 60 else f"{secs} detik"))
+    if event.type == "crowd" and payload.get("count") is not None:
+        rows.append(("Jumlah", f"{int(payload['count'])} orang (min {int(payload.get('min_count', 0))})"))
     rows.append(("Waktu", ts.strftime("%d %b %Y %H:%M:%S %Z").strip()))
     if event.type != "attendance":
         rows.append(("Level", str(event.severity or "").upper()))

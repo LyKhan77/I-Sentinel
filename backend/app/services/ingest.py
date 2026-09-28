@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.event import Event
 from app.models.node import Node
 
-ALLOWED_TYPES = {"intrusion", "loitering", "running", "attendance", "person_detect", "system"}
+ALLOWED_TYPES = {"intrusion", "loitering", "running", "idle_zone", "crowd", "attendance", "person_detect", "system"}
 ALLOWED_SEVERITY = {"critical", "warning", "info"}
 
 def ingest_event(db, data: dict) -> tuple[str, Event | None]:

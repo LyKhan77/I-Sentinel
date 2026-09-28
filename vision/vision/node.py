@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
-from .analyzers.base import Analyzer
+from .analyzers.base import Analyzer, wall_time
 from .face_quality import FaceSettings
 from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
@@ -29,12 +29,8 @@ DEFAULT_W, DEFAULT_H = 640, 480
 
 
 def _iso(ts: float) -> str:
-    # Terima timestamp WALL-CLOCK. Pipeline (source) memakai monotonic untuk pacing;
-    # konversi monotonic → wall clock dilakukan di sini bila nilai jelas monotonic
-    # (jauh di bawah epoch tahun ini). time.time() aman utk heartbeat.
-    if ts < 1_700_000_000:  # monotonic (detik sejak boot) → tambah offset epoch
-        ts += time.time() - time.monotonic()
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    """Format epoch or live-frame monotonic timestamp in UTC."""
+    return datetime.fromtimestamp(wall_time(ts), tz=timezone.utc).isoformat()
 
 
 def main_stream_name(source_url: str) -> str | None:
@@ -70,7 +66,7 @@ def _make_event(camera_id: int, track, ts: float) -> dict:
             "direction": None,
             "employee_id": None,
             "face_score": None,
-            "bbox_norm": list(track.bbox),
+            "bbox_norm": list(track.bbox) if track.bbox is not None else None,
             "snapshot_crop": None,
         },
         "dedup_key": f"{camera_id}:person_detect:{track.id}:{int(ts // DEDUP_BUCKET_S)}",
@@ -85,7 +81,10 @@ def _merge_event(camera_id: int, node_id: str, partial: dict, ts: float) -> dict
     base["zone_id"] = partial["zone_id"]
     base["severity"] = partial["severity"]
     base["payload"].update(partial["payload"])
-    base["dedup_key"] = f"{camera_id}:{partial['type']}:{partial['payload']['track_id']}:{int(ts // DEDUP_BUCKET_S)}"
+    track = partial["payload"].get("track_id")
+    # Distinguish zones as well as reminders; keep tracked-event keys unchanged.
+    key = track if track is not None else f"r{partial['payload'].get('reminder', 0)}:z{partial['zone_id']}"
+    base["dedup_key"] = f"{camera_id}:{partial['type']}:{key}:{int(ts // DEDUP_BUCKET_S)}"
     return base
 
 
@@ -93,8 +92,8 @@ class _PartialTrack:
     """Adapts a partial dict to the track-like interface _make_event expects."""
 
     def __init__(self, partial: dict):
-        self.id = partial["payload"]["track_id"]
-        self.bbox = partial["payload"]["bbox_norm"]
+        self.id = partial["payload"].get("track_id")
+        self.bbox = partial["payload"].get("bbox_norm")
 
 
 class CameraWorker(threading.Thread):
@@ -109,6 +108,9 @@ class CameraWorker(threading.Thread):
         self.stop_event = stop_event
         self.node_id = node_id
         self.analyzers = analyzers or []
+        self._snapshot_empty_zone = any(isinstance(a, ANALYZERS["idle_zone"]) and
+                                        getattr(a, "media", {}).get("snapshot", True)
+                                        for a in self.analyzers)
         self.recorder = recorder
         self.emit_person_detect = emit_person_detect
         motion = motion or {}
@@ -152,7 +154,7 @@ class CameraWorker(threading.Thread):
                         for t in tracks
                     ], kind="person")
                 if self.recorder is not None:
-                    if detections and frame.data is not None:
+                    if (detections or self._snapshot_empty_zone) and frame.data is not None:
                         try:
                             import cv2
                             ok, enc = cv2.imencode(".jpg", frame.data)
@@ -285,7 +287,12 @@ class VisionNode:
                 media = {"snapshot": b.get("snapshot", z.get("snapshot", True)),
                          "clip": b.get("clip", z.get("clip", True))}
                 spec = dict(z)
-                spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
+                if kind in ("idle_zone", "crowd"):
+                    spec["trigger_seconds"] = b.get("trigger_seconds", 300 if kind == "idle_zone" else 30)
+                    spec["reminder_minutes"] = b.get("reminder_minutes", 15)
+                    spec["min_count"] = b.get("min_count", 5)
+                else:
+                    spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
                 if kind == "intrusion":
                     out.append(self._with_media(ANALYZERS["intrusion"](spec), media))
                 elif kind == "loitering":
@@ -305,6 +312,8 @@ class VisionNode:
                     else:
                         out.append(self._with_media(
                             ANALYZERS["running"](spec, cam.meters_per_pixel), media))
+                elif kind in ("idle_zone", "crowd"):
+                    out.append(self._with_media(ANALYZERS[kind](spec), media))
         return out
 
     @staticmethod

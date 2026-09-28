@@ -66,6 +66,19 @@ def test_ingest_validates_type(client):
     r = client.post("/internal/nodes/1/events", json=_payload(type="weird"), headers=_ingest_headers())
     assert r.status_code == 422
 
+def test_new_behaviors_ingest_via_internal_api_and_mqtt(client, db):
+    import json
+    from app.services.events_consumer import handle_message
+    from app.models.event import Event
+    for kind in ("idle_zone", "crowd"):
+        payload = _payload(type=kind, payload={"reminder": 0})
+        res = client.post("/internal/nodes/1/events", json=payload, headers=_ingest_headers())
+        assert res.status_code == 200 and res.json()["status"] == "created"
+        mqtt = _payload(type=kind, payload={"reminder": 1})
+        handle_message(db, "isentinel/events", json.dumps(mqtt).encode())
+        assert db.query(Event).filter_by(event_id=mqtt["event_id"]).one().type == kind
+
+
 def test_ingest_unknown_node_still_ok(client):
     r = client.post("/internal/nodes/999/events", json=_payload(), headers=_ingest_headers())
     assert r.status_code == 200 and r.json()["status"] == "created"
