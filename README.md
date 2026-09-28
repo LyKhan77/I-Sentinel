@@ -139,7 +139,7 @@ Aturan yang perlu diketahui:
   per kamera (kolom `camera.analyzers`) sudah tidak dipakai.
 - **Zona kosong (Idle Zone)**: aktif bila tak ada orang di poligon selama `trigger_seconds` (default
   300 detik). **Kerumunan (Crowd)**: aktif bila jumlah orang di poligon mencapai `min_count` (default 5)
-  selama `trigger_seconds` (default 30 detik); penurunan jumlah ≤ 2 detik ditoleransi. Keduanya
+  selama `trigger_seconds` (default 30 detik); penurunan jumlah ≤ 5 detik ditoleransi. Keduanya
   mengirim event awal, lalu pengingat tiap `reminder_minutes` (default 15; 0 = tanpa pengingat)
   selama kondisi berlanjut; pulih → siaga lagi. Snapshot idle menggambar poligon, crowd
   menggambar semua kotak orang. Clip idle default mati saat behavior baru dicentang.

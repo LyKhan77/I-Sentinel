@@ -77,6 +77,10 @@ def test_crowd_grace_and_reset():
     az = CrowdAnalyzer(zone(min_count=2, trigger_seconds=10, reminder_minutes=0))
     two, one = [T(1, 0.3), T(2, 0.7)], [T(1, 0.3)]
     assert run(az, [(0, two), (2, two), (4, two), (6, two), (8, one), (10, two)]) == [(10, "crowd", 0)]
+    # kerumunan diam: frame paksa motion gate ~2 s + jitter; satu deteksi meleset tidak me-reset
+    az = CrowdAnalyzer(zone(min_count=2, trigger_seconds=10, reminder_minutes=0))
+    assert run(az, [(0, two), (2.1, two), (4.3, one), (6.6, two), (8.8, two), (10.9, two)]) == [(10.9, "crowd", 0)]
+    # jumlah turun > GRACE_S (6 s) → reset; hitung ulang dari 10
     az = CrowdAnalyzer(zone(min_count=2, trigger_seconds=10, reminder_minutes=0))
     frames = [(0, two), (2, two), (4, one), (6, one), (8, one), (10, two), (12, two), (20, two), (22, two)]
     assert run(az, frames) == [(20, "crowd", 0)]
@@ -133,5 +137,6 @@ def test_missing_behavior_params_use_new_kind_defaults():
 def test_crowd_recovery_after_long_gap_rearms():
     az = CrowdAnalyzer(zone(min_count=2, trigger_seconds=10, reminder_minutes=0))
     two, one = [T(1, 0.3), T(2, 0.7)], [T(1, 0.3)]
-    assert run(az, [(0, two), (2, two), (4, one), (6, one), (8, two), (10, two),
-                    (16, two), (18, two)]) == [(18, "crowd", 0)]
+    # low frame terakhir di 4, pulih di 10 (> GRACE_S tanpa frame low berikutnya) → reset di 10
+    assert run(az, [(0, two), (2, two), (4, one), (10, two), (12, two),
+                    (18, two), (20, two)]) == [(20, "crowd", 0)]

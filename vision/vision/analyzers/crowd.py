@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from .base import Analyzer, persons_in_zone, schedule_active
 
-GRACE_S = 2.0
+# > 2x motion-gate force interval (2 s): one missed detection on a still crowd must not reset.
+GRACE_S = 5.0
 
 
 class CrowdAnalyzer(Analyzer):

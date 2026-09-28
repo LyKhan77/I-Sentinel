@@ -33,6 +33,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   ROADMAP menandai lokal selesai, deploy serta uji lapangan tertunda. Suite akhir: backend **432 passed**
   (baseline 423), vision **223 passed, 3 deselected** (baseline 205), frontend **142 passed**
   (baseline 140), build 0, lint set rule+file lama; Zona Deteksi 390 px overflow 0 (lima behavior).
+- **Review perencana — toleransi crowd 5 s**: kerumunan diam hanya diinferensi tiap ~2 s (frame paksa motion gate);
+  satu deteksi meleset + jitter > 2 s dulu me-reset durasi dan menunda alert. `GRACE_S` 2 → 5 s (> 2× force
+  interval); tes jitter (merah di 2 s) + tes reset disesuaikan. Vision **223 passed** (3 deselected).
+  Rollback: `git revert` commit ini + restart vision-node.
 
 ### Fix geometri zona (2026-09-28)
 
