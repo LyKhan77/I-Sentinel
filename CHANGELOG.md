@@ -13,6 +13,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **API user ketat**: `UserPatch` (`extra="forbid"`, role `admin|viewer`), password ≥ 8 / ≤ 72 byte, username
   `[A-Za-z0-9._-]{3,64}`; reset password & nonaktif menaikkan `token_version`; admin tidak bisa mengubah role,
   menonaktifkan, atau menghapus akun sendiri; pengaman admin aktif terakhir. Backend **445 passed**.
+- **Ganti password sendiri**: `POST /auth/change-password` (semua role); password lama salah → 400 dan dihitung ke
+  batas percobaan login (429); sukses menaikkan `token_version` (perangkat lain keluar) dan menulis cookie baru
+  (browser ini tetap login, menang atas cookie perpanjangan). Backend **448 passed**.
 
 ### Live View mode TV (2026-09-28)
 

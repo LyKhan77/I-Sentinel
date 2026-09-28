@@ -61,3 +61,12 @@ class UserPatch(BaseModel):
     @classmethod
     def pw_valid(cls, v: str | None) -> str | None:
         return None if v is None else check_password(v)
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def pw_valid(cls, v: str) -> str:
+        return check_password(v)
