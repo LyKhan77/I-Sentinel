@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### User management (2026-09-28 – …)
+### User management (2026-09-28)
 
 - **Migrasi `0018_user_status`**: `user.is_active` (default true), `user.token_version` (default 0),
   `user.last_login_at`; downgrade lewat batch. Backend **436 passed**. Rollback: `alembic downgrade 0017`.
@@ -35,6 +35,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `require_admin`, viewer 403; tombol sidebar hanya untuk admin) — password viewer/akun TV diatur admin lewat
   reset; halaman login memakai `PasswordInput` (tampilkan/sembunyikan password, label i18n). Backend
   **450 passed**, frontend **171 passed**, build 0, lint set sama. Rollback: revert commit + restart API.
+- **Deploy + verifikasi user (2026-09-28)**: server `gspe-ai3` di `64f68b4`, alembic `0017 → 0018`, restart
+  isentinel-api (health ok). Uji user OK: tambah user, nonaktifkan → sesi viewer keluar + pesan login khusus,
+  aktifkan, reset password → sesi lama keluar, ganti password admin tetap login, aksi akun sendiri nonaktif,
+  viewer tanpa tombol Password, tampilkan/sembunyikan password di login. Rollback: `git revert -m 1 <merge>` +
+  `alembic downgrade 0017` + restart API.
 
 ### Live View mode TV (2026-09-28)
 
