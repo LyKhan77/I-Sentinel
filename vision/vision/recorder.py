@@ -237,16 +237,17 @@ class Recorder:
                      "info": (0, 200, 0)}
 
     # label snapshot = jenis kejadian (feedback F5), bukan ID track
-    TYPE_LABEL = {"intrusion": "INTRUSION", "loitering": "LOITERING", "running": "RUNNING"}
+    TYPE_LABEL = {"intrusion": "INTRUSION", "loitering": "LOITERING", "running": "RUNNING",
+                  "idle_zone": "IDLE ZONE", "crowd": "CROWD"}
 
     def _draw_track_box(self, jpeg: bytes, event: dict) -> bytes | None:
-        """Bbox track + label jenis kejadian pada jpeg ring (warna = severity event).
-
-        Mengikat visual orang-pemicu ke snapshot; bbox_norm = relatif frame.
-        """
+        """Draw one or more person boxes or a zone polygon with the event label."""
         payload = event.get("payload") or {}
-        bbox = payload.get("bbox_norm")
-        if not bbox or len(bbox) != 4:
+        boxes = payload.get("bboxes") or []
+        if not boxes and payload.get("bbox_norm") and len(payload["bbox_norm"]) == 4:
+            boxes = [payload["bbox_norm"]]
+        polygon = payload.get("zone_polygon")
+        if not boxes and not polygon:
             return None
         try:
             import cv2
@@ -255,11 +256,21 @@ class Recorder:
             if img is None:
                 return None
             h, w = img.shape[:2]
-            x1, y1, x2, y2 = [int(v * s) for v, s in zip(bbox, (w, h, w, h))]
             color = self._TRACK_COLORS.get(event.get("severity", "info"), (0, 200, 0))
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
             label = self.TYPE_LABEL.get(event.get("type"), str(event.get("type") or "").upper())
-            cv2.putText(img, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX,
+            if event.get("type") == "crowd":
+                label = f"{label} ({payload.get('count', len(boxes))})"
+            anchor = None
+            if polygon:
+                pts = np.array([[int(x * w), int(y * h)] for x, y in polygon], np.int32)
+                cv2.polylines(img, [pts], True, color, 2)
+                anchor = (int(pts[0][0]), int(pts[0][1]))
+            for i, box in enumerate(boxes):
+                x1, y1, x2, y2 = [int(v * s) for v, s in zip(box, (w, h, w, h))]
+                cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+                if i == 0:
+                    anchor = (x1, y1)
+            cv2.putText(img, label, (anchor[0], max(16, anchor[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX,
                         0.6, color, 2, cv2.LINE_AA)
             ok, buf = cv2.imencode(".jpg", img)
             return buf.tobytes() if ok else None

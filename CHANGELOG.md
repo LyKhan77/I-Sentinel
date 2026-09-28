@@ -13,6 +13,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `reminder_minutes` (0 = sekali), siaga lagi saat ada orang; crowd = ≥ `min_count` orang ≥ `trigger_seconds`,
   toleransi turun sesaat 2 s, pengingat sama. Event tanpa track didukung node (`bbox_norm` None, dedup key per
   pengingat `r<n>`). Vision **218 passed**.
+- **Snapshot idle/crowd**: crowd menggambar semua kotak orang + label `CROWD (n)`; idle menggambar garis poligon zona
+  + label `IDLE ZONE`. Vision **219 passed**.
 
 ### Fix geometri zona (2026-09-28)
 
