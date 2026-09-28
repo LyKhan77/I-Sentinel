@@ -8,6 +8,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Sesi bergulir 48 jam**: `get_current_user` menerbitkan cookie baru bila token cookie lewat separuh umur (Bearer
   tidak diubah); default `ACCESS_TOKEN_EXPIRE_MIN` 480 → 2880. Layar TV yang me-refresh Live View tidak logout.
   Backend **435 passed**. Rollback: revert commit + restart API.
+- **Pengaturan Live View per layar**: `screenPrefs` (kolom, pilihan kamera `all`/`some`, auto-scroll) disimpan per
+  `?screen=` di `localStorage` (`isentinel_live_screen:<nama>`), nilai rusak → default per field, kunci lama
+  `isentinel_live_cols` jadi default layar `default`. Frontend **149 passed**.
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 
