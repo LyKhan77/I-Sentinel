@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Screen } from '@carbon/icons-react'
 import { Button, InlineLoading, InlineNotification } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import CameraPicker from './CameraPicker'
@@ -8,6 +10,7 @@ import { COL_OPTIONS, selectCameras, useScreenPrefs } from './screenPrefs'
 
 export default function LiveViewPage() {
   const { t } = useT()
+  const navigate = useNavigate()
   const [prefs, update] = useScreenPrefs('default')
   const [pickerOpen, setPickerOpen] = useState(false)
   const { cams, lives, loading, loadFailed, dismissError } = useLiveCameras()
@@ -33,6 +36,14 @@ export default function LiveViewPage() {
           ))}
           <CameraPicker cams={active} value={prefs.cameras} onChange={(cameras) => update({ cameras })}
             open={pickerOpen} onOpenChange={setPickerOpen} />
+          <Button kind="primary" size="sm" renderIcon={Screen} data-testid="live-tv-open"
+            onClick={() => {
+              // fullscreen harus dipicu gesture user; browser yang menolak tetap masuk mode TV
+              void document.documentElement.requestFullscreen?.()?.catch(() => {})
+              navigate('/live/tv?screen=default')
+            }}>
+            {t('live.tv.open')}
+          </Button>
         </div>
       </div>
       {loadFailed && (

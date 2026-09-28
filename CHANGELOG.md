@@ -21,6 +21,12 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Auto-scroll + idle**: `stepScroll` (turun px/s dengan posisi pecahan, jeda 5 s di dasar, kembali ke atas, jeda
   5 s; konten muat → diam; frame tertunda dibatasi 100 ms), `useAutoScroll` (rAF di dokumen, sinkron ulang setelah
   jeda), `useIdle`. Frontend **157 passed**, build 0, lint set rule+file sama.
+- **Mode TV (kiosk)**: route `/live/tv?screen=<nama>` di luar AppShell; toolbar auto-hide 4 s (kursor ikut hilang):
+  kolom, pemilih kamera, gulir otomatis + kecepatan, keluar; auto-scroll jeda saat operator aktif (lanjut 10 s),
+  pemilih/debugger terbuka; teks tile membesar di 2K/4K; tombol **Mode TV** di Live View (fullscreen bila
+  diizinkan). Frontend **161 passed**, build 0, lint set sama. Cek visual CDP Chrome headless (stub API):
+  `/live/tv?screen=A` 1920×1080/2560×1440/3840×2160 = 3 kolom, 1080×1920 = 2 kolom, semua tanpa overflow
+  horizontal; `/live` 390×844 `scrollWidth=390`.
 
 ### Behavior Idle Zone + Crowd (2026-09-28)
 

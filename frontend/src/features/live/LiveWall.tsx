@@ -20,7 +20,7 @@ const STREAM_RETRY_MS = 60000 // tile gagal stream mencoba lagi (TV 24/7 pulih s
 // Kalau playing tidak terjadi dalam STREAM_TIMEOUT_MS → fallback ke snapshot
 // proxy 2 detik; dicoba ulang tiap STREAM_RETRY_MS (TV 24/7 pulih sendiri).
 // Hanya tile dekat viewport yang men-decode video (Pi 5 tanpa decoder H.264 hardware).
-export function CameraTile({ cam, live, big, tv: _tv, onClick }: { cam: Camera; live: LiveInfo | null; big?: boolean; tv?: boolean; onClick?: () => void }) {
+export function CameraTile({ cam, live, big, tv, onClick }: { cam: Camera; live: LiveInfo | null; big?: boolean; tv?: boolean; onClick?: () => void }) {
   const { t } = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inView = useInView(rootRef, !!big) // tile modal selalu terlihat
@@ -165,7 +165,7 @@ export function CameraTile({ cam, live, big, tv: _tv, onClick }: { cam: Camera; 
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          fontSize: 12,
+          fontSize: tv ? 'clamp(12px, 0.9vw, 32px)' : 12,
           color: '#e8e8e8',
         }}
       >
@@ -176,7 +176,7 @@ export function CameraTile({ cam, live, big, tv: _tv, onClick }: { cam: Camera; 
             display: 'inline-flex',
             alignItems: 'center',
             gap: 5,
-            fontSize: 10,
+            fontSize: tv ? 'clamp(10px, 0.7vw, 24px)' : 10,
             letterSpacing: '.64px',
             fontWeight: 600,
             color: online ? '#fa4d56' : '#6f6f6f',
@@ -184,7 +184,7 @@ export function CameraTile({ cam, live, big, tv: _tv, onClick }: { cam: Camera; 
         >
           <span
             aria-hidden="true"
-            style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#fa4d56' : '#6f6f6f' }}
+            style={{ width: tv ? '0.6em' : 6, height: tv ? '0.6em' : 6, borderRadius: '50%', background: online ? '#fa4d56' : '#6f6f6f' }}
           />
           {online ? t('live.live') : t('live.offline')}
         </span>

@@ -7,6 +7,7 @@ import LoginPage from './features/auth/LoginPage'
 import ConfigurationPage from './features/config/ConfigurationPage'
 import DashboardPage from './features/dashboard/DashboardPage'
 import LiveViewPage from './features/live/LiveViewPage'
+import LiveTvPage from './features/live/LiveTvPage'
 import EventsPage from './features/events/EventsPage'
 import AttendancePage from './features/attendance/AttendancePage'
 import EnrollmentPage from './features/enrollment/EnrollmentPage'
@@ -55,6 +56,7 @@ const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
+      { path: '/live/tv', element: <LiveTvPage /> }, // kiosk TV: tanpa header/side nav
       {
         path: '/',
         element: <AppShell />,

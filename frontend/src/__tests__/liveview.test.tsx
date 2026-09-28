@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import LiveViewPage from '../features/live/LiveViewPage'
@@ -353,6 +353,27 @@ test('pilihan kosong → pesan + tombol pemilih; Semua memulihkan', async () => 
   await userEvent.click(screen.getByTestId('live-picker-all'))
   expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
   expect(screen.getByTestId('cam-tile-3')).toBeInTheDocument()
+  vi.unstubAllGlobals()
+})
+
+test('tombol Mode TV membuka /live/tv?screen=default dan meminta fullscreen', async () => {
+  const requestFullscreen = vi.fn(() => Promise.resolve())
+  Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: requestFullscreen })
+  vi.stubGlobal('fetch', stubFetch())
+  render(
+    <I18nProvider>
+      <MemoryRouter initialEntries={['/live']}>
+        <Routes>
+          <Route path="/live" element={<LiveViewPage />} />
+          <Route path="/live/tv" element={<div data-testid="tv-route" />} />
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
+  )
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('live-tv-open'))
+  expect(screen.getByTestId('tv-route')).toBeInTheDocument()
+  expect(requestFullscreen).toHaveBeenCalled()
   vi.unstubAllGlobals()
 })
 
