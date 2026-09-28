@@ -58,8 +58,8 @@ test('login akun nonaktif menampilkan pesan khusus', async () => {
   expect(await screen.findByText('Akun dinonaktifkan — hubungi admin')).toBeInTheDocument()
 })
 
-test('kartu akun sidebar membuka modal ganti password', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => json(200, { id: 1, username: 'admin', role: 'admin' })))
+function renderShell(role: 'admin' | 'viewer') {
+  vi.stubGlobal('fetch', vi.fn(async () => json(200, { id: 1, username: 'u1', role })))
   render(
     <I18nProvider>
       <MemoryRouter initialEntries={['/dashboard']}>
@@ -67,6 +67,32 @@ test('kartu akun sidebar membuka modal ganti password', async () => {
       </MemoryRouter>
     </I18nProvider>,
   )
+}
+
+test('kartu akun sidebar (admin) membuka modal ganti password', async () => {
+  renderShell('admin')
   await userEvent.click(await screen.findByTestId('change-password-open'))
   expect(screen.getByLabelText('Password lama', { selector: 'input' })).toBeInTheDocument()
+})
+
+test('viewer tidak punya tombol ganti password (diatur admin lewat reset)', async () => {
+  renderShell('viewer')
+  expect(await screen.findByText('u1')).toBeInTheDocument()
+  expect(screen.queryByTestId('change-password-open')).not.toBeInTheDocument()
+})
+
+test('login: tombol tampilkan/sembunyikan password', async () => {
+  render(
+    <I18nProvider>
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes><Route path="/login" element={<LoginPage />} /></Routes>
+      </MemoryRouter>
+    </I18nProvider>,
+  )
+  const input = screen.getByLabelText(/password|kata sandi/i, { selector: 'input' })
+  expect(input).toHaveAttribute('type', 'password')
+  await userEvent.click(screen.getByRole('button', { name: 'Tampilkan password' }))
+  expect(input).toHaveAttribute('type', 'text')
+  await userEvent.click(screen.getByRole('button', { name: 'Sembunyikan password' }))
+  expect(input).toHaveAttribute('type', 'password')
 })

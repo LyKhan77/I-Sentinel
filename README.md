@@ -190,8 +190,10 @@ hapus. Akun sendiri ditandai "(Anda)" — ubah role/nonaktif/hapus dinonaktifkan
 - **Nonaktifkan/aktifkan**: akun nonaktif tidak bisa login (pesan khusus hanya muncul untuk
   pemegang password benar) dan sesi aktifnya langsung ditolak.
 - **Reset password** (admin) dan **ganti password sendiri** (tombol **Password** di kartu akun
-  sidebar, semua role) menaikkan `token_version` → semua sesi lain user itu keluar; browser yang
-  mengganti password tetap login (cookie baru dari server).
+  sidebar, **khusus admin** — password viewer/akun TV diatur admin lewat reset) menaikkan
+  `token_version` → semua sesi lain user itu keluar; browser yang mengganti password tetap login
+  (cookie baru dari server).
+- Halaman login punya tombol tampilkan/sembunyikan password.
 - **Aturan password**: minimal 8 karakter, maksimal 72 byte (batas bcrypt); konfirmasi divalidasi
   di form. Username: 3–64 karakter `[A-Za-z0-9._-]`.
 - **Pencabutan sesi**: JWT membawa klaim versi (`tv`); token versi lama atau akun nonaktif → 401.

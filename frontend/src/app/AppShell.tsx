@@ -180,7 +180,8 @@ export default function AppShell() {
                 </span>
               </>
             )}
-            {me && (
+            {/* khusus admin: password viewer (akun TV/satpam) diatur admin lewat reset di tab User */}
+            {me?.role === 'admin' && (
               <button type="button" className="app-sidenav-user__logout" data-testid="change-password-open"
                 aria-label={t('pw.title')} title={t('pw.title')} onClick={() => setPwOpen(true)}>
                 <Password size={16} />

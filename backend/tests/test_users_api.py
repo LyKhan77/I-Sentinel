@@ -156,7 +156,7 @@ def _cookie_token(r) -> str:
 
 def test_change_password_flow(client):
     h = _h(client)
-    _create(client, h)
+    _create(client, h, role="admin")
     old = _login(client, "tv-uji", PW).json()["token"]
     r = client.post("/api/v1/auth/change-password", headers={"Cookie": f"isentinel_token={old}"},
                     json={"current_password": "salah-sekali", "new_password": "baru-rahasia-1"})
@@ -174,7 +174,7 @@ def test_change_password_flow(client):
 
 def test_change_password_new_cookie_wins_over_rolling_renewal(client):
     h = _h(client)
-    u = _create(client, h)
+    u = _create(client, h, role="admin")
     near_expiry = _token(u["id"], 30, tv=0)  # dependency juga akan menulis cookie perpanjangan (versi 0)
     r = client.post("/api/v1/auth/change-password", headers={"Cookie": f"isentinel_token={near_expiry}"},
                     json={"current_password": PW, "new_password": "baru-rahasia-1"})
@@ -185,9 +185,20 @@ def test_change_password_new_cookie_wins_over_rolling_renewal(client):
 def test_change_password_wrong_attempts_lock(client):
     from app.core.config import settings
     h = _h(client)
-    _create(client, h)
+    _create(client, h, role="admin")
     tok = _login(client, "tv-uji", PW).json()["token"]
     codes = [client.post("/api/v1/auth/change-password", headers={"Authorization": f"Bearer {tok}"},
                          json={"current_password": "salah-sekali", "new_password": "baru-rahasia-1"}).status_code
              for _ in range(settings.login_max_attempts + 1)]
     assert codes[-1] == 429
+
+
+def test_change_password_admin_only(client):
+    """Viewer (akun TV/satpam) tidak mengganti password sendiri; admin yang mengatur lewat reset."""
+    h = _h(client)
+    _create(client, h)  # viewer
+    tok = _login(client, "tv-uji", PW).json()["token"]
+    r = client.post("/api/v1/auth/change-password", headers={"Authorization": f"Bearer {tok}"},
+                    json={"current_password": PW, "new_password": "baru-rahasia-1"})
+    assert r.status_code == 403
+    assert _login(client, "tv-uji", PW).status_code == 200  # password tidak berubah

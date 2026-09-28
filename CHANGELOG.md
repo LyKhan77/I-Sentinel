@@ -31,6 +31,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   JWT, jadi token akun nonaktif / versi lama masih bisa berlangganan event realtime (nama karyawan, deteksi).
   Helper `session_user` (deps) kini dipakai REST dan WS; handshake ditolak 1008. Tes merah sebelum fix.
   Backend **449 passed**, vision **223**, frontend **169**, build 0.
+- **Feedback uji user**: ganti password sendiri **khusus admin** (`POST /auth/change-password` →
+  `require_admin`, viewer 403; tombol sidebar hanya untuk admin) — password viewer/akun TV diatur admin lewat
+  reset; halaman login memakai `PasswordInput` (tampilkan/sembunyikan password, label i18n). Backend
+  **450 passed**, frontend **171 passed**, build 0, lint set sama. Rollback: revert commit + restart API.
 
 ### Live View mode TV (2026-09-28)
 

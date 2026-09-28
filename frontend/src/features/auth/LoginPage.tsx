@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Button, TextInput, InlineNotification, Stack } from '@carbon/react'
+import { Button, TextInput, PasswordInput, InlineNotification, Stack } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { login } from '../../api/client'
 
@@ -69,11 +69,12 @@ export default function LoginPage() {
               invalid={!!errors.username}
               invalidText={errors.username}
             />
-            <TextInput
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="current-password"
               labelText={t('login.password')}
+              showPasswordLabel={t('login.showPassword')}
+              hidePasswordLabel={t('login.hidePassword')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               invalid={!!errors.password}

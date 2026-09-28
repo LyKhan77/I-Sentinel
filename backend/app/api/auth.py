@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.security import verify_password, create_access_token, hash_password
-from app.api.deps import COOKIE, get_current_user, set_auth_cookie
+from app.api.deps import COOKIE, get_current_user, require_admin, set_auth_cookie
 from app.models.user import User
 from app.schemas.user import UserOut, LoginIn, PasswordChange
 
@@ -66,7 +66,8 @@ def logout(response: Response, user: User = Depends(get_current_user)):
 
 @router.post("/change-password")
 def change_password(body: PasswordChange, request: Request, response: Response,
-                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+                    user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    # khusus admin (feedback user): password viewer (akun TV/satpam) diatur admin lewat reset di tab User
     key = _client_key(user.username, request)
     _check_lock(key)  # tebakan password lama ikut batas percobaan login
     if len(body.current_password.encode()) > 72 or not verify_password(body.current_password, user.password_hash):
