@@ -27,6 +27,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   password, pencabutan sesi); runbook TV: akun TV = viewer + perangkat hilang; ROADMAP baris UM.
   Suite akhir: backend **448 passed**, vision **223 passed (3 deselected)**, frontend **169 passed**,
   build 0, lint set sama.
+- **Review perencana — WebSocket ikut pencabutan sesi**: `/api/v1/ws/events` dulu hanya memeriksa tanda tangan
+  JWT, jadi token akun nonaktif / versi lama masih bisa berlangganan event realtime (nama karyawan, deteksi).
+  Helper `session_user` (deps) kini dipakai REST dan WS; handshake ditolak 1008. Tes merah sebelum fix.
+  Backend **449 passed**, vision **223**, frontend **169**, build 0.
 
 ### Live View mode TV (2026-09-28)
 
