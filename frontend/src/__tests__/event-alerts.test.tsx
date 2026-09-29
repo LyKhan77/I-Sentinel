@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
-import { EventAlertsProvider, useEventAlerts, MUTE_KEY, SEEN_KEY } from '../features/notifications/EventAlertsProvider'
+import { EventAlertsProvider, asNotifyEvent, useEventAlerts, MUTE_KEY, SEEN_KEY } from '../features/notifications/EventAlertsProvider'
 import { beep } from '../features/notifications/beep'
 import NotificationBell from '../features/notifications/NotificationBell'
 import EventToasts from '../features/notifications/EventToasts'
@@ -376,4 +376,40 @@ test('mode TV: outline tampil dan toggle bunyi menyimpan mute', async () => {
   expect(screen.getByTestId('cam-alert-1')).toHaveClass('lv-alert--critical')
   await userEvent.click(screen.getByTestId('live-tv-sound'))
   expect(localStorage.getItem(MUTE_KEY)).toBe('1')
+})
+
+// ---- temuan review independen ----
+test('kunjungan pertama: buka lonceng sebelum riwayat selesai tidak menyimpan penanda dibaca palsu', async () => {
+  let release: () => void = () => {}
+  const gate = new Promise<void>((r) => { release = r })
+  const base = stubFetch()
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (String(url).includes('/events?limit=50')) await gate // riwayat tertahan
+    return base(url)
+  }))
+  renderWith(shell)
+  await userEvent.click(await screen.findByTestId('notif-bell'))
+  expect(screen.getByTestId('notif-panel')).toHaveTextContent('Belum ada event')
+  expect(localStorage.getItem(SEEN_KEY)).toBeNull() // belum ada yang boleh ditandai dibaca
+  await act(async () => { release() })
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  expect(localStorage.getItem(SEEN_KEY)).toBe('11')
+  expect(screen.queryByTestId('notif-badge')).toBeNull()
+})
+
+test('riwayat gagal: event basi dari aliran tidak dihitung belum dibaca di kunjungan pertama', async () => {
+  history = 'fail'
+  renderWith()
+  send(ev(40, { ts_event: new Date(Date.now() - 120_000).toISOString() }))
+  send(ev(41))
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('41,40'))
+  expect(screen.getByTestId('unread')).toHaveTextContent('1') // hanya event 41 yang benar-benar baru
+  expect(localStorage.getItem(SEEN_KEY)).toBe('40')
+})
+
+test('asNotifyEvent menolak tipe warisan Object.prototype', () => {
+  for (const type of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+    expect(asNotifyEvent({ id: 1, event_id: 'e-1', type, ts_event: new Date().toISOString() })).toBeNull()
+  }
+  expect(asNotifyEvent({ id: 1, event_id: 'e-1', type: 'intrusion' })?.id).toBe(1)
 })

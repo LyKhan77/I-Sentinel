@@ -59,7 +59,7 @@ export function asNotifyEvent(m: unknown): EventOut | null {
   if (typeof m !== 'object' || m === null) return null
   if (!('id' in m) || !('event_id' in m) || !('type' in m)) return null
   if (typeof m.id !== 'number' || typeof m.event_id !== 'string' || typeof m.type !== 'string') return null
-  if (!NOTIFY_TYPES[m.type]) return null
+  if (NOTIFY_TYPES[m.type] !== true) return null
   const payloadRaw: unknown = 'payload' in m ? m.payload : null
   // bentuk isi payload bebas per analyzer; konsumen membacanya dengan typeof
   const payload =
@@ -136,10 +136,15 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // riwayat gagal dimuat → event aliran yang sudah basi = riwayat, bukan kejadian baru
+  // riwayat gagal dimuat → event aliran yang sudah basi = riwayat, bukan kejadian baru.
+  // Nilai balik = id event yang diperlakukan sebagai riwayat (0 bila event baru).
   const route = (e: EventOut) => {
-    if (historyFailed.current && Date.now() - Date.parse(e.ts_event) >= STALE_MS) addRecent([e])
-    else fire(e)
+    if (historyFailed.current && Date.now() - Date.parse(e.ts_event) >= STALE_MS) {
+      addRecent([e])
+      return e.id
+    }
+    fire(e)
+    return 0
   }
 
   useLiveEvents((m) => {
@@ -156,7 +161,12 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
     const flush = (historyIds: Set<number>) => {
       const pending = buffer.current ?? []
       buffer.current = null
-      for (const e of pending) if (!historyIds.has(e.id)) route(e)
+      let maxStale = 0
+      for (const e of pending) {
+        if (historyIds.has(e.id)) continue
+        maxStale = Math.max(maxStale, route(e))
+      }
+      return maxStale
     }
     listEvents({ limit: HISTORY_LIMIT })
       .then((list) => {
@@ -173,8 +183,10 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         if (!alive) return
         historyFailed.current = true
-        flush(new Set())
-        setSeenId((s) => s ?? 0)
+        const maxStale = flush(new Set())
+        // kunjungan pertama: event basi yang masuk daftar sudah lewat, bukan belum dibaca
+        setSeenId((s) => s ?? maxStale)
+        if (maxStale > 0 && read(SEEN_KEY) === null) write(SEEN_KEY, String(maxStale))
       })
     listCameras()
       .then((cs) => { if (alive) setCamNames(Object.fromEntries(cs.map((c) => [c.id, c.name]))) })
@@ -204,7 +216,10 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
     recent,
     unread: seenId === null ? 0 : recent.filter((e) => e.id > seenId).length,
     markAllRead: () => {
-      const max = Math.max(recent[0]?.id ?? 0, seenId ?? 0)
+      // riwayat belum dimuat (lonceng dibuka dari halaman lambat) → jangan simpan penanda "0" palsu;
+      // penyemaian kunjungan pertama terjadi saat riwayat selesai dimuat
+      if (seenId === null) return
+      const max = Math.max(recent[0]?.id ?? 0, seenId)
       setSeenId(max)
       write(SEEN_KEY, String(max))
     },
