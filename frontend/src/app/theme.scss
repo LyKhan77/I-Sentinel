@@ -1391,3 +1391,126 @@ button.lv-alert-chip {
 .lv-alert-chips--tv .lv-alert-chip {
   font-size: clamp(13px, 1vw, 32px);
 }
+
+/* Monitoring Resource: ringkasan, kartu node, tabel kamera, layanan. */
+.mon-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mon-title {
+  font-weight: 300;
+}
+
+.mon-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1px;
+  background: var(--cds-border-subtle);
+}
+
+.mon-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  background: var(--cds-layer-01);
+  border-inline-start: 4px solid transparent;
+
+  strong {
+    font-size: 28px;
+    font-weight: 400;
+  }
+
+  small {
+    color: var(--cds-text-secondary);
+  }
+
+  &--ok { border-inline-start-color: #42be65; }
+  &--warning { border-inline-start-color: #f1c21b; }
+  &--critical { border-inline-start-color: #fa4d56; }
+}
+
+.mon-nodes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.mon-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mon-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin-block: 8px;
+  font-size: 13px;
+
+  dt {
+    color: var(--cds-text-secondary);
+  }
+
+  dd {
+    overflow-wrap: anywhere;
+  }
+}
+
+.mon-issues {
+  margin: 8px 0 0;
+  padding-inline-start: 16px;
+  color: var(--cds-support-warning, #f1c21b);
+  font-size: 13px;
+  list-style: disc;
+}
+
+.mon-table-wrap {
+  overflow-x: auto; // tabel lebar di 390 px: scroll di dalam kartu, halaman tidak overflow
+}
+
+.mon-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--cds-border-subtle);
+    text-align: start;
+    white-space: nowrap;
+  }
+
+  th {
+    color: var(--cds-text-secondary);
+    font-weight: 600;
+  }
+}
+
+.mon-issue {
+  display: inline-block;
+  margin-inline-start: 6px;
+  color: var(--cds-text-secondary);
+  font-size: 12px;
+}
+
+.mon-services {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--cds-border-subtle);
+  }
+}

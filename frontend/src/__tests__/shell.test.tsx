@@ -228,3 +228,18 @@ test('closes the mobile nav when only the configuration query changes', async ()
   )
   await waitFor(() => expect(nav).not.toHaveClass('cds--side-nav--expanded'))
 })
+
+test('viewer sees Monitoring menu but not Configuration', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => String(url).endsWith('/auth/me')
+      ? { ok: true, status: 200, json: () => Promise.resolve({ id: 2, username: 'viewer', role: 'viewer' }) }
+      : { ok: false, status: 404, json: () => Promise.resolve(null) }),
+  )
+  renderShell()
+
+  const nav = screen.getByRole('navigation', { name: 'I-Sentinel' })
+  const link = await within(nav).findByRole('link', { name: 'Monitoring' })
+  expect(link).toHaveAttribute('href', '/monitoring')
+  expect(within(nav).queryByRole('link', { name: 'Konfigurasi' })).toBeNull()
+})

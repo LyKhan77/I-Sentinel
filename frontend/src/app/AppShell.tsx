@@ -20,6 +20,7 @@ import {
   Settings,
   Logout,
   Password,
+  Activity,
 } from '@carbon/icons-react'
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
@@ -50,7 +51,10 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
   },
   {
     key: 'nav.group.system',
-    items: [{ to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true }],
+    items: [
+      { to: '/monitoring', key: 'nav.monitoring', icon: Activity },
+      { to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
+    ],
   },
 ]
 
