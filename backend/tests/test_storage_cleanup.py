@@ -188,3 +188,74 @@ def test_cleanup_audit_log_records_success_and_failure(client, db, root, caplog,
             h = admin_headers(client)
             assert c.post("/api/v1/storage/cleanup", json=body, headers=h).status_code == 500
     assert "event cleanup by admin failed" in caplog.text
+
+
+# --- mode "attendance_media": hapus foto/crop absensi, rekap & riwayat tetap ---
+
+def _employee(db):
+    from app.models.employee import Employee
+    if db.get(Camera, 1) is None:  # attendance_event.camera_id → FK camera (SQLite tes menegakkan FK)
+        db.add(Camera(id=1, name="c1", host="h")); db.commit()
+    emp = Employee(name="Uji", employee_code="UJI-1")
+    db.add(emp); db.commit(); db.refresh(emp)
+    return emp
+
+
+def _att(db, emp, ts, snap=None, crop=None, cam=None):
+    from app.models.attendance import AttendanceEvent
+    ev = Event(type="attendance", ts_event=ts, camera_id=cam, snapshot_path=snap,
+               payload={"direction": "entry", "employee_id": emp.id, "crop_path": crop})
+    db.add(ev); db.commit(); db.refresh(ev)
+    row = AttendanceEvent(employee_id=emp.id, camera_id=cam or 1, direction="entry", ts_event=ts,
+                          snapshot_path=crop, event_id=ev.event_id)
+    db.add(row); db.commit(); db.refresh(row)
+    return ev, row
+
+
+def test_attendance_media_mode_keeps_rows_and_recap(db, root):
+    from app.models.attendance import AttendanceDay, AttendanceEvent
+    emp = _employee(db)
+    snap = _file(root, "snapshots/att.jpg", 200)
+    crop = _file(root, "crops/att.jpg", 50)
+    ev, row = _att(db, emp, _local(2026, 9, 10), snap="snapshots/att.jpg", crop="crops/att.jpg")
+    db.add(AttendanceDay(employee_id=emp.id, date=date(2026, 9, 10), status="ontime")); db.commit()
+    beh = _ev(db, _local(2026, 9, 10), clip=None, snap=None)
+
+    r = retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), mode="attendance_media", dry_run=True)
+    assert r == {"events": 1, "files": 2, "bytes": 250, "dry_run": True}
+    assert os.path.exists(snap) and os.path.exists(crop)
+
+    r = retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), mode="attendance_media", dry_run=False)
+    assert (r["events"], r["files"], r["bytes"]) == (1, 2, 250)
+    assert not os.path.exists(snap) and not os.path.exists(crop)
+    db.refresh(ev); db.refresh(row)
+    assert ev.snapshot_path is None and ev.payload["crop_path"] is None and ev.media_expired is True
+    assert ev.payload["employee_id"] == emp.id  # payload lain utuh
+    assert row.snapshot_path is None and db.get(AttendanceEvent, row.id) is not None
+    assert db.query(AttendanceDay).count() == 1 and db.get(Event, beh.id) is not None
+
+
+def test_attendance_media_mode_filters_camera_and_keeps_shared_files(db, root):
+    db.add_all([Camera(id=1, name="c1", host="h"), Camera(id=2, name="c2", host="h")]); db.commit()
+    emp = _employee(db)
+    shared = _file(root, "snapshots/shared.jpg")
+    other = _file(root, "snapshots/cam2.jpg")
+    _att(db, emp, _local(2026, 9, 10), snap="snapshots/shared.jpg", cam=1)
+    _att(db, emp, _local(2026, 9, 12), snap="snapshots/shared.jpg", cam=1)  # di luar rentang
+    ev2, _ = _att(db, emp, _local(2026, 9, 10), snap="snapshots/cam2.jpg", cam=2)
+    r = retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), camera_ids=[1],
+                          mode="attendance_media", dry_run=False)
+    assert (r["events"], r["files"]) == (1, 0)
+    assert os.path.exists(shared) and os.path.exists(other)
+    db.refresh(ev2)
+    assert ev2.snapshot_path == "snapshots/cam2.jpg"
+
+
+def test_attendance_media_mode_api(client, root):
+    h = admin_headers(client)
+    today = date.today()
+    base = {"date_from": str(today), "date_to": str(today), "dry_run": True}
+    r = client.post("/api/v1/storage/cleanup", json={**base, "mode": "attendance_media"}, headers=h)
+    assert r.status_code == 200 and r.json()["events"] == 0
+    for bad in ({**base, "mode": "attendance_media", "types": ["intrusion"]}, {**base, "mode": "semua"}):
+        assert client.post("/api/v1/storage/cleanup", json=bad, headers=h).status_code == 422, bad

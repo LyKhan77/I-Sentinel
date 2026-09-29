@@ -223,7 +223,10 @@ sweep retensi manual (admin), pengaturan retensi, dan (admin) pembersihan event 
   (dry run) menampilkan "N event · M file · X" → **Hapus** dengan konfirmasi merah. Yang dihapus: baris
   event, clip/snapshot-nya, dan alert-nya. **Event `attendance`** (rekap absensi) **tidak pernah dihapus**,
   juga bila diminta eksplisit. **Log `system`** (node offline/LWT, satu baris tiap vision-node restart)
-  hanya terhapus bila dipilih di Jenis — filter Jenis kosong tidak menyentuhnya. Clip yang masih
+  hanya terhapus bila dipilih di Jenis — filter Jenis kosong tidak menyentuhnya. Mode **Media absensi
+  saja** (`mode: "attendance_media"`) menghapus foto + crop wajah event absensi di rentang (path
+  `event.snapshot_path`, `payload.crop_path`, `attendance_event.snapshot_path` di-null-kan); event,
+  riwayat masuk/keluar, dan rekap `attendance_day` tetap. Clip yang masih
   dirujuk event di luar rentang dipertahankan; crop (`payload.crop_path`) tidak dikumpulkan cleanup dan
   dibiarkan ke sapuan orphan. Rentang memakai zona waktu lokal server (`[dari 00:00, sampai+1 hari 00:00)`)
   dan **tidak bisa dipulihkan** — karena itu tombol Hapus baru aktif setelah pratinjau untuk filter yang

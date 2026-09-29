@@ -110,7 +110,7 @@ test('cleanup: pratinjau lalu konfirmasi hapus', async () => {
   expect(screen.getByTestId('cleanup-delete')).toBeDisabled()
   await userEvent.click(screen.getByTestId('cleanup-preview'))
   expect(await screen.findByTestId('cleanup-preview-result')).toHaveTextContent('3 event · 4 file · 2 kB')
-  expect(cleanupCalls(f)[0]).toEqual({ date_from: '2026-09-01', date_to: '2026-09-10', camera_ids: [], types: [], dry_run: true })
+  expect(cleanupCalls(f)[0]).toEqual({ date_from: '2026-09-01', date_to: '2026-09-10', camera_ids: [], types: [], mode: 'events', dry_run: true })
   await userEvent.click(screen.getByTestId('cleanup-delete'))
   const dialog = screen.getByRole('dialog')
   expect(dialog).toHaveTextContent('3 event dari 2026-09-01 sampai 2026-09-10')
@@ -147,4 +147,27 @@ test('cleanup: log sistem hanya ikut bila dipilih di Jenis', async () => {
   await userEvent.click(screen.getByTestId('cleanup-preview'))
   await screen.findByTestId('cleanup-preview-result')
   expect(cleanupCalls(f).at(-1)!.types).toEqual(['system'])
+})
+
+test('cleanup mode media absensi: Jenis tersembunyi, mode dikirim, pratinjau basi saat mode berganti', async () => {
+  const f = stub('admin')
+  renderStorage()
+  await fillDates('2026-09-01', '2026-09-10')
+  await userEvent.click(screen.getByTestId('cleanup-preview'))
+  await screen.findByTestId('cleanup-preview-result')
+  expect(cleanupCalls(f).at(-1)!.mode).toBe('events')
+
+  await userEvent.click(screen.getByLabelText('Media absensi saja'))
+  expect(screen.queryByRole('combobox', { name: /Jenis/ })).not.toBeInTheDocument()
+  expect(screen.getByTestId('cleanup-delete')).toBeDisabled() // mode ganti → pratinjau ulang
+  await userEvent.click(screen.getByTestId('cleanup-preview'))
+  expect(await screen.findByTestId('cleanup-preview-result')).toHaveTextContent('3 event absensi · 4 file')
+  expect(cleanupCalls(f).at(-1)).toMatchObject({ mode: 'attendance_media', types: [], dry_run: true })
+
+  await userEvent.click(screen.getByTestId('cleanup-delete'))
+  const dialog = screen.getByRole('dialog')
+  expect(dialog).toHaveTextContent('Rekap dan riwayat absensi tidak berubah')
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus media 3 event absensi' }))
+  expect(await screen.findByText('Media absensi dihapus')).toBeInTheDocument()
+  expect(cleanupCalls(f).at(-1)).toMatchObject({ mode: 'attendance_media', dry_run: false })
 })

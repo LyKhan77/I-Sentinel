@@ -3,6 +3,17 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Cleanup media absensi per tanggal (2026-09-29 – …)
+
+- **Mode "Media absensi saja"** di Bersihkan event (`POST /storage/cleanup` `mode: "attendance_media"`): hapus foto +
+  crop wajah event absensi di rentang tanggal lokal (filter kamera opsional; `types` → 422), null-kan
+  `event.snapshot_path`, `payload.crop_path`, `attendance_event.snapshot_path`, `media_expired=True`; event,
+  riwayat masuk/keluar, dan rekap `attendance_day` tetap; file yang juga dirujuk di luar rentang dipertahankan;
+  path dulu lalu file (gagal hapus → orphan sweep). UI: pilihan "Yang dibersihkan", Jenis disembunyikan pada mode
+  media, pratinjau basi saat mode berganti, teks konfirmasi "Rekap dan riwayat absensi tidak berubah".
+- **Fix**: sweep retensi ikut null-kan `attendance_event.snapshot_path` (salinan path crop) saat crop dihapus.
+- Backend **484 passed**, frontend **181 passed**, build 0, lint set sama. Log audit cleanup kini mencatat `mode=`.
+
 ### Retention & Storage UI (2026-09-29)
 
 - **Pengaturan storage editable**: setting `storage` (`clip_days`, `snapshot_days`, `disk_alert_percent`; field yang
