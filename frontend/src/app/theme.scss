@@ -1278,6 +1278,14 @@ html {
   overflow-wrap: anywhere;
 }
 
+.nb__tabs {
+  padding-inline: 8px;
+}
+
+.nb__tabpanel.cds--tab-content {
+  padding: 0;
+}
+
 .nb__empty {
   padding: 16px;
   color: var(--cds-text-secondary);

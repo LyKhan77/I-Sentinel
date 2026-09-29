@@ -31,10 +31,12 @@ const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.reso
 function stubFetch() {
   return vi.fn(async (url: string) => {
     const u = String(url)
-    if (u.includes('/events?') && u.includes('since=')) return ok([])
-    if (u.includes('/events?limit=50')) {
+    // riwayat provider: ?since=<00:00 kemarin>&type=...&limit=200
+    if (u.includes('/events?') && u.includes('type=')) {
       return history === 'fail' ? { ok: false, status: 500, json: () => Promise.resolve(null) } : ok(history)
     }
+    if (u.includes('/events?') && u.includes('since=')) return ok([]) // polling useLiveEvents berikutnya
+    if (u.includes('/events?limit=50')) return ok(history === 'fail' ? [] : history) // poll pertama useLiveEvents
     if (u.endsWith('/cameras')) return ok(CAMS)
     if (u.includes('/zones')) return ok([])
     return { ok: false, status: 404, json: () => Promise.resolve(null) }
@@ -143,7 +145,7 @@ test('pesan aliran yang tiba sebelum riwayat selesai: id riwayat dibuang, sisany
   const gate = new Promise<void>((r) => { release = r })
   const base = stubFetch()
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (String(url).includes('/events?limit=50')) await gate // riwayat tertahan
+    if (String(url).includes('type=')) await gate // riwayat tertahan
     return base(url)
   }))
   renderWith()
@@ -265,7 +267,7 @@ test('lonceng: badge unread, buka panel = dibaca (persist), item membuka detail 
   expect(screen.queryByTestId('notif-badge')).toBeNull()
 })
 
-test('lonceng: badge 20+, panel kosong, Escape menutup, toggle bunyi', async () => {
+test('lonceng: badge 99+, panel kosong, Escape menutup, toggle bunyi', async () => {
   history = []
   localStorage.setItem(SEEN_KEY, '0')
   renderWith(shell)
@@ -277,8 +279,45 @@ test('lonceng: badge 20+, panel kosong, Escape menutup, toggle bunyi', async () 
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByTestId('notif-panel')).toBeNull()
 
-  for (let id = 100; id < 125; id++) send(ev(id))
-  expect(screen.getByTestId('notif-badge')).toHaveTextContent('20+')
+  for (let id = 100; id < 199; id++) send(ev(id))
+  expect(screen.getByTestId('notif-badge')).toHaveTextContent('99') // tepat 99 → tanpa "+"
+  expect(screen.getByTestId('notif-badge')).not.toHaveTextContent('+')
+  send(ev(199))
+  expect(screen.getByTestId('notif-badge')).toHaveTextContent('99+')
+})
+
+// 12:00 lokal, `daysAgo` hari lalu
+const noon = (daysAgo: number) => {
+  const d = new Date()
+  d.setHours(12, 0, 0, 0)
+  d.setDate(d.getDate() - daysAgo)
+  return d.toISOString()
+}
+
+test('lonceng: tab Hari ini / Kemarin; event lebih lama tidak tampil; riwayat diminta per jenis sejak kemarin', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  history = [ev(11), ev(10, { camera_id: 2, ts_event: noon(1) }), ev(9, { ts_event: noon(3) })]
+  renderWith(shell)
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  expect(screen.getByTestId('recent')).not.toHaveTextContent('9') // lusa dibuang walau backend mengirimnya
+
+  const url = fetchMock.mock.calls.map(([u]) => String(u)).find((u) => u.includes('type='))!
+  const qs = new URL(url, 'http://x').searchParams
+  expect(qs.getAll('type').sort()).toEqual(['crowd', 'idle_zone', 'intrusion', 'loitering', 'running', 'system'])
+  expect(qs.get('limit')).toBe('200')
+  expect(new Date(qs.get('since')!).getTime()).toBe(new Date(noon(1)).setHours(0, 0, 0, 0))
+
+  await userEvent.click(screen.getByTestId('notif-bell'))
+  expect(screen.getByTestId('notif-tab-today')).toHaveTextContent('Hari ini (1)')
+  expect(screen.getByTestId('notif-tab-yesterday')).toHaveTextContent('Kemarin (1)')
+  expect(screen.getByTestId('notif-item-11')).toBeVisible()
+  expect(screen.getByTestId('notif-item-10')).not.toBeVisible()
+  expect(screen.queryByTestId('notif-item-9')).toBeNull()
+  await userEvent.click(screen.getByTestId('notif-tab-yesterday'))
+  expect(screen.getByTestId('notif-item-10')).toBeVisible()
+  expect(screen.getByTestId('notif-item-11')).not.toBeVisible()
+  expect(screen.getByTestId('notif-item-10')).toHaveTextContent('CAM-02 · Pagar')
 })
 
 test('toast: tampil untuk event baru, klik isi → detail, klik tutup hanya menutup', async () => {
@@ -384,7 +423,7 @@ test('kunjungan pertama: buka lonceng sebelum riwayat selesai tidak menyimpan pe
   const gate = new Promise<void>((r) => { release = r })
   const base = stubFetch()
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (String(url).includes('/events?limit=50')) await gate // riwayat tertahan
+    if (String(url).includes('type=')) await gate // riwayat tertahan
     return base(url)
   }))
   renderWith(shell)

@@ -15,12 +15,13 @@ export type EventOut = {
 
 export type EventStats = { total: number; by_type: Record<string, number> }
 
-export type EventListParams = { camera_id?: number; type?: string; since?: string; limit?: number }
+export type EventListParams = { camera_id?: number; type?: string; types?: string[]; since?: string; limit?: number }
 
 export async function listEvents(params: EventListParams = {}): Promise<EventOut[]> {
   const qs = new URLSearchParams()
   if (params.camera_id != null) qs.set('camera_id', String(params.camera_id))
   if (params.type) qs.set('type', params.type)
+  for (const t of params.types ?? []) qs.append('type', t) // backend: ?type=a&type=b = salah satu
   if (params.since) qs.set('since', params.since)
   if (params.limit != null) qs.set('limit', String(params.limit))
   const res = await apiFetch(`/events${qs.toString() ? `?${qs}` : ''}`)

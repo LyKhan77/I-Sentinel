@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, HeaderGlobalAction, Toggle } from '@carbon/react'
+import { Button, HeaderGlobalAction, Tab, TabList, TabPanel, TabPanels, Tabs, Toggle } from '@carbon/react'
 import { Notification as NotificationIcon } from '@carbon/icons-react'
+import type { EventOut } from '../../api/events'
 import { useT } from '../../app/i18n'
-import { RECENT_MAX, useEventAlerts } from './EventAlertsProvider'
-import { eventWhere, sevClass, typeKey } from './labels'
+import { useEventAlerts } from './EventAlertsProvider'
+import { dayStart, eventWhere, sevClass, typeKey } from './labels'
 
-/** Lonceng header: badge belum dibaca + panel event terbaru. Membuka panel = semua dibaca. */
+const BADGE_MAX = 99
+
+/** Lonceng header: badge belum dibaca + panel tab Hari ini / Kemarin. Membuka panel = semua dibaca. */
 export default function NotificationBell() {
   const { t, locale } = useT()
   const navigate = useNavigate()
@@ -38,6 +41,15 @@ export default function NotificationBell() {
     setOpen(false)
     navigate(to)
   }
+  // batas hari dihitung saat render (panel dibuka) → tetap benar setelah lewat tengah malam
+  const todayFrom = dayStart(0).getTime()
+  const yesterdayFrom = dayStart(1).getTime()
+  const ts = (e: EventOut) => Date.parse(e.ts_event)
+  const days = [
+    { key: 'today', label: t('notif.today'), items: recent.filter((e) => ts(e) >= todayFrom) },
+    { key: 'yesterday', label: t('notif.yesterday'),
+      items: recent.filter((e) => ts(e) >= yesterdayFrom && ts(e) < todayFrom) },
+  ]
   const label = unread > 0 ? t('notif.bellUnread').replace('{n}', String(unread)) : t('notif.bell')
 
   return (
@@ -46,7 +58,7 @@ export default function NotificationBell() {
         <NotificationIcon size={20} />
         {unread > 0 && (
           <span className="nb__badge" data-testid="notif-badge" aria-hidden="true">
-            {unread >= RECENT_MAX ? `${RECENT_MAX}+` : unread}
+            {unread > BADGE_MAX ? `${BADGE_MAX}+` : unread}
           </span>
         )}
       </HeaderGlobalAction>
@@ -57,27 +69,40 @@ export default function NotificationBell() {
             <Toggle id="notif-sound" data-testid="notif-sound" size="sm" labelText={t('notif.sound')}
               toggled={!muted} onToggle={(on) => setMuted(!on)} />
           </div>
-          {recent.length === 0 ? (
-            <p className="nb__empty">{t('notif.empty')}</p>
-          ) : (
-            <ul className="nb__list">
-              {recent.map((e) => (
-                <li key={e.id}>
-                  <button type="button" className="nb__item" data-testid={`notif-item-${e.id}`}
-                    onClick={() => go(`/events?event=${e.id}`)}>
-                    <span className={`ev-dot ev-dot--${sevClass(e.severity)}`} aria-hidden="true" />
-                    <span className="nb__text">
-                      <span>{t(typeKey(e.type))}</span>
-                      <span className="nb__sub">{eventWhere(e, t, cameraName)}</span>
-                      <span className="nb__sub">
-                        {new Date(e.ts_event).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
-                      </span>
-                    </span>
-                  </button>
-                </li>
+          <Tabs>
+            <TabList aria-label={t('notif.title')} className="nb__tabs">
+              {days.map((d) => (
+                <Tab key={d.key} data-testid={`notif-tab-${d.key}`}>{`${d.label} (${d.items.length})`}</Tab>
               ))}
-            </ul>
-          )}
+            </TabList>
+            <TabPanels>
+              {days.map((d) => (
+                <TabPanel key={d.key} className="nb__tabpanel">
+                  {d.items.length === 0 ? (
+                    <p className="nb__empty">{t('notif.empty')}</p>
+                  ) : (
+                    <ul className="nb__list">
+                      {d.items.map((e) => (
+                        <li key={e.id}>
+                          <button type="button" className="nb__item" data-testid={`notif-item-${e.id}`}
+                            onClick={() => go(`/events?event=${e.id}`)}>
+                            <span className={`ev-dot ev-dot--${sevClass(e.severity)}`} aria-hidden="true" />
+                            <span className="nb__text">
+                              <span>{t(typeKey(e.type))}</span>
+                              <span className="nb__sub">{eventWhere(e, t, cameraName)}</span>
+                              <span className="nb__sub">
+                                {new Date(e.ts_event).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </TabPanel>
+              ))}
+            </TabPanels>
+          </Tabs>
           <div className="nb__foot">
             <Button kind="ghost" size="sm" onClick={() => go('/events')}>{t('notif.viewAll')}</Button>
           </div>

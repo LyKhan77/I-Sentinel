@@ -26,6 +26,13 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   dependensi baru.
 - **Rollback:** `git revert` rentang `8385d61..b83349b` + build frontend; key localStorage
   `isentinel_notif_seen` / `isentinel_notif_mute` diabaikan kode lama.
+- **Revisi uji user (tab Hari ini / Kemarin):** panel lonceng dibagi dua tab Carbon **Hari ini (N)** / **Kemarin (N)**,
+  hanya event sejak 00:00 kemarin (waktu lokal; event lebih lama dibuang, juga saat hari berganti); badge sampai
+  `99+`; riwayat dimuat `?since=<00:00 kemarin>&type=<6 jenis pemicu>&limit=200`. Backend: `GET /api/v1/events`
+  menerima `type` berulang (filter `IN`, `?type=x` lama tetap sama). File: `backend/app/api/events.py`,
+  `backend/tests/test_events_api.py`, `frontend/src/api/events.ts`, `features/notifications/{EventAlertsProvider,
+  NotificationBell,labels}`, `app/{i18n.tsx,theme.scss}`, `__tests__/event-alerts.test.tsx`. Bukti: backend 491,
+  frontend 203, build 0, lint set sama. Deploy: restart `isentinel-api` (filter multi-type) + HMR frontend.
 
 ### Event wajib bermedia (2026-09-29)
 

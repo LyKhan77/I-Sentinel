@@ -3,6 +3,7 @@ import { listCameras } from '../../api/cameras'
 import { listEvents, type EventOut } from '../../api/events'
 import { useLiveEvents } from '../../api/useWs'
 import { beep } from './beep'
+import { dayStart } from './labels'
 
 export const NOTIFY_TYPES: Record<string, true> = {
   intrusion: true,
@@ -13,11 +14,11 @@ export const NOTIFY_TYPES: Record<string, true> = {
   system: true,
 }
 export const ACTIVE_MS = 30_000
-export const RECENT_MAX = 20
+export const RECENT_MAX = 500 // pengaman memori; lonceng hanya menampilkan hari ini & kemarin
 export const TOAST_MAX = 3
 export const BEEP_GAP_MS = 5_000
 export const STALE_MS = 60_000
-const HISTORY_LIMIT = 50
+const HISTORY_LIMIT = 200 // batas backend
 export const SEEN_KEY = 'isentinel_notif_seen'
 export const MUTE_KEY = 'isentinel_notif_mute'
 
@@ -113,8 +114,14 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
     mutedRef.current = muted
   }, [muted])
 
-  const addRecent = (list: EventOut[]) =>
-    setRecent((prev) => [...list, ...prev].sort((a, b) => b.id - a.id).slice(0, RECENT_MAX))
+  // lonceng hanya hari ini & kemarin: event sebelum 00:00 kemarin dibuang (juga saat hari berganti)
+  const addRecent = (list: EventOut[]) => {
+    const from = dayStart(1).getTime()
+    setRecent((prev) => [...list, ...prev]
+      .filter((e) => Date.parse(e.ts_event) >= from)
+      .sort((a, b) => b.id - a.id)
+      .slice(0, RECENT_MAX))
+  }
 
   const fire = (e: EventOut) => {
     const now = Date.now()
@@ -168,14 +175,15 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
       }
       return maxStale
     }
-    listEvents({ limit: HISTORY_LIMIT })
+    // riwayat = event pemicu sejak 00:00 kemarin; filter jenis di backend agar absensi tidak memakan limit
+    listEvents({ since: dayStart(1).toISOString(), types: Object.keys(NOTIFY_TYPES), limit: HISTORY_LIMIT })
       .then((list) => {
         if (!alive) return
         const hist = list.map(asNotifyEvent).filter((e): e is EventOut => e !== null)
         for (const e of hist) seen.current.add(e.id)
         addRecent(hist)
         flush(new Set(hist.map((e) => e.id)))
-        // kunjungan pertama: riwayat dianggap sudah dibaca (tanpa badge "20+" palsu)
+        // kunjungan pertama: riwayat dianggap sudah dibaca (tanpa badge "99+" palsu)
         const max = hist.reduce((m, e) => Math.max(m, e.id), 0)
         setSeenId((s) => s ?? max)
         if (read(SEEN_KEY) === null) write(SEEN_KEY, String(max))
@@ -214,7 +222,9 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
 
   const value: EventAlerts = {
     recent,
-    unread: seenId === null ? 0 : recent.filter((e) => e.id > seenId).length,
+    // jendela dihitung saat render: lewat tengah malam tanpa event baru, event lusa tidak ikut dihitung
+    unread: seenId === null ? 0
+      : recent.filter((e) => e.id > seenId && Date.parse(e.ts_event) >= dayStart(1).getTime()).length,
     markAllRead: () => {
       // riwayat belum dimuat (lonceng dibuka dari halaman lambat) → jangan simpan penanda "0" palsu;
       // penyemaian kunjungan pertama terjadi saat riwayat selesai dimuat

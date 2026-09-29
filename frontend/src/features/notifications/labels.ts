@@ -17,3 +17,11 @@ export function eventWhere(e: EventOut, t: (k: TKey) => string, cameraName: (id:
   const zone = typeof e.payload?.zone_name === 'string' && e.payload.zone_name ? e.payload.zone_name : null
   return zone ? `${cameraName(e.camera_id)} · ${zone}` : cameraName(e.camera_id)
 }
+
+/** 00:00 waktu lokal, `daysAgo` hari lalu (0 = hari ini, 1 = kemarin). */
+export function dayStart(daysAgo: number, now = new Date()): Date {
+  const d = new Date(now)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() - daysAgo)
+  return d
+}
