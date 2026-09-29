@@ -183,3 +183,14 @@ def test_dry_run_counts_shared_clip_once(db, tmp_path, monkeypatch):
     r = retention.sweep(db, now=now, dry_run=True)
     assert (r["files_deleted"], r["bytes_freed"], r["events_marked"]) == (1, 2048, 2)
     assert os.path.exists(clip)
+
+
+def test_crops_follow_snapshot_cutoff(db, tmp_path, monkeypatch):
+    """Crop 10 hari dengan snapshot_days=30 harus bertahan (cutoff crop = snapshot, bukan clip)."""
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    crop = _mkfile(str(tmp_path), "crops/x/fresh.jpg", age_days=10)
+    snap = _mkfile(str(tmp_path), "snapshots/x/fresh.jpg", age_days=10)
+    r = retention.sweep(db, now=datetime.now(timezone.utc))
+    assert r["orphans_deleted"] == 0
+    assert os.path.exists(crop) and os.path.exists(snap)

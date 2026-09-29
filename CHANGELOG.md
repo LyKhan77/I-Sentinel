@@ -26,6 +26,12 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   "N event · M file · X" → Hapus dengan konfirmasi merah; tombol Hapus nonaktif sampai pratinjau untuk filter yang
   sama. Frontend **179 passed**, build 0, lint set sama. Bukti:
   `docs/evidence/2026-09-29-storage-cleanup-{1440,390}.png`, `2026-09-29-storage-cleanup-confirm.png`.
+- **Perbaikan review independen** (1 Important + 9 Minor): `cleanup` menghapus baris event/alert lebih dulu
+  (satu transaksi) lalu file — kegagalan hapus file dicatat dan sisanya disapu orphan sweep; `IN (...)` dipecah
+  per 5000 id; log audit juga ditulis saat gagal; `system` (node offline/LWT) ikut dilindungi dan `types` dibatasi
+  ke jenis behavior (422 di luar itu); nilai retensi dari DB divalidasi ulang (rusak/0 → env/default + peringatan);
+  `DiskAlertMonitor.start()` tidak bisa menggandakan loop; StoragePage tetap jalan dengan API lama (tanpa
+  `settings`). Backend **475 passed**, frontend **179 passed**, build 0, lint set sama.
 
 ### User management (2026-09-28)
 

@@ -109,3 +109,14 @@ def test_stats_includes_settings_and_disk_alert(client, tmp_path, monkeypatch):
     assert body["disk_alert"] == {"threshold": 85, "over": True}
     usage["percent"] = 80.0
     assert client.get("/api/v1/storage/stats", headers=h).json()["disk_alert"]["over"] is False
+
+
+def test_stored_settings_out_of_range_fall_back(client, db, monkeypatch):
+    from app.core.config import settings
+    from app.models.setting import Setting
+    monkeypatch.setattr(settings, "retention_days", 30)
+    db.add(Setting(key="storage", value={"clip_days": 0, "snapshot_days": "x", "disk_alert_percent": 5000}))
+    db.commit()
+    h = admin_headers(client)
+    assert client.get("/api/v1/storage/settings", headers=h).json() == \
+        {"clip_days": 30, "snapshot_days": 30, "disk_alert_percent": 85}

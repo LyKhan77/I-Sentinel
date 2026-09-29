@@ -11,6 +11,7 @@ Dua lapis, karena keduanya menangkap kasus berbeda:
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from datetime import date, datetime, time, timedelta, timezone
@@ -23,9 +24,13 @@ from app.models.alert import Alert
 from app.models.event import Event
 from app.services import storage_settings
 
+logger = logging.getLogger(__name__)
+
 KINDS = ("clips", "snapshots", "crops")
 ORPHAN_CUTOFF_KIND = {"clips": "clip", "snapshots": "snapshot", "crops": "snapshot"}
-PROTECTED_TYPES = ("attendance",)  # sumber hari absensi & export — tidak pernah dihapus cleanup
+# absensi (sumber rekap) + catatan sistem (node offline/LWT) tidak pernah dihapus cleanup
+PROTECTED_TYPES = ("attendance", "system")
+CLEANUP_BATCH = 5000  # batas placeholder IN (...) untuk rentang tanggal besar
 
 
 def cutoff_for(now: datetime, days: int) -> datetime:
@@ -173,9 +178,13 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
     }
 
 
+def _chunks(items: list, size: int = CLEANUP_BATCH) -> list[list]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
 def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None = None,
             types: list[str] | None = None, dry_run: bool = True) -> dict:
-    """Hapus event (non-attendance) + clip/snapshot + alert-nya pada rentang tanggal lokal server."""
+    """Hapus event (non-attendance/system) + clip/snapshot + alert-nya pada rentang tanggal lokal server."""
     tz = datetime.now().astimezone().tzinfo
     start = datetime.combine(date_from, time.min, tzinfo=tz)
     end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
@@ -188,25 +197,39 @@ def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] |
     events = q.all()
     if not events:
         return {"events": 0, "files": 0, "bytes": 0, "dry_run": dry_run}
-    # ponytail: IN (...) dengan id event; cukup untuk puluhan ribu baris — pecah per batch bila lebih
     ids = [ev.id for ev in events]
+    id_set = set(ids)
     paths = {p for ev in events for p in (ev.clip_path, ev.snapshot_path) if p}
-    kept = set()
-    if paths:
-        rows = db.query(Event.clip_path, Event.snapshot_path).filter(
-            Event.id.notin_(ids), or_(Event.clip_path.in_(paths), Event.snapshot_path.in_(paths)))
-        kept = {p for row in rows for p in row if p}  # clip insiden bersama dengan event di luar rentang
+    # clip/snapshot bersama: jangan hapus file yang masih dirujuk event yang TIDAK ikut dihapus
+    kept: set[str] = set()
+    for chunk in _chunks(sorted(paths)):
+        rows = db.query(Event.id, Event.clip_path, Event.snapshot_path).filter(
+            or_(Event.clip_path.in_(chunk), Event.snapshot_path.in_(chunk)))
+        kept |= {p for (eid, clip, snap) in rows if eid not in id_set for p in (clip, snap) if p}
     root = settings.storage_root
-    files = freed = 0
+    doomed = []
     for rel in sorted(paths - kept):
         full = _safe_join(root, rel)
         if full and os.path.isfile(full):
-            files += 1
-            freed += _size(full)
-            if not dry_run:
-                os.remove(full)
-    if not dry_run:
-        db.query(Alert).filter(Alert.event_id.in_(ids)).delete(synchronize_session="fetch")
-        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session="fetch")
-        db.commit()
-    return {"events": len(ids), "files": files, "bytes": freed, "dry_run": dry_run}
+            doomed.append(rel)
+    if dry_run:
+        return {"events": len(ids), "files": len(doomed),
+                "bytes": sum(_size(_safe_join(root, rel)) for rel in doomed), "dry_run": True}
+    # Baris dulu (satu transaksi), file sesudahnya: kalau penghapusan file gagal, sisa file disapu
+    # orphan sweep — tidak ada baris event yang menunjuk ke file yang sudah hilang.
+    for chunk in _chunks(ids):
+        db.query(Alert).filter(Alert.event_id.in_(chunk)).delete(synchronize_session="fetch")
+        db.query(Event).filter(Event.id.in_(chunk)).delete(synchronize_session="fetch")
+    db.commit()
+    files = freed = 0
+    for rel in doomed:
+        full = _safe_join(root, rel)
+        size = _size(full)
+        try:
+            os.remove(full)
+        except OSError:
+            logger.warning("cleanup: gagal menghapus %s", rel, exc_info=True)
+            continue
+        files += 1
+        freed += size
+    return {"events": len(ids), "files": files, "bytes": freed, "dry_run": False}

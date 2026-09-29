@@ -2,7 +2,8 @@ from datetime import date
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.services.ingest import ALLOWED_TYPES
+# jenis behavior yang boleh dibersihkan; attendance & system selalu dilindungi cleanup
+CLEANUP_TYPES = {"intrusion", "loitering", "running", "idle_zone", "crowd"}
 
 
 class StorageSettingsPatch(BaseModel):
@@ -14,7 +15,11 @@ class StorageSettingsPatch(BaseModel):
 
 
 class CleanupIn(BaseModel):
-    """Hapus event behavior per rentang tanggal lokal; attendance tidak pernah ikut."""
+    """Hapus event behavior per rentang tanggal lokal.
+
+    `attendance` dan `system` tidak pernah dihapus; `types` hanya boleh berisi jenis behavior
+    (bukan `attendance`/`system`/`person_detect`) — di luar itu 422.
+    """
     model_config = {"extra": "forbid"}
     date_from: date
     date_to: date
@@ -28,7 +33,7 @@ class CleanupIn(BaseModel):
             raise ValueError("date_from must be <= date_to")
         if self.date_to > date.today():
             raise ValueError("date_to must not be in the future")
-        unknown = set(self.types) - ALLOWED_TYPES
+        unknown = set(self.types) - CLEANUP_TYPES
         if unknown:
             raise ValueError(f"unknown event types: {sorted(unknown)}")
         return self

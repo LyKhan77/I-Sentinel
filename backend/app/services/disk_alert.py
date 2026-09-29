@@ -85,6 +85,7 @@ class DiskAlertMonitor:
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
+            logger.warning("disk alert monitor sudah berjalan — start() diabaikan")
             return
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="disk-alert")

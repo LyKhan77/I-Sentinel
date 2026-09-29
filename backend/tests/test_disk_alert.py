@@ -55,3 +55,18 @@ def test_monitor_runs_check_and_stops(monkeypatch):
     time.sleep(0.1)
     m.stop()
     assert calls and not m._thread.is_alive()
+
+
+def test_monitor_start_twice_keeps_single_loop(monkeypatch):
+    monkeypatch.setattr(disk_alert, "check", lambda db: None)
+
+    class FakeSession:
+        def close(self):
+            pass
+
+    m = disk_alert.DiskAlertMonitor(interval_s=5, session_factory=FakeSession)
+    m.start()
+    first = m._thread
+    m.start()  # stop() boleh saja kehabisan join timeout — start() tidak boleh menggandakan loop
+    assert m._thread is first and first.is_alive()
+    m.stop()

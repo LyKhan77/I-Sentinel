@@ -14,8 +14,9 @@ export type StorageSettings = { clip_days: number; snapshot_days: number; disk_a
 
 export type StorageStats = {
   retention_days: number
-  settings: StorageSettings
-  disk_alert: { threshold: number; over: boolean }
+  // opsional: bundle lama / API lama tetap harus bisa dirender tanpa settings (tile jatuh ke retention_days)
+  settings?: StorageSettings
+  disk_alert?: { threshold: number; over: boolean }
   storage_root: string
   disk: { total: number; used: number; free: number; percent: number }
   kinds: Record<string, { files: number; bytes: number }>

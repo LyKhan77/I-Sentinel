@@ -100,7 +100,9 @@ export default function StoragePage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1, background: '#393939', border: '1px solid #393939', marginBottom: 14 }}>
             <Tile
               label={t('storage.retention')}
-              value={t('storage.retentionValue').replace('{clip}', String(stats.settings.clip_days)).replace('{snap}', String(stats.settings.snapshot_days))}
+              value={t('storage.retentionValue')
+                .replace('{clip}', String(stats.settings?.clip_days ?? stats.retention_days))
+                .replace('{snap}', String(stats.settings?.snapshot_days ?? stats.retention_days))}
               testId="storage-retention"
             />
             <Tile label={t('storage.path')} value={stats.storage_root} />
@@ -161,7 +163,11 @@ export default function StoragePage() {
           </div>
 
           <StorageSettingsCard
-            value={stats.settings}
+            value={stats.settings ?? {
+              clip_days: stats.retention_days,
+              snapshot_days: stats.retention_days,
+              disk_alert_percent: stats.disk_alert?.threshold ?? 85,
+            }}
             isAdmin={isAdmin}
             onSaved={(s) => setStats((prev) => (prev ? { ...prev, settings: s, retention_days: s.clip_days } : prev))}
           />

@@ -73,9 +73,16 @@ def run_sweep(
 
 @router.post("/cleanup")
 def cleanup_events(body: CleanupIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
-    result = retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=body.dry_run)
-    if not body.dry_run:
-        logger.info("event cleanup by %s: %s..%s cameras=%s types=%s → %s events, %s files, %s bytes",
-                    admin.username, body.date_from, body.date_to, body.camera_ids or "all",
-                    body.types or "all", result["events"], result["files"], result["bytes"])
+    if body.dry_run:
+        return retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=True)
+    try:
+        result = retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=False)
+    except Exception:
+        logger.exception("event cleanup by %s failed: %s..%s cameras=%s types=%s",
+                         admin.username, body.date_from, body.date_to, body.camera_ids or "all",
+                         body.types or "all")
+        raise
+    logger.info("event cleanup by %s: %s..%s cameras=%s types=%s → %s events, %s files, %s bytes",
+                admin.username, body.date_from, body.date_to, body.camera_ids or "all",
+                body.types or "all", result["events"], result["files"], result["bytes"])
     return result
