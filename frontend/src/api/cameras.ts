@@ -50,6 +50,7 @@ export type CameraNode = {
   name: string
   type: string
   status: string
+  last_seen?: string | null
   hw?: NodeHw | null
   modules?: NodeModules | null
   detector_device?: string | null

@@ -339,6 +339,18 @@ test('toast: tampil untuk event baru, klik isi → detail, klik tutup hanya menu
   expect(screen.queryByTestId('toast-12')).toBeNull()
 })
 
+test('event system reason online: label "pulih", menghapus chip offline node', async () => {
+  renderWith(<><LiveViewPage />{shell}</>, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  send(ev(30, { type: 'system', camera_id: null, zone_id: null, severity: 'warning', payload: { node: 'vision-1', reason: 'lwt' } }))
+  expect(screen.getByTestId('alert-chip-node')).toHaveTextContent('Node vision-1 offline')
+  send(ev(31, { type: 'system', camera_id: null, zone_id: null, severity: 'info', payload: { node: 'vision-1', reason: 'online' } }))
+  expect(screen.queryByTestId('alert-chip-node')).toBeNull()
+  expect(screen.getByTestId('toast-31')).toHaveTextContent('Node pulih')
+  expect(screen.getByTestId('toast-31')).toHaveTextContent('Node vision-1 pulih')
+})
+
 // ---- Live View: outline tile, chip, bunyi TV (Task 3) ----
 class FakeIO {
   static all: FakeIO[] = []

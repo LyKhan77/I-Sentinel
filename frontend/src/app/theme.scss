@@ -1514,3 +1514,21 @@ button.lv-alert-chip {
     border-bottom: 1px solid var(--cds-border-subtle);
   }
 }
+
+/* Banner node offline: AppShell di atas konten; TV fixed di atas wall (di bawah toolbar z-index 10). */
+.node-banner {
+  margin-block-end: 16px;
+
+  .cds--inline-notification {
+    max-inline-size: none;
+  }
+}
+
+.node-banner--tv {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  margin: 0;
+}

@@ -10,6 +10,7 @@ import { useLiveCameras } from './useLiveCameras'
 import { useAutoScroll, useIdle } from './useAutoScroll'
 import { COL_OPTIONS, SCROLL_SPEEDS, screenName, selectCameras, useScreenPrefs, type ScrollSpeed } from './screenPrefs'
 import { useEventAlerts } from '../notifications/EventAlertsProvider'
+import NodeOfflineBanner from '../../components/NodeOfflineBanner'
 
 export const TOOLBAR_HIDE_MS = 4000
 export const SCROLL_RESUME_MS = 10000
@@ -74,6 +75,7 @@ export default function LiveTvPage() {
           </Button>
         </div>
       )}
+      <NodeOfflineBanner tv />
       {loadFailed && <p className="lv-tv__msg">{t('common.loadFailed')}</p>}
       {loading ? null : active.length === 0 ? (
         <p className="lv-tv__msg">{cams.length === 0 ? t('live.noCameras') : t('live.noActiveCameras')}</p>

@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import MonitoringPage from '../features/monitoring/MonitoringPage'
+import NodeOfflineBanner from '../components/NodeOfflineBanner'
 
 const cam = (id: number, health: string, issues: string[] = [], over = {}) => ({
   id, name: `CAM-${id}`, location: 'Gudang', node_id: 1, node_name: 'server', enabled: health !== 'disabled',
@@ -70,4 +71,26 @@ test('polling 10 s; fetch gagal → pesan error, data lama tetap tampil', async 
   await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
   expect(screen.getByTestId('mon-error')).toBeInTheDocument()
   expect(screen.getByTestId('mon-cam-1')).toBeInTheDocument()
+})
+
+test('banner node offline: tampil selama offline, hilang saat online', async () => {
+  vi.useFakeTimers()
+  let nodes = [{ id: 1, name: 'server', type: 'edge', status: 'offline', last_seen: '2026-09-29T07:05:00Z' }]
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => String(url).endsWith('/nodes')
+    ? { ok: true, status: 200, json: () => Promise.resolve(nodes) }
+    : { ok: false, status: 404, json: () => Promise.resolve(null) }))
+  render(<I18nProvider><NodeOfflineBanner /></I18nProvider>)
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  expect(screen.getByTestId('node-offline-banner')).toHaveTextContent('server')
+  expect(screen.getByTestId('node-offline-banner')).toHaveTextContent('deteksi AI berhenti')
+  nodes = [{ ...nodes[0], status: 'online' }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+  expect(screen.queryByTestId('node-offline-banner')).toBeNull()
+})
+
+test('banner: listNodes gagal → tanpa banner', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: () => Promise.resolve(null) })))
+  render(<I18nProvider><NodeOfflineBanner /></I18nProvider>)
+  await act(async () => {})
+  expect(screen.queryByTestId('node-offline-banner')).toBeNull()
 })
