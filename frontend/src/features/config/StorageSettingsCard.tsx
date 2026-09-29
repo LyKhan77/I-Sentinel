@@ -6,6 +6,7 @@ import { saveStorageSettings, type StorageSettings } from '../../api/storage'
 const FIELDS: [keyof StorageSettings, TKey, number, number][] = [
   ['clip_days', 'storage.settings.clipDays', 1, 3650],
   ['snapshot_days', 'storage.settings.snapshotDays', 1, 3650],
+  ['attendance_days', 'storage.settings.attendanceDays', 1, 3650],
   ['disk_alert_percent', 'storage.settings.alertPercent', 50, 99],
 ]
 

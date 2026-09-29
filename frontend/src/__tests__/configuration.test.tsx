@@ -50,7 +50,7 @@ function gate(id: number, direction: 'entry' | 'exit'): Zone {
 
 const STATS = {
   retention_days: 30,
-  settings: { clip_days: 30, snapshot_days: 30, disk_alert_percent: 85 },
+  settings: { clip_days: 30, snapshot_days: 30, attendance_days: 90, disk_alert_percent: 85 },
   disk_alert: { threshold: 85, over: false },
   storage_root: '/data/isentinel',
   disk: { total: 1000, used: 850, free: 150, percent: 85.0 },

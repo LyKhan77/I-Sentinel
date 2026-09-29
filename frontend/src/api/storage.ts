@@ -8,9 +8,15 @@ export type SweepResult = {
   dry_run: boolean
   clip_days?: number
   snapshot_days?: number
+  attendance_days?: number
 }
 
-export type StorageSettings = { clip_days: number; snapshot_days: number; disk_alert_percent: number }
+export type StorageSettings = {
+  clip_days: number
+  snapshot_days: number
+  attendance_days: number // snapshot + crop wajah absensi
+  disk_alert_percent: number
+}
 
 export type StorageStats = {
   retention_days: number

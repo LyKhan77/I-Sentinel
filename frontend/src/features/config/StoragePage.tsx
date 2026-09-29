@@ -102,7 +102,8 @@ export default function StoragePage() {
               label={t('storage.retention')}
               value={t('storage.retentionValue')
                 .replace('{clip}', String(stats.settings?.clip_days ?? stats.retention_days))
-                .replace('{snap}', String(stats.settings?.snapshot_days ?? stats.retention_days))}
+                .replace('{snap}', String(stats.settings?.snapshot_days ?? stats.retention_days))
+                .replace('{att}', String(stats.settings?.attendance_days ?? stats.retention_days))}
               testId="storage-retention"
             />
             <Tile label={t('storage.path')} value={stats.storage_root} />
@@ -166,6 +167,7 @@ export default function StoragePage() {
             value={stats.settings ?? {
               clip_days: stats.retention_days,
               snapshot_days: stats.retention_days,
+              attendance_days: stats.retention_days,
               disk_alert_percent: stats.disk_alert?.threshold ?? 85,
             }}
             isAdmin={isAdmin}

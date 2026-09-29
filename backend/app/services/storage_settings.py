@@ -42,6 +42,8 @@ def get(db: Session) -> dict:
     return {
         "clip_days": _bounded(v.get("clip_days", days), days, *DAYS_RANGE),
         "snapshot_days": _bounded(v.get("snapshot_days", days), days, *DAYS_RANGE),
+        # media absensi (snapshot + crop wajah); baris absensi & rekap tidak pernah dihapus
+        "attendance_days": _bounded(v.get("attendance_days", days), days, *DAYS_RANGE),
         "disk_alert_percent": _bounded(v.get("disk_alert_percent", DEFAULT_ALERT_PERCENT),
                                        DEFAULT_ALERT_PERCENT, *ALERT_RANGE),
     }

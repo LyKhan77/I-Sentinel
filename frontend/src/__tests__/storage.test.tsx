@@ -6,7 +6,7 @@ import StoragePage from '../features/config/StoragePage'
 
 const STATS = {
   retention_days: 30,
-  settings: { clip_days: 30, snapshot_days: 30, disk_alert_percent: 85 },
+  settings: { clip_days: 30, snapshot_days: 30, attendance_days: 90, disk_alert_percent: 85 },
   disk_alert: { threshold: 85, over: true },
   storage_root: '/data/isentinel',
   disk: { total: 1000, used: 850, free: 150, percent: 85.0 },
@@ -61,7 +61,7 @@ test('banner disk hampir penuh dan tile retensi clip/snapshot', async () => {
   stub('viewer')
   renderStorage()
   expect(await screen.findByTestId('disk-alert')).toHaveTextContent('Disk hampir penuh (85%)')
-  expect(screen.getByTestId('storage-retention')).toHaveTextContent('Clip 30 hari · Snapshot 30 hari')
+  expect(screen.getByTestId('storage-retention')).toHaveTextContent('Clip 30 hari · Snapshot 30 hari · Absensi 90 hari')
 })
 
 test('admin menyimpan pengaturan retensi', async () => {
@@ -70,11 +70,12 @@ test('admin menyimpan pengaturan retensi', async () => {
   const clip = await screen.findByLabelText('Retensi clip (hari)')
   await waitFor(() => expect(screen.getByTestId('storage-settings-save')).toBeInTheDocument())
   fireEvent.change(clip, { target: { value: '7' } })
+  fireEvent.change(screen.getByLabelText('Retensi media absensi (hari)'), { target: { value: '60' } })
   await userEvent.click(screen.getByTestId('storage-settings-save'))
   expect(await screen.findByText('Pengaturan tersimpan')).toBeInTheDocument()
   const put = f.mock.calls.find(([, i]) => (i as RequestInit | undefined)?.method === 'PUT')!
-  expect(JSON.parse(String((put[1] as RequestInit).body))).toEqual({ clip_days: 7, snapshot_days: 30, disk_alert_percent: 85 })
-  expect(screen.getByTestId('storage-retention')).toHaveTextContent('Clip 7 hari')
+  expect(JSON.parse(String((put[1] as RequestInit).body))).toEqual({ clip_days: 7, snapshot_days: 30, attendance_days: 60, disk_alert_percent: 85 })
+  expect(screen.getByTestId('storage-retention')).toHaveTextContent('Clip 7 hari · Snapshot 30 hari · Absensi 60 hari')
 })
 
 test('422 dari server tampil sebagai pesan rentang', async () => {

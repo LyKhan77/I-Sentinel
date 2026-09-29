@@ -206,15 +206,18 @@ Tab **Storage** di Konfigurasi: pemakaian disk, ukuran per jenis media (clips/sn
 sweep retensi manual (admin), pengaturan retensi, dan (admin) pembersihan event per rentang tanggal.
 
 - **Retensi editable dari UI**: `GET/PUT /api/v1/storage/settings` menyimpan clip dan snapshot
-  **terpisah** (`clip_days`, `snapshot_days`, 1–3650 hari) plus ambang peringatan disk
+  **terpisah** (`clip_days`, `snapshot_days`, `attendance_days` untuk media absensi, 1–3650 hari) plus ambang peringatan disk
   (`disk_alert_percent`, 50–99 %). Nilai disimpan di tabel `setting` (key `storage`) — tanpa migrasi.
   Field yang belum pernah disimpan tetap mengikuti `RETENTION_DAYS` di `.env`; sweep harian systemd
   (`isentinel-retention.timer`) membaca nilai DB, jadi perubahan berlaku pada sweep berikutnya tanpa
   restart. Viewer melihat nilainya read-only (PUT tetap admin-only).
 - **Sweep terpisah clip vs snapshot**: event yang lebih tua dari `clip_days` kehilangan clip, yang
-  lebih tua dari `snapshot_days` kehilangan snapshot (crop mengikuti snapshot). Clip insiden yang
-  masih dirujuk event lebih baru tidak dihapus; file orphan disapu per jenis dengan cutoff yang sama.
-  Hasil sweep mencatat `clip_days`/`snapshot_days`.
+  lebih tua dari `snapshot_days` kehilangan snapshot. **Media absensi** (snapshot + crop wajah
+  `payload.crop_path`) mengikuti `attendance_days`; `crop_path` di-null-kan saat crop dihapus (Inbox
+  tanpa gambar rusak). Baris absensi, rekap, dan foto enrollment (`faces/`) tidak pernah dihapus.
+  Clip insiden yang masih dirujuk event lebih baru tidak dihapus; file orphan disapu per jenis
+  (`crops/` ikut `attendance_days`; crop yang masih dirujuk bukan orphan). Hasil sweep mencatat
+  `clip_days`/`snapshot_days`/`attendance_days`.
 - **Bersihkan event per rentang tanggal** (admin): pilih tanggal dari/sampai (maks hari ini), opsional
   kamera dan jenis behavior (hanya `intrusion`/`loitering`/`running`/`idle_zone`/`crowd`) → **Pratinjau**
   (dry run) menampilkan "N event · M file · X" → **Hapus** dengan konfirmasi merah. Yang dihapus: baris

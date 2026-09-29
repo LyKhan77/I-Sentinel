@@ -37,6 +37,13 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `docs/runbooks/storage-retention.md` (ubah retensi, cleanup aman, tanggap alert disk, verifikasi, rollback),
   ROADMAP baris RS. Suite akhir: backend **475 passed**, vision **223 passed (3 deselected)**, frontend
   **179 passed**, build 0, lint set sama. Review independen: 4/4 fokus PASS, 1 Important + 9 Minor diperbaiki.
+- **Feedback user — retensi media absensi sendiri**: `attendance_days` (default `RETENTION_DAYS`, 1–3650) untuk
+  snapshot + crop wajah event absensi, terpisah dari snapshot behavior; crop (`payload.crop_path`) kini dirujuk
+  resmi → dihapus lapis 1 dan path di-null-kan (Inbox tanpa gambar rusak), `crops/` orphan ikut `attendance_days`;
+  baris absensi, rekap, dan `faces/` tetap tidak disentuh. UI: field "Retensi media absensi (hari)", tile
+  "Clip · Snapshot · Absensi", hint cleanup diperjelas. Backend **479 passed**, frontend **179 passed**, build 0,
+  lint set sama. Catatan: `liveview.test.tsx` "tile di luar layar…" sekali gagal di suite penuh lalu lulus 3×
+  berturut (flaky, di luar perubahan ini).
 
 ### User management (2026-09-28)
 

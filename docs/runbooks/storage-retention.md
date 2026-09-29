@@ -7,10 +7,11 @@ dan menanggapi peringatan disk hampir penuh. Semua lewat **Konfigurasi → Stora
 > `attendance_day` tidak tersentuh. Namun event behavior yang dibersihkan **tidak bisa dipulihkan**
 > — clip/snapshot-nya ikut terhapus dari disk.
 
-## 1. Mengubah retensi (clip vs snapshot)
+## 1. Mengubah retensi (clip, snapshot, media absensi)
 
 1. Konfigurasi → Storage → kartu **Pengaturan retensi**.
-2. Isi **Retensi clip (hari)** dan **Retensi snapshot (hari)** (1–3650), dan/atau **Peringatan disk (%)**
+2. Isi **Retensi clip (hari)**, **Retensi snapshot (hari)** (behavior), **Retensi media absensi (hari)**
+   (snapshot + crop wajah absensi; baris & rekap absensi tetap) (1–3650), dan/atau **Peringatan disk (%)**
    (50–99) → **Simpan** (toast "Pengaturan tersimpan"; nilai di luar rentang → 422 dengan pesan rentang).
 3. Berlaku pada **sweep berikutnya** (timer systemd harian) atau tombol **Jalankan sekarang**
    (jalankan **Dry run** dulu untuk melihat dampaknya). Tanpa restart API.

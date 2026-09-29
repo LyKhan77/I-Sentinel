@@ -27,7 +27,7 @@ const NODES = [
 const STATS = { total: 47, by_type: { intrusi: 12, loitering: 8 } }
 const STATS_STORAGE = {
   retention_days: 30,
-  settings: { clip_days: 30, snapshot_days: 30, disk_alert_percent: 85 },
+  settings: { clip_days: 30, snapshot_days: 30, attendance_days: 90, disk_alert_percent: 85 },
   storage_root: '/data/isentinel',
   disk: { total: 100, used: 91, free: 9, percent: 91 },
   disk_alert: { threshold: 85, over: true },

@@ -27,7 +27,8 @@ from app.services import storage_settings
 logger = logging.getLogger(__name__)
 
 KINDS = ("clips", "snapshots", "crops")
-ORPHAN_CUTOFF_KIND = {"clips": "clip", "snapshots": "snapshot", "crops": "snapshot"}
+# crops/ = crop wajah absensi (payload.crop_path) → ikut retensi media absensi
+ORPHAN_CUTOFF_KIND = {"clips": "clip", "snapshots": "snapshot", "crops": "attendance"}
 # absensi (sumber rekap) + catatan sistem (node offline/LWT) tidak pernah dihapus cleanup
 PROTECTED_TYPES = ("attendance", "system")
 CLEANUP_BATCH = 5000  # batas placeholder IN (...) untuk rentang tanggal besar
@@ -93,17 +94,26 @@ def _prune_empty_dirs(base: str) -> None:
             pass
 
 
-def _expire_field(db: Session, root: str, field: str, cutoff: datetime, dry_run: bool) -> tuple[int, int, list]:
+def _by_attendance(q, attendance: bool | None):
+    """None = semua jenis; True = hanya absensi; False = selain absensi."""
+    if attendance is None:
+        return q
+    return q.filter(Event.type == "attendance") if attendance else q.filter(Event.type != "attendance")
+
+
+def _expire_field(db: Session, root: str, field: str, cutoff: datetime, dry_run: bool,
+                  attendance: bool | None = None) -> tuple[int, int, list]:
     """Hapus file `field` (clip_path/snapshot_path) milik event lebih tua dari cutoff.
 
     File yang masih dirujuk event lebih baru (clip insiden bersama) dipertahankan; path event
     kedaluwarsa tetap di-null-kan. Perbandingan waktu di SQL (SQLite tes = datetime naif).
     """
     col = getattr(Event, field)
-    expired = db.query(Event).filter(Event.ts_event < cutoff, col.isnot(None)).all()
+    expired = _by_attendance(db.query(Event).filter(Event.ts_event < cutoff, col.isnot(None)), attendance).all()
     if not expired:
         return 0, 0, []
-    live = {p for (p,) in db.query(col).filter(Event.ts_event >= cutoff, col.isnot(None))}
+    live = {p for (p,) in _by_attendance(db.query(col).filter(Event.ts_event >= cutoff, col.isnot(None)),
+                                         attendance)}
     files = freed = 0
     seen: set[str] = set()
     for ev in expired:
@@ -121,17 +131,48 @@ def _expire_field(db: Session, root: str, field: str, cutoff: datetime, dry_run:
     return files, freed, expired
 
 
+def _expire_crops(db: Session, root: str, cutoff: datetime, dry_run: bool) -> tuple[int, int, list]:
+    """Crop wajah absensi (payload.crop_path) lebih tua dari cutoff: hapus file, null-kan path.
+
+    ponytail: memindai payload event absensi lama di Python (JSON filter beda per dialek); pindah ke
+    filter JSON SQL bila baris absensi mencapai ratusan ribu.
+    """
+    rows = db.query(Event).filter(Event.type == "attendance", Event.ts_event < cutoff).all()
+    expired = [ev for ev in rows if (ev.payload or {}).get("crop_path")]
+    files = freed = 0
+    seen: set[str] = set()
+    for ev in expired:
+        rel = ev.payload["crop_path"]
+        full = _safe_join(root, rel)
+        if rel not in seen and full and os.path.isfile(full):
+            seen.add(rel)
+            files += 1
+            freed += _size(full)
+            if not dry_run:
+                os.remove(full)
+        if not dry_run:
+            ev.payload = {**ev.payload, "crop_path": None}  # dict baru → perubahan JSON terdeteksi
+            ev.media_expired = True
+    return files, freed, expired
+
+
 def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     root = settings.storage_root
     s = storage_settings.get(db)
-    cutoffs = {"clip": cutoff_for(now, s["clip_days"]), "snapshot": cutoff_for(now, s["snapshot_days"])}
+    cutoffs = {"clip": cutoff_for(now, s["clip_days"]), "snapshot": cutoff_for(now, s["snapshot_days"]),
+               "attendance": cutoff_for(now, s["attendance_days"])}
 
-    # --- lapis 1: media event kedaluwarsa, per jenis ---
-    c_files, c_bytes, c_events = _expire_field(db, root, "clip_path", cutoffs["clip"], dry_run)
-    s_files, s_bytes, s_events = _expire_field(db, root, "snapshot_path", cutoffs["snapshot"], dry_run)
-    files_deleted, bytes_freed = c_files + s_files, c_bytes + s_bytes
-    events_marked = len({ev.id for ev in c_events + s_events})
+    # --- lapis 1: media event kedaluwarsa, per jenis (absensi punya retensi sendiri) ---
+    parts = [
+        _expire_field(db, root, "clip_path", cutoffs["clip"], dry_run),
+        _expire_field(db, root, "snapshot_path", cutoffs["snapshot"], dry_run, attendance=False),
+        _expire_field(db, root, "snapshot_path", cutoffs["attendance"], dry_run, attendance=True),
+        _expire_crops(db, root, cutoffs["attendance"], dry_run),
+    ]
+    files_deleted = sum(p[0] for p in parts)
+    bytes_freed = sum(p[1] for p in parts)
+    events_marked = len({ev.id for p in parts for ev in p[2]})
     if not dry_run:
         db.commit()
 
@@ -142,6 +183,11 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
             referenced.add(clip)
         if snap:
             referenced.add(snap)
+    # crop yang masih dirujuk payload absensi bukan orphan (lapis 1 yang mengatur umurnya)
+    for (payload,) in db.query(Event.payload).filter(Event.type == "attendance"):
+        crop = (payload or {}).get("crop_path")
+        if crop:
+            referenced.add(crop)
 
     orphans_deleted = 0
     for kind in KINDS:
@@ -175,6 +221,7 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
         "dry_run": dry_run,
         "clip_days": s["clip_days"],
         "snapshot_days": s["snapshot_days"],
+        "attendance_days": s["attendance_days"],
     }
 
 
