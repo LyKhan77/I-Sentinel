@@ -3,6 +3,18 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Event wajib bermedia (2026-09-29 – …)
+
+- **Event tanpa media dihapus**: sweep retensi menghapus baris event + alert bila media terakhirnya (clip,
+  snapshot, crop) habis oleh retensi — juga event lama ber-`media_expired` tanpa path (sisa retensi versi
+  sebelumnya); `events_deleted` di hasil sweep/dry run & tab Storage. Mode cleanup "Media absensi saja" ikut
+  menghapus entri Inbox absensi (rekap `attendance_day` & riwayat `attendance_event` tetap). Log `system`
+  dikecualikan; event baru yang medianya belum datang tidak tersentuh (butuh `media_expired`).
+- **Behavior wajib Snapshot/Clip**: backend 422 bila behavior `snapshot` & `clip` sama-sama `false` (attendance:
+  `snapshot` `false` → 422); Zona Deteksi menampilkan peringatan merah per behavior dan menonaktifkan Simpan.
+- Tes lama retensi/cleanup diperbarui ke semantik baru (event kedaluwarsa kini terhapus). Backend **488 passed**,
+  frontend **182 passed**, build 0, lint set sama.
+
 ### Cleanup media absensi per tanggal (2026-09-29)
 
 - **Mode "Media absensi saja"** di Bersihkan event (`POST /storage/cleanup` `mode: "attendance_media"`): hapus foto +

@@ -53,10 +53,9 @@ def test_sweep_deletes_expired_files_and_marks_event(db, tmp_path, monkeypatch):
     assert not os.path.exists(old_clip)
     assert os.path.exists(fresh_clip)
 
-    db.refresh(ev_old)
+    # media terakhir event lama habis → event (card Events) ikut dihapus
+    assert result["events_deleted"] == 1 and db.get(Event, ev_old.id) is None
     db.refresh(ev_fresh)
-    assert ev_old.media_expired is True
-    assert ev_old.clip_path is None
     assert ev_fresh.media_expired is False
     assert ev_fresh.clip_path == "clips/2026/09/14/b.mp4"
 
@@ -76,9 +75,8 @@ def test_sweep_keeps_clip_shared_with_unexpired_event(db, tmp_path, monkeypatch)
 
     assert os.path.exists(shared)
     assert result["files_deleted"] == 0
-    db.refresh(ev_old)
+    assert db.get(Event, ev_old.id) is None  # medianya habis (path di-null-kan) → event dihapus
     db.refresh(ev_new)
-    assert ev_old.media_expired is True and ev_old.clip_path is None
     assert ev_new.clip_path == "clips/2026/08/16/inc.mp4"
 
 
@@ -93,6 +91,7 @@ def test_sweep_dry_run_touches_nothing(db, tmp_path, monkeypatch):
 
     assert result["dry_run"] is True
     assert result["files_deleted"] == 1  # dilaporkan, tidak dihapus
+    assert result["events_deleted"] == 1  # prediksi, event tetap ada
     assert os.path.exists(path)
     db.refresh(ev)
     assert ev.media_expired is False
@@ -157,8 +156,7 @@ def test_sweep_split_retention_across_two_runs(db, tmp_path, monkeypatch):
     later = now + timedelta(days=25)  # event kini 35 hari → snapshot kedaluwarsa juga
     r = retention.sweep(db, now=later)
     assert r["files_deleted"] == 1 and not os.path.exists(snap)
-    db.refresh(ev)
-    assert ev.snapshot_path is None
+    assert r["events_deleted"] == 1 and db.get(Event, ev.id) is None  # media terakhir habis
 
 
 def test_orphans_use_per_kind_cutoff(db, tmp_path, monkeypatch):
@@ -224,10 +222,8 @@ def test_attendance_media_uses_own_retention(db, tmp_path, monkeypatch):
     r = retention.sweep(db, now=now)
     assert (r["files_deleted"], r["attendance_days"]) == (2, 7)
     assert not os.path.exists(a_snap) and not os.path.exists(a_crop) and os.path.exists(b_snap)
-    db.refresh(att)
+    assert db.get(Event, att.id) is None  # foto + crop habis → entri Inbox absensi dihapus
     db.refresh(beh)
-    assert att.snapshot_path is None and att.payload.get("crop_path") is None and att.media_expired is True
-    assert att.payload["direction"] == "entry"  # payload lain utuh
     assert beh.snapshot_path == "snapshots/2026/09/05/beh.jpg" and beh.media_expired is False
 
 
@@ -290,4 +286,47 @@ def test_sweep_nulls_attendance_event_copy_of_crop(db, tmp_path, monkeypatch):
     db.add(row); db.commit()
     retention.sweep(db, now=now)
     db.refresh(row)
-    assert row.snapshot_path is None
+    assert row.snapshot_path is None and db.get(AttendanceEvent, row.id) is not None  # riwayat tetap
+
+
+def test_event_with_remaining_media_kept_and_system_logs_untouched(db, tmp_path, monkeypatch):
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"clip_days": 7, "snapshot_days": 30})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    _mkfile(str(tmp_path), "clips/k.mp4", age_days=10)
+    _mkfile(str(tmp_path), "snapshots/k.jpg", age_days=10)
+    kept = _event(db, now - timedelta(days=10), clip="clips/k.mp4", snap="snapshots/k.jpg")
+    sys_ev = Event(type="system", ts_event=now - timedelta(days=90), media_expired=True, payload={"node": "n"})
+    db.add(sys_ev); db.commit()
+    r = retention.sweep(db, now=now)
+    assert r["events_deleted"] == 0
+    db.refresh(kept)
+    assert kept.clip_path is None and kept.snapshot_path == "snapshots/k.jpg"
+    assert db.get(Event, sys_ev.id) is not None
+
+
+def test_new_event_waiting_for_media_is_never_purged(db, tmp_path, monkeypatch):
+    """Event baru belum punya media (upload menyusul) → bukan kedaluwarsa, tidak boleh terhapus."""
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    now = datetime.now(timezone.utc)
+    waiting = _event(db, now - timedelta(seconds=5))
+    old_no_media = _event(db, now - timedelta(days=90))  # tanpa media sejak awal, tapi bukan hasil retensi
+    r = retention.sweep(db, now=now)
+    assert r["events_deleted"] == 0
+    assert db.get(Event, waiting.id) is not None and db.get(Event, old_no_media.id) is not None
+
+
+def test_legacy_expired_events_without_media_purged_with_alerts(db, tmp_path, monkeypatch):
+    """Event lama yang medianya sudah dihapus retensi versi sebelumnya ikut dibersihkan (+ alert)."""
+    from app.models.alert import Alert
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    now = datetime.now(timezone.utc)
+    ev = _event(db, now - timedelta(days=60))
+    ev.media_expired = True
+    db.add(Alert(event_id=ev.id, type="intrusion", status="sent"))
+    db.commit()
+    dry = retention.sweep(db, now=now, dry_run=True)
+    assert dry["events_deleted"] == 1 and db.get(Event, ev.id) is not None
+    r = retention.sweep(db, now=now)
+    assert r["events_deleted"] == 1 and db.get(Event, ev.id) is None and db.query(Alert).count() == 0

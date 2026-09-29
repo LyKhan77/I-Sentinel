@@ -228,10 +228,9 @@ def test_attendance_media_mode_keeps_rows_and_recap(db, root):
     r = retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), mode="attendance_media", dry_run=False)
     assert (r["events"], r["files"], r["bytes"]) == (1, 2, 250)
     assert not os.path.exists(snap) and not os.path.exists(crop)
-    db.refresh(ev); db.refresh(row)
-    assert ev.snapshot_path is None and ev.payload["crop_path"] is None and ev.media_expired is True
-    assert ev.payload["employee_id"] == emp.id  # payload lain utuh
-    assert row.snapshot_path is None and db.get(AttendanceEvent, row.id) is not None
+    db.refresh(row)
+    assert db.get(Event, ev.id) is None  # entri Inbox absensi ikut hilang (media habis)
+    assert row.snapshot_path is None and db.get(AttendanceEvent, row.id) is not None  # riwayat tetap
     assert db.query(AttendanceDay).count() == 1 and db.get(Event, beh.id) is not None
 
 

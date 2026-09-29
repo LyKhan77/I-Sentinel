@@ -89,7 +89,7 @@ export default function StoragePage() {
           kind={sweepResult.dry_run ? 'info' : 'success'}
           lowContrast
           title={sweepResult.dry_run ? t('storage.dryRun') : t('storage.sweepOk')}
-          subtitle={`${sweepResult.files_deleted} ${t('storage.sweepFiles')} · ${fmt(sweepResult.bytes_freed)} · ${sweepResult.events_marked} ${t('storage.lastSweepMarked')} · ${sweepResult.orphans_deleted} ${t('storage.sweepOrphans')}`}
+          subtitle={`${sweepResult.files_deleted} ${t('storage.sweepFiles')} · ${fmt(sweepResult.bytes_freed)} · ${sweepResult.events_marked} ${t('storage.lastSweepMarked')} · ${sweepResult.orphans_deleted} ${t('storage.sweepOrphans')} · ${sweepResult.events_deleted ?? 0} ${t('storage.sweepEventsDeleted')}`}
         />
       )}
 
@@ -153,7 +153,7 @@ export default function StoragePage() {
                 <div style={{ marginTop: 4, color: '#c6c6c6' }}>
                   {stats.last_sweep.files_deleted} {t('storage.sweepFiles')} · {fmt(stats.last_sweep.bytes_freed)} ·{' '}
                   {stats.last_sweep.events_marked} {t('storage.lastSweepMarked')} · {stats.last_sweep.orphans_deleted}{' '}
-                  {t('storage.sweepOrphans')}
+                  {t('storage.sweepOrphans')} · {stats.last_sweep.events_deleted ?? 0} {t('storage.sweepEventsDeleted')}
                 </div>
               </div>
             ) : (

@@ -24,6 +24,12 @@ def _validate_behaviors(v: list | None) -> list | None:
         for flag in ("snapshot", "clip", "telegram"):
             if flag in b and not isinstance(b[flag], bool):
                 raise ValueError(f"{flag} must be a boolean")
+        # event = bukti visual: tanpa media event langsung jadi card kosong (dan terhapus retensi).
+        # attendance tidak merekam clip → snapshot wajib. Flag absen = ikut zona (data lama).
+        if b.get("kind") == "attendance" and b.get("snapshot") is False:
+            raise ValueError("behavior attendance needs snapshot")
+        if b.get("snapshot") is False and b.get("clip") is False:
+            raise ValueError(f"behavior {b.get('kind')} needs snapshot or clip")
         min_count = b.get("min_count")
         if b.get("kind") == "crowd" and min_count is None:
             raise ValueError("crowd requires min_count")

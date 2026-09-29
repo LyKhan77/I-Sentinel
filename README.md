@@ -218,6 +218,13 @@ sweep retensi manual (admin), pengaturan retensi, dan (admin) pembersihan event 
   Clip insiden yang masih dirujuk event lebih baru tidak dihapus; file orphan disapu per jenis
   (`crops/` ikut `attendance_days`; crop yang masih dirujuk bukan orphan). Hasil sweep mencatat
   `clip_days`/`snapshot_days`/`attendance_days`.
+- **Event tanpa media dihapus**: event = bukti visual. Saat retensi/cleanup menghapus media **terakhir**
+  sebuah event (clip, snapshot, dan crop semuanya habis), baris event + alert-nya ikut dihapus → card hilang
+  dari Events (hasil sweep: `events_deleted`). Berlaku untuk behavior & absensi (rekap `attendance_day` dan
+  riwayat `attendance_event` tetap); log `system` dikecualikan; event baru yang medianya masih menyusul tidak
+  tersentuh (hanya event ber-`media_expired`). Mode cleanup "Media absensi saja" ikut menghapus entri Inbox-nya.
+- **Behavior wajib punya media**: Zona Deteksi menolak behavior aktif dengan Snapshot **dan** Clip off
+  (peringatan merah + Simpan nonaktif; backend 422 `needs snapshot or clip`; attendance wajib snapshot).
 - **Bersihkan event per rentang tanggal** (admin): pilih tanggal dari/sampai (maks hari ini), opsional
   kamera dan jenis (`intrusion`/`loitering`/`running`/`idle_zone`/`crowd`/`system`) → **Pratinjau**
   (dry run) menampilkan "N event · M file · X" → **Hapus** dengan konfirmasi merah. Yang dihapus: baris

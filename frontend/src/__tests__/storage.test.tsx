@@ -15,7 +15,7 @@ const STATS = {
     snapshots: { files: 5, bytes: 1024 },
     crops: { files: 0, bytes: 0 },
   },
-  last_sweep: { at: '2026-09-15T03:00:00+00:00', files_deleted: 3, bytes_freed: 4096, events_marked: 2, orphans_deleted: 1, dry_run: false },
+  last_sweep: { at: '2026-09-15T03:00:00+00:00', files_deleted: 3, bytes_freed: 4096, events_marked: 2, orphans_deleted: 1, events_deleted: 2, dry_run: false },
 }
 
 test('menampilkan retensi, disk, per-jenis, dan sweep terakhir', async () => {
@@ -62,6 +62,7 @@ test('banner disk hampir penuh dan tile retensi clip/snapshot', async () => {
   renderStorage()
   expect(await screen.findByTestId('disk-alert')).toHaveTextContent('Disk hampir penuh (85%)')
   expect(screen.getByTestId('storage-retention')).toHaveTextContent('Clip 30 hari · Snapshot 30 hari · Absensi 90 hari')
+  expect(screen.getByTestId('storage-last-sweep')).toHaveTextContent('2 event tanpa media dihapus')
 })
 
 test('admin menyimpan pengaturan retensi', async () => {
