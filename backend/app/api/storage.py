@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -7,10 +8,12 @@ from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.setting import Setting
-from app.schemas.storage import StorageSettingsPatch
+from app.schemas.storage import CleanupIn, StorageSettingsPatch
 from app.services import retention, storage_settings
 
 router = APIRouter(prefix="/api/v1/storage", tags=["storage"])
+
+logger = logging.getLogger(__name__)
 
 LAST_SWEEP_KEY = "retention_last_sweep"
 
@@ -66,3 +69,13 @@ def run_sweep(
 ):
     result = retention.sweep(db, dry_run=dry_run)
     return _record_sweep(db, result)
+
+
+@router.post("/cleanup")
+def cleanup_events(body: CleanupIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
+    result = retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=body.dry_run)
+    if not body.dry_run:
+        logger.info("event cleanup by %s: %s..%s cameras=%s types=%s → %s events, %s files, %s bytes",
+                    admin.username, body.date_from, body.date_to, body.camera_ids or "all",
+                    body.types or "all", result["events"], result["files"], result["bytes"])
+    return result

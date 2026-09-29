@@ -11,6 +11,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Sweep retensi terpisah**: clip memakai `clip_days`, snapshot/crops memakai `snapshot_days` (juga orphan);
   event yang clip-nya sudah kedaluwarsa tetap diproses saat snapshot-nya kedaluwarsa; dry run menghitung clip
   bersama sekali; hasil sweep mencatat `clip_days`/`snapshot_days`. Backend **456 passed**.
+- **Cleanup event per tanggal**: `POST /storage/cleanup` (admin, dry run default) menghapus event non-attendance +
+  clip/snapshot + alert-nya pada rentang tanggal lokal (filter kamera/jenis opsional); attendance tidak pernah
+  dihapus walau diminta; clip bersama dengan event di luar rentang dipertahankan; validasi tanggal/jenis 422;
+  cleanup nyata dicatat di log dengan username admin. Backend **463 passed**.
 
 ### User management (2026-09-28)
 
