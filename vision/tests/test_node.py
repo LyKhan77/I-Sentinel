@@ -445,3 +445,35 @@ def test_heartbeat_reports_face_module_and_distinct_cameras(tmp_path):
     node._heartbeat_loop()
     assert node.transport.heartbeats[0]["cameras"] == [363]
     assert node.transport.heartbeats[0]["modules"]["face"] == node._face_module_info()
+
+
+def test_camera_stats_per_worker_fps_window_and_restart(tmp_path):
+    node, workers, *_ = _wired_node(tmp_path, [ATTENDANCE_ZONE, BEHAVIOR_ZONE])
+    node._workers = workers
+    det = next(w for w in workers if isinstance(w, CameraWorker))
+    face = next(w for w in workers if not isinstance(w, CameraWorker))
+    det.frames = det.motion_skipped = face.frames = 0  # worker sudah sempat jalan sebelum stop
+
+    first = node._camera_stats(100.0)
+    assert sorted((c["id"], c["worker"]) for c in first) == [(363, "detect"), (363, "face")]
+    assert all(c["fps"] is None for c in first)  # jendela pertama belum ada pembanding
+
+    det.frames, det.motion_skipped, face.frames = 50, 20, 40
+    stats = {c["worker"]: c for c in node._camera_stats(110.0)}
+    assert stats["detect"]["fps"] == 5.0 and stats["face"]["fps"] == 4.0
+    assert stats["face"]["motion_skip_pct"] is None
+
+    det.frames = 3  # config reload: worker baru, counter mulai dari 0
+    stats = {c["worker"]: c for c in node._camera_stats(120.0)}
+    assert stats["detect"]["fps"] is None  # bukan negatif
+
+
+def test_camera_stats_motion_skip_pct(tmp_path):
+    node, workers, *_ = _wired_node(tmp_path, [BEHAVIOR_ZONE])
+    node._workers = workers
+    det = next(w for w in workers if isinstance(w, CameraWorker))
+    det.frames = det.motion_skipped = 0  # worker sudah sempat jalan sebelum stop
+    det.motion_gate = object()  # gate aktif
+    node._camera_stats(0.0)
+    det.frames, det.motion_skipped = 40, 30
+    assert node._camera_stats(10.0)[0]["motion_skip_pct"] == 75.0

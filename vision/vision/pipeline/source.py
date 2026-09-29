@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
@@ -11,6 +12,9 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 RECONNECT_START_S = 1.0
+STALL_S = 10.0            # terbuka tapi tanpa frame selama ini = RTSP macet
+START_GRACE_S = 30.0      # belum ada frame sejak start: masih "starting" selama ini
+RECONNECT_WINDOW_S = 3600.0
 
 
 @dataclass
@@ -31,13 +35,19 @@ class FrameSource:
       (measured: +0.67 s lag per second at 5 of 15 fps).
     """
 
-    def __init__(self, url: str, target_fps: float = 5.0, open_capture=None):
+    def __init__(self, url: str, target_fps: float = 5.0, open_capture=None,
+                 clock=time.monotonic):
         self.url = url
         self.target_fps = target_fps
         self._interval = 1.0 / target_fps
         self._cap = None
         self._closed = False
         self._open_capture = open_capture  # None -> cv2.VideoCapture (tes menyuntik palsu)
+        self._clock = clock
+        self._started_mono: float | None = None
+        self._last_frame_mono: float | None = None
+        self._failing = False
+        self._reconnects: deque[float] = deque()
         self._cond = threading.Condition()
         self._latest = None      # (seq, ts, data) frame terbaru dari reader thread
         self._last_seq = 0       # seq terakhir yang sudah dikembalikan __next__
@@ -61,6 +71,7 @@ class FrameSource:
 
     def start(self) -> None:
         self._cap = self._open()
+        self._started_mono = self._clock()
         if not self._cap.isOpened():
             log.warning("cannot open video source %s, retrying", self.url)
         self._next_due = time.monotonic()
@@ -77,6 +88,7 @@ class FrameSource:
             if ok:
                 delay = RECONNECT_START_S
                 seq += 1
+                self._on_frame()
                 with self._cond:
                     self._latest = (seq, time.monotonic(), data)
                     self._cond.notify_all()
@@ -84,6 +96,7 @@ class FrameSource:
             # read failure: reconnect with exponential backoff, max 30s
             if self._closed:
                 break
+            self._on_fail()
             time.sleep(delay)
             delay = min(delay * 2, 30.0)
             self._reconnect()
@@ -95,7 +108,37 @@ class FrameSource:
     def _reconnect(self) -> bool:
         self._cap.release()
         self._cap = self._open()
-        return self._cap.isOpened()
+        opened = self._cap.isOpened()
+        self._on_reconnect(opened)
+        return opened
+
+    def _on_frame(self) -> None:
+        self._last_frame_mono = self._clock()
+        self._failing = False
+
+    def _on_fail(self) -> None:
+        self._failing = True
+
+    def _on_reconnect(self, opened: bool) -> None:
+        self._reconnects.append(self._clock())
+        self._failing = not opened
+
+    def stats(self) -> dict:
+        """Kesehatan sumber untuk heartbeat: state, umur frame terakhir, reconnect 1 jam terakhir."""
+        now = self._clock()
+        while self._reconnects and now - self._reconnects[0] > RECONNECT_WINDOW_S:
+            self._reconnects.popleft()
+        age = None if self._last_frame_mono is None else round(now - self._last_frame_mono, 1)
+        if self._failing:
+            state = "reconnecting"
+        elif age is None:
+            started = self._started_mono is not None and now - self._started_mono < START_GRACE_S
+            state = "starting" if started else "reconnecting"
+        elif age > STALL_S:
+            state = "stalled"
+        else:
+            state = "streaming"
+        return {"state": state, "last_frame_age_s": age, "reconnects_1h": len(self._reconnects)}
 
     def __iter__(self) -> "FrameSource":
         return self
