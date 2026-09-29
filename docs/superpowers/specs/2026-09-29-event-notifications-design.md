@@ -64,6 +64,7 @@ Modul baru: `frontend/src/features/notifications/`.
   - `recent: EventOut[]` — 20 event terakhir (urut `id` turun).
   - `unread: number` — jumlah di `recent` dengan `id > seenId`.
   - `markAllRead()` — `seenId = max id` di `recent`, simpan ke localStorage `isentinel_notif_seen`.
+    Kunjungan pertama (key belum ada) → setelah riwayat dimuat `seenId = max id riwayat` (tanpa badge "20+" palsu).
   - `active: Record<cameraId, {type, severity, zoneName, until}>` — alert aktif per kamera; `until = now + 30 s`,
     event baru di kamera sama mengganti isi dan memperpanjang `until`. Kedaluwarsa dibersihkan timer 1 s.
   - `systemActive: {node, until}[]` — event `system` baru, aktif 30 s (untuk chip, karena tanpa kamera).
@@ -93,7 +94,7 @@ Modul baru: `frontend/src/features/notifications/`.
 ### 3.4 Live View — outline tile + chip
 
 - `CameraTile` membaca `active[cam.id]` dari context. Aktif → kelas `lv-tile--alert lv-tile--alert-<severity>`:
-  outline 3–4 px warna severity (critical merah, warning oranye, info biru; token `theme.scss`), animasi kedip
+  outline 4 px warna severity, sama dengan titik severity halaman Events (`ev-dot`: critical `#fa4d56`, warning `#f1c21b`, info `#4589ff`), animasi kedip
   ~3 s lalu menyala tetap sampai `until`; label kecil di pojok tile: jenis event (+ zona). Berlaku di Live View
   normal, mode TV, dan modal tile besar.
 - `prefers-reduced-motion` → tanpa kedip (outline tetap).
@@ -101,7 +102,8 @@ Modul baru: `frontend/src/features/notifications/`.
   `systemActive`. Teks: "⚠ <kamera> — <jenis>" / "⚠ Node <nama> offline". Tile melaporkan visibilitas ke
   `LiveWall` lewat callback `onVisibleChange(camId, inView)` dari `useInView` yang sudah ada.
   - Mode normal: klik chip kamera → `scrollIntoView` tile tsb.
-  - Mode TV: chip hanya indikator; auto-scroll tetap berjalan. Posisi pojok kanan atas, tidak tertutup toolbar.
+  - Mode TV: chip hanya indikator; auto-scroll tetap berjalan.
+  - Posisi **pojok kanan bawah** (fixed) di kedua mode: tidak bertabrakan dengan toast (kanan atas) maupun toolbar TV (atas).
   - Kamera yang tidak ada di layar ini (tidak dipilih di screen TV) **tidak** masuk chip (chip hanya untuk tile
     yang ada di wall); `system` selalu masuk.
 - **Mute di TV**: toggle mute ditambahkan ke toolbar overlay `LiveTvPage` (memakai `setMuted` yang sama).
@@ -126,7 +128,7 @@ aria ("N notifikasi belum dibaca"), "Node {node} offline". Label jenis memakai k
 | Event untuk kamera yang tidak ada di wall | Tidak ada outline/chip; tetap di lonceng/toast |
 | Event `system` (tanpa kamera) | Lonceng + toast + bunyi + chip 30 s; tanpa outline |
 
-## 5. Pengujian (vitest, `frontend/src/__tests__/notifications.test.tsx` + tambahan di `liveview.test.tsx`)
+## 5. Pengujian (vitest, `frontend/src/__tests__/event-alerts.test.tsx`; `notifications.test.tsx` sudah dipakai tes Telegram)
 
 - Provider: riwayat awal tidak memicu toast/bunyi/outline; event baru memicu ketiganya; duplikat (WS + polling)
   hanya dihitung sekali; `attendance`/`detections`/`kind:"alert"` diabaikan; outline hilang setelah 30 s dan
