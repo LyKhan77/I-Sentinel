@@ -14,6 +14,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `snapshot` `false` → 422); Zona Deteksi menampilkan peringatan merah per behavior dan menonaktifkan Simpan.
 - Tes lama retensi/cleanup diperbarui ke semantik baru (event kedaluwarsa kini terhapus). Backend **488 passed**,
   frontend **182 passed**, build 0, lint set sama.
+- **Fix uji user — clip absensi lama**: 35/36 event absensi (15–22 Sep, pipeline sebelum face worker) punya clip yang
+  disembunyikan UI Events → cleanup "Media absensi saja" & retensi melewatkannya, card tetap muncul. Media absensi
+  kini mencakup clip (cleanup media + retensi `attendance_days` untuk clip event absensi); event lama yang hanya
+  tersisa clip ikut terhapus. Tes: clip lama + event yang sudah dikosongkan build lama. Backend **490 passed**,
+  frontend **182 passed**, build 0.
 
 ### Cleanup media absensi per tanggal (2026-09-29)
 

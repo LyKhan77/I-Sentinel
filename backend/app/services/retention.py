@@ -213,7 +213,9 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
 
     # --- lapis 1: media event kedaluwarsa, per jenis (absensi punya retensi sendiri) ---
     parts = [
-        _expire_field(db, root, "clip_path", cutoffs["clip"], dry_run),
+        _expire_field(db, root, "clip_path", cutoffs["clip"], dry_run, attendance=False),
+        # clip absensi = data lama (pipeline sebelum face worker), ikut retensi media absensi
+        _expire_field(db, root, "clip_path", cutoffs["attendance"], dry_run, attendance=True),
         _expire_field(db, root, "snapshot_path", cutoffs["snapshot"], dry_run, attendance=False),
         _expire_field(db, root, "snapshot_path", cutoffs["attendance"], dry_run, attendance=True),
         _expire_crops(db, root, cutoffs["attendance"], dry_run),
@@ -221,7 +223,7 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
     files_deleted = sum(p[0] for p in parts)
     bytes_freed = sum(p[1] for p in parts)
     events_marked = len({ev.id for p in parts for ev in p[2]})
-    purge = _media_free_after(db, parts, ("clip", "snapshot", "snapshot", "crop"))
+    purge = _media_free_after(db, parts, ("clip", "clip", "snapshot", "snapshot", "crop"))
     if not dry_run:
         _delete_events(db, sorted(purge))  # card Events tanpa media ikut hilang (+ alert-nya)
         db.commit()
@@ -313,14 +315,17 @@ def _remove_files(root: str, rels: list[str]) -> tuple[int, int]:
 
 def cleanup_attendance_media(db: Session, date_from: date, date_to: date,
                              camera_ids: list[int] | None = None, dry_run: bool = True) -> dict:
-    """Hapus foto + crop wajah event absensi di rentang; event, riwayat, dan rekap absensi tetap."""
+    """Hapus semua media event absensi di rentang (foto, crop wajah, clip lama) + entri Inbox-nya.
+
+    Riwayat masuk/keluar (attendance_event) dan rekap (attendance_day) tetap.
+    """
     events = [ev for ev in _range_query(db, date_from, date_to, camera_ids).filter(Event.type == "attendance")
-              if ev.snapshot_path or (ev.payload or {}).get("crop_path")]
+              if _media_fields(ev)]
     if not events:
         return {"events": 0, "files": 0, "bytes": 0, "dry_run": dry_run}
     id_set = {ev.id for ev in events}
     eid_set = {ev.event_id for ev in events}
-    paths = {p for ev in events for p in (ev.snapshot_path, (ev.payload or {}).get("crop_path")) if p}
+    paths = {p for ev in events for p in (ev.clip_path, ev.snapshot_path, (ev.payload or {}).get("crop_path")) if p}
     # file yang juga dirujuk event/riwayat di luar rentang dipertahankan
     kept: set[str] = set()
     for chunk in _chunks(sorted(paths)):

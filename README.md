@@ -231,7 +231,8 @@ sweep retensi manual (admin), pengaturan retensi, dan (admin) pembersihan event 
   event, clip/snapshot-nya, dan alert-nya. **Event `attendance`** (rekap absensi) **tidak pernah dihapus**,
   juga bila diminta eksplisit. **Log `system`** (node offline/LWT, satu baris tiap vision-node restart)
   hanya terhapus bila dipilih di Jenis — filter Jenis kosong tidak menyentuhnya. Mode **Media absensi
-  saja** (`mode: "attendance_media"`) menghapus foto + crop wajah event absensi di rentang (path
+  saja** (`mode: "attendance_media"`) menghapus semua media event absensi di rentang — foto, crop wajah, dan
+  clip lama (event absensi sebelum 25 Sep 2026 masih punya clip dari pipeline lama; tidak tampil di UI) (path
   `event.snapshot_path`, `payload.crop_path`, `attendance_event.snapshot_path` di-null-kan); event,
   riwayat masuk/keluar, dan rekap `attendance_day` tetap. Clip yang masih
   dirujuk event di luar rentang dipertahankan; crop (`payload.crop_path`) tidak dikumpulkan cleanup dan

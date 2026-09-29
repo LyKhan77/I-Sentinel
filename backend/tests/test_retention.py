@@ -330,3 +330,18 @@ def test_legacy_expired_events_without_media_purged_with_alerts(db, tmp_path, mo
     assert dry["events_deleted"] == 1 and db.get(Event, ev.id) is not None
     r = retention.sweep(db, now=now)
     assert r["events_deleted"] == 1 and db.get(Event, ev.id) is None and db.query(Alert).count() == 0
+
+
+def test_attendance_clip_follows_attendance_retention(db, tmp_path, monkeypatch):
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"clip_days": 30, "snapshot_days": 30, "attendance_days": 7})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    a_clip = _mkfile(str(tmp_path), "clips/att.mp4", age_days=10)
+    b_clip = _mkfile(str(tmp_path), "clips/beh.mp4", age_days=10)
+    att = Event(type="attendance", ts_event=now - timedelta(days=10), clip_path="clips/att.mp4", payload={})
+    db.add(att); db.commit(); db.refresh(att)
+    beh = _event(db, now - timedelta(days=10), clip="clips/beh.mp4")
+    r = retention.sweep(db, now=now)
+    assert not os.path.exists(a_clip) and os.path.exists(b_clip)
+    assert db.get(Event, att.id) is None and db.get(Event, beh.id) is not None
