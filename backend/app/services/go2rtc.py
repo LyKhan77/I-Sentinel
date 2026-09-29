@@ -1,4 +1,5 @@
 import logging
+import time
 
 import httpx
 
@@ -69,6 +70,18 @@ def stream_names() -> set[str]:
     except Exception:
         logger.warning("go2rtc stream_names failed (go2rtc down?)", exc_info=True)
     return set()
+
+
+def probe() -> tuple[set[str] | None, float]:
+    """(nama stream, latensi ms) — None bila go2rtc tidak bisa dihubungi (monitoring)."""
+    t0 = time.perf_counter()
+    try:
+        with _client() as c:
+            r = c.get("/api/streams")
+        ms = round((time.perf_counter() - t0) * 1000, 1)
+        return (set(r.json().keys()) if r.is_success else None), ms
+    except Exception:
+        return None, round((time.perf_counter() - t0) * 1000, 1)
 
 
 def _targets(camera) -> list[tuple[str, str]]:
