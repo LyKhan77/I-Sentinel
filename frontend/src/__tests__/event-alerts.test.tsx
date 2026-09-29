@@ -1,10 +1,13 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import { EventAlertsProvider, useEventAlerts, MUTE_KEY, SEEN_KEY } from '../features/notifications/EventAlertsProvider'
 import { beep } from '../features/notifications/beep'
+import NotificationBell from '../features/notifications/NotificationBell'
+import EventToasts from '../features/notifications/EventToasts'
 
 vi.mock('../features/notifications/beep', () => ({ beep: vi.fn() }))
 
@@ -229,4 +232,68 @@ test('localStorage diblokir: provider tetap jalan', async () => {
     get.mockRestore()
     set.mockRestore()
   }
+})
+
+// ---- lonceng header + toast (Task 2) ----
+const shell = (
+  <>
+    <NotificationBell />
+    <EventToasts />
+  </>
+)
+
+test('lonceng: badge unread, buka panel = dibaca (persist), item membuka detail event', async () => {
+  localStorage.setItem(SEEN_KEY, '10') // event 11 belum dibaca
+  const { unmount } = renderWith(shell)
+  expect(await screen.findByTestId('notif-badge')).toHaveTextContent('1')
+  await userEvent.click(screen.getByTestId('notif-bell'))
+  expect(screen.getByTestId('notif-panel')).toBeInTheDocument()
+  expect(screen.queryByTestId('notif-badge')).toBeNull()
+  expect(localStorage.getItem(SEEN_KEY)).toBe('11')
+  expect(screen.getByTestId('notif-item-11')).toHaveTextContent('Intrusi')
+  expect(screen.getByTestId('notif-item-11')).toHaveTextContent('CAM-01 · Pagar')
+  await userEvent.click(screen.getByTestId('notif-item-11'))
+  expect(screen.getByTestId('loc')).toHaveTextContent('/events?event=11')
+  expect(screen.queryByTestId('notif-panel')).toBeNull()
+  unmount()
+
+  sockets.length = 0
+  renderWith(shell)
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  expect(screen.queryByTestId('notif-badge')).toBeNull()
+})
+
+test('lonceng: badge 20+, panel kosong, Escape menutup, toggle bunyi', async () => {
+  history = []
+  localStorage.setItem(SEEN_KEY, '0')
+  renderWith(shell)
+  await waitFor(() => expect(screen.getByTestId('unread')).toHaveTextContent('0'))
+  await userEvent.click(screen.getByTestId('notif-bell'))
+  expect(screen.getByTestId('notif-panel')).toHaveTextContent('Belum ada event')
+  await userEvent.click(screen.getByTestId('notif-sound'))
+  expect(localStorage.getItem(MUTE_KEY)).toBe('1')
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByTestId('notif-panel')).toBeNull()
+
+  for (let id = 100; id < 125; id++) send(ev(id))
+  expect(screen.getByTestId('notif-badge')).toHaveTextContent('20+')
+})
+
+test('toast: tampil untuk event baru, klik isi → detail, klik tutup hanya menutup', async () => {
+  renderWith(shell)
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  expect(screen.queryByTestId('event-toasts')).toBeNull()
+  send(ev(12))
+  send(ev(13, { type: 'system', camera_id: null, zone_id: null, severity: 'warning', payload: { node: 'vision-1' } }))
+  expect(screen.getByTestId('toast-12')).toHaveTextContent('Intrusi')
+  expect(screen.getByTestId('toast-12')).toHaveTextContent('CAM-01 · Pagar')
+  expect(screen.getByTestId('toast-13')).toHaveTextContent('Node vision-1 offline')
+
+  await userEvent.click(screen.getByTestId('toast-13').querySelector('button')!)
+  expect(screen.queryByTestId('toast-13')).toBeNull()
+  expect(screen.getByTestId('loc')).toHaveTextContent('/dashboard')
+
+  await userEvent.click(screen.getByText('CAM-01 · Pagar'))
+  expect(screen.getByTestId('loc')).toHaveTextContent('/events?event=12')
+  expect(screen.queryByTestId('toast-12')).toBeNull()
 })
