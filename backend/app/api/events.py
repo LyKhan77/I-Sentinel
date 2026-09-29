@@ -11,8 +11,9 @@ from app.api.deps import COOKIE, get_current_user, session_user
 from app.core.security import decode_token
 from app.core.config import settings
 from app.models.event import Event
-from app.models.node import Node, mark_stale_nodes
+from app.models.node import Node
 from app.schemas.event import EventIn, EventOut
+from app.services import node_health
 from app.services.ingest import ingest_event, ALLOWED_TYPES, ALLOWED_SEVERITY
 from app.ws.hub import hub
 
@@ -61,15 +62,16 @@ async def upload_blob(node_id: str, kind: str, request: Request, authorization: 
     return {"path": rel}
 
 @router.post("/internal/nodes/{node_id}/heartbeat")
-async def heartbeat(node_id: int, authorization: str = Header(""), db=Depends(get_db)):
+def heartbeat(node_id: int, authorization: str = Header(""), db=Depends(get_db)):
     if authorization != f"Bearer {settings.node_api_key}":
         raise HTTPException(401, "invalid node api key")
     node = db.get(Node, node_id)
     if not node:
         raise HTTPException(404, "node not found")
-    node.status = "online"
+    since = node.last_seen
     node.last_seen = datetime.now(timezone.utc)
     db.commit()
+    node_health.mark_online(db, node, since=since)
     logger.debug("heartbeat from node %s", node_id)  # body ignored: dashboard only needs status+last_seen
     return {"status": "ok", "node_id": node_id, "seen": True}
 
@@ -77,7 +79,7 @@ async def heartbeat(node_id: int, authorization: str = Header(""), db=Depends(ge
 def mark_stale(authorization: str = Header(""), db=Depends(get_db)):
     if authorization != f"Bearer {settings.node_api_key}":
         raise HTTPException(401, "invalid node api key")
-    return {"status": "ok", "marked": mark_stale_nodes(db)}
+    return {"status": "ok", "marked": node_health.check(db)}
 
 @router.get("/api/v1/media/{path:path}")
 def media(path: str, user=Depends(get_current_user)):

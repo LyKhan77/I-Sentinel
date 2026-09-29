@@ -52,15 +52,56 @@ def test_invalid_event_no_raise_no_row(db, broadcast):
     assert broadcast == []
 
 
-def test_lwt_sets_node_offline_and_system_event(db, broadcast):
-    db.add(Node(name="server"))
+def test_lwt_offline_marks_node_once(db, broadcast, monkeypatch):
+    from app.services import telegram
+    monkeypatch.setattr(telegram, "send_text", lambda db, t: True)
+    db.add(Node(name="server", status="online"))
     db.commit()
     handle_message(db, "isentinel/nodes/server/lwt", b'{"status":"offline"}')
+    handle_message(db, "isentinel/nodes/server/lwt", b'{"status":"offline"}')  # retained dikirim ulang
     node = db.query(Node).filter_by(name="server").one()
     assert node.status == "offline"
     ev = db.query(ec.Event).one()
     assert ev.type == "system" and ev.severity == "warning"
     assert ev.payload == {"node": "server", "reason": "lwt"}
+    assert broadcast and broadcast[-1]["type"] == "system"
+
+
+def test_lwt_online_payload_ignored(db, broadcast):
+    db.add(Node(name="server", status="online"))
+    db.commit()
+    handle_message(db, "isentinel/nodes/server/lwt", b'{"status":"online"}')
+    handle_message(db, "isentinel/nodes/server/lwt", b"")  # retained dihapus
+    assert db.query(Node).filter_by(name="server").one().status == "online"
+    assert db.query(ec.Event).count() == 0
+
+
+def test_heartbeat_after_offline_emits_recovered_and_stores_runtime(db, broadcast, monkeypatch):
+    from app.services import telegram
+    monkeypatch.setattr(telegram, "send_text", lambda db, t: True)
+    db.add(Node(name="vision-1", status="offline"))
+    db.commit()
+    hb = {"ts": datetime.now(timezone.utc).isoformat(), "mqtt_backlog": 2,
+          "cameras": [{"id": 3, "worker": "detect", "state": "streaming", "fps": 5.0}],
+          "hw": {"gpus": [], "host": {"cpu_pct": 10.0}},
+          "modules": {"detector": {"device": "auto", "model": "m"}}}
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps(hb).encode())
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps(hb).encode())
+    node = db.query(Node).filter_by(name="vision-1").one()
+    assert node.status == "online"
+    assert node.modules["cameras"][0]["state"] == "streaming" and node.modules["mqtt_backlog"] == 2
+    assert node.hw["host"]["cpu_pct"] == 10.0
+    [ev] = db.query(ec.Event).all()
+    assert ev.payload == {"node": "vision-1", "reason": "online"}
+
+
+def test_heartbeat_legacy_camera_ids_normalized(db, broadcast):
+    db.add(Node(name="vision-1"))
+    db.commit()
+    hb = {"ts": "x", "cameras": [1, 2], "modules": {"detector": {"device": "auto"}}}
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps(hb).encode())
+    node = db.query(Node).filter_by(name="vision-1").one()
+    assert node.modules["cameras"] == [{"id": 1}, {"id": 2}]
 
 
 def test_duplicate_event_id_no_error_no_double_row(db, broadcast):

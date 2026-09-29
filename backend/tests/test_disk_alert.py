@@ -39,7 +39,7 @@ def test_default_send_skips_when_telegram_not_configured(db, monkeypatch):
     monkeypatch.setattr(telegram, "get_token", lambda: "")
     called = []
     monkeypatch.setattr(telegram, "deliver", lambda *a, **k: called.append(a) or ("sent", None))
-    assert disk_alert._send(db, "x") is False and called == []
+    assert telegram.send_text(db, "x") is False and called == []
 
 
 def test_monitor_runs_check_and_stops(monkeypatch):

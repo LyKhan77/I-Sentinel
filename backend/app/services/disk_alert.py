@@ -22,17 +22,6 @@ REPEAT_AFTER = timedelta(hours=24)
 CHECK_INTERVAL_S = 600
 
 
-def _send(db, text: str) -> bool:
-    token = telegram.get_token()
-    chat = telegram.active_chat(db)
-    if not token or chat is None:
-        return False
-    status, error = telegram.deliver(token, chat.chat_id, text, retries=1)
-    if status != "sent":
-        logger.warning("disk alert telegram failed: %s", error)  # pesan deliver() sudah bebas token
-    return status == "sent"
-
-
 def _state(db) -> dict:
     row = db.get(Setting, STATE_KEY)
     return dict(row.value or {}) if row is not None else {"over": False, "last_sent_at": None}
@@ -51,7 +40,7 @@ def check(db, now: datetime | None = None, percent: float | None = None,
           free_bytes: int | None = None, send=None) -> str | None:
     """Bandingkan pemakaian disk dengan ambang; kirim peringatan/pulih bila perlu."""
     now = now or datetime.now(timezone.utc)
-    send = send or _send
+    send = send or telegram.send_text
     if percent is None or free_bytes is None:
         usage = retention.disk_usage(settings.storage_root)
         percent, free_bytes = usage["percent"], usage["free"]

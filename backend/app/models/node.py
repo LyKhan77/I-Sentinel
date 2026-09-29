@@ -1,16 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from sqlalchemy import JSON, String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
-
-def mark_stale_nodes(db, max_age_s: int = 35) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_s)
-    stale = db.query(Node).filter(Node.status == "online", Node.last_seen < cutoff).all()
-    for n in stale:
-        n.status = "offline"
-    if stale:
-        db.commit()
-    return len(stale)
 
 
 class Node(Base):

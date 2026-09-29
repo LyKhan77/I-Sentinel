@@ -49,18 +49,6 @@ def test_heartbeat_updates_node(client, db):
     assert node.last_seen is not None
     assert node.last_seen is not None  # tz preserved on Postgres; SQLite drops tzinfo
 
-def test_mark_stale_flips_old_node(db):
-    from app.models.node import Node, mark_stale_nodes
-    old = Node(name="stale-node", status="online",
-               last_seen=datetime.now(timezone.utc) - timedelta(seconds=60))
-    fresh = Node(name="fresh-node", status="online", last_seen=datetime.now(timezone.utc))
-    db.add_all([old, fresh])
-    db.commit()
-    assert mark_stale_nodes(db) == 1
-    db.expire_all()
-    assert db.get(Node, old.id).status == "offline"
-    assert db.get(Node, fresh.id).status == "online"
-
 def test_mark_stale_endpoint(client, db):
     from app.models.node import Node
     db.add(Node(name="old-node", status="online",
@@ -70,7 +58,7 @@ def test_mark_stale_endpoint(client, db):
     r = client.post("/internal/maintenance/mark-stale", headers=_hb_headers())
     assert r.status_code == 200 and r.json()["marked"] == 1
 
-def test_nodes_list_runs_sweeper(client, db):
+def test_nodes_list_does_not_change_status_and_has_last_seen(client, db):
     from app.models.node import Node
     db.add(Node(name="old-node", status="online",
                 last_seen=datetime.now(timezone.utc) - timedelta(seconds=60)))
@@ -78,7 +66,22 @@ def test_nodes_list_runs_sweeper(client, db):
     tok = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"}).json()["token"]
     rows = client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {tok}"}).json()
     old = next(n for n in rows if n["name"] == "old-node")
-    assert old["status"] == "offline"
+    assert old["status"] == "online"  # deteksi offline milik monitor, bukan GET
+    assert old["last_seen"] is not None
+
+
+def test_http_heartbeat_recovers_offline_node(client, db, monkeypatch):
+    from app.models.node import Node
+    from app.models.event import Event
+    from app.services import telegram
+    monkeypatch.setattr(telegram, "send_text", lambda db, t: True)
+    node = db.get(Node, 1)
+    node.status = "offline"
+    db.commit()
+    assert client.post("/internal/nodes/1/heartbeat", json=_hb_body(), headers=_hb_headers()).status_code == 200
+    db.expire_all()
+    assert db.get(Node, 1).status == "online"
+    assert db.query(Event).filter_by(type="system").one().payload["reason"] == "online"
 
 
 def test_nodes_list_returns_hw(client, db):
