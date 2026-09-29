@@ -4,6 +4,7 @@ import { useT } from '../../app/i18n'
 import { getMe, type Me } from '../../api/client'
 import { getStorageStats, runSweep, type StorageStats, type SweepResult } from '../../api/storage'
 import DiskAlertBanner from '../../components/DiskAlertBanner'
+import EventCleanupCard from './EventCleanupCard'
 import StorageSettingsCard from './StorageSettingsCard'
 import { formatBytes } from './bytes'
 
@@ -164,6 +165,7 @@ export default function StoragePage() {
             isAdmin={isAdmin}
             onSaved={(s) => setStats((prev) => (prev ? { ...prev, settings: s, retention_days: s.clip_days } : prev))}
           />
+          {isAdmin && <EventCleanupCard onDone={refresh} />}
         </>
       )}
     </>

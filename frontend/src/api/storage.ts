@@ -40,3 +40,13 @@ export async function saveStorageSettings(s: StorageSettings): Promise<StorageSe
   if (!res.ok) throw new Error(`save failed: ${res.status}`)
   return res.json()
 }
+
+export type CleanupFilter = { date_from: string; date_to: string; camera_ids: number[]; types: string[] }
+export type CleanupResult = { events: number; files: number; bytes: number; dry_run: boolean }
+
+export async function cleanupEvents(f: CleanupFilter, dryRun: boolean): Promise<CleanupResult> {
+  const res = await apiFetch('/storage/cleanup', { method: 'POST', body: JSON.stringify({ ...f, dry_run: dryRun }) })
+  if (res.status === 422) throw new Error('invalid')
+  if (!res.ok) throw new Error(`cleanup failed: ${res.status}`)
+  return res.json()
+}

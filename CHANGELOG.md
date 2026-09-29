@@ -22,6 +22,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   hanya-baca, pesan 422), tile "Clip N hari · Snapshot M hari", banner "Disk hampir penuh" di Storage & Dashboard.
   Frontend **176 passed**, build 0, lint set sama. Bukti: `docs/evidence/2026-09-29-storage-settings-{1440,390}.png`,
   `2026-09-29-dashboard-disk-alert.png` (390 px tanpa overflow).
+- **UI Bersihkan event**: rentang tanggal (maks hari ini), kamera & jenis opsional (tanpa attendance) → Pratinjau
+  "N event · M file · X" → Hapus dengan konfirmasi merah; tombol Hapus nonaktif sampai pratinjau untuk filter yang
+  sama. Frontend **179 passed**, build 0, lint set sama. Bukti:
+  `docs/evidence/2026-09-29-storage-cleanup-{1440,390}.png`, `2026-09-29-storage-cleanup-confirm.png`.
 
 ### User management (2026-09-28)
 
