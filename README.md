@@ -200,6 +200,37 @@ hapus. Akun sendiri ditandai "(Anda)" — ubah role/nonaktif/hapus dinonaktifkan
   Token yang terbit sebelum fitur ini (tanpa `tv`) tetap berlaku sampai password diganti/akun
   dinonaktifkan — deploy tidak mengeluarkan semua orang.
 
+## Retensi & Storage
+
+Tab **Storage** di Konfigurasi: pemakaian disk, ukuran per jenis media (clips/snapshots/crops),
+sweep retensi manual (admin), pengaturan retensi, dan (admin) pembersihan event per rentang tanggal.
+
+- **Retensi editable dari UI**: `GET/PUT /api/v1/storage/settings` menyimpan clip dan snapshot
+  **terpisah** (`clip_days`, `snapshot_days`, 1–3650 hari) plus ambang peringatan disk
+  (`disk_alert_percent`, 50–99 %). Nilai disimpan di tabel `setting` (key `storage`) — tanpa migrasi.
+  Field yang belum pernah disimpan tetap mengikuti `RETENTION_DAYS` di `.env`; sweep harian systemd
+  (`isentinel-retention.timer`) membaca nilai DB, jadi perubahan berlaku pada sweep berikutnya tanpa
+  restart. Viewer melihat nilainya read-only (PUT tetap admin-only).
+- **Sweep terpisah clip vs snapshot**: event yang lebih tua dari `clip_days` kehilangan clip, yang
+  lebih tua dari `snapshot_days` kehilangan snapshot (crop mengikuti snapshot). Clip insiden yang
+  masih dirujuk event lebih baru tidak dihapus; file orphan disapu per jenis dengan cutoff yang sama.
+  Hasil sweep mencatat `clip_days`/`snapshot_days`.
+- **Bersihkan event per rentang tanggal** (admin): pilih tanggal dari/sampai (maks hari ini), opsional
+  kamera dan jenis behavior (hanya `intrusion`/`loitering`/`running`/`idle_zone`/`crowd`) → **Pratinjau**
+  (dry run) menampilkan "N event · M file · X" → **Hapus** dengan konfirmasi merah. Yang dihapus: baris
+  event, clip/snapshot-nya, dan alert-nya. **Event `attendance`** (rekap absensi) **dan `system`** (catatan
+  node offline/LWT) **tidak pernah dihapus**, juga bila diminta eksplisit di filter. Clip yang masih
+  dirujuk event di luar rentang dipertahankan; crop (`payload.crop_path`) tidak dikumpulkan cleanup dan
+  dibiarkan ke sapuan orphan. Rentang memakai zona waktu lokal server (`[dari 00:00, sampai+1 hari 00:00)`)
+  dan **tidak bisa dipulihkan** — karena itu tombol Hapus baru aktif setelah pratinjau untuk filter yang
+  sama, dan jumlah pada konfirmasi berasal dari pratinjau saat itu (event baru yang masuk ke rentang
+  sebelum konfirmasi tetap ikut terhapus).
+- **Peringatan disk hampir penuh**: banner merah di tab Storage dan Dashboard saat pemakaian ≥ ambang;
+  thread API memeriksa tiap 10 menit dan mengirim Telegram "⚠️ Disk hampir penuh …" dengan pengingat
+  berulang dibatasi sekali per 24 jam, serta "✅ Disk pulih" saat pemakaian turun di bawah ambang − 2 %
+  (setelah pulih, kenaikan lagi di atas ambang mengirim pesan baru). Tanpa token/grup Telegram state tetap
+  diperbarui (banner tetap jalan) dan tidak ada error. Token tidak pernah masuk log/pesan.
+
 ## Alert Telegram
 
 Kirim foto + caption kejadian ke grup staf. Tanpa dependensi baru (klien stdlib),

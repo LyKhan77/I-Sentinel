@@ -32,6 +32,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   ke jenis behavior (422 di luar itu); nilai retensi dari DB divalidasi ulang (rusak/0 → env/default + peringatan);
   `DiskAlertMonitor.start()` tidak bisa menggandakan loop; StoragePage tetap jalan dengan API lama (tanpa
   `settings`). Backend **475 passed**, frontend **179 passed**, build 0, lint set sama.
+- **Dokumentasi**: README bagian Retensi & Storage (retensi editable clip/snapshot, cleanup per tanggal dengan
+  `attendance` + `system` terlindungi, crop lewat orphan sweep, alert disk + Telegram), runbook
+  `docs/runbooks/storage-retention.md` (ubah retensi, cleanup aman, tanggap alert disk, verifikasi, rollback),
+  ROADMAP baris RS. Suite akhir: backend **475 passed**, vision **223 passed (3 deselected)**, frontend
+  **179 passed**, build 0, lint set sama. Review independen: 4/4 fokus PASS, 1 Important + 9 Minor diperbaiki.
 
 ### User management (2026-09-28)
 
