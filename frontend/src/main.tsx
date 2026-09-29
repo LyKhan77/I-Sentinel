@@ -13,6 +13,7 @@ import AttendancePage from './features/attendance/AttendancePage'
 import EnrollmentPage from './features/enrollment/EnrollmentPage'
 import { I18nProvider, useT } from './app/i18n'
 import { getMe } from './api/client'
+import { EventAlertsProvider } from './features/notifications/EventAlertsProvider'
 import type { Me } from './api/client'
 
 // ponytail: segmen pertama path → label nav; route placeholder nyata ditambah saat fiturnya ada
@@ -48,7 +49,12 @@ function RequireAuth() {
   }, [])
 
   if (me === 'loading') return null
-  return <Outlet />
+  // satu langganan notifikasi event untuk semua halaman login (AppShell + /live/tv)
+  return (
+    <EventAlertsProvider>
+      <Outlet />
+    </EventAlertsProvider>
+  )
 }
 
 const router = createBrowserRouter([

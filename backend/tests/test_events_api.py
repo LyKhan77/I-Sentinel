@@ -102,6 +102,14 @@ def test_list_events_filter_type(client):
     only = client.get("/api/v1/events?type=intrusion", headers=h).json()
     assert len(only) == 1 and only[0]["type"] == "intrusion"
 
+def test_list_events_filter_multiple_types(client):
+    # lonceng notifikasi: satu query untuk semua jenis pemicu, tanpa event absensi memakan limit
+    for kind in ("intrusion", "crowd", "running"):
+        client.post("/internal/nodes/1/events", json=_payload(type=kind), headers=_ingest_headers())
+    h = _admin_headers(client)
+    got = client.get("/api/v1/events?type=intrusion&type=crowd", headers=h).json()
+    assert sorted(e["type"] for e in got) == ["crowd", "intrusion"]
+
 def test_list_events_limit(client):
     for _ in range(3):
         client.post("/internal/nodes/1/events", json=_payload(), headers=_ingest_headers())

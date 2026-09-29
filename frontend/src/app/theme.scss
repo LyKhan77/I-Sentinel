@@ -1190,3 +1190,204 @@ html {
     border-block-end: 1px solid #393939;
   }
 }
+
+/* Notifikasi event: lonceng header + panel, toast. */
+.nb {
+  position: relative;
+  display: flex;
+}
+
+.nb__badge {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  min-inline-size: 16px;
+  block-size: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #da1e28;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.nb__panel {
+  position: fixed;
+  top: 48px;
+  right: 0;
+  z-index: 8000;
+  inline-size: min(360px, 100vw);
+  max-block-size: calc(100vh - 48px);
+  overflow-y: auto;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  color: var(--cds-text-primary);
+}
+
+.nb__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.nb__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nb__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  inline-size: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--cds-layer-hover-01);
+  }
+
+  .ev-dot {
+    margin-block-start: 6px;
+  }
+}
+
+.nb__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+  font-size: 13px;
+}
+
+.nb__sub {
+  color: var(--cds-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.nb__tabs {
+  padding-inline: 8px;
+}
+
+.nb__tabpanel.cds--tab-content {
+  padding: 0;
+}
+
+.nb__empty {
+  padding: 16px;
+  color: var(--cds-text-secondary);
+}
+
+.nb__foot {
+  padding: 8px 16px;
+}
+
+.nt-toasts {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  z-index: 8000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-inline-size: calc(100vw - 32px);
+
+  .cds--toast-notification {
+    cursor: pointer;
+    max-inline-size: 100%;
+  }
+}
+
+/* Live View: outline tile kamera kena event (warna = titik severity Events) + chip tile tersembunyi. */
+.lv-alert,
+.lv-alert-chip {
+  --lv-alert-color: #f1c21b;
+
+  &--critical {
+    --lv-alert-color: #fa4d56;
+  }
+
+  &--info {
+    --lv-alert-color: #4589ff;
+  }
+}
+
+.lv-alert {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 4px solid var(--lv-alert-color);
+  pointer-events: none;
+  animation: lv-alert-blink 0.5s step-end 6; // ~3 s kedip lalu menyala tetap
+}
+
+.lv-alert__label {
+  position: absolute;
+  top: 0;
+  right: 0;
+  max-inline-size: 100%;
+  padding: 2px 8px;
+  background: var(--lv-alert-color);
+  color: #161616;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes lv-alert-blink {
+  50% {
+    border-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv-alert {
+    animation: none;
+  }
+}
+
+.lv-alert-chips {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 8000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-inline-size: calc(100vw - 32px);
+}
+
+.lv-alert-chip {
+  padding: 6px 12px;
+  border: 0;
+  border-inline-start: 4px solid var(--lv-alert-color);
+  background: rgba(22, 22, 22, 0.92);
+  color: #f4f4f4;
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+button.lv-alert-chip {
+  cursor: pointer;
+}
+
+.lv-alert-chips--tv .lv-alert-chip {
+  font-size: clamp(13px, 1vw, 32px);
+}

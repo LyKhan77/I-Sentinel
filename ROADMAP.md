@@ -30,6 +30,7 @@
 | RS | Retention & Storage UI (retensi clip/snapshot/absensi, cleanup per tanggal, alert disk) | [x] deploy + verifikasi user 2026-09-29 | — | spec + plan 2026-09-29; backend 480, vision 223 (3 deselected), frontend 180, build 0, lint set lama; review independen 1 Important + 9 Minor diperbaiki; feedback user: retensi media absensi sendiri + log sistem bisa dibersihkan bila dipilih | `0e3ba62..592691d` |
 | AM | Cleanup media absensi per tanggal (rekap & riwayat tetap) | [x] deploy + verifikasi user 2026-09-29 | — | desain di chat (bounded); backend 484, frontend 181, build 0; fix sweep null-kan attendance_event.snapshot_path | `1745f26` |
 | EM | Event wajib bermedia (event tanpa media dihapus, behavior wajib snapshot/clip) | [x] deploy + verifikasi user 2026-09-29 | — | desain di chat (bounded); backend 490, frontend 182, build 0; fix clip absensi lama ikut media absensi | `4e66282..16e8396` |
+| NT | Notifikasi event web UI (lonceng tab Hari ini/Kemarin, toast, bunyi) + outline tile Live View | [x] deploy + verifikasi user 2026-09-29 | — | spec + plan 2026-09-29; backend hanya filter `type` berulang di `GET /events`; backend 491, frontend 203, build 0, lint set lama (+3 warning `only-export-components` di file provider); review independen 6/6 fokus PASS, 2 temuan valid diperbaiki (`b83349b`); revisi uji user: tab Hari ini/Kemarin (`981897e`); bukti visual `docs/evidence/2026-09-29-notif-*.png` | `8385d61..981897e` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton

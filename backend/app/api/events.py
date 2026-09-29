@@ -91,7 +91,7 @@ def media(path: str, user=Depends(get_current_user)):
 @router.get("/api/v1/events", response_model=list[EventOut])
 def list_events(
     camera_id: int | None = None,
-    type: str | None = None,
+    type: list[str] | None = Query(None),  # boleh berulang: ?type=a&type=b
     since: datetime | None = None,
     limit: int = Query(50, ge=1, le=200),
     user=Depends(get_current_user),
@@ -99,7 +99,7 @@ def list_events(
 ):
     q = db.query(Event)
     if camera_id is not None: q = q.filter(Event.camera_id == camera_id)
-    if type: q = q.filter(Event.type == type)
+    if type: q = q.filter(Event.type.in_(type))
     if since: q = q.filter(Event.ts_event >= since)
     return q.order_by(Event.ts_event.desc()).limit(limit).all()
 

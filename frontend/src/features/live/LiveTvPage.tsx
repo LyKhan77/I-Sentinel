@@ -9,6 +9,7 @@ import LiveWall from './LiveWall'
 import { useLiveCameras } from './useLiveCameras'
 import { useAutoScroll, useIdle } from './useAutoScroll'
 import { COL_OPTIONS, SCROLL_SPEEDS, screenName, selectCameras, useScreenPrefs, type ScrollSpeed } from './screenPrefs'
+import { useEventAlerts } from '../notifications/EventAlertsProvider'
 
 export const TOOLBAR_HIDE_MS = 4000
 export const SCROLL_RESUME_MS = 10000
@@ -25,6 +26,7 @@ export default function LiveTvPage() {
   const [debugOpen, setDebugOpen] = useState(false)
   const barHidden = useIdle(TOOLBAR_HIDE_MS)
   const resumed = useIdle(SCROLL_RESUME_MS)
+  const { muted, setMuted } = useEventAlerts()
 
   useAutoScroll({
     on: prefs.scroll.on,
@@ -64,6 +66,9 @@ export default function LiveTvPage() {
               {t(`live.tv.speed.${s}` as TKey)}
             </button>
           ))}
+          <Toggle id="live-tv-sound" data-testid="live-tv-sound" size="sm" labelText={t('notif.sound')}
+            hideLabel toggled={!muted} onToggle={(on) => setMuted(!on)} />
+          <span>{t('notif.sound')}</span>
           <Button kind="ghost" size="sm" data-testid="live-tv-exit" onClick={exit} style={{ marginLeft: 'auto' }}>
             {t('live.tv.exit')}
           </Button>

@@ -8,6 +8,8 @@ import { listZones, type Zone } from '../../api/zones'
 import { useLiveEvents } from '../../api/useWs'
 import { playerMode } from './playerMode'
 import { useInView } from './useInView'
+import { useEventAlerts } from '../notifications/EventAlertsProvider'
+import { sevClass, typeKey } from '../notifications/labels'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
 
@@ -20,10 +22,19 @@ const STREAM_RETRY_MS = 60000 // tile gagal stream mencoba lagi (TV 24/7 pulih s
 // Kalau playing tidak terjadi dalam STREAM_TIMEOUT_MS → fallback ke snapshot
 // proxy 2 detik; dicoba ulang tiap STREAM_RETRY_MS (TV 24/7 pulih sendiri).
 // Hanya tile dekat viewport yang men-decode video (Pi 5 tanpa decoder H.264 hardware).
-export function CameraTile({ cam, live, big, tv, onClick }: { cam: Camera; live: LiveInfo | null; big?: boolean; tv?: boolean; onClick?: () => void }) {
+export function CameraTile({ cam, live, big, tv, onClick, onVisibleChange }: {
+  cam: Camera; live: LiveInfo | null; big?: boolean; tv?: boolean; onClick?: () => void
+  onVisibleChange?: (visible: boolean) => void
+}) {
   const { t } = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inView = useInView(rootRef, !!big) // tile modal selalu terlihat
+  // benar-benar terlihat (tanpa pra-muat) → LiveWall menampilkan chip untuk tile kena event yang tersembunyi
+  const visible = useInView(rootRef, !!big, '0px')
+  const onVisibleRef = useRef(onVisibleChange)
+  useEffect(() => { onVisibleRef.current = onVisibleChange }, [onVisibleChange])
+  useEffect(() => { onVisibleRef.current?.(visible) }, [visible])
+  const alert = useEventAlerts().active[cam.id]
   const [streamFailed, setStreamFailed] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [tick, setTick] = useState(0)
@@ -197,6 +208,16 @@ export function CameraTile({ cam, live, big, tv, onClick }: { cam: Camera; live:
         </span>
         {big && <Maximize size={14} />}
       </div>
+
+      {alert && (
+        // key = eventId: event baru me-mount ulang ring → animasi kedip mulai lagi
+        <span key={alert.eventId} className={`lv-alert lv-alert--${sevClass(alert.severity)}`}
+          data-testid={`cam-alert-${cam.id}`}>
+          <span className="lv-alert__label" style={{ fontSize: tv ? 'clamp(11px, 0.8vw, 28px)' : 11 }}>
+            {t(typeKey(alert.type))}{alert.zoneName ? ` · ${alert.zoneName}` : ''}
+          </span>
+        </span>
+      )}
     </div>
   )
 }
@@ -289,6 +310,12 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
   const [boxes, setBoxes] = useState<DetBox[]>([])
   const [faceNames, setFaceNames] = useState<Record<string, FaceName>>({})
 
+  const { active, nodes } = useEventAlerts()
+  const [hidden, setHidden] = useState<Record<number, boolean>>({})
+  const hiddenAlerts = cams.filter((c) => active[c.id] && hidden[c.id])
+  const scrollTo = (id: number) =>
+    document.querySelector(`[data-testid="cam-tile-${id}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+
   // deteksi realtime (debugger modal): WS type:"detections"
   useLiveEvents((e) => {
     const m = e as { type?: string; camera_id?: number; kind?: DetectionKind; boxes?: Omit<DetBox, 'kind'>[] }
@@ -338,10 +365,34 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
       <div className={tv ? 'lv-grid lv-grid--tv' : 'lv-grid'} style={{ '--lv-cols': cols } as React.CSSProperties}>
         {cams.map((cam) => (
           <div key={cam.id} onClick={() => { setBoxes([]); setDebugCam(cam) }} title={t('live.openDebug')}>
-            <CameraTile cam={cam} live={lives[cam.id] ?? null} tv={tv} />
+            <CameraTile cam={cam} live={lives[cam.id] ?? null} tv={tv}
+              onVisibleChange={(v) => setHidden((h) => (h[cam.id] === !v ? h : { ...h, [cam.id]: !v }))} />
           </div>
         ))}
       </div>
+
+      {(hiddenAlerts.length > 0 || nodes.length > 0) && (
+        <div className={tv ? 'lv-alert-chips lv-alert-chips--tv' : 'lv-alert-chips'} role="status"
+          aria-label={t('notif.chips')} data-testid="alert-chips">
+          {hiddenAlerts.map((c) => {
+            const a = active[c.id]
+            const cls = `lv-alert-chip lv-alert-chip--${sevClass(a.severity)}`
+            const text = `⚠ ${c.name} — ${t(typeKey(a.type))}`
+            // TV kiosk tanpa mouse: chip hanya indikator, auto-scroll tidak diganggu
+            return tv ? (
+              <span key={c.id} className={cls} data-testid={`alert-chip-${c.id}`}>{text}</span>
+            ) : (
+              <button key={c.id} type="button" className={cls} data-testid={`alert-chip-${c.id}`}
+                onClick={() => scrollTo(c.id)}>{text}</button>
+            )
+          })}
+          {nodes.map((n) => (
+            <span key={n.node} className="lv-alert-chip lv-alert-chip--warning" data-testid="alert-chip-node">
+              ⚠ {t('notif.nodeOffline').replace('{node}', n.node)}
+            </span>
+          ))}
+        </div>
+      )}
       {debugCam && (
         <Modal
           open

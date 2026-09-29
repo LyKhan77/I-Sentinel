@@ -179,6 +179,12 @@ untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
 - **Sesi bergulir 48 jam**: cookie login diperpanjang otomatis selama halaman aktif
   me-refresh (`ACCESS_TOKEN_EXPIRE_MIN`, default 2880) — TV tidak logout tiba-tiba.
 
+**Notifikasi event.** Event behavior (intrusion, loitering, running, idle zone, crowd) dan node offline memunculkan
+badge di lonceng header (panel dua tab **Hari ini** / **Kemarin**, klik → detail event), toast 8 detik, dan bunyi pendek (bisa di-mute di
+lonceng atau toolbar mode TV; status dibaca & mute disimpan per browser). Di Live View, tile kamera yang kena event
+diberi outline warna severity selama 30 detik; bila tile sedang di luar layar muncul chip di kanan bawah. Absensi
+tidak memicu notifikasi. Notifikasi OS tidak tersedia karena app diakses lewat `http://` LAN.
+
 ## User management
 
 Tab **User** di Konfigurasi (admin-only): daftar username, role, status, dibuat, login terakhir;

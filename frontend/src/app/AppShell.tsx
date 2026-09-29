@@ -24,6 +24,8 @@ import {
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
 import ChangePasswordModal from '../features/auth/ChangePasswordModal'
+import NotificationBell from '../features/notifications/NotificationBell'
+import EventToasts from '../features/notifications/EventToasts'
 
 const COLLAPSE_KEY = 'isentinel_sidenav_collapsed'
 const DESKTOP_QUERY = '(min-width: 1056px)' // breakpoint lg Carbon
@@ -117,6 +119,7 @@ export default function AppShell() {
         </HeaderName>
         <span className="app-env">{t('app.env')}</span>
         <HeaderGlobalBar>
+          <NotificationBell />
           <div className="app-lang" role="group" aria-label={t('app.lang')}>
             {(['id', 'en'] as const).map((l) => (
               <button
@@ -132,6 +135,8 @@ export default function AppShell() {
           </div>
         </HeaderGlobalBar>
       </Header>
+
+      <EventToasts />
 
       <SideNav
         aria-label="I-Sentinel"
