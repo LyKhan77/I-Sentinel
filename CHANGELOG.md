@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Retention & Storage UI (2026-09-29 – …)
+### Retention & Storage UI (2026-09-29)
 
 - **Pengaturan storage editable**: setting `storage` (`clip_days`, `snapshot_days`, `disk_alert_percent`; field yang
   belum disimpan ikut `RETENTION_DAYS`/85 %), `GET/PUT /storage/settings` (PUT admin, 1–3650 hari, 50–99 %),
@@ -48,6 +48,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   tiap vision-node restart) kini boleh di filter Jenis ("Log sistem (node offline)"); filter Jenis kosong tetap
   tidak menyentuhnya; `attendance` tetap tidak pernah. Backend **480 passed**, frontend **180 passed**,
   build 0, lint set sama. Penghapusan data uji absensi = siklus berikutnya (desain terpisah, menyentuh rekap).
+- **Deploy + verifikasi user (2026-09-29)**: server `gspe-ai3` di `592691d`, restart isentinel-api (tanpa migrasi).
+  Uji user OK: pengaturan retensi clip/snapshot/absensi, dry run & sweep, cleanup per tanggal (pratinjau →
+  konfirmasi; absensi utuh), log sistem opsional, banner + Telegram disk. Rollback: `git revert -m 1 <merge>` +
+  restart API (setting `storage`/`disk_alert_state` diabaikan kode lama; event yang sudah dibersihkan tidak kembali).
 
 ### User management (2026-09-28)
 
