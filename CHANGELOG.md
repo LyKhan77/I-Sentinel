@@ -18,6 +18,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Peringatan disk hampir penuh**: `disk_alert.check` (ambang dari pengaturan; Telegram sekali, ulang ≤ 1×/24 jam,
   "pulih" saat < ambang − 2 %; tanpa Telegram state tetap disimpan) + thread `DiskAlertMonitor` tiap 10 menit di
   lifespan API. Backend **467 passed**.
+- **UI pengaturan retensi + banner disk**: kartu Pengaturan retensi (clip/snapshot/ambang, admin simpan, viewer
+  hanya-baca, pesan 422), tile "Clip N hari · Snapshot M hari", banner "Disk hampir penuh" di Storage & Dashboard.
+  Frontend **176 passed**, build 0, lint set sama. Bukti: `docs/evidence/2026-09-29-storage-settings-{1440,390}.png`,
+  `2026-09-29-dashboard-disk-alert.png` (390 px tanpa overflow).
 
 ### User management (2026-09-28)
 

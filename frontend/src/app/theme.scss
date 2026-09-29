@@ -1094,6 +1094,33 @@ html {
   font-size: 12px;
 }
 
+.st-card {
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+
+.st-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.st-card__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.st-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
 .en-days {
   display: flex;
   flex-wrap: wrap;
