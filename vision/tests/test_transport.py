@@ -129,7 +129,9 @@ def test_flush_on_reconnect_in_order(transport):
     transport._client.connected = True
     transport._on_connect(transport._client, None, None, 0, None)  # simulate reconnect
     assert transport._queue.size() == 0
-    assert [json.loads(p)["n"] for _, p, _, _ in transport._client.published] == [0, 1, 2]
+    flushed = [json.loads(p)["n"] for t, p, _, _ in transport._client.published
+               if t == "isentinel/events"]
+    assert flushed == [0, 1, 2]
 
 
 def test_will_set_and_heartbeat(transport):
@@ -152,3 +154,16 @@ def test_publish_detections_qos0_topic(transport):
     assert data["camera_id"] == 7
     assert data["kind"] == "person"
     assert data["boxes"][0]["id"] == 1
+
+
+def test_on_connect_overwrites_retained_lwt_with_online(transport):
+    transport._on_connect(transport._client, None, None, 0, None)
+    lwt = [p for p in transport._client.published if p[0] == "isentinel/nodes/test-node/lwt"]
+    assert lwt and json.loads(lwt[-1][1]) == {"status": "online"}
+    assert lwt[-1][2] == 1 and lwt[-1][3] is True  # qos 1, retained → menimpa offline lama
+
+
+def test_backlog_reports_queue_size(transport):
+    transport._client.publish_rc = 1  # broker putus → masuk antrean
+    transport.publish_event({"event_id": "x"})
+    assert transport.backlog() == 1

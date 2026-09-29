@@ -433,18 +433,37 @@ def test_no_face_workers_keep_node_listening_for_config(tmp_path, preapply):
     assert not runner.is_alive() and closed == [True]
 
 
-def test_heartbeat_reports_face_module_and_distinct_cameras(tmp_path):
+def test_heartbeat_reports_modules_cameras_host_and_backlog(tmp_path):
     node, workers, *_ = _wired_node(tmp_path, [ATTENDANCE_ZONE, BEHAVIOR_ZONE])
-    assert node._face_module_info() == {"device": "auto", "loaded": True,
-                                        "detect_n": 0, "embed_n": 0}
+    face = node._face_module_info()
+    assert face["loaded"] is True and face["queue"] == 0
     node._workers = workers
+    node.transport.backlog = lambda: 4
     def publish_once(hb):
         node.transport.heartbeats.append(hb)
         node.stop_event.set()
     node.transport.publish_heartbeat = publish_once
     node._heartbeat_loop()
-    assert node.transport.heartbeats[0]["cameras"] == [363]
-    assert node.transport.heartbeats[0]["modules"]["face"] == node._face_module_info()
+    hb = node.transport.heartbeats[0]
+    assert sorted((c["id"], c["worker"]) for c in hb["cameras"]) == [(363, "detect"), (363, "face")]
+    assert hb["mqtt_backlog"] == 4
+    assert set(hb["hw"]["host"]) == {"cpu_pct", "ram_used_mb", "ram_total_mb", "disk_used_pct", "disk_free_gb"}
+    assert {"ms_avg", "ms_max", "infer_fps"} <= set(hb["modules"]["detector"])
+
+
+def test_detector_window_avg_max_fps(tmp_path, monkeypatch):
+    from vision.pipeline.detector import PersonDetector
+    node, *_ = _wired_node(tmp_path, [BEHAVIOR_ZONE])
+    monkeypatch.setattr(node, "_default_detector", True)
+    monkeypatch.setattr(PersonDetector, "detect_ms_total", 100.0)
+    monkeypatch.setattr(PersonDetector, "detect_n", 10)
+    monkeypatch.setattr(PersonDetector, "window_max_ms", 0.0)
+    first = node._detector_module_info(now=0.0)
+    assert first["ms_avg"] is None and first["infer_fps"] is None
+    PersonDetector.detect_ms_total, PersonDetector.detect_n, PersonDetector.window_max_ms = 400.0, 40, 25.0
+    info = node._detector_module_info(now=10.0)
+    assert info["ms_avg"] == 10.0 and info["infer_fps"] == 3.0 and info["ms_max"] == 25.0
+    assert PersonDetector.window_max_ms == 0.0  # direset per jendela
 
 
 def test_camera_stats_per_worker_fps_window_and_restart(tmp_path):

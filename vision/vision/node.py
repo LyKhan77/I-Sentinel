@@ -256,6 +256,7 @@ class VisionNode:
         self._cam_prev: dict[tuple[int, str], tuple[int, int, float]] = {}
         self._await_config = False  # a configured node must not exit with zero workers
         self._face_settings = FaceSettings()
+        self._det_prev: tuple[float, int, float] | None = None  # (ms_total, n, monotonic) heartbeat lalu
         self.events: list[dict] = []  # test hook: all worker events
         from .face import FaceEmbedder
         self.face = (FaceEmbedder(self.cfg.face_model_dir
@@ -504,15 +505,22 @@ class VisionNode:
                         "reconnects_1h": s.get("reconnects_1h"), "motion_skip_pct": skip})
         return out
 
-    def _detector_module_info(self) -> dict:
-        """modules.detector payload: device pin, model name, ms/frame measurement."""
+    def _detector_module_info(self, now: float | None = None) -> dict:
+        """modules.detector: device, model, ms/frame kumulatif (kompatibel) + jendela sejak heartbeat lalu."""
+        now = time.monotonic() if now is None else now
         model = getattr(self, "_detector_settings", {}).get("model") or self.cfg.detector_model
-        ms = None
-        if self._default_detector and PersonDetector.detect_n:
-            ms = round(PersonDetector.detect_ms_total / PersonDetector.detect_n, 1)
-        return {"device": self.cfg.detector_device or "auto",
-                "model": os.path.basename(model), "ms_per_frame": ms,
-                "detect_n": PersonDetector.detect_n}
+        total, n = PersonDetector.detect_ms_total, PersonDetector.detect_n
+        ms = round(total / n, 1) if self._default_detector and n else None
+        prev, self._det_prev = self._det_prev, (total, n, now)
+        ms_avg = infer_fps = None
+        if prev is not None and n > prev[1] and now > prev[2]:
+            ms_avg = round((total - prev[0]) / (n - prev[1]), 1)
+            infer_fps = round((n - prev[1]) / (now - prev[2]), 1)
+        ms_max = round(PersonDetector.window_max_ms, 1) if PersonDetector.window_max_ms else None
+        PersonDetector.window_max_ms = 0.0
+        return {"device": self.cfg.detector_device or "auto", "model": os.path.basename(model),
+                "ms_per_frame": ms, "detect_n": n, "ms_avg": ms_avg, "ms_max": ms_max,
+                "infer_fps": infer_fps}
 
     def _face_module_info(self) -> dict:
         """Report face model state and inference counters without forcing model load."""
@@ -520,21 +528,24 @@ class VisionNode:
         return {"device": self.cfg.face_device or "auto",
                 "loaded": bool(f is not None and f.loaded()),
                 "detect_n": f.detect_n if f is not None else 0,
-                "embed_n": f.embed_n if f is not None else 0}
+                "embed_n": f.embed_n if f is not None else 0,
+                "queue": sum(w.pending() for w in self._workers if isinstance(w, FaceGateWorker))}
 
     def _heartbeat_loop(self):
         while not self.stop_event.is_set():
-            cam_ids = sorted({w.camera_id for w in getattr(self, "_workers", [])})
+            now = time.monotonic()
             try:
-                cpu = os.getloadavg()[0]
+                cpu = os.getloadavg()[0]  # field lama (kompatibel); host.cpu_pct = persen sebenarnya
             except (AttributeError, OSError):
                 cpu = None
+            backlog = getattr(self.transport, "backlog", None)
             hb = {"ts": _iso(time.time()), "cpu_percent": cpu, "gpu_mem": None,
-                  "cameras": cam_ids}
-            hw = hardware.collect_gpu_info()
-            if hw:
-                hb["hw"] = hw
-            hb["modules"] = {"detector": self._detector_module_info(),
+                  "cameras": self._camera_stats(now),
+                  "mqtt_backlog": backlog() if callable(backlog) else None}
+            hw = hardware.collect_gpu_info() or {}
+            hw["host"] = hardware.host_stats(self.cfg.data_dir)
+            hb["hw"] = hw
+            hb["modules"] = {"detector": self._detector_module_info(now),
                              "face": self._face_module_info()}
             self.transport.publish_heartbeat(hb)
             self.stop_event.wait(self.cfg.heartbeat_s)
