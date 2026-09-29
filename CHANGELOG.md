@@ -15,6 +15,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   clip/snapshot + alert-nya pada rentang tanggal lokal (filter kamera/jenis opsional); attendance tidak pernah
   dihapus walau diminta; clip bersama dengan event di luar rentang dipertahankan; validasi tanggal/jenis 422;
   cleanup nyata dicatat di log dengan username admin. Backend **463 passed**.
+- **Peringatan disk hampir penuh**: `disk_alert.check` (ambang dari pengaturan; Telegram sekali, ulang ≤ 1×/24 jam,
+  "pulih" saat < ambang − 2 %; tanpa Telegram state tetap disimpan) + thread `DiskAlertMonitor` tiap 10 menit di
+  lifespan API. Backend **467 passed**.
 
 ### User management (2026-09-28)
 

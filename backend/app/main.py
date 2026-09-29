@@ -76,9 +76,12 @@ async def lifespan(app: FastAPI):
     consumer.start()
     from app.services.alert_dispatcher import dispatcher
     dispatcher.start()
+    from app.services.disk_alert import monitor as disk_monitor
+    disk_monitor.start()
     try:
         yield
     finally:
+        disk_monitor.stop()
         dispatcher.stop()
         consumer.stop()
 
