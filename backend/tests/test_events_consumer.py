@@ -104,6 +104,16 @@ def test_heartbeat_legacy_camera_ids_normalized(db, broadcast):
     assert node.modules["cameras"] == [{"id": 1}, {"id": 2}]
 
 
+def test_heartbeat_without_cameras_key_does_not_mark_not_running(db, broadcast):
+    """Heartbeat tanpa key cameras (vision lama/HTTP) tidak boleh menulis daftar kosong."""
+    db.add(Node(name="vision-1"))
+    db.commit()
+    hb = {"ts": "x", "modules": {"detector": {"device": "auto"}}}
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps(hb).encode())
+    node = db.query(Node).filter_by(name="vision-1").one()
+    assert "cameras" not in node.modules
+
+
 def test_duplicate_event_id_no_error_no_double_row(db, broadcast):
     payload = json.dumps(_event()).encode()
     handle_message(db, "isentinel/events", payload)

@@ -132,6 +132,38 @@ def test_legacy_heartbeat_no_data(db):
     assert row["health"] == "warning" and "no_data" in row["issues"]
 
 
+def test_heartbeat_without_cameras_key_no_data(db):
+    """Vision lama/pra-statistik: node ada, kamera berjalan, tapi belum ada data statistik."""
+    n = _node(db, modules={"detector": {"device": "auto"}, "face": {"loaded": True}})
+    _cam(db, 1, n)
+    row = _cam_row(monitoring.snapshot(db, now=NOW), 1)
+    assert row["health"] == "warning" and "no_data" in row["issues"]
+
+
+def test_garbage_state_type_does_not_crash(db):
+    n = _node(db)
+    _cam(db, 1, n)
+    _with_cams(n, db, [{"id": 1, "state": {"weird": 1}, "fps": "x", "target_fps": None}])
+    row = _cam_row(monitoring.snapshot(db, now=NOW), 1)
+    assert row["ai"]["state"] is None and row["ai"]["fps"] is None
+
+
+def test_db_down_degrades_without_raise(db, monkeypatch):
+    """DB benar-benar mati: snapshot tetap kembali (endpoint 200) dengan database critical."""
+    from sqlalchemy.exc import OperationalError
+
+    def boom(*a, **k):
+        raise OperationalError("SELECT 1", {}, Exception("db down"))
+
+    for name in ("execute", "query", "get"):
+        monkeypatch.setattr(db, name, boom)
+    snap = monitoring.snapshot(db, now=NOW)
+    svc = {s["key"]: s for s in snap["services"]}
+    assert svc["database"]["health"] == "critical"
+    assert svc["retention"]["health"] == "warning"
+    assert snap["nodes"] == [] and snap["cameras"] == []
+
+
 def test_node_offline_makes_cameras_critical(db):
     n = _node(db, status="offline")
     _cam(db, 1, n)
@@ -178,6 +210,19 @@ def test_garbage_json_does_not_crash(db):
     _node(db, hw={"gpus": "x", "host": 5}, modules={"cameras": "junk", "detector": 3})
     snap = monitoring.snapshot(db, now=NOW)
     assert snap["nodes"][0]["gpus"] == [] and snap["nodes"][0]["host"]["cpu_pct"] is None
+
+
+def test_endpoint_tolerates_garbage_node_json(client, db):
+    """Tipe ngawur dari node tidak boleh membuat response validation → 500."""
+    n = db.query(Node).filter_by(name="server").one()  # node bootstrap dari lifespan
+    n.hw = {"gpus": "x"}
+    n.modules = {"cameras": [{"id": 1, "state": 5, "fps": "x"}]}
+    db.commit()
+    _cam(db, 1, n)
+    r = client.get("/api/v1/monitoring", headers=viewer_headers(client))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["nodes"][0]["gpus"] == [] and body["cameras"][0]["ai"]["state"] is None
 
 
 def test_services_ok_and_failures(db, monkeypatch):

@@ -86,3 +86,36 @@ def test_monitor_runs_check_and_stops(monkeypatch):
         time.sleep(0.01)
     m.stop()
     assert calls and not m._thread.is_alive()
+
+
+def test_monitor_survives_session_factory_error(monkeypatch):
+    # DB mati tidak boleh mematikan thread monitor: percobaan berikutnya tetap jalan.
+    calls = []
+    def factory():
+        calls.append(1)
+        raise RuntimeError("db down")
+    m = node_health.NodeHealthMonitor(interval_s=0.01, session_factory=factory)
+    m.start()
+    import time
+    deadline = time.monotonic() + 2
+    while len(calls) < 3 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    m.stop()
+    assert len(calls) >= 3 and not m._thread.is_alive()
+
+
+def test_monitor_survives_session_close_error(monkeypatch):
+    monkeypatch.setattr(node_health, "check", lambda db: 0)
+    calls = []
+    class BadSession:
+        def close(self):
+            calls.append(1)
+            raise RuntimeError("close failed")
+    m = node_health.NodeHealthMonitor(interval_s=0.01, session_factory=BadSession)
+    m.start()
+    import time
+    deadline = time.monotonic() + 2
+    while not calls and time.monotonic() < deadline:
+        time.sleep(0.01)
+    m.stop()
+    assert calls and not m._thread.is_alive()

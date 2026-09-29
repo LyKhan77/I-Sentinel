@@ -107,13 +107,18 @@ class NodeHealthMonitor:
 
     def _loop(self) -> None:
         while not self._stop.wait(self.interval_s):
-            db = self._session_factory()
+            db = None
             try:
+                db = self._session_factory()
                 check(db)
             except Exception:
                 logger.warning("node health check failed", exc_info=True)
             finally:
-                db.close()
+                if db is not None:
+                    try:
+                        db.close()
+                    except Exception:
+                        logger.warning("node health session close failed", exc_info=True)
 
 
 monitor = NodeHealthMonitor()

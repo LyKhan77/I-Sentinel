@@ -111,7 +111,8 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 node.hw = data["hw"]
             if isinstance(data.get("modules"), dict):
                 modules = dict(data["modules"])
-                modules["cameras"] = _cameras(data.get("cameras"))
+                if "cameras" in data:
+                    modules["cameras"] = _cameras(data.get("cameras"))
                 if isinstance(data.get("mqtt_backlog"), int):
                     modules["mqtt_backlog"] = data["mqtt_backlog"]
                 node.modules = modules

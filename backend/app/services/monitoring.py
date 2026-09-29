@@ -5,6 +5,7 @@ node.modules; tipe JSON divalidasi defensif karena berasal dari node.
 """
 from __future__ import annotations
 
+import logging
 import time as _time
 from datetime import datetime, timedelta, timezone
 
@@ -17,6 +18,8 @@ from app.models.node import Node
 from app.models.setting import Setting
 from app.services import events_consumer, go2rtc, host_stats, retention, storage_settings, telegram
 from app.services.node_health import _aware
+
+logger = logging.getLogger(__name__)
 
 FRAME_STALE_S = 30
 LOW_FPS_RATIO = 0.8
@@ -58,7 +61,15 @@ def _merge_workers(entries: list[dict]) -> dict | None:
     stats = [e for e in entries if "state" in e]
     if not stats:
         return None
-    worst = max(stats, key=lambda e: STATE_RANK.get(e.get("state"), 1))
+
+    def state_of(e) -> str | None:
+        s = e.get("state")
+        return s if isinstance(s, str) else None  # tipe ngawur dari node jangan sampai menggagalkan response
+
+    def rank(e) -> int:
+        return STATE_RANK.get(state_of(e), 1)
+
+    worst = max(stats, key=rank)
 
     def ratio(e):
         fps, target = _num(e.get("fps")), _num(e.get("target_fps"))
@@ -69,7 +80,7 @@ def _merge_workers(entries: list[dict]) -> dict | None:
     ages = [_num(e.get("last_frame_age_s")) for e in stats if _num(e.get("last_frame_age_s")) is not None]
     recon = [_num(e.get("reconnects_1h")) or 0 for e in stats]
     skips = [_num(e.get("motion_skip_pct")) for e in stats if _num(e.get("motion_skip_pct")) is not None]
-    return {"state": worst.get("state"), "fps": _num(slowest.get("fps")),
+    return {"state": state_of(worst), "fps": _num(slowest.get("fps")),
             "target_fps": _num(slowest.get("target_fps")),
             "last_frame_age_s": max(ages) if ages else None, "reconnects_1h": max(recon) if recon else 0,
             "motion_skip_pct": skips[0] if skips else None}
@@ -88,7 +99,10 @@ def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, stre
     if cam.node_id is not None:
         if node is None or node.status == "offline":
             crit.append("node_offline")
-        elif entries is None or not entries:
+        elif entries is None:
+            # node belum pernah melaporkan statistik kamera (vision lama) → bukan "tidak berjalan"
+            warn.append("no_data")
+        elif not entries:
             crit.append("not_running")
         else:
             ai = _merge_workers(entries)
@@ -161,6 +175,37 @@ def _disk(root: str) -> dict | None:
         return None
 
 
+def _setting_value(db, key: str):
+    """Nilai Setting atau None bila DB tidak bisa dibaca (halaman tetap 200; layanan database sudah kritis)."""
+    try:
+        row = db.get(Setting, key)
+        return row.value if row is not None else None
+    except Exception:
+        return None
+
+
+def _active_chat(db):
+    try:
+        return telegram.active_chat(db)
+    except Exception:
+        return None
+
+
+def _last_alert(db) -> tuple[Alert | None, int]:
+    try:
+        last = db.query(Alert).filter(Alert.status.in_(("sent", "failed"))).order_by(Alert.id.desc()).first()
+        return last, db.query(Alert).filter_by(status="queued").count()
+    except Exception:
+        return None, 0
+
+
+def _alert_percent(db) -> float | None:
+    try:
+        return storage_settings.get(db)["disk_alert_percent"]
+    except Exception:
+        return None
+
+
 def _services(db, now: datetime) -> tuple[list[dict], set[str] | None]:
     if _cache["at"] is not None and now - _cache["at"] < timedelta(seconds=SERVICE_CACHE_S):
         return _cache["services"]
@@ -177,8 +222,8 @@ def _services(db, now: datetime) -> tuple[list[dict], set[str] | None]:
                 "detail": f"{len(streams)} stream" if streams is not None else "unreachable", "latency_ms": ms})
     out.append({"key": "mqtt", "health": "ok" if events_consumer.connected.is_set() else "critical",
                 "detail": None, "latency_ms": None})
-    sweep = db.get(Setting, "retention_last_sweep")
-    at = _dict(sweep.value if sweep else None).get("at")
+    sweep = _setting_value(db, "retention_last_sweep")
+    at = _dict(sweep).get("at") if isinstance(sweep, dict) else None
     try:
         at_dt = _aware(datetime.fromisoformat(at)) if isinstance(at, str) else None
     except ValueError:
@@ -186,20 +231,19 @@ def _services(db, now: datetime) -> tuple[list[dict], set[str] | None]:
     stale = at_dt is None or now - at_dt > timedelta(hours=SWEEP_STALE_H)
     out.append({"key": "retention", "health": "warning" if stale else "ok",
                 "detail": at_dt.isoformat() if at_dt else None, "latency_ms": None})
-    if not telegram.get_token() or telegram.active_chat(db) is None:
+    if not telegram.get_token() or _active_chat(db) is None:
         out.append({"key": "telegram", "health": "unknown", "detail": "not_configured", "latency_ms": None})
     else:
-        last = db.query(Alert).filter(Alert.status.in_(("sent", "failed"))).order_by(Alert.id.desc()).first()
-        queued = db.query(Alert).filter_by(status="queued").count()
+        last, queued = _last_alert(db)
         out.append({"key": "telegram", "health": "warning" if last is not None and last.status == "failed" else "ok",
                     "detail": f"{last.status if last else '—'} · queued {queued}", "latency_ms": None})
     usage = _disk(settings.storage_root)
-    if usage is None:
+    threshold = _alert_percent(db)
+    if usage is None or threshold is None:
         out.append({"key": "disk", "health": "warning", "detail": "unavailable", "latency_ms": None})
     else:
-        over = usage["percent"] >= storage_settings.get(db)["disk_alert_percent"]
-        out.append({"key": "disk", "health": "warning" if over else "ok", "detail": f"{usage['percent']}%",
-                    "latency_ms": None})
+        out.append({"key": "disk", "health": "warning" if usage["percent"] >= threshold else "ok",
+                    "detail": f"{usage['percent']}%", "latency_ms": None})
     _cache.update(at=now, services=(out, streams))
     return out, streams
 
@@ -207,19 +251,35 @@ def _services(db, now: datetime) -> tuple[list[dict], set[str] | None]:
 def snapshot(db, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     services, streams = _services(db, now)
-    nodes = db.query(Node).order_by(Node.name).all()
+    try:
+        nodes = db.query(Node).order_by(Node.name).all()
+    except Exception:
+        # DB mati: layanan "database" sudah critical; halaman tetap 200 tanpa node/kamera
+        logger.warning("monitoring node query failed", exc_info=True)
+        nodes = []
     by_id = {n.id: n for n in nodes}
-    per_node: dict[int, dict[int, list[dict]]] = {}
+    per_node: dict[int, dict[int, list[dict]] | None] = {}
     for n in nodes:
+        mods = _dict(n.modules)
+        if "cameras" not in mods:
+            per_node[n.id] = None  # node belum pernah mengirim statistik kamera (vision lama)
+            continue
         entries: dict[int, list[dict]] = {}
-        for c in _list(_dict(n.modules).get("cameras")):
+        for c in _list(mods.get("cameras")):
             if isinstance(c, dict) and isinstance(c.get("id"), int):
                 entries.setdefault(c["id"], []).append(c)
         per_node[n.id] = entries
     cams = []
-    for cam in db.query(Camera).order_by(Camera.name).all():
+    try:
+        cameras = db.query(Camera).order_by(Camera.name).all()
+    except Exception:
+        logger.warning("monitoring camera query failed", exc_info=True)
+        cameras = []
+    for cam in cameras:
         node = by_id.get(cam.node_id) if cam.node_id is not None else None
-        entries = per_node.get(cam.node_id, {}).get(cam.id) if node is not None else None
+        bucket = per_node.get(cam.node_id) if node is not None else None
+        # bucket None = node tanpa statistik kamera; [] = kamera tidak ada di heartbeat (not_running)
+        entries = None if bucket is None else bucket.get(cam.id, [])
         cams.append(_camera_row(cam, node, entries, streams))
     node_rows = [_node_row(n, now) for n in nodes]
     used, total = host_stats.ram_mb()
