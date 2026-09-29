@@ -225,6 +225,15 @@ const dicts = {
     'events.countUnit': 'event',
     'events.empty': 'Belum ada event',
     'events.emptyFiltered': 'Tidak ada event yang cocok',
+    'notif.bell': 'Notifikasi',
+    'notif.bellUnread': '{n} notifikasi belum dibaca',
+    'notif.title': 'Event terbaru',
+    'notif.empty': 'Belum ada event',
+    'notif.viewAll': 'Lihat semua event',
+    'notif.sound': 'Bunyi',
+    'notif.type.system': 'Node offline',
+    'notif.nodeOffline': 'Node {node} offline',
+    'notif.chips': 'Kamera dengan event',
     'events.sub': 'Riwayat event dan status pengiriman alert',
     'zones.title': 'Zona Deteksi',
     'zones.sub': 'Zona behavior dan absensi per kamera — satu-satunya tempat mengatur deteksi',
@@ -796,6 +805,15 @@ const dicts = {
     'events.countUnit': 'events',
     'events.empty': 'No events yet',
     'events.emptyFiltered': 'No matching events',
+    'notif.bell': 'Notifications',
+    'notif.bellUnread': '{n} unread notifications',
+    'notif.title': 'Recent events',
+    'notif.empty': 'No events yet',
+    'notif.viewAll': 'View all events',
+    'notif.sound': 'Sound',
+    'notif.type.system': 'Node offline',
+    'notif.nodeOffline': 'Node {node} offline',
+    'notif.chips': 'Cameras with events',
     'events.sub': 'Event history and alert delivery status',
     'zones.title': 'Detection Zones',
     'zones.sub': 'Behavior and attendance zones per camera — the only place detection is configured',
@@ -1155,13 +1173,21 @@ type I18nCtx = { locale: Locale; setLocale: (l: Locale) => void; t: (key: TKey) 
 const Ctx = createContext<I18nCtx | null>(null)
 
 function initialLocale(): Locale {
-  return localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'id'
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'id'
+  } catch {
+    return 'id' // storage diblokir → bahasa default
+  }
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale)
   const setLocale = useCallback((l: Locale) => {
-    localStorage.setItem(STORAGE_KEY, l)
+    try {
+      localStorage.setItem(STORAGE_KEY, l)
+    } catch {
+      // storage diblokir → berlaku untuk sesi ini saja
+    }
     setLocaleState(l)
   }, [])
   const t = useCallback((key: TKey) => dicts[locale][key] ?? key, [locale])

@@ -4,7 +4,7 @@ export type EventOut = {
   id: number
   event_id: string
   type: string
-  camera_id: number
+  camera_id: number | null // event system (node offline/LWT) tidak punya kamera
   zone_id: number | null
   severity: string
   ts_event: string
