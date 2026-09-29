@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Cleanup media absensi per tanggal (2026-09-29 – …)
+### Cleanup media absensi per tanggal (2026-09-29)
 
 - **Mode "Media absensi saja"** di Bersihkan event (`POST /storage/cleanup` `mode: "attendance_media"`): hapus foto +
   crop wajah event absensi di rentang tanggal lokal (filter kamera opsional; `types` → 422), null-kan
@@ -13,6 +13,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   media, pratinjau basi saat mode berganti, teks konfirmasi "Rekap dan riwayat absensi tidak berubah".
 - **Fix**: sweep retensi ikut null-kan `attendance_event.snapshot_path` (salinan path crop) saat crop dihapus.
 - Backend **484 passed**, frontend **181 passed**, build 0, lint set sama. Log audit cleanup kini mencatat `mode=`.
+- **Deploy + verifikasi user (2026-09-29)**: server di `1745f26`, restart isentinel-api; uji user OK (media absensi
+  terhapus, event/rekap/export utuh, mode event behavior tetap). Rollback: `git revert -m 1 <merge>` + restart API.
 
 ### Retention & Storage UI (2026-09-29)
 
