@@ -6,7 +6,9 @@ import { cleanupEvents, type CleanupFilter, type CleanupResult } from '../../api
 import { formatBytes } from './bytes'
 
 // jenis yang bisa dipilih; attendance sengaja tidak ada (backend juga selalu mengecualikannya)
-const TYPES = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd'] as const
+const TYPES = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd', 'system'] as const
+// label: behavior memakai label zona; system = log node offline (hanya terhapus bila dipilih)
+const typeLabel = (k: string): TKey => (k === 'system' ? 'storage.cleanup.type.system' : (`zones.behavior.${k}` as TKey))
 
 function today(): string {
   const d = new Date()
@@ -70,7 +72,7 @@ export default function EventCleanupCard({ onDone }: { onDone: () => void }) {
           items={cams} itemToString={(c) => c?.name ?? ''}
           onChange={({ selectedItems }) => setFilter((f) => ({ ...f, camera_ids: (selectedItems ?? []).map((c) => c.id) }))} />
         <MultiSelect<string> id="cleanup-types" titleText={t('storage.cleanup.types')} label={t('storage.cleanup.all')}
-          items={[...TYPES]} itemToString={(k) => (k ? t(`zones.behavior.${k}` as TKey) : '')}
+          items={[...TYPES]} itemToString={(k) => (k ? t(typeLabel(k)) : '')}
           onChange={({ selectedItems }) => setFilter((f) => ({ ...f, types: [...(selectedItems ?? [])] }))} />
       </div>
       <div className="st-card__actions">

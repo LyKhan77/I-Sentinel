@@ -29,8 +29,10 @@ logger = logging.getLogger(__name__)
 KINDS = ("clips", "snapshots", "crops")
 # crops/ = crop wajah absensi (payload.crop_path) → ikut retensi media absensi
 ORPHAN_CUTOFF_KIND = {"clips": "clip", "snapshots": "snapshot", "crops": "attendance"}
-# absensi (sumber rekap) + catatan sistem (node offline/LWT) tidak pernah dihapus cleanup
-PROTECTED_TYPES = ("attendance", "system")
+# absensi = sumber rekap → tidak pernah dihapus cleanup
+PROTECTED_TYPES = ("attendance",)
+# log sistem (node offline/LWT) hanya terhapus bila dipilih eksplisit di filter Jenis
+OPT_IN_TYPES = ("system",)
 CLEANUP_BATCH = 5000  # batas placeholder IN (...) untuk rentang tanggal besar
 
 
@@ -237,6 +239,8 @@ def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] |
     end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
     q = db.query(Event).filter(Event.ts_event >= start, Event.ts_event < end,
                                Event.type.notin_(PROTECTED_TYPES))
+    if not types:
+        q = q.filter(Event.type.notin_(OPT_IN_TYPES))
     if camera_ids:
         q = q.filter(Event.camera_id.in_(camera_ids))
     if types is not None and len(types) > 0:

@@ -44,6 +44,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   "Clip · Snapshot · Absensi", hint cleanup diperjelas. Backend **479 passed**, frontend **179 passed**, build 0,
   lint set sama. Catatan: `liveview.test.tsx` "tile di luar layar…" sekali gagal di suite penuh lalu lulus 3×
   berturut (flaky, di luar perubahan ini).
+- **Feedback user — log sistem bisa dibersihkan bila dipilih**: jenis `system` (event node offline/LWT, satu baris
+  tiap vision-node restart) kini boleh di filter Jenis ("Log sistem (node offline)"); filter Jenis kosong tetap
+  tidak menyentuhnya; `attendance` tetap tidak pernah. Backend **480 passed**, frontend **180 passed**,
+  build 0, lint set sama. Penghapusan data uji absensi = siklus berikutnya (desain terpisah, menyentuh rekap).
 
 ### User management (2026-09-28)
 

@@ -2,8 +2,8 @@ from datetime import date
 
 from pydantic import BaseModel, Field, model_validator
 
-# jenis behavior yang boleh dibersihkan; attendance & system selalu dilindungi cleanup
-CLEANUP_TYPES = {"intrusion", "loitering", "running", "idle_zone", "crowd"}
+# jenis yang boleh dipilih di cleanup; attendance tidak pernah; "system" (log node offline) hanya bila dipilih
+CLEANUP_TYPES = {"intrusion", "loitering", "running", "idle_zone", "crowd", "system"}
 
 
 class StorageSettingsPatch(BaseModel):
@@ -18,8 +18,8 @@ class StorageSettingsPatch(BaseModel):
 class CleanupIn(BaseModel):
     """Hapus event behavior per rentang tanggal lokal.
 
-    `attendance` dan `system` tidak pernah dihapus; `types` hanya boleh berisi jenis behavior
-    (bukan `attendance`/`system`/`person_detect`) — di luar itu 422.
+    `attendance` tidak pernah dihapus; `system` (log node offline) hanya bila dipilih di `types`;
+    `types` hanya boleh berisi jenis behavior atau `system` — di luar itu 422.
     """
     model_config = {"extra": "forbid"}
     date_from: date

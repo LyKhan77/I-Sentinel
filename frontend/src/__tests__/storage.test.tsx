@@ -137,3 +137,14 @@ test('rentang terbalik: pratinjau nonaktif', async () => {
   await fillDates('2026-09-10', '2026-09-01')
   expect(screen.getByTestId('cleanup-preview')).toBeDisabled()
 })
+
+test('cleanup: log sistem hanya ikut bila dipilih di Jenis', async () => {
+  const f = stub('admin')
+  renderStorage()
+  await fillDates('2026-09-01', '2026-09-10')
+  await userEvent.click(screen.getByRole('combobox', { name: /Jenis/ }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Log sistem (node offline)' }))
+  await userEvent.click(screen.getByTestId('cleanup-preview'))
+  await screen.findByTestId('cleanup-preview-result')
+  expect(cleanupCalls(f).at(-1)!.types).toEqual(['system'])
+})

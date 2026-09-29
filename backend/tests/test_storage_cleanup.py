@@ -112,7 +112,6 @@ def test_cleanup_api_validation_and_admin_only(client, root):
     for bad in ({**ok, "date_from": str(today), "date_to": str(today - timedelta(days=1))},
                 {**ok, "date_to": str(today + timedelta(days=1))},
                 {**ok, "types": ["meteor"]},
-                {**ok, "types": ["system"]},
                 {**ok, "types": ["attendance"]},
                 {**ok, "date_from": "kemarin"},
                 {**ok, "hapus_semua": True}):
@@ -120,11 +119,20 @@ def test_cleanup_api_validation_and_admin_only(client, root):
     assert client.post("/api/v1/storage/cleanup", json=ok, headers=viewer_headers(client)).status_code == 403
 
 
-def test_cleanup_never_deletes_system_events(db, root):
-    """Catatan sistem (node offline/LWT) bukan event behavior — tidak pernah ikut cleanup."""
+def test_system_logs_only_deleted_when_selected(db, root):
+    """Log sistem (node offline/LWT): tidak ikut bila Jenis kosong; terhapus bila dipilih eksplisit."""
     sys_ev = _ev(db, _local(2026, 9, 10), type_="system")
-    assert retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), dry_run=False)["events"] == 0
-    assert db.get(Event, sys_ev.id) is not None
+    beh = _ev(db, _local(2026, 9, 10), type_="intrusion")
+    r = retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), dry_run=False)
+    assert r["events"] == 1 and db.get(Event, sys_ev.id) is not None and db.get(Event, beh.id) is None
+    r = retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), types=["system"], dry_run=False)
+    assert r["events"] == 1 and db.get(Event, sys_ev.id) is None
+
+
+def test_system_type_accepted_by_api(client, root):
+    today = date.today()
+    body = {"date_from": str(today), "date_to": str(today), "types": ["system"], "dry_run": True}
+    assert client.post("/api/v1/storage/cleanup", json=body, headers=admin_headers(client)).status_code == 200
 
 
 def test_cleanup_dry_run_keeps_alerts(db, root):

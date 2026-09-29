@@ -21,10 +21,10 @@ dan menanggapi peringatan disk hampir penuh. Semua lewat **Konfigurasi → Stora
 ## 2. Membersihkan event per rentang tanggal
 
 1. Konfigurasi → Storage → kartu **Bersihkan event**.
-2. Pilih **Dari tanggal** / **Sampai tanggal** (maks hari ini); opsional kamera & jenis behavior
-   (hanya intrusion/loitering/running/idle_zone/crowd — endpoint menolak jenis lain dengan 422).
-   Event absensi dan catatan sistem (node offline/LWT) tidak pernah ikut; backend selalu
-   mengecualikannya.
+2. Pilih **Dari tanggal** / **Sampai tanggal** (maks hari ini); opsional kamera & jenis
+   (intrusion/loitering/running/idle_zone/crowd/**Log sistem** — endpoint menolak jenis lain dengan 422).
+   Event absensi tidak pernah ikut (backend selalu mengecualikannya). Log sistem (node offline/LWT)
+   hanya ikut bila dipilih eksplisit di Jenis.
 3. **Pratinjau** (dry run, tidak mengubah apa pun) → baca "N event · M file · X".
 4. Bila sudah yakin → **Hapus N event** → modal konfirmasi menyebut jumlah + rentang → konfirmasi.
    Tombol Hapus hanya aktif setelah pratinjau untuk **filter yang sama**; jumlah pada konfirmasi
