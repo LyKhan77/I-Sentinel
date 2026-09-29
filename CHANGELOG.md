@@ -33,6 +33,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `backend/tests/test_events_api.py`, `frontend/src/api/events.ts`, `features/notifications/{EventAlertsProvider,
   NotificationBell,labels}`, `app/{i18n.tsx,theme.scss}`, `__tests__/event-alerts.test.tsx`. Bukti: backend 491,
   frontend 203, build 0, lint set sama. Deploy: restart `isentinel-api` (filter multi-type) + HMR frontend.
+- **Deploy & verifikasi user (2026-09-29):** server `gspe-ai3` @ `d5dcf66` (14:45, HMR frontend) lalu `981897e`
+  (15:04, restart `isentinel-api`). User menguji lonceng, toast, bunyi/mute, outline tile + chip Live View/TV, dan tab
+  Hari ini/Kemarin: **sesuai**. Merge ke `main`.
 
 ### Event wajib bermedia (2026-09-29)
 
