@@ -8,6 +8,8 @@ import { EventAlertsProvider, useEventAlerts, MUTE_KEY, SEEN_KEY } from '../feat
 import { beep } from '../features/notifications/beep'
 import NotificationBell from '../features/notifications/NotificationBell'
 import EventToasts from '../features/notifications/EventToasts'
+import LiveViewPage from '../features/live/LiveViewPage'
+import LiveTvPage from '../features/live/LiveTvPage'
 
 vi.mock('../features/notifications/beep', () => ({ beep: vi.fn() }))
 
@@ -296,4 +298,82 @@ test('toast: tampil untuk event baru, klik isi → detail, klik tutup hanya menu
   await userEvent.click(screen.getByText('CAM-01 · Pagar'))
   expect(screen.getByTestId('loc')).toHaveTextContent('/events?event=12')
   expect(screen.queryByTestId('toast-12')).toBeNull()
+})
+
+// ---- Live View: outline tile, chip, bunyi TV (Task 3) ----
+class FakeIO {
+  static all: FakeIO[] = []
+  cb: IntersectionObserverCallback
+  margin: string
+  el: Element | null = null
+  constructor(cb: IntersectionObserverCallback, opts?: IntersectionObserverInit) {
+    this.cb = cb
+    this.margin = opts?.rootMargin ?? ''
+    FakeIO.all.push(this)
+  }
+  observe(el: Element) { this.el = el }
+  unobserve() {}
+  disconnect() {}
+  fire(isIntersecting: boolean) {
+    this.cb([{ isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+  }
+}
+// observer "benar-benar terlihat" (tanpa pra-muat) milik tile kamera
+const visibleIO = (camId: number) =>
+  FakeIO.all.find((o) => o.margin === '0px' && o.el === screen.getByTestId(`cam-tile-${camId}`))!
+
+test('Live View: tile kena event diberi outline severity + label; tile lain tidak', async () => {
+  renderWith(<LiveViewPage />, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  expect(screen.queryByTestId('cam-alert-1')).toBeNull() // riwayat tidak memberi outline
+  send(ev(12))
+  const ring = screen.getByTestId('cam-alert-1')
+  expect(ring).toHaveClass('lv-alert', 'lv-alert--critical')
+  expect(ring).toHaveTextContent('Intrusi · Pagar')
+  expect(screen.queryByTestId('cam-alert-2')).toBeNull()
+  send(ev(13, { camera_id: 2, severity: 'bogus', type: 'crowd', payload: {} }))
+  expect(screen.getByTestId('cam-alert-2')).toHaveClass('lv-alert--warning')
+  expect(screen.getByTestId('cam-alert-2')).toHaveTextContent('Kerumunan (Crowd)')
+})
+
+test('Live View: chip untuk tile kena event yang tidak terlihat; klik menggulir; terlihat lagi → chip hilang', async () => {
+  FakeIO.all = []
+  vi.stubGlobal('IntersectionObserver', FakeIO)
+  const scroll = vi.fn()
+  Element.prototype.scrollIntoView = scroll
+  renderWith(<LiveViewPage />, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  act(() => { visibleIO(1).fire(true); visibleIO(2).fire(true) })
+  send(ev(12))
+  expect(screen.queryByTestId('alert-chips')).toBeNull() // tile terlihat → cukup outline
+
+  act(() => visibleIO(1).fire(false))
+  expect(screen.getByTestId('alert-chip-1')).toHaveTextContent('CAM-01')
+  expect(screen.getByTestId('alert-chip-1')).toHaveTextContent('Intrusi')
+  await userEvent.click(screen.getByTestId('alert-chip-1'))
+  expect(scroll).toHaveBeenCalled()
+
+  act(() => visibleIO(1).fire(true))
+  expect(screen.queryByTestId('alert-chips')).toBeNull()
+})
+
+test('Live View: event system → chip "Node offline", tanpa outline tile', async () => {
+  renderWith(<LiveViewPage />, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  send(ev(30, { type: 'system', camera_id: null, zone_id: null, severity: 'warning', payload: { node: 'vision-1' } }))
+  expect(screen.getByTestId('alert-chip-node')).toHaveTextContent('Node vision-1 offline')
+  expect(document.querySelector('.lv-alert')).toBeNull()
+})
+
+test('mode TV: outline tampil dan toggle bunyi menyimpan mute', async () => {
+  renderWith(<LiveTvPage />, '/live/tv')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  send(ev(12))
+  expect(screen.getByTestId('cam-alert-1')).toHaveClass('lv-alert--critical')
+  await userEvent.click(screen.getByTestId('live-tv-sound'))
+  expect(localStorage.getItem(MUTE_KEY)).toBe('1')
 })
