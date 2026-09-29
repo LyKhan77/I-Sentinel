@@ -392,3 +392,12 @@ test('snapshot editor menampilkan frame penuh (object-fit fill), bukan dipotong 
   await waitFor(() => expect(svg.parentElement!.querySelector('img')).not.toBeNull())
   expect(svg.parentElement!.querySelector('img')!.style.objectFit).toBe('fill')
 })
+
+test('behavior aktif tanpa Snapshot & Clip: peringatan + Simpan diblokir sampai satu media aktif', async () => {
+  await selectZone([zoneFix({ behaviors: [{ kind: 'intrusion', trigger_seconds: 0, snapshot: false, clip: false }] })])
+  expect(await screen.findByTestId('zone-media-warning-intrusion')).toHaveTextContent('Aktifkan Snapshot atau Clip')
+  expect(screen.getByTestId('zone-save')).toBeDisabled()
+  fireEvent.click(document.getElementById('zone-snapshot-intrusion')!) // Toggle Carbon = button#id
+  await waitFor(() => expect(screen.queryByTestId('zone-media-warning-intrusion')).not.toBeInTheDocument())
+  expect(screen.getByTestId('zone-save')).toBeEnabled()
+})

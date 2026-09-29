@@ -35,6 +35,8 @@ PROTECTED_TYPES = ("attendance",)
 # log sistem (node offline/LWT) hanya terhapus bila dipilih eksplisit di filter Jenis
 OPT_IN_TYPES = ("system",)
 CLEANUP_BATCH = 5000  # batas placeholder IN (...) untuk rentang tanggal besar
+# event memang tanpa media sejak awal → tidak pernah dihapus karena "media habis"
+MEDIA_FREE_EXEMPT = ("system",)
 
 
 def cutoff_for(now: datetime, days: int) -> datetime:
@@ -161,6 +163,47 @@ def _expire_crops(db: Session, root: str, cutoff: datetime, dry_run: bool) -> tu
     return files, freed, expired
 
 
+def _media_fields(ev: Event) -> set[str]:
+    """Media yang masih dirujuk event: clip, snapshot, crop wajah (payload absensi)."""
+    out = set()
+    if ev.clip_path:
+        out.add("clip")
+    if ev.snapshot_path:
+        out.add("snapshot")
+    if (ev.payload or {}).get("crop_path"):
+        out.add("crop")
+    return out
+
+
+def _delete_events(db: Session, ids: list[int]) -> None:
+    """Hapus alert lalu event (FK alert.event_id), per batch; tanpa commit."""
+    for chunk in _chunks(ids):
+        db.query(Alert).filter(Alert.event_id.in_(chunk)).delete(synchronize_session="fetch")
+        db.query(Event).filter(Event.id.in_(chunk)).delete(synchronize_session="fetch")
+
+
+def _media_free_after(db: Session, parts: list, names: tuple[str, ...]) -> set[int]:
+    """Event yang seluruh medianya habis oleh retensi (sweep ini atau versi sebelumnya).
+
+    Tujuan event = bukti visual; tanpa media card Events tidak berguna. Hanya event yang medianya
+    dihapus retensi (bukan event baru yang upload medianya masih menyusul). Log system dikecualikan.
+    """
+    expired: dict[int, set[str]] = {}
+    touched: dict[int, Event] = {}
+    for (_files, _bytes, evs), name in zip(parts, names):
+        for ev in evs:
+            expired.setdefault(ev.id, set()).add(name)
+            touched[ev.id] = ev
+    # dry run: field belum di-null-kan → semua media yang ada harus termasuk yang kedaluwarsa;
+    # eksekusi: field sudah di-null-kan → yang tersisa hanya media yang belum kedaluwarsa
+    purge = {eid for eid, ev in touched.items()
+             if ev.type not in MEDIA_FREE_EXEMPT and _media_fields(ev) <= expired[eid]}
+    legacy = db.query(Event).filter(Event.media_expired.is_(True), Event.clip_path.is_(None),
+                                    Event.snapshot_path.is_(None), Event.type.notin_(MEDIA_FREE_EXEMPT))
+    purge |= {ev.id for ev in legacy if ev.id not in touched and not _media_fields(ev)}
+    return purge
+
+
 def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     root = settings.storage_root
@@ -170,7 +213,9 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
 
     # --- lapis 1: media event kedaluwarsa, per jenis (absensi punya retensi sendiri) ---
     parts = [
-        _expire_field(db, root, "clip_path", cutoffs["clip"], dry_run),
+        _expire_field(db, root, "clip_path", cutoffs["clip"], dry_run, attendance=False),
+        # clip absensi = data lama (pipeline sebelum face worker), ikut retensi media absensi
+        _expire_field(db, root, "clip_path", cutoffs["attendance"], dry_run, attendance=True),
         _expire_field(db, root, "snapshot_path", cutoffs["snapshot"], dry_run, attendance=False),
         _expire_field(db, root, "snapshot_path", cutoffs["attendance"], dry_run, attendance=True),
         _expire_crops(db, root, cutoffs["attendance"], dry_run),
@@ -178,7 +223,9 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
     files_deleted = sum(p[0] for p in parts)
     bytes_freed = sum(p[1] for p in parts)
     events_marked = len({ev.id for p in parts for ev in p[2]})
+    purge = _media_free_after(db, parts, ("clip", "clip", "snapshot", "snapshot", "crop"))
     if not dry_run:
+        _delete_events(db, sorted(purge))  # card Events tanpa media ikut hilang (+ alert-nya)
         db.commit()
 
     # --- lapis 2: sapuan orphan berdasarkan mtime, cutoff per jenis ---
@@ -224,6 +271,7 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
         "events_marked": events_marked,
         "orphans_deleted": orphans_deleted,
         "dry_run": dry_run,
+        "events_deleted": len(purge),
         "clip_days": s["clip_days"],
         "snapshot_days": s["snapshot_days"],
         "attendance_days": s["attendance_days"],
@@ -267,14 +315,17 @@ def _remove_files(root: str, rels: list[str]) -> tuple[int, int]:
 
 def cleanup_attendance_media(db: Session, date_from: date, date_to: date,
                              camera_ids: list[int] | None = None, dry_run: bool = True) -> dict:
-    """Hapus foto + crop wajah event absensi di rentang; event, riwayat, dan rekap absensi tetap."""
+    """Hapus semua media event absensi di rentang (foto, crop wajah, clip lama) + entri Inbox-nya.
+
+    Riwayat masuk/keluar (attendance_event) dan rekap (attendance_day) tetap.
+    """
     events = [ev for ev in _range_query(db, date_from, date_to, camera_ids).filter(Event.type == "attendance")
-              if ev.snapshot_path or (ev.payload or {}).get("crop_path")]
+              if _media_fields(ev)]
     if not events:
         return {"events": 0, "files": 0, "bytes": 0, "dry_run": dry_run}
     id_set = {ev.id for ev in events}
     eid_set = {ev.event_id for ev in events}
-    paths = {p for ev in events for p in (ev.snapshot_path, (ev.payload or {}).get("crop_path")) if p}
+    paths = {p for ev in events for p in (ev.clip_path, ev.snapshot_path, (ev.payload or {}).get("crop_path")) if p}
     # file yang juga dirujuk event/riwayat di luar rentang dipertahankan
     kept: set[str] = set()
     for chunk in _chunks(sorted(paths)):
@@ -289,13 +340,10 @@ def cleanup_attendance_media(db: Session, date_from: date, date_to: date,
     if dry_run:
         return {"events": len(events), "files": len(doomed),
                 "bytes": sum(_size(_safe_join(root, rel)) for rel in doomed), "dry_run": True}
-    for ev in events:
-        ev.snapshot_path = None
-        if (ev.payload or {}).get("crop_path"):
-            ev.payload = {**ev.payload, "crop_path": None}
-        ev.media_expired = True
     _null_attendance_copies(db, list(eid_set))
-    db.commit()  # path di-null-kan dulu, file sesudahnya (sisa file gagal hapus → orphan sweep)
+    # media habis → entri Inbox absensi ikut dihapus; rekap (attendance_day) & riwayat (attendance_event) tetap
+    _delete_events(db, sorted(id_set))
+    db.commit()  # baris dulu, file sesudahnya (sisa file gagal hapus → orphan sweep)
     files, freed = _remove_files(root, doomed)
     return {"events": len(events), "files": files, "bytes": freed, "dry_run": False}
 
@@ -336,9 +384,7 @@ def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] |
                 "bytes": sum(_size(_safe_join(root, rel)) for rel in doomed), "dry_run": True}
     # Baris dulu (satu transaksi), file sesudahnya: kalau penghapusan file gagal, sisa file disapu
     # orphan sweep — tidak ada baris event yang menunjuk ke file yang sudah hilang.
-    for chunk in _chunks(ids):
-        db.query(Alert).filter(Alert.event_id.in_(chunk)).delete(synchronize_session="fetch")
-        db.query(Event).filter(Event.id.in_(chunk)).delete(synchronize_session="fetch")
+    _delete_events(db, ids)
     db.commit()
     files, freed = _remove_files(root, doomed)
     return {"events": len(ids), "files": files, "bytes": freed, "dry_run": False}

@@ -228,10 +228,9 @@ def test_attendance_media_mode_keeps_rows_and_recap(db, root):
     r = retention.cleanup(db, date(2026, 9, 10), date(2026, 9, 10), mode="attendance_media", dry_run=False)
     assert (r["events"], r["files"], r["bytes"]) == (1, 2, 250)
     assert not os.path.exists(snap) and not os.path.exists(crop)
-    db.refresh(ev); db.refresh(row)
-    assert ev.snapshot_path is None and ev.payload["crop_path"] is None and ev.media_expired is True
-    assert ev.payload["employee_id"] == emp.id  # payload lain utuh
-    assert row.snapshot_path is None and db.get(AttendanceEvent, row.id) is not None
+    db.refresh(row)
+    assert db.get(Event, ev.id) is None  # entri Inbox absensi ikut hilang (media habis)
+    assert row.snapshot_path is None and db.get(AttendanceEvent, row.id) is not None  # riwayat tetap
     assert db.query(AttendanceDay).count() == 1 and db.get(Event, beh.id) is not None
 
 
@@ -259,3 +258,26 @@ def test_attendance_media_mode_api(client, root):
     assert r.status_code == 200 and r.json()["events"] == 0
     for bad in ({**base, "mode": "attendance_media", "types": ["intrusion"]}, {**base, "mode": "semua"}):
         assert client.post("/api/v1/storage/cleanup", json=bad, headers=h).status_code == 422, bad
+
+
+def test_attendance_media_mode_removes_legacy_clip_and_event(db, root):
+    """Event absensi lama (pipeline sebelum face worker) punya clip tersembunyi di UI → ikut media absensi."""
+    from app.models.attendance import AttendanceDay
+    emp = _employee(db)
+    clip = _file(root, "clips/att.mp4", 1000)
+    snap = _file(root, "snapshots/att2.jpg", 100)
+    ev = Event(type="attendance", ts_event=_local(2026, 9, 15), clip_path="clips/att.mp4",
+               snapshot_path="snapshots/att2.jpg", payload={"direction": "entry"})
+    db.add(ev); db.commit(); db.refresh(ev)
+    db.add(AttendanceDay(employee_id=emp.id, date=date(2026, 9, 15), status="ontime")); db.commit()
+    # event yang medianya sudah dikosongkan build lama tapi clip masih ada
+    only_clip = Event(type="attendance", ts_event=_local(2026, 9, 16), clip_path="clips/att.mp4",
+                      media_expired=True, payload={"direction": "exit"})
+    db.add(only_clip); db.commit(); db.refresh(only_clip)
+    dry = retention.cleanup(db, date(2026, 9, 1), date(2026, 9, 23), mode="attendance_media", dry_run=True)
+    assert dry == {"events": 2, "files": 2, "bytes": 1100, "dry_run": True}
+    r = retention.cleanup(db, date(2026, 9, 1), date(2026, 9, 23), mode="attendance_media", dry_run=False)
+    assert (r["events"], r["files"]) == (2, 2)
+    assert not os.path.exists(clip) and not os.path.exists(snap)
+    assert db.get(Event, ev.id) is None and db.get(Event, only_clip.id) is None
+    assert db.query(AttendanceDay).count() == 1

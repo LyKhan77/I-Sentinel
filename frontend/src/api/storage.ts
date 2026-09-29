@@ -5,6 +5,7 @@ export type SweepResult = {
   bytes_freed: number
   events_marked: number
   orphans_deleted: number
+  events_deleted?: number // event yang medianya habis → card Events ikut dihapus
   dry_run: boolean
   clip_days?: number
   snapshot_days?: number

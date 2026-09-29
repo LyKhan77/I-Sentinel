@@ -29,6 +29,7 @@
 | UM | User management (tab User, nonaktif, reset & ganti password, cabut sesi) | [x] deploy + verifikasi user 2026-09-28 | — | spec + plan 2026-09-28; migrasi 0018 di gspe-ai3; backend 450, vision 223 (3 deselected), frontend 171, build 0, lint set lama; review perencana: WS ikut pencabutan sesi; feedback user: ganti password sendiri khusus admin + tampilkan password di login | `ec1c5a1..64f68b4` |
 | RS | Retention & Storage UI (retensi clip/snapshot/absensi, cleanup per tanggal, alert disk) | [x] deploy + verifikasi user 2026-09-29 | — | spec + plan 2026-09-29; backend 480, vision 223 (3 deselected), frontend 180, build 0, lint set lama; review independen 1 Important + 9 Minor diperbaiki; feedback user: retensi media absensi sendiri + log sistem bisa dibersihkan bila dipilih | `0e3ba62..592691d` |
 | AM | Cleanup media absensi per tanggal (rekap & riwayat tetap) | [x] deploy + verifikasi user 2026-09-29 | — | desain di chat (bounded); backend 484, frontend 181, build 0; fix sweep null-kan attendance_event.snapshot_path | `1745f26` |
+| EM | Event wajib bermedia (event tanpa media dihapus, behavior wajib snapshot/clip) | [x] deploy + verifikasi user 2026-09-29 | — | desain di chat (bounded); backend 490, frontend 182, build 0; fix clip absensi lama ikut media absensi | `4e66282..16e8396` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton

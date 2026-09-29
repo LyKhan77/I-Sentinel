@@ -18,6 +18,9 @@ dan menanggapi peringatan disk hampir penuh. Semua lewat **Konfigurasi → Stora
 4. Field yang belum pernah disimpan mengikuti `RETENTION_DAYS` di `.env`; setelah disimpan, nilai DB
    yang dipakai. Rollback cepat: isi ulang nilai lama lalu Simpan.
 
+> Event yang seluruh medianya sudah habis (retensi atau cleanup media) ikut dihapus beserta alert-nya —
+> card-nya hilang dari Events. Rekap & riwayat absensi tetap; log sistem dikecualikan.
+
 ## 2. Membersihkan event per rentang tanggal
 
 1. Konfigurasi → Storage → kartu **Bersihkan event**.

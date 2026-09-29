@@ -3,6 +3,27 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Event wajib bermedia (2026-09-29)
+
+- **Event tanpa media dihapus**: sweep retensi menghapus baris event + alert bila media terakhirnya (clip,
+  snapshot, crop) habis oleh retensi — juga event lama ber-`media_expired` tanpa path (sisa retensi versi
+  sebelumnya); `events_deleted` di hasil sweep/dry run & tab Storage. Mode cleanup "Media absensi saja" ikut
+  menghapus entri Inbox absensi (rekap `attendance_day` & riwayat `attendance_event` tetap). Log `system`
+  dikecualikan; event baru yang medianya belum datang tidak tersentuh (butuh `media_expired`).
+- **Behavior wajib Snapshot/Clip**: backend 422 bila behavior `snapshot` & `clip` sama-sama `false` (attendance:
+  `snapshot` `false` → 422); Zona Deteksi menampilkan peringatan merah per behavior dan menonaktifkan Simpan.
+- Tes lama retensi/cleanup diperbarui ke semantik baru (event kedaluwarsa kini terhapus). Backend **488 passed**,
+  frontend **182 passed**, build 0, lint set sama.
+- **Fix uji user — clip absensi lama**: 35/36 event absensi (15–22 Sep, pipeline sebelum face worker) punya clip yang
+  disembunyikan UI Events → cleanup "Media absensi saja" & retensi melewatkannya, card tetap muncul. Media absensi
+  kini mencakup clip (cleanup media + retensi `attendance_days` untuk clip event absensi); event lama yang hanya
+  tersisa clip ikut terhapus. Tes: clip lama + event yang sudah dikosongkan build lama. Backend **490 passed**,
+  frontend **182 passed**, build 0.
+- **Deploy + verifikasi user (2026-09-29)**: server di `16e8396`, restart isentinel-api (tanpa migrasi). Uji user OK:
+  cleanup "Media absensi saja" 1–23 Sep menghapus clip lama + entri Inbox absensi, rekap/export utuh; peringatan
+  behavior tanpa media + Simpan diblokir. Rollback: `git revert -m 1 <merge>` + restart API (event yang sudah
+  terhapus tidak kembali).
+
 ### Cleanup media absensi per tanggal (2026-09-29)
 
 - **Mode "Media absensi saja"** di Bersihkan event (`POST /storage/cleanup` `mode: "attendance_media"`): hapus foto +

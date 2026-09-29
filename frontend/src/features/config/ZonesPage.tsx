@@ -103,6 +103,11 @@ export default function ZonesPage() {
   }, [cam, reload])
 
   const selected = zones.find((z) => z.id === selectedId) ?? null
+  // event = bukti visual: behavior aktif wajib Snapshot atau Clip (backend juga menolak 422)
+  const noMedia = (b: Behavior) => !(b.snapshot ?? selected?.snapshot ?? true) && !(b.clip ?? selected?.clip ?? true)
+  const mediaMissing = selected?.type === 'behavior'
+    ? selected.behaviors.filter((b) => (BEHAVIOR_KINDS as string[]).includes(b.kind) && noMedia(b))
+    : []
 
   const patchSelected = (patch: Partial<Zone>) => {
     if (!selected) return
@@ -502,6 +507,12 @@ export default function ZonesPage() {
                               />
                             </div>
                           )}
+                          {b && noMedia(b) && (
+                            <p role="alert" data-testid={`zone-media-warning-${kind}`}
+                              style={{ margin: '0 0 0 24px', fontSize: 12, color: 'var(--cds-text-error)' }}>
+                              {t('zones.mediaRequired')}
+                            </p>
+                          )}
                         </div>
                       )
                     })}
@@ -515,7 +526,7 @@ export default function ZonesPage() {
                 />
 
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" disabled={busy !== null} onClick={save}>
+                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" disabled={busy !== null || mediaMissing.length > 0} onClick={save}>
                     {busy === 'save' ? t('common.saving') : t('common.save')}
                   </Button>
                   <Button

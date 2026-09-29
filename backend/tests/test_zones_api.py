@@ -314,3 +314,22 @@ def test_zone_schedule_unknown_shift_422(client):
     r = _behavior_zone(client, h, cam["id"], [], schedule={"shift_id": 999})
     assert r.status_code == 422 and "shift" in str(r.json()["detail"])
     assert _behavior_zone(client, h, cam["id"], [], schedule={"shift_id": "x"}).status_code == 422
+
+
+def test_behavior_without_any_media_rejected(client):
+    """Event = bukti visual: behavior aktif wajib Snapshot atau Clip (attendance wajib Snapshot)."""
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    def post(behaviors, type_="behavior", **extra):
+        return client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": type_,
+                                                  "behaviors": behaviors, **extra}, headers=h)
+    r = post([{"kind": "intrusion", "trigger_seconds": 0, "snapshot": False, "clip": False}])
+    assert r.status_code == 422 and "snapshot or clip" in str(r.json()["detail"])
+    assert post([{"kind": "intrusion", "trigger_seconds": 0, "snapshot": False, "clip": True}]).status_code == 200
+    assert post([{"kind": "loitering", "trigger_seconds": 0, "snapshot": True, "clip": False}]).status_code == 200
+    r = post([{"kind": "attendance", "trigger_seconds": 0, "snapshot": False}], type_="attendance", direction="entry")
+    assert r.status_code == 422
+    zid = post([{"kind": "running", "trigger_seconds": 0}]).json()["id"]  # legacy: tanpa flag = ikut zona
+    r = client.patch(f"/api/v1/zones/{zid}", json={"behaviors": [
+        {"kind": "running", "trigger_seconds": 0, "snapshot": False, "clip": False}]}, headers=h)
+    assert r.status_code == 422
