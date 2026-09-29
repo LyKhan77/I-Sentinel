@@ -3,6 +3,30 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Notifikasi event web UI + outline tile Live View (2026-09-29)
+
+- **Konteks:** operator command center perlu tahu event baru tanpa membuka halaman Events; tile kamera yang kena
+  event harus menonjol di Live View / mode TV.
+- **Perubahan:** `EventAlertsProvider` (satu langganan WS/polling, riwayat vs event baru, anti duplikat),
+  lonceng header + panel (20 event terakhir, badge `20+`), toast (maks 3, 8 detik), bunyi Web Audio (mute per
+  browser, maks 1×/5 s), outline severity 30 s di tile, chip untuk tile tersembunyi dan node offline, toggle bunyi
+  di toolbar TV. Backend tidak berubah.
+- **File:** `frontend/src/features/notifications/*`, `features/live/{LiveWall,LiveTvPage,useInView}.tsx`,
+  `app/{AppShell,i18n}.tsx`, `app/theme.scss`, `main.tsx`, `api/events.ts`, `__tests__/event-alerts.test.tsx`.
+- **Bukti:** frontend **202 passed**, build 0, lint set pasangan rule+file lama (+3 warning
+  `react/only-export-components` di file provider saja); bukti visual Chromium `docs/evidence/2026-09-29-notif-*.png`
+  (`/dashboard` lonceng + panel 1440 & 390 px, `/live` outline + chip, `/live/tv` chip non-interaktif; `scrollWidth`
+  = lebar viewport di semua kasus, chip/panel terverifikasi pada koordinat kanan bawah/atas).
+- **Review independen:** `8f1d746..9dd8c7c` — 6/6 fokus PASS; temuan valid diperbaiki di `b83349b`
+  (lonceng dibuka sebelum riwayat selesai menyimpan penanda dibaca `0` palsu → badge `20+`; riwayat gagal → event
+  basi dihitung belum dibaca; `asNotifyEvent` menerima tipe warisan `Object.prototype`). Ditolak dengan bukti:
+  kontrol keyboard di badan toast (Carbon `useNoInteractiveChildren` melempar error di dev) dan aturan basi
+  diterapkan tanpa syarat (akan mematikan notifikasi klien yang jamnya beda > 60 s dari server).
+- **Dampak:** polling `/events` bertambah satu per tab (5 s) + satu koneksi WS per tab; tanpa migrasi, tanpa
+  dependensi baru.
+- **Rollback:** `git revert` rentang `8385d61..b83349b` + build frontend; key localStorage
+  `isentinel_notif_seen` / `isentinel_notif_mute` diabaikan kode lama.
+
 ### Event wajib bermedia (2026-09-29)
 
 - **Event tanpa media dihapus**: sweep retensi menghapus baris event + alert bila media terakhirnya (clip,
