@@ -11,16 +11,29 @@ Dua lapis, karena keduanya menangkap kasus berbeda:
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.alert import Alert
 from app.models.event import Event
+from app.services import storage_settings
+
+logger = logging.getLogger(__name__)
 
 KINDS = ("clips", "snapshots", "crops")
+# crops/ = crop wajah absensi (payload.crop_path) → ikut retensi media absensi
+ORPHAN_CUTOFF_KIND = {"clips": "clip", "snapshots": "snapshot", "crops": "attendance"}
+# absensi = sumber rekap → tidak pernah dihapus cleanup
+PROTECTED_TYPES = ("attendance",)
+# log sistem (node offline/LWT) hanya terhapus bila dipilih eksplisit di filter Jenis
+OPT_IN_TYPES = ("system",)
+CLEANUP_BATCH = 5000  # batas placeholder IN (...) untuk rentang tanggal besar
 
 
 def cutoff_for(now: datetime, days: int) -> datetime:
@@ -83,67 +96,107 @@ def _prune_empty_dirs(base: str) -> None:
             pass
 
 
+def _by_attendance(q, attendance: bool | None):
+    """None = semua jenis; True = hanya absensi; False = selain absensi."""
+    if attendance is None:
+        return q
+    return q.filter(Event.type == "attendance") if attendance else q.filter(Event.type != "attendance")
+
+
+def _expire_field(db: Session, root: str, field: str, cutoff: datetime, dry_run: bool,
+                  attendance: bool | None = None) -> tuple[int, int, list]:
+    """Hapus file `field` (clip_path/snapshot_path) milik event lebih tua dari cutoff.
+
+    File yang masih dirujuk event lebih baru (clip insiden bersama) dipertahankan; path event
+    kedaluwarsa tetap di-null-kan. Perbandingan waktu di SQL (SQLite tes = datetime naif).
+    """
+    col = getattr(Event, field)
+    expired = _by_attendance(db.query(Event).filter(Event.ts_event < cutoff, col.isnot(None)), attendance).all()
+    if not expired:
+        return 0, 0, []
+    live = {p for (p,) in _by_attendance(db.query(col).filter(Event.ts_event >= cutoff, col.isnot(None)),
+                                         attendance)}
+    files = freed = 0
+    seen: set[str] = set()
+    for ev in expired:
+        rel = getattr(ev, field)
+        full = _safe_join(root, rel)
+        if rel not in seen and rel not in live and full and os.path.isfile(full):
+            seen.add(rel)
+            files += 1
+            freed += _size(full)
+            if not dry_run:
+                os.remove(full)
+        if not dry_run:
+            setattr(ev, field, None)
+            ev.media_expired = True
+    return files, freed, expired
+
+
+def _expire_crops(db: Session, root: str, cutoff: datetime, dry_run: bool) -> tuple[int, int, list]:
+    """Crop wajah absensi (payload.crop_path) lebih tua dari cutoff: hapus file, null-kan path.
+
+    ponytail: memindai payload event absensi lama di Python (JSON filter beda per dialek); pindah ke
+    filter JSON SQL bila baris absensi mencapai ratusan ribu.
+    """
+    rows = db.query(Event).filter(Event.type == "attendance", Event.ts_event < cutoff).all()
+    expired = [ev for ev in rows if (ev.payload or {}).get("crop_path")]
+    files = freed = 0
+    seen: set[str] = set()
+    for ev in expired:
+        rel = ev.payload["crop_path"]
+        full = _safe_join(root, rel)
+        if rel not in seen and full and os.path.isfile(full):
+            seen.add(rel)
+            files += 1
+            freed += _size(full)
+            if not dry_run:
+                os.remove(full)
+        if not dry_run:
+            ev.payload = {**ev.payload, "crop_path": None}  # dict baru → perubahan JSON terdeteksi
+            ev.media_expired = True
+    return files, freed, expired
+
+
 def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     root = settings.storage_root
-    cutoff = cutoff_for(now, settings.retention_days)
+    s = storage_settings.get(db)
+    cutoffs = {"clip": cutoff_for(now, s["clip_days"]), "snapshot": cutoff_for(now, s["snapshot_days"]),
+               "attendance": cutoff_for(now, s["attendance_days"])}
 
-    files_deleted = 0
-    bytes_freed = 0
-    events_marked = 0
-
-    # --- lapis 1: event kedaluwarsa menurut ts_event ---
-    expired = (
-        db.query(Event)
-        .filter(Event.ts_event < cutoff)
-        .filter(Event.media_expired.is_(False))
-        .filter((Event.clip_path.isnot(None)) | (Event.snapshot_path.isnot(None)))
-        .all()
-    )
-    # clip insiden dipakai bersama beberapa event; jangan hapus selama masih
-    # dirujuk event yang belum kedaluwarsa (null-kan path saja)
-    live = {
-        path
-        for row in db.query(Event.clip_path, Event.snapshot_path)
-        .filter(Event.ts_event >= cutoff)
-        for path in row
-        if path
-    } if expired else set()
-    for ev in expired:
-        for field in ("clip_path", "snapshot_path"):
-            rel = getattr(ev, field)
-            if not rel:
-                continue
-            full = _safe_join(root, rel)
-            if full and rel not in live and os.path.isfile(full):
-                bytes_freed += _size(full)
-                files_deleted += 1
-                if not dry_run:
-                    os.remove(full)
-            if not dry_run:
-                setattr(ev, field, None)
-        events_marked += 1
-    if not dry_run and events_marked:
-        for ev in expired:
-            ev.media_expired = True
-        db.commit()
-    elif not dry_run:
+    # --- lapis 1: media event kedaluwarsa, per jenis (absensi punya retensi sendiri) ---
+    parts = [
+        _expire_field(db, root, "clip_path", cutoffs["clip"], dry_run),
+        _expire_field(db, root, "snapshot_path", cutoffs["snapshot"], dry_run, attendance=False),
+        _expire_field(db, root, "snapshot_path", cutoffs["attendance"], dry_run, attendance=True),
+        _expire_crops(db, root, cutoffs["attendance"], dry_run),
+    ]
+    files_deleted = sum(p[0] for p in parts)
+    bytes_freed = sum(p[1] for p in parts)
+    events_marked = len({ev.id for p in parts for ev in p[2]})
+    if not dry_run:
         db.commit()
 
-    # --- lapis 2: sapuan orphan berdasarkan mtime ---
+    # --- lapis 2: sapuan orphan berdasarkan mtime, cutoff per jenis ---
     referenced = set()
     for (clip, snap) in db.query(Event.clip_path, Event.snapshot_path).all():
         if clip:
             referenced.add(clip)
         if snap:
             referenced.add(snap)
+    # crop yang masih dirujuk payload absensi bukan orphan (lapis 1 yang mengatur umurnya)
+    for (payload,) in db.query(Event.payload).filter(Event.type == "attendance"):
+        crop = (payload or {}).get("crop_path")
+        if crop:
+            referenced.add(crop)
 
     orphans_deleted = 0
-    cutoff_ts = cutoff.timestamp()
     for kind in KINDS:
         base = os.path.join(root, kind)
         if not os.path.isdir(base):
             continue
+        cutoff_ts = cutoffs[ORPHAN_CUTOFF_KIND[kind]].timestamp()
         for dirpath, _dirnames, filenames in os.walk(base):
             for name in filenames:
                 full = os.path.join(dirpath, name)
@@ -168,4 +221,66 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
         "events_marked": events_marked,
         "orphans_deleted": orphans_deleted,
         "dry_run": dry_run,
+        "clip_days": s["clip_days"],
+        "snapshot_days": s["snapshot_days"],
+        "attendance_days": s["attendance_days"],
     }
+
+
+def _chunks(items: list, size: int = CLEANUP_BATCH) -> list[list]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None = None,
+            types: list[str] | None = None, dry_run: bool = True) -> dict:
+    """Hapus event (non-attendance/system) + clip/snapshot + alert-nya pada rentang tanggal lokal server."""
+    tz = datetime.now().astimezone().tzinfo
+    start = datetime.combine(date_from, time.min, tzinfo=tz)
+    end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
+    q = db.query(Event).filter(Event.ts_event >= start, Event.ts_event < end,
+                               Event.type.notin_(PROTECTED_TYPES))
+    if not types:
+        q = q.filter(Event.type.notin_(OPT_IN_TYPES))
+    if camera_ids:
+        q = q.filter(Event.camera_id.in_(camera_ids))
+    if types is not None and len(types) > 0:
+        q = q.filter(Event.type.in_([t for t in types if t not in PROTECTED_TYPES]))
+    events = q.all()
+    if not events:
+        return {"events": 0, "files": 0, "bytes": 0, "dry_run": dry_run}
+    ids = [ev.id for ev in events]
+    id_set = set(ids)
+    paths = {p for ev in events for p in (ev.clip_path, ev.snapshot_path) if p}
+    # clip/snapshot bersama: jangan hapus file yang masih dirujuk event yang TIDAK ikut dihapus
+    kept: set[str] = set()
+    for chunk in _chunks(sorted(paths)):
+        rows = db.query(Event.id, Event.clip_path, Event.snapshot_path).filter(
+            or_(Event.clip_path.in_(chunk), Event.snapshot_path.in_(chunk)))
+        kept |= {p for (eid, clip, snap) in rows if eid not in id_set for p in (clip, snap) if p}
+    root = settings.storage_root
+    doomed = []
+    for rel in sorted(paths - kept):
+        full = _safe_join(root, rel)
+        if full and os.path.isfile(full):
+            doomed.append(rel)
+    if dry_run:
+        return {"events": len(ids), "files": len(doomed),
+                "bytes": sum(_size(_safe_join(root, rel)) for rel in doomed), "dry_run": True}
+    # Baris dulu (satu transaksi), file sesudahnya: kalau penghapusan file gagal, sisa file disapu
+    # orphan sweep — tidak ada baris event yang menunjuk ke file yang sudah hilang.
+    for chunk in _chunks(ids):
+        db.query(Alert).filter(Alert.event_id.in_(chunk)).delete(synchronize_session="fetch")
+        db.query(Event).filter(Event.id.in_(chunk)).delete(synchronize_session="fetch")
+    db.commit()
+    files = freed = 0
+    for rel in doomed:
+        full = _safe_join(root, rel)
+        size = _size(full)
+        try:
+            os.remove(full)
+        except OSError:
+            logger.warning("cleanup: gagal menghapus %s", rel, exc_info=True)
+            continue
+        files += 1
+        freed += size
+    return {"events": len(ids), "files": files, "bytes": freed, "dry_run": False}

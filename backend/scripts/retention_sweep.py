@@ -36,9 +36,9 @@ def main() -> int:
             row.value = payload
         db.commit()
         logger.info(
-            "sweep selesai: %s file, %s byte, %s event, %s orphan (retention=%s hari)",
+            "sweep selesai: %s file, %s byte, %s event, %s orphan (clip=%s, snapshot=%s, absensi=%s hari)",
             result["files_deleted"], result["bytes_freed"], result["events_marked"],
-            result["orphans_deleted"], settings.retention_days,
+            result["orphans_deleted"], result["clip_days"], result["snapshot_days"], result["attendance_days"],
         )
         return 0
     except Exception:

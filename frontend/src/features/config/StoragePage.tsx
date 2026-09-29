@@ -3,19 +3,10 @@ import { Button, InlineLoading, InlineNotification, Table, TableBody, TableCell,
 import { useT } from '../../app/i18n'
 import { getMe, type Me } from '../../api/client'
 import { getStorageStats, runSweep, type StorageStats, type SweepResult } from '../../api/storage'
-
-// formatBytes mengikuti locale aktif: id-ID → '2,0 kB', en → '2 kB' (Intl memangkas trailing .0)
-function formatBytes(n: number, locale: string): string {
-  const units = ['B', 'kB', 'MB', 'GB', 'TB']
-  let u = 0
-  let v = n
-  while (v >= 1024 && u < units.length - 1) {
-    v /= 1024
-    u++
-  }
-  const num = new Intl.NumberFormat(locale === 'en' ? 'en' : 'id-ID', { maximumFractionDigits: 1 }).format(v)
-  return `${num} ${units[u]}`
-}
+import DiskAlertBanner from '../../components/DiskAlertBanner'
+import EventCleanupCard from './EventCleanupCard'
+import StorageSettingsCard from './StorageSettingsCard'
+import { formatBytes } from './bytes'
 
 function Tile({ label, value, sub, testId }: { label: string; value: string; sub?: string; testId?: string }) {
   return (
@@ -91,6 +82,7 @@ export default function StoragePage() {
         </div>
       )}
 
+      {stats && <DiskAlertBanner stats={stats} />}
       {error && <InlineNotification kind="error" lowContrast title={t('common.error')} subtitle={error} />}
       {sweepResult && (
         <InlineNotification
@@ -106,7 +98,14 @@ export default function StoragePage() {
       {stats && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1, background: '#393939', border: '1px solid #393939', marginBottom: 14 }}>
-            <Tile label={t('storage.retention')} value={String(stats.retention_days)} testId="storage-retention" />
+            <Tile
+              label={t('storage.retention')}
+              value={t('storage.retentionValue')
+                .replace('{clip}', String(stats.settings?.clip_days ?? stats.retention_days))
+                .replace('{snap}', String(stats.settings?.snapshot_days ?? stats.retention_days))
+                .replace('{att}', String(stats.settings?.attendance_days ?? stats.retention_days))}
+              testId="storage-retention"
+            />
             <Tile label={t('storage.path')} value={stats.storage_root} />
             <Tile
               label={t('storage.diskUsed')}
@@ -163,6 +162,18 @@ export default function StoragePage() {
               </div>
             )}
           </div>
+
+          <StorageSettingsCard
+            value={stats.settings ?? {
+              clip_days: stats.retention_days,
+              snapshot_days: stats.retention_days,
+              attendance_days: stats.retention_days,
+              disk_alert_percent: stats.disk_alert?.threshold ?? 85,
+            }}
+            isAdmin={isAdmin}
+            onSaved={(s) => setStats((prev) => (prev ? { ...prev, settings: s, retention_days: s.clip_days } : prev))}
+          />
+          {isAdmin && <EventCleanupCard onDone={refresh} />}
         </>
       )}
     </>

@@ -6,10 +6,23 @@ export type SweepResult = {
   events_marked: number
   orphans_deleted: number
   dry_run: boolean
+  clip_days?: number
+  snapshot_days?: number
+  attendance_days?: number
+}
+
+export type StorageSettings = {
+  clip_days: number
+  snapshot_days: number
+  attendance_days: number // snapshot + crop wajah absensi
+  disk_alert_percent: number
 }
 
 export type StorageStats = {
   retention_days: number
+  // opsional: bundle lama / API lama tetap harus bisa dirender tanpa settings (tile jatuh ke retention_days)
+  settings?: StorageSettings
+  disk_alert?: { threshold: number; over: boolean }
   storage_root: string
   disk: { total: number; used: number; free: number; percent: number }
   kinds: Record<string, { files: number; bytes: number }>
@@ -25,5 +38,22 @@ export async function getStorageStats(): Promise<StorageStats> {
 export async function runSweep(dryRun: boolean): Promise<SweepResult> {
   const res = await apiFetch(`/storage/sweep?dry_run=${dryRun}`, { method: 'POST' })
   if (!res.ok) throw new Error(`sweep failed: ${res.status}`)
+  return res.json()
+}
+
+export async function saveStorageSettings(s: StorageSettings): Promise<StorageSettings> {
+  const res = await apiFetch('/storage/settings', { method: 'PUT', body: JSON.stringify(s) })
+  if (res.status === 422) throw new Error('invalid')
+  if (!res.ok) throw new Error(`save failed: ${res.status}`)
+  return res.json()
+}
+
+export type CleanupFilter = { date_from: string; date_to: string; camera_ids: number[]; types: string[] }
+export type CleanupResult = { events: number; files: number; bytes: number; dry_run: boolean }
+
+export async function cleanupEvents(f: CleanupFilter, dryRun: boolean): Promise<CleanupResult> {
+  const res = await apiFetch('/storage/cleanup', { method: 'POST', body: JSON.stringify({ ...f, dry_run: dryRun }) })
+  if (res.status === 422) throw new Error('invalid')
+  if (!res.ok) throw new Error(`cleanup failed: ${res.status}`)
   return res.json()
 }

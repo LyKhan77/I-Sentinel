@@ -11,6 +11,8 @@ import {
   type NodeModules,
 } from '../../api/cameras'
 import { eventStats, listEvents, type EventOut, type EventStats } from '../../api/events'
+import { getStorageStats, type StorageStats } from '../../api/storage'
+import DiskAlertBanner from '../../components/DiskAlertBanner'
 
 // warna dot severity, konsisten dgn mockup: merah critical, kuning warning, abu info/low
 const SEV_COLOR: Record<string, string> = { critical: '#fa4d56', warning: '#f1c21b' }
@@ -115,6 +117,7 @@ export default function DashboardPage() {
   const [nodes, setNodes] = useState<CameraNode[]>([])
   const [stats, setStats] = useState<EventStats | null>(null)
   const [latest, setLatest] = useState<EventOut[]>([])
+  const [storage, setStorage] = useState<StorageStats | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -150,6 +153,10 @@ export default function DashboardPage() {
     return () => clearInterval(timer)
   }, [refresh])
 
+  useEffect(() => {
+    getStorageStats().then(setStorage).catch(() => setStorage(null))
+  }, [])
+
   const breakText = stats
     ? Object.entries(stats.by_type)
         .map(([k, v]) => `${k} ${v}`)
@@ -164,6 +171,7 @@ export default function DashboardPage() {
           <p className="app-page__sub">{t('dash.sub')}</p>
         </div>
       </div>
+      <DiskAlertBanner stats={storage} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1, background: '#393939', border: '1px solid #393939' }}>
         <TileStat
           loading={loading}

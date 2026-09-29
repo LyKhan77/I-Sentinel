@@ -25,6 +25,15 @@ const NODES = [
   { id: 2, name: 'edge-1', type: 'edge', status: 'offline' },
 ]
 const STATS = { total: 47, by_type: { intrusi: 12, loitering: 8 } }
+const STATS_STORAGE = {
+  retention_days: 30,
+  settings: { clip_days: 30, snapshot_days: 30, attendance_days: 90, disk_alert_percent: 85 },
+  storage_root: '/data/isentinel',
+  disk: { total: 100, used: 91, free: 9, percent: 91 },
+  disk_alert: { threshold: 85, over: true },
+  kinds: {},
+  last_sweep: null,
+}
 const EVENTS = [
   { id: 1, event_id: 'ev-1', type: 'intrusi', camera_id: 1, zone_id: null, severity: 'critical', ts_event: '2026-02-12T10:00:00Z', payload: null, clip_path: null, snapshot_path: null },
 ]
@@ -35,6 +44,7 @@ function stubFetch() {
     if (u.endsWith('/cameras')) return { ok: true, status: 200, json: () => Promise.resolve(CAMS) }
     if (u.endsWith('/nodes')) return { ok: true, status: 200, json: () => Promise.resolve(NODES) }
     if (u.endsWith('/events/stats/today')) return { ok: true, status: 200, json: () => Promise.resolve(STATS) }
+    if (u.endsWith('/storage/stats')) return { ok: true, status: 200, json: () => Promise.resolve(STATS_STORAGE) }
     if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(EVENTS) }
     return { ok: false, status: 404, json: () => Promise.resolve(null) }
   })
@@ -93,4 +103,10 @@ test('empty stats shows empty state', async () => {
   renderPage()
   expect(await screen.findAllByText('0/0')).toHaveLength(2)
   expect(screen.getAllByText('belum ada event').length).toBeGreaterThan(0)
+})
+
+test('dashboard menampilkan banner disk hampir penuh', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  expect(await screen.findByTestId('disk-alert')).toHaveTextContent('Disk hampir penuh (91%)')
 })

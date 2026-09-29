@@ -3,6 +3,56 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Retention & Storage UI (2026-09-29)
+
+- **Pengaturan storage editable**: setting `storage` (`clip_days`, `snapshot_days`, `disk_alert_percent`; field yang
+  belum disimpan ikut `RETENTION_DAYS`/85 %), `GET/PUT /storage/settings` (PUT admin, 1–3650 hari, 50–99 %),
+  `/storage/stats` memuat `settings` + `disk_alert`. Backend **453 passed**.
+- **Sweep retensi terpisah**: clip memakai `clip_days`, snapshot/crops memakai `snapshot_days` (juga orphan);
+  event yang clip-nya sudah kedaluwarsa tetap diproses saat snapshot-nya kedaluwarsa; dry run menghitung clip
+  bersama sekali; hasil sweep mencatat `clip_days`/`snapshot_days`. Backend **456 passed**.
+- **Cleanup event per tanggal**: `POST /storage/cleanup` (admin, dry run default) menghapus event non-attendance +
+  clip/snapshot + alert-nya pada rentang tanggal lokal (filter kamera/jenis opsional); attendance tidak pernah
+  dihapus walau diminta; clip bersama dengan event di luar rentang dipertahankan; validasi tanggal/jenis 422;
+  cleanup nyata dicatat di log dengan username admin. Backend **463 passed**.
+- **Peringatan disk hampir penuh**: `disk_alert.check` (ambang dari pengaturan; Telegram sekali, ulang ≤ 1×/24 jam,
+  "pulih" saat < ambang − 2 %; tanpa Telegram state tetap disimpan) + thread `DiskAlertMonitor` tiap 10 menit di
+  lifespan API. Backend **467 passed**.
+- **UI pengaturan retensi + banner disk**: kartu Pengaturan retensi (clip/snapshot/ambang, admin simpan, viewer
+  hanya-baca, pesan 422), tile "Clip N hari · Snapshot M hari", banner "Disk hampir penuh" di Storage & Dashboard.
+  Frontend **176 passed**, build 0, lint set sama. Bukti: `docs/evidence/2026-09-29-storage-settings-{1440,390}.png`,
+  `2026-09-29-dashboard-disk-alert.png` (390 px tanpa overflow).
+- **UI Bersihkan event**: rentang tanggal (maks hari ini), kamera & jenis opsional (tanpa attendance) → Pratinjau
+  "N event · M file · X" → Hapus dengan konfirmasi merah; tombol Hapus nonaktif sampai pratinjau untuk filter yang
+  sama. Frontend **179 passed**, build 0, lint set sama. Bukti:
+  `docs/evidence/2026-09-29-storage-cleanup-{1440,390}.png`, `2026-09-29-storage-cleanup-confirm.png`.
+- **Perbaikan review independen** (1 Important + 9 Minor): `cleanup` menghapus baris event/alert lebih dulu
+  (satu transaksi) lalu file — kegagalan hapus file dicatat dan sisanya disapu orphan sweep; `IN (...)` dipecah
+  per 5000 id; log audit juga ditulis saat gagal; `system` (node offline/LWT) ikut dilindungi dan `types` dibatasi
+  ke jenis behavior (422 di luar itu); nilai retensi dari DB divalidasi ulang (rusak/0 → env/default + peringatan);
+  `DiskAlertMonitor.start()` tidak bisa menggandakan loop; StoragePage tetap jalan dengan API lama (tanpa
+  `settings`). Backend **475 passed**, frontend **179 passed**, build 0, lint set sama.
+- **Dokumentasi**: README bagian Retensi & Storage (retensi editable clip/snapshot, cleanup per tanggal dengan
+  `attendance` + `system` terlindungi, crop lewat orphan sweep, alert disk + Telegram), runbook
+  `docs/runbooks/storage-retention.md` (ubah retensi, cleanup aman, tanggap alert disk, verifikasi, rollback),
+  ROADMAP baris RS. Suite akhir: backend **475 passed**, vision **223 passed (3 deselected)**, frontend
+  **179 passed**, build 0, lint set sama. Review independen: 4/4 fokus PASS, 1 Important + 9 Minor diperbaiki.
+- **Feedback user — retensi media absensi sendiri**: `attendance_days` (default `RETENTION_DAYS`, 1–3650) untuk
+  snapshot + crop wajah event absensi, terpisah dari snapshot behavior; crop (`payload.crop_path`) kini dirujuk
+  resmi → dihapus lapis 1 dan path di-null-kan (Inbox tanpa gambar rusak), `crops/` orphan ikut `attendance_days`;
+  baris absensi, rekap, dan `faces/` tetap tidak disentuh. UI: field "Retensi media absensi (hari)", tile
+  "Clip · Snapshot · Absensi", hint cleanup diperjelas. Backend **479 passed**, frontend **179 passed**, build 0,
+  lint set sama. Catatan: `liveview.test.tsx` "tile di luar layar…" sekali gagal di suite penuh lalu lulus 3×
+  berturut (flaky, di luar perubahan ini).
+- **Feedback user — log sistem bisa dibersihkan bila dipilih**: jenis `system` (event node offline/LWT, satu baris
+  tiap vision-node restart) kini boleh di filter Jenis ("Log sistem (node offline)"); filter Jenis kosong tetap
+  tidak menyentuhnya; `attendance` tetap tidak pernah. Backend **480 passed**, frontend **180 passed**,
+  build 0, lint set sama. Penghapusan data uji absensi = siklus berikutnya (desain terpisah, menyentuh rekap).
+- **Deploy + verifikasi user (2026-09-29)**: server `gspe-ai3` di `592691d`, restart isentinel-api (tanpa migrasi).
+  Uji user OK: pengaturan retensi clip/snapshot/absensi, dry run & sweep, cleanup per tanggal (pratinjau →
+  konfirmasi; absensi utuh), log sistem opsional, banner + Telegram disk. Rollback: `git revert -m 1 <merge>` +
+  restart API (setting `storage`/`disk_alert_state` diabaikan kode lama; event yang sudah dibersihkan tidak kembali).
+
 ### User management (2026-09-28)
 
 - **Migrasi `0018_user_status`**: `user.is_active` (default true), `user.token_version` (default 0),

@@ -133,3 +133,139 @@ def test_kind_usage_counts_files_and_bytes(tmp_path):
     assert usage["clips"]["bytes"] == 2048
     assert usage["snapshots"]["bytes"] == 1024
     assert usage["crops"]["files"] == 0
+
+
+def _split(db, clip_days, snap_days):
+    from app.services import storage_settings
+    storage_settings.put(db, {"clip_days": clip_days, "snapshot_days": snap_days})
+
+
+def test_sweep_split_retention_across_two_runs(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    clip = _mkfile(str(tmp_path), "clips/2026/09/05/a.mp4", age_days=10)
+    snap = _mkfile(str(tmp_path), "snapshots/2026/09/05/a.jpg", age_days=10)
+    ev = _event(db, now - timedelta(days=10), clip="clips/2026/09/05/a.mp4", snap="snapshots/2026/09/05/a.jpg")
+
+    r = retention.sweep(db, now=now)
+    assert (r["files_deleted"], r["clip_days"], r["snapshot_days"]) == (1, 7, 30)
+    assert not os.path.exists(clip) and os.path.exists(snap)
+    db.refresh(ev)
+    assert ev.clip_path is None and ev.snapshot_path == "snapshots/2026/09/05/a.jpg" and ev.media_expired is True
+
+    later = now + timedelta(days=25)  # event kini 35 hari → snapshot kedaluwarsa juga
+    r = retention.sweep(db, now=later)
+    assert r["files_deleted"] == 1 and not os.path.exists(snap)
+    db.refresh(ev)
+    assert ev.snapshot_path is None
+
+
+def test_orphans_use_per_kind_cutoff(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    now = datetime.now(timezone.utc)
+    clip = _mkfile(str(tmp_path), "clips/x/orphan.mp4", age_days=10)
+    snap = _mkfile(str(tmp_path), "snapshots/x/orphan.jpg", age_days=10)
+    crop = _mkfile(str(tmp_path), "crops/x/orphan.jpg", age_days=40)
+    r = retention.sweep(db, now=now)
+    assert r["orphans_deleted"] == 2
+    assert not os.path.exists(clip) and os.path.exists(snap) and not os.path.exists(crop)
+
+
+def test_dry_run_counts_shared_clip_once(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    clip = _mkfile(str(tmp_path), "clips/2026/09/01/shared.mp4", age_days=14, size=2048)
+    _event(db, now - timedelta(days=14), clip="clips/2026/09/01/shared.mp4")
+    _event(db, now - timedelta(days=14), clip="clips/2026/09/01/shared.mp4")
+    r = retention.sweep(db, now=now, dry_run=True)
+    assert (r["files_deleted"], r["bytes_freed"], r["events_marked"]) == (1, 2048, 2)
+    assert os.path.exists(clip)
+
+
+def test_crops_follow_attendance_cutoff(db, tmp_path, monkeypatch):
+    """Crop 10 hari dengan attendance_days=30 harus bertahan (cutoff crop = absensi, bukan clip)."""
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    from app.services import storage_settings
+    storage_settings.put(db, {"attendance_days": 30})
+    crop = _mkfile(str(tmp_path), "crops/x/fresh.jpg", age_days=10)
+    snap = _mkfile(str(tmp_path), "snapshots/x/fresh.jpg", age_days=10)
+    r = retention.sweep(db, now=datetime.now(timezone.utc))
+    assert r["orphans_deleted"] == 0
+    assert os.path.exists(crop) and os.path.exists(snap)
+
+
+def _attendance(db, ts, snap=None, crop=None):
+    ev = Event(type="attendance", ts_event=ts, snapshot_path=snap,
+               payload={"direction": "entry", "crop_path": crop} if crop else {"direction": "entry"})
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    return ev
+
+
+def test_attendance_media_uses_own_retention(db, tmp_path, monkeypatch):
+    """Snapshot + crop wajah absensi mengikuti attendance_days; snapshot behavior tetap snapshot_days."""
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"clip_days": 30, "snapshot_days": 30, "attendance_days": 7})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    root = str(tmp_path)
+    a_snap = _mkfile(root, "snapshots/2026/09/05/att.jpg", age_days=10)
+    a_crop = _mkfile(root, "crops/2026/09/05/att.jpg", age_days=10)
+    b_snap = _mkfile(root, "snapshots/2026/09/05/beh.jpg", age_days=10)
+    att = _attendance(db, now - timedelta(days=10), snap="snapshots/2026/09/05/att.jpg",
+                      crop="crops/2026/09/05/att.jpg")
+    beh = _event(db, now - timedelta(days=10), snap="snapshots/2026/09/05/beh.jpg")
+
+    r = retention.sweep(db, now=now)
+    assert (r["files_deleted"], r["attendance_days"]) == (2, 7)
+    assert not os.path.exists(a_snap) and not os.path.exists(a_crop) and os.path.exists(b_snap)
+    db.refresh(att)
+    db.refresh(beh)
+    assert att.snapshot_path is None and att.payload.get("crop_path") is None and att.media_expired is True
+    assert att.payload["direction"] == "entry"  # payload lain utuh
+    assert beh.snapshot_path == "snapshots/2026/09/05/beh.jpg" and beh.media_expired is False
+
+
+def test_attendance_retention_longer_than_behavior_snapshots(db, tmp_path, monkeypatch):
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"snapshot_days": 7, "attendance_days": 90})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    a_snap = _mkfile(str(tmp_path), "snapshots/a.jpg", age_days=10)
+    b_snap = _mkfile(str(tmp_path), "snapshots/b.jpg", age_days=10)
+    _attendance(db, now - timedelta(days=10), snap="snapshots/a.jpg")
+    _event(db, now - timedelta(days=10), snap="snapshots/b.jpg")
+    retention.sweep(db, now=now)
+    assert os.path.exists(a_snap) and not os.path.exists(b_snap)
+
+
+def test_referenced_crop_not_swept_as_orphan(db, tmp_path, monkeypatch):
+    """Crop yang masih dirujuk payload absensi (dalam retensi) bukan orphan walau mtime-nya tua."""
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"attendance_days": 30})
+    now = datetime.now(timezone.utc)
+    crop = _mkfile(str(tmp_path), "crops/x/kept.jpg", age_days=60)  # file tua, event masih baru
+    orphan = _mkfile(str(tmp_path), "crops/x/orphan.jpg", age_days=60)
+    _attendance(db, now - timedelta(days=2), crop="crops/x/kept.jpg")
+    r = retention.sweep(db, now=now)
+    assert r["orphans_deleted"] == 1
+    assert os.path.exists(crop) and not os.path.exists(orphan)
+
+
+def test_attendance_dry_run_changes_nothing(db, tmp_path, monkeypatch):
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"attendance_days": 7})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    crop = _mkfile(str(tmp_path), "crops/d.jpg", age_days=10, size=500)
+    att = _attendance(db, now - timedelta(days=10), crop="crops/d.jpg")
+    r = retention.sweep(db, now=now, dry_run=True)
+    assert (r["files_deleted"], r["bytes_freed"]) == (1, 500)
+    db.refresh(att)
+    assert os.path.exists(crop) and att.payload["crop_path"] == "crops/d.jpg" and att.media_expired is False
