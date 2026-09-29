@@ -25,13 +25,16 @@ dan menanggapi peringatan disk hampir penuh. Semua lewat **Konfigurasi → Stora
    (intrusion/loitering/running/idle_zone/crowd/**Log sistem** — endpoint menolak jenis lain dengan 422).
    Event absensi tidak pernah ikut (backend selalu mengecualikannya). Log sistem (node offline/LWT)
    hanya ikut bila dipilih eksplisit di Jenis.
+   **Yang dibersihkan → Media absensi saja**: hanya foto & crop wajah event absensi di rentang (filter
+   Jenis disembunyikan); event, riwayat masuk/keluar, dan rekap absensi tetap. Cocok untuk membuang foto
+   absensi lama/uji tanpa mengubah rekap.
 3. **Pratinjau** (dry run, tidak mengubah apa pun) → baca "N event · M file · X".
 4. Bila sudah yakin → **Hapus N event** → modal konfirmasi menyebut jumlah + rentang → konfirmasi.
    Tombol Hapus hanya aktif setelah pratinjau untuk **filter yang sama**; jumlah pada konfirmasi
    berasal dari pratinjau saat itu — event baru yang masuk ke rentang yang sama sebelum konfirmasi
    tetap ikut terhapus.
 5. Setelah eksekusi: notifikasi "Event dihapus" dan statistik disk disegarkan. Baris log
-   `event cleanup by <admin>: <from>..<to> cameras=… types=… → N events, M files, X bytes`
+   `event cleanup by <admin>: <from>..<to> cameras=… types=… mode=events|attendance_media → N events, M files, X bytes`
    ada di `journalctl -u isentinel-api` (kegagalan dicatat dengan awalan `event cleanup by <admin> failed`).
 
 Catatan: file yang masih dirujuk event di luar rentang (clip insiden bersama) **tidak** dihapus;

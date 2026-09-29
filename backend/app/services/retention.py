@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.alert import Alert
+from app.models.attendance import AttendanceEvent
 from app.models.event import Event
 from app.services import storage_settings
 
@@ -155,6 +156,8 @@ def _expire_crops(db: Session, root: str, cutoff: datetime, dry_run: bool) -> tu
         if not dry_run:
             ev.payload = {**ev.payload, "crop_path": None}  # dict baru → perubahan JSON terdeteksi
             ev.media_expired = True
+    if not dry_run and expired:
+        _null_attendance_copies(db, [ev.event_id for ev in expired])
     return files, freed, expired
 
 
@@ -231,18 +234,83 @@ def _chunks(items: list, size: int = CLEANUP_BATCH) -> list[list]:
     return [items[i:i + size] for i in range(0, len(items), size)]
 
 
-def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None = None,
-            types: list[str] | None = None, dry_run: bool = True) -> dict:
-    """Hapus event (non-attendance/system) + clip/snapshot + alert-nya pada rentang tanggal lokal server."""
+def _null_attendance_copies(db: Session, event_ids: list[str]) -> None:
+    """attendance_event.snapshot_path menyimpan salinan path crop → ikut di-null-kan (tanpa commit)."""
+    for chunk in _chunks([e for e in event_ids if e]):
+        db.query(AttendanceEvent).filter(AttendanceEvent.event_id.in_(chunk)).update(
+            {"snapshot_path": None}, synchronize_session=False)
+
+
+def _range_query(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None):
+    """Event pada rentang tanggal lokal server `[dari 00:00, sampai+1 hari 00:00)` (+ filter kamera)."""
     tz = datetime.now().astimezone().tzinfo
     start = datetime.combine(date_from, time.min, tzinfo=tz)
     end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
-    q = db.query(Event).filter(Event.ts_event >= start, Event.ts_event < end,
-                               Event.type.notin_(PROTECTED_TYPES))
+    q = db.query(Event).filter(Event.ts_event >= start, Event.ts_event < end)
+    return q.filter(Event.camera_id.in_(camera_ids)) if camera_ids else q
+
+
+def _remove_files(root: str, rels: list[str]) -> tuple[int, int]:
+    files = freed = 0
+    for rel in rels:
+        full = _safe_join(root, rel)
+        size = _size(full)
+        try:
+            os.remove(full)
+        except OSError:
+            logger.warning("cleanup: gagal menghapus %s", rel, exc_info=True)
+            continue
+        files += 1
+        freed += size
+    return files, freed
+
+
+def cleanup_attendance_media(db: Session, date_from: date, date_to: date,
+                             camera_ids: list[int] | None = None, dry_run: bool = True) -> dict:
+    """Hapus foto + crop wajah event absensi di rentang; event, riwayat, dan rekap absensi tetap."""
+    events = [ev for ev in _range_query(db, date_from, date_to, camera_ids).filter(Event.type == "attendance")
+              if ev.snapshot_path or (ev.payload or {}).get("crop_path")]
+    if not events:
+        return {"events": 0, "files": 0, "bytes": 0, "dry_run": dry_run}
+    id_set = {ev.id for ev in events}
+    eid_set = {ev.event_id for ev in events}
+    paths = {p for ev in events for p in (ev.snapshot_path, (ev.payload or {}).get("crop_path")) if p}
+    # file yang juga dirujuk event/riwayat di luar rentang dipertahankan
+    kept: set[str] = set()
+    for chunk in _chunks(sorted(paths)):
+        rows = db.query(Event.id, Event.clip_path, Event.snapshot_path).filter(
+            or_(Event.clip_path.in_(chunk), Event.snapshot_path.in_(chunk)))
+        kept |= {p for (eid, clip, snap) in rows if eid not in id_set for p in (clip, snap) if p}
+        copies = db.query(AttendanceEvent.event_id, AttendanceEvent.snapshot_path).filter(
+            AttendanceEvent.snapshot_path.in_(chunk))
+        kept |= {p for (eid, p) in copies if eid not in eid_set}
+    root = settings.storage_root
+    doomed = [rel for rel in sorted(paths - kept) if (full := _safe_join(root, rel)) and os.path.isfile(full)]
+    if dry_run:
+        return {"events": len(events), "files": len(doomed),
+                "bytes": sum(_size(_safe_join(root, rel)) for rel in doomed), "dry_run": True}
+    for ev in events:
+        ev.snapshot_path = None
+        if (ev.payload or {}).get("crop_path"):
+            ev.payload = {**ev.payload, "crop_path": None}
+        ev.media_expired = True
+    _null_attendance_copies(db, list(eid_set))
+    db.commit()  # path di-null-kan dulu, file sesudahnya (sisa file gagal hapus → orphan sweep)
+    files, freed = _remove_files(root, doomed)
+    return {"events": len(events), "files": files, "bytes": freed, "dry_run": False}
+
+
+def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None = None,
+            types: list[str] | None = None, dry_run: bool = True, mode: str = "events") -> dict:
+    """Hapus event (non-attendance/system) + clip/snapshot + alert-nya pada rentang tanggal lokal server.
+
+    mode="attendance_media": hanya media absensi (lihat cleanup_attendance_media).
+    """
+    if mode == "attendance_media":
+        return cleanup_attendance_media(db, date_from, date_to, camera_ids, dry_run=dry_run)
+    q = _range_query(db, date_from, date_to, camera_ids).filter(Event.type.notin_(PROTECTED_TYPES))
     if not types:
         q = q.filter(Event.type.notin_(OPT_IN_TYPES))
-    if camera_ids:
-        q = q.filter(Event.camera_id.in_(camera_ids))
     if types is not None and len(types) > 0:
         q = q.filter(Event.type.in_([t for t in types if t not in PROTECTED_TYPES]))
     events = q.all()
@@ -272,15 +340,5 @@ def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] |
         db.query(Alert).filter(Alert.event_id.in_(chunk)).delete(synchronize_session="fetch")
         db.query(Event).filter(Event.id.in_(chunk)).delete(synchronize_session="fetch")
     db.commit()
-    files = freed = 0
-    for rel in doomed:
-        full = _safe_join(root, rel)
-        size = _size(full)
-        try:
-            os.remove(full)
-        except OSError:
-            logger.warning("cleanup: gagal menghapus %s", rel, exc_info=True)
-            continue
-        files += 1
-        freed += size
+    files, freed = _remove_files(root, doomed)
     return {"events": len(ids), "files": files, "bytes": freed, "dry_run": False}

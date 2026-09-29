@@ -269,3 +269,25 @@ def test_attendance_dry_run_changes_nothing(db, tmp_path, monkeypatch):
     assert (r["files_deleted"], r["bytes_freed"]) == (1, 500)
     db.refresh(att)
     assert os.path.exists(crop) and att.payload["crop_path"] == "crops/d.jpg" and att.media_expired is False
+
+
+def test_sweep_nulls_attendance_event_copy_of_crop(db, tmp_path, monkeypatch):
+    """attendance_event.snapshot_path menyimpan salinan path crop → ikut di-null-kan saat crop dihapus."""
+    from app.models.attendance import AttendanceEvent
+    from app.models.employee import Employee
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"attendance_days": 7})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    from app.models.camera import Camera
+    db.add(Camera(id=1, name="c1", host="h"))
+    emp = Employee(name="Uji", employee_code="UJI-9")
+    db.add(emp); db.commit(); db.refresh(emp)
+    _mkfile(str(tmp_path), "crops/z.jpg", age_days=10)
+    ev = _attendance(db, now - timedelta(days=10), crop="crops/z.jpg")
+    row = AttendanceEvent(employee_id=emp.id, camera_id=1, direction="entry", ts_event=ev.ts_event,
+                          snapshot_path="crops/z.jpg", event_id=ev.event_id)
+    db.add(row); db.commit()
+    retention.sweep(db, now=now)
+    db.refresh(row)
+    assert row.snapshot_path is None

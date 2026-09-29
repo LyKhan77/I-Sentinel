@@ -48,7 +48,15 @@ export async function saveStorageSettings(s: StorageSettings): Promise<StorageSe
   return res.json()
 }
 
-export type CleanupFilter = { date_from: string; date_to: string; camera_ids: number[]; types: string[] }
+// events = hapus event behavior + media; attendance_media = hanya foto/crop absensi (rekap & riwayat tetap)
+export type CleanupMode = 'events' | 'attendance_media'
+export type CleanupFilter = {
+  date_from: string
+  date_to: string
+  camera_ids: number[]
+  types: string[]
+  mode: CleanupMode
+}
 export type CleanupResult = { events: number; files: number; bytes: number; dry_run: boolean }
 
 export async function cleanupEvents(f: CleanupFilter, dryRun: boolean): Promise<CleanupResult> {

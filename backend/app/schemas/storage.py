@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -27,6 +28,8 @@ class CleanupIn(BaseModel):
     camera_ids: list[int] = []
     types: list[str] = []
     dry_run: bool = True  # aman bila klien lupa mengirim
+    # events = hapus event behavior + media; attendance_media = hanya foto/crop absensi (rekap tetap)
+    mode: Literal["events", "attendance_media"] = "events"
 
     @model_validator(mode="after")
     def _check(self):
@@ -34,6 +37,8 @@ class CleanupIn(BaseModel):
             raise ValueError("date_from must be <= date_to")
         if self.date_to > date.today():
             raise ValueError("date_to must not be in the future")
+        if self.mode == "attendance_media" and self.types:
+            raise ValueError("types is not allowed with mode=attendance_media")
         unknown = set(self.types) - CLEANUP_TYPES
         if unknown:
             raise ValueError(f"unknown event types: {sorted(unknown)}")
