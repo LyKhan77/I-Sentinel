@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Event wajib bermedia (2026-09-29 – …)
+### Event wajib bermedia (2026-09-29)
 
 - **Event tanpa media dihapus**: sweep retensi menghapus baris event + alert bila media terakhirnya (clip,
   snapshot, crop) habis oleh retensi — juga event lama ber-`media_expired` tanpa path (sisa retensi versi
@@ -19,6 +19,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   kini mencakup clip (cleanup media + retensi `attendance_days` untuk clip event absensi); event lama yang hanya
   tersisa clip ikut terhapus. Tes: clip lama + event yang sudah dikosongkan build lama. Backend **490 passed**,
   frontend **182 passed**, build 0.
+- **Deploy + verifikasi user (2026-09-29)**: server di `16e8396`, restart isentinel-api (tanpa migrasi). Uji user OK:
+  cleanup "Media absensi saja" 1–23 Sep menghapus clip lama + entri Inbox absensi, rekap/export utuh; peringatan
+  behavior tanpa media + Simpan diblokir. Rollback: `git revert -m 1 <merge>` + restart API (event yang sudah
+  terhapus tidak kembali).
 
 ### Cleanup media absensi per tanggal (2026-09-29)
 
