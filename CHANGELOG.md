@@ -8,6 +8,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Pengaturan storage editable**: setting `storage` (`clip_days`, `snapshot_days`, `disk_alert_percent`; field yang
   belum disimpan ikut `RETENTION_DAYS`/85 %), `GET/PUT /storage/settings` (PUT admin, 1–3650 hari, 50–99 %),
   `/storage/stats` memuat `settings` + `disk_alert`. Backend **453 passed**.
+- **Sweep retensi terpisah**: clip memakai `clip_days`, snapshot/crops memakai `snapshot_days` (juga orphan);
+  event yang clip-nya sudah kedaluwarsa tetap diproses saat snapshot-nya kedaluwarsa; dry run menghitung clip
+  bersama sekali; hasil sweep mencatat `clip_days`/`snapshot_days`. Backend **456 passed**.
 
 ### User management (2026-09-28)
 

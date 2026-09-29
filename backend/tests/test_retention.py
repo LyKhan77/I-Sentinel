@@ -133,3 +133,53 @@ def test_kind_usage_counts_files_and_bytes(tmp_path):
     assert usage["clips"]["bytes"] == 2048
     assert usage["snapshots"]["bytes"] == 1024
     assert usage["crops"]["files"] == 0
+
+
+def _split(db, clip_days, snap_days):
+    from app.services import storage_settings
+    storage_settings.put(db, {"clip_days": clip_days, "snapshot_days": snap_days})
+
+
+def test_sweep_split_retention_across_two_runs(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    clip = _mkfile(str(tmp_path), "clips/2026/09/05/a.mp4", age_days=10)
+    snap = _mkfile(str(tmp_path), "snapshots/2026/09/05/a.jpg", age_days=10)
+    ev = _event(db, now - timedelta(days=10), clip="clips/2026/09/05/a.mp4", snap="snapshots/2026/09/05/a.jpg")
+
+    r = retention.sweep(db, now=now)
+    assert (r["files_deleted"], r["clip_days"], r["snapshot_days"]) == (1, 7, 30)
+    assert not os.path.exists(clip) and os.path.exists(snap)
+    db.refresh(ev)
+    assert ev.clip_path is None and ev.snapshot_path == "snapshots/2026/09/05/a.jpg" and ev.media_expired is True
+
+    later = now + timedelta(days=25)  # event kini 35 hari → snapshot kedaluwarsa juga
+    r = retention.sweep(db, now=later)
+    assert r["files_deleted"] == 1 and not os.path.exists(snap)
+    db.refresh(ev)
+    assert ev.snapshot_path is None
+
+
+def test_orphans_use_per_kind_cutoff(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    now = datetime.now(timezone.utc)
+    clip = _mkfile(str(tmp_path), "clips/x/orphan.mp4", age_days=10)
+    snap = _mkfile(str(tmp_path), "snapshots/x/orphan.jpg", age_days=10)
+    crop = _mkfile(str(tmp_path), "crops/x/orphan.jpg", age_days=40)
+    r = retention.sweep(db, now=now)
+    assert r["orphans_deleted"] == 2
+    assert not os.path.exists(clip) and os.path.exists(snap) and not os.path.exists(crop)
+
+
+def test_dry_run_counts_shared_clip_once(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    _split(db, 7, 30)
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    clip = _mkfile(str(tmp_path), "clips/2026/09/01/shared.mp4", age_days=14, size=2048)
+    _event(db, now - timedelta(days=14), clip="clips/2026/09/01/shared.mp4")
+    _event(db, now - timedelta(days=14), clip="clips/2026/09/01/shared.mp4")
+    r = retention.sweep(db, now=now, dry_run=True)
+    assert (r["files_deleted"], r["bytes_freed"], r["events_marked"]) == (1, 2048, 2)
+    assert os.path.exists(clip)
