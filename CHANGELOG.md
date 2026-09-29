@@ -3,6 +3,12 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Retention & Storage UI (2026-09-29 – …)
+
+- **Pengaturan storage editable**: setting `storage` (`clip_days`, `snapshot_days`, `disk_alert_percent`; field yang
+  belum disimpan ikut `RETENTION_DAYS`/85 %), `GET/PUT /storage/settings` (PUT admin, 1–3650 hari, 50–99 %),
+  `/storage/stats` memuat `settings` + `disk_alert`. Backend **453 passed**.
+
 ### User management (2026-09-28)
 
 - **Migrasi `0018_user_status`**: `user.is_active` (default true), `user.token_version` (default 0),
