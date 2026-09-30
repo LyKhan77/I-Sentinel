@@ -16,6 +16,7 @@ import {
   TextArea,
   TextInput,
 } from '@carbon/react'
+import { Edit } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { getMe, type Me } from '../../api/client'
 import { listEmployees, type Employee } from '../../api/employees'
@@ -53,6 +54,17 @@ function fmtDay(iso: string, locale: string) {
 
 const hhmm = (raw: string | null) => (raw ? raw.slice(0, 5) : '—')
 
+type StatusFilter = 'all' | 'present' | 'inside' | 'fix' | 'absent'
+
+const STATUS_GROUP: Record<AttendanceStatus, Exclude<StatusFilter, 'all'>> = {
+  ontime: 'present',
+  late: 'present',
+  waiting: 'inside',
+  no_exit: 'fix',
+  no_entry: 'fix',
+  absent: 'absent',
+}
+
 function initials(name: string | null) {
   if (!name) return '?'
   return name
@@ -75,13 +87,32 @@ function StatusBadge({ status, label }: { status: AttendanceStatus; label: strin
   )
 }
 
-function Tile({ label, value, sub, color, testId }: { label: string; value: string; sub?: string; color?: string; testId: string }) {
-  return (
-    <div style={{ background: '#262626', border: '1px solid #393939', padding: '14px 16px' }}>
+function Tile({ label, value, sub, color, testId, active, onClick }: {
+  label: string; value: string; sub?: string; color?: string; testId: string
+  active?: boolean; onClick?: () => void
+}) {
+  const inner = (
+    <>
       <div style={{ fontSize: 11, color: '#8d8d8d', letterSpacing: '.32px' }}>{label}</div>
-      <div data-testid={testId} style={{ fontSize: 26, fontWeight: 300, marginTop: 4 }}>{value}</div>
+      <div style={{ fontSize: 26, fontWeight: 300, marginTop: 4 }}>{value}</div>
       {sub && <div style={{ fontSize: 12, marginTop: 4, color: color ?? '#8d8d8d' }}>{sub}</div>}
-    </div>
+    </>
+  )
+  const style = {
+    background: '#262626',
+    border: `1px solid ${active ? '#4589ff' : '#393939'}`,
+    padding: '14px 16px',
+    textAlign: 'left' as const,
+    cursor: onClick ? 'pointer' : 'default',
+    color: 'inherit',
+    font: 'inherit',
+    width: '100%',
+  }
+  if (!onClick) return <div data-testid={testId} style={style}>{inner}</div>
+  return (
+    <button type="button" data-testid={testId} style={style} aria-pressed={active ?? false} onClick={onClick}>
+      {inner}
+    </button>
   )
 }
 
@@ -129,6 +160,7 @@ export default function AttendancePage() {
     note: '',
   })
   const [formError, setFormError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isAdmin = me?.role === 'admin'
@@ -230,10 +262,17 @@ export default function AttendancePage() {
   const late = rows.filter((r) => r.status === 'late').length
   const inside = rows.filter((r) => r.status === 'waiting').length
   const absent = rows.filter((r) => r.status === 'absent').length
+  const fix = rows.filter((r) => r.status === 'no_exit' || r.status === 'no_entry').length
   let maxLate: AttendanceRow | null = null
   for (const r of rows) {
     if ((r.late_minutes ?? 0) > 0 && (maxLate === null || (r.late_minutes ?? 0) > (maxLate.late_minutes ?? 0))) maxLate = r
   }
+
+  const toggleFilter = (key: Exclude<StatusFilter, 'all'>) =>
+    setStatusFilter((f) => (f === key ? 'all' : key))
+  const visibleRows = statusFilter === 'all' ? rows : rows.filter((r) => STATUS_GROUP[r.status] === statusFilter)
+
+  const chipKeys: StatusFilter[] = ['all', 'present', 'inside', 'fix', 'absent']
 
   const headers = [
     ...(tab !== 'daily' ? ['at.col.date' as const] : []),
@@ -318,22 +357,64 @@ export default function AttendancePage() {
       {info && <InlineNotification kind="success" lowContrast title={t('at.import.successTitle')} subtitle={info} onCloseButtonClick={() => setInfo(null)} />}
 
       {tab === 'daily' && (
-        <div data-testid="at-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: '#393939', border: '1px solid #393939', marginBottom: 14 }}>
+        <div data-testid="at-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 1, background: '#393939', border: '1px solid #393939', marginBottom: 14 }}>
           <Tile
             testId="tile-hadir"
             label={t('at.summary.hadir')}
             value={String(hadir)}
             sub={`${t('at.summary.ontime').replace('{n}', String(ontime))} · ${t('at.summary.late').replace('{n}', String(late))}`}
             color="#42be65"
+            active={statusFilter === 'present'}
+            onClick={() => toggleFilter('present')}
           />
-          <Tile testId="tile-inside" label={t('at.summary.inside')} value={String(inside)} sub={t('at.summary.noExit')} />
-          <Tile testId="tile-absent" label={t('at.summary.absent')} value={String(absent)} sub={t('at.summary.noEntry')} />
+          <Tile
+            testId="tile-inside"
+            label={t('at.summary.inside')}
+            value={String(inside)}
+            sub={t('at.summary.noExit')}
+            active={statusFilter === 'inside'}
+            onClick={() => toggleFilter('inside')}
+          />
+          <Tile
+            testId="tile-fix"
+            label={t('at.summary.fix')}
+            value={String(fix)}
+            sub={t('at.summary.fixSub')}
+            color="#ff832b"
+            active={statusFilter === 'fix'}
+            onClick={() => toggleFilter('fix')}
+          />
+          <Tile
+            testId="tile-absent"
+            label={t('at.summary.absent')}
+            value={String(absent)}
+            sub={t('at.summary.noEntry')}
+            active={statusFilter === 'absent'}
+            onClick={() => toggleFilter('absent')}
+          />
           <Tile
             testId="tile-late-max"
             label={t('at.summary.lateMax')}
             value={maxLate ? `${maxLate.late_minutes} mnt` : '—'}
             sub={maxLate ? `${maxLate.name ?? ''} · ${maxLate.shift_name ?? ''}` : undefined}
           />
+        </div>
+      )}
+
+      {tab !== 'daily' && (
+        <div className="lv-chips" style={{ marginBottom: 12 }} role="group" aria-label={t('at.filter.label')}>
+          {chipKeys.map((k) => (
+            <button
+              key={k}
+              type="button"
+              data-testid={`status-filter-${k}`}
+              aria-pressed={statusFilter === k}
+              className={`lv-chip${statusFilter === k ? ' lv-chip--sel' : ''}`}
+              onClick={() => setStatusFilter(k)}
+            >
+              {t(`at.filter.${k}` as TKey)}
+            </button>
+          ))}
         </div>
       )}
 
@@ -352,7 +433,7 @@ export default function AttendancePage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((r) => (
+              {visibleRows.map((r) => (
                 <TableRow
                   key={r.id}
                   data-testid={`at-row-${r.id}`}
@@ -371,6 +452,16 @@ export default function AttendancePage() {
                         {r.name}
                         <div style={{ fontSize: 11, color: '#8d8d8d', fontFamily: 'monospace' }}>{r.employee_code}</div>
                       </div>
+                      {r.override_note && (
+                        <span
+                          data-testid={`corrected-${r.id}`}
+                          title={r.override_note}
+                          aria-label={t('at.corrected')}
+                          style={{ display: 'inline-flex', color: '#ff832b', flexShrink: 0 }}
+                        >
+                          <Edit size={16} />
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>{r.shift_name ?? '—'}</TableCell>
@@ -380,11 +471,26 @@ export default function AttendancePage() {
                     <span data-testid={`at-dur-${r.id}`}>{duration(r)}</span>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={r.status} label={statusLabel(r)} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <StatusBadge status={r.status} label={statusLabel(r)} />
+                      {isAdmin && (r.status === 'no_exit' || r.status === 'no_entry') && (
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          data-testid={`fix-${r.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openOverride(r)
+                          }}
+                        >
+                          {t('at.fix')}
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
-              {rows.length === 0 && (
+              {visibleRows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={headers.length}>{t('at.noRows')}</TableCell>
                 </TableRow>

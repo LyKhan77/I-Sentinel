@@ -21,6 +21,7 @@ const RANGE_ROWS: AttendanceRow[] = [
   { id: 31, employee_id: 1, employee_code: 'EMP-1', name: 'Ani Rahma', date: '2026-09-29', first_entry: '07:58:41', last_exit: '16:10:00', duration_min: 492, status: 'ontime', late_minutes: 0, override_note: null, shift_name: 'Pagi' },
   { id: 32, employee_id: 2, employee_code: 'EMP-2', name: 'Bima Putra', date: '2026-09-29', first_entry: '07:05:00', last_exit: '', duration_min: null, status: 'no_exit', late_minutes: null, override_note: null, shift_name: 'Pagi' },
   { id: 33, employee_id: 3, employee_code: 'EMP-3', name: 'Cici Lestari', date: '2026-09-29', first_entry: '', last_exit: '16:05:00', duration_min: null, status: 'no_entry', late_minutes: null, override_note: null, shift_name: 'Pagi' },
+  { id: 34, employee_id: 4, employee_code: 'EMP-4', name: 'Dodi Harto', date: '2026-09-29', first_entry: '', last_exit: '', duration_min: null, status: 'absent', late_minutes: null, override_note: null, shift_name: 'Pagi' },
 ]
 
 type Call = { url: string; init?: RequestInit }
@@ -184,4 +185,75 @@ test('modal koreksi menawarkan status no_entry', async () => {
   await screen.findByTestId('ov-note')
   const options = screen.getAllByRole('option')
   expect(options.some((o) => o.textContent === 'TANPA ENTRY — PERLU KOREKSI')).toBe(true)
+})
+
+
+test('admin: tombol Koreksi hanya untuk baris no_exit/no_entry dan membuka modal', async () => {
+  stubFetch(ME, RANGE_ROWS)
+  renderPage()
+
+  await screen.findByText('Ani Rahma')
+  expect(screen.queryByTestId('fix-31')).not.toBeInTheDocument()
+  expect(screen.getByTestId('fix-32')).toBeInTheDocument()
+  expect(screen.getByTestId('fix-33')).toBeInTheDocument()
+
+  await userEvent.click(screen.getByTestId('fix-32'))
+  expect(await screen.findByTestId('ov-note')).toBeInTheDocument()
+})
+
+test('viewer: tanpa tombol Koreksi', async () => {
+  stubFetch(VIEWER, RANGE_ROWS)
+  renderPage()
+
+  await screen.findByText('Ani Rahma')
+  expect(screen.queryByTestId('fix-32')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('fix-33')).not.toBeInTheDocument()
+})
+
+test('baris dengan override_note menampilkan penanda dikoreksi berisi catatan', async () => {
+  const rows = RANGE_ROWS.map((r) => (r.id === 31 ? { ...r, override_note: 'ditoleransi HR' } : r))
+  stubFetch(ME, rows)
+  renderPage()
+
+  await screen.findByText('Ani Rahma')
+  const mark = screen.getByTestId('corrected-31')
+  expect(mark).toHaveAttribute('title', 'ditoleransi HR')
+  expect(mark).toHaveAttribute('aria-label', 'Dikoreksi manual')
+})
+
+test('tile Perlu koreksi menghitung no_exit + no_entry dan menyaring baris', async () => {
+  stubFetch(ME, RANGE_ROWS)
+  renderPage()
+
+  await screen.findByText('Ani Rahma')
+  expect(screen.getByTestId('tile-fix')).toHaveTextContent('2')
+
+  await userEvent.click(screen.getByTestId('tile-fix'))
+  expect(screen.getByTestId('tile-fix')).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByTestId('at-row-31')).not.toBeInTheDocument()
+  expect(screen.getByTestId('at-row-32')).toBeInTheDocument()
+  expect(screen.getByTestId('at-row-33')).toBeInTheDocument()
+
+  await userEvent.click(screen.getByTestId('tile-fix'))
+  expect(screen.getByTestId('tile-fix')).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.getByTestId('at-row-31')).toBeInTheDocument()
+  expect(screen.getByTestId('at-row-34')).toBeInTheDocument()
+})
+
+test('chip filter status menyaring baris di tab Rentang', async () => {
+  stubFetch(ME, RANGE_ROWS)
+  renderPage()
+
+  await screen.findByText('Ani Rahma')
+  await userEvent.click(screen.getByTestId('tab-range'))
+  await screen.findByTestId('at-col-date')
+
+  await userEvent.click(screen.getByTestId('status-filter-absent'))
+  expect(screen.getByTestId('status-filter-absent')).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByTestId('at-row-31')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('at-row-32')).not.toBeInTheDocument()
+  expect(screen.getByTestId('at-row-34')).toBeInTheDocument()
+
+  await userEvent.click(screen.getByTestId('status-filter-all'))
+  expect(screen.getByTestId('at-row-31')).toBeInTheDocument()
 })
