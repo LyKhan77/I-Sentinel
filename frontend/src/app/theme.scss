@@ -1924,3 +1924,17 @@ button.lv-alert-chip {
   color: var(--cds-text-helper, #8d8d8d);
   white-space: nowrap;
 }
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 0 16px;
+
+  @media (max-width: 899px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.dash-side {
+  min-inline-size: 0;
+}
