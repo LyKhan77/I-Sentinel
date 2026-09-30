@@ -295,7 +295,7 @@ Yang perlu diketahui:
 ## Monitoring Resource
 
 Halaman **System › Monitoring** (`/monitoring`) dapat dibuka **semua user** (read-only)
-dan menampilkan kondisi saat ini — bukan grafik/riwayat (itu siklus S2):
+dan punya dua tab — **Kondisi saat ini** (`?tab=current`, default) dan **Tren** (`?tab=trend`):
 
 - **Ringkasan**: status keseluruhan (terburuk dari kamera/node/layanan) + jumlah
   ok/peringatan/kritis per kelompok; halaman polling tiap 10 detik.
@@ -312,6 +312,22 @@ Sumber data: heartbeat vision tiap 10 detik (statistik per worker kamera, jendel
 inferensi, host `/proc`, GPU NVML) yang disimpan apa adanya di JSON `node.hw` /
 `node.modules` — **tanpa migrasi DB**. Node lama (vision versi sebelumnya) tetap
 tampil; kamera ber-node yang belum mengirim statistik diberi `no_data`.
+
+**Tab Tren** (S2 — riwayat & grafik):
+
+- Rentang **1 jam / 6 jam / 24 jam / 7 hari** (tersimpan di URL `?range=`), refresh
+  otomatis tiap 60 detik; hanya tab aktif yang di-mount (polling S1 berhenti di tab Tren).
+- Setiap heartbeat diagregasi ke **bucket per menit** (avg/max/min sesuai metrik: fps
+  kamera = min+avg antar worker, state = terburuk) oleh `HistorySampler` dan disimpan di
+  tabel `monitoring_sample` — ±1.440 baris/node/hari, **dipangkas otomatis setelah 7 hari**.
+- Grafik **SVG buatan sendiri** (tanpa dependensi baru): CPU & RAM, util & VRAM per GPU,
+  suhu GPU, latensi inferensi (rata-rata & maks), fps inferensi, backlog MQTT, dan per
+  kamera (fps aktual vs garis putus-putus target + umur frame, maks 4 kamera dipilih).
+- **Arsir merah** = periode node offline (dari event `system`); **celah pada garis** =
+  tidak ada data (node offline / API restart kehilangan ≤ 1 menit bucket berjalan).
+- Downsample per rentang: 1 jam & 6 jam per menit, 24 jam per 5 menit, 7 hari per
+  30 menit. API: `GET /api/v1/monitoring/history?range=…` (semua user login; 422 bila
+  rentang tidak valid).
 
 **Node offline/pulih** (event + Telegram + banner):
 

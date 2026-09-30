@@ -3,6 +3,51 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Monitoring Resource S2 (2026-09-30)
+
+- **Konteks:** operator perlu melihat **pola**, bukan hanya kondisi saat ini — mis. GPU penuh tiap pagi atau
+  fps kamera turun di jam tertentu. S2 menambah riwayat metrik per menit (disimpan 7 hari) dan tab **Tren**
+  berisi grafik SVG di halaman Monitoring (tanpa dependensi grafik baru).
+- **Perubahan:** (a) backend — migrasi `0019_monitoring_sample` (ts menit UTC, FK node CASCADE, unique
+  `(node_id, ts)`), `services/monitoring_history.py` (agregasi heartbeat → bucket menit di memori: avg/max/min
+  sesuai metrik, fps kamera digabung antar worker = terendah, state = terburuk; `HistorySampler` thread 60 s
+  flush + prune > 7 hari tiap jam; `query()` downsample 1 jam/6 jam per menit, 24 jam per 5 menit, 7 hari per
+  30 menit + periode offline dari event `system`), hook `record` di handler heartbeat MQTT, endpoint
+  `GET /api/v1/monitoring/history?range=` (semua user, 422 bila rentang tidak valid); (b) frontend —
+  `components/LineChart.tsx` (SVG: celah > 1,5 bucket, arsir offline, refLine putus-putus, tooltip hover,
+  `role="img"` + aria-label, lebar ikut kontainer), halaman Monitoring jadi dua tab (`CurrentTab` = isi S1,
+  `TrendTab` baru; hanya tab aktif yang di-mount → polling S1 berhenti di tab Tren; rentang di URL
+  `?tab=trend&range=`; pemilih node bila > 1; kamera maks 4 via MultiSelect; refresh 60 s).
+- **File:** `backend/alembic/versions/0019_monitoring_sample.py`, `backend/app/models/monitoring_sample.py`,
+  `backend/app/services/monitoring_history.py`, `backend/app/{services/events_consumer,api/monitoring,
+  schemas/monitoring,main,models/__init__}.py`, `backend/tests/{test_monitoring_history,test_migration_0019}.py`,
+  `backend/tests/{conftest,test_events_consumer}.py`; `frontend/src/components/LineChart.tsx`,
+  `frontend/src/features/monitoring/{MonitoringPage,CurrentTab,TrendTab}.tsx`,
+  `frontend/src/{api/monitoring.ts,app/i18n.tsx,app/theme.scss}`,
+  `frontend/src/__tests__/{linechart,monitoring-trend}.test.tsx`; runbook `docs/runbooks/monitoring.md`,
+  README, ROADMAP (baris MO2).
+- **Bukti:** backend **549 passed** (baseline 532, durasi suite ~121 s tidak naik berarti — sampler
+  dinonaktifkan lewat fixture conftest), vision **233 passed / 3 deselected** (tidak tersentuh), frontend
+  **222 passed** (baseline 211), build 0, lint 25 warning 0 error (set lama + 1 `react/only-export-components`
+  di `LineChart.tsx` — pola yang sama dengan `EventAlertsProvider.tsx`/sesi notifikasi); `git diff --stat
+  main -- vision` kosong. Bukti visual Chromium `docs/evidence/2026-09-30-monitoring-trend-{1440,390,cameras,
+  tooltip}.png` (stub data rapat per menit; 1440 px `scrollWidth 1425 ≤ 1440`, 390 px `scrollWidth == 390`
+  tanpa overflow; 6 grafik node + 4 kamera + arsir offline + tooltip nilai tiap seri).
+- **Review independen (subagent reviewer, diff `e10505d..278fd6d`):** 8/8 fokus PASS, **0 Critical /
+  0 Important / 3 Minor** — ketiganya diperbaiki di `278fd6d` + tes regresi merah-sebelum: (a) `_offline`
+  kini whitelist `reason in {lwt, timeout}` (event `system` lain dengan `node_id` tidak lagi membuat arsir
+  offline palsu); (b) `_minute` membaca datetime naive sebagai UTC (konsisten `_utc`, bukan zona lokal mesin);
+  (c) `MultiSelect` kamera diberi `key={node.id}` — centakan remount saat ganti node (sebelumnya state
+  Downshift basi menampilkan centakan node lama).
+- **Dampak:** API menjalankan satu thread sampler tambahan (`monitoring-history`, 60 s); tumbuh ±1.440 baris
+  `monitoring_sample` per node per hari (±10 rb baris per node per 7 hari), dipangkas otomatis. Heartbeat
+  vision tidak berubah (handler backend saja). Bucket menit berjalan hilang saat API restart (≤ 1 menit data).
+- **Deploy:** `alembic upgrade head` (0019, env dari `.env`) + restart `isentinel-api`; frontend build/HMR;
+  **vision tidak perlu restart**. Uji lapangan: ±2–3 menit setelah deploy tab Tren (1 jam) menampilkan titik
+  CPU/RAM/GPU/inferensi/kamera; cek 6 jam/24 jam setelah ±1 jam; bekukan vision 60 s (izin) → celah + arsir
+  merah. Rollback: `git revert` rentang commit S2 + `alembic downgrade 0018` (drop tabel, riwayat hilang —
+  data turunan) + restart API + build frontend.
+
 ### Monitoring Resource S1 (2026-09-29)
 
 - **Konteks:** operator perlu satu halaman kondisi saat ini (kamera, inferensi AI, hardware, layanan) dan
