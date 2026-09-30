@@ -257,3 +257,19 @@ test('chip filter status menyaring baris di tab Rentang', async () => {
   await userEvent.click(screen.getByTestId('status-filter-all'))
   expect(screen.getByTestId('at-row-31')).toBeInTheDocument()
 })
+
+
+test('filter yang menyaring semua baris menampilkan pesan khusus, bukan "belum ada data"', async () => {
+  const noAbsent = RANGE_ROWS.filter((r) => r.status !== 'absent')
+  stubFetch(ME, noAbsent)
+  renderPage()
+
+  await screen.findByText('Ani Rahma')
+  await userEvent.click(screen.getByTestId('tab-range'))
+  await screen.findByTestId('at-col-date')
+
+  expect(screen.queryByText('Belum ada data absensi')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('status-filter-absent'))
+  expect(screen.queryByTestId('at-row-31')).not.toBeInTheDocument()
+  expect(screen.getByText('Tidak ada baris yang cocok dengan filter')).toBeInTheDocument()
+})

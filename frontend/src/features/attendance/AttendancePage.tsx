@@ -492,7 +492,9 @@ export default function AttendancePage() {
               ))}
               {visibleRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={headers.length}>{t('at.noRows')}</TableCell>
+                  <TableCell colSpan={headers.length}>
+                    {rows.length === 0 ? t('at.noRows') : t('at.noRowsFiltered')}
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
