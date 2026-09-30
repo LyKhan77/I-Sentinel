@@ -47,7 +47,8 @@ def _fixture_employee(db, code="E1", name="Budi"):
     db.add(sh)
     db.commit()
     db.refresh(sh)
-    e = Employee(name=name, employee_code=code, shift_id=sh.id)
+    # terdaftar jauh sebelum DAY: penutupan hari tidak melewati hari sebelum karyawan didaftarkan
+    e = Employee(name=name, employee_code=code, shift_id=sh.id, created_at=datetime(2020, 1, 1, tzinfo=LOCAL_TZ))
     db.add(e)
     db.commit()
     db.refresh(e)
@@ -258,3 +259,80 @@ def test_close_days_bad_key(client, db):
     r = client.post("/internal/maintenance/close-days", json={"date": DAY.isoformat()},
                     headers={"Authorization": "Bearer wrong"})
     assert r.status_code == 401
+
+
+def test_list_orders_date_desc_then_name(client, db):
+    sh = Shift(name=f"Pagi-{uuid.uuid4().hex[:6]}", start_time="07:00", end_time="16:00",
+               tolerance_min=15, workdays=[1, 2, 3, 4, 5])
+    db.add(sh)
+    db.commit()
+    rows = [
+        ("A1", "Zara", date(2025, 1, 7)),
+        ("Z9", "Ani", date(2025, 1, 7)),
+        ("B1", "Budi", date(2025, 1, 6)),
+    ]
+    for code, name, day in rows:
+        emp = Employee(name=name, employee_code=code, shift_id=sh.id)
+        db.add(emp)
+        db.commit()
+        db.add(AttendanceDay(employee_id=emp.id, date=day, status="ontime"))
+    db.commit()
+    r = client.get("/api/v1/attendance?from=2025-01-06&to=2025-01-07", headers=_headers(client))
+    assert r.status_code == 200
+    assert [(x["date"], x["name"]) for x in r.json()] == [
+        ("2025-01-07", "Ani"),
+        ("2025-01-07", "Zara"),
+        ("2025-01-06", "Budi"),
+    ]
+
+
+def test_list_and_csv_show_effective_no_exit_for_past_waiting(client, db):
+    e, _ = _fixture_employee(db)
+    db.query(AttendanceEvent).filter_by(employee_id=e.id, direction="exit").delete()
+    db.commit()
+    attendance.recompute_day(db, e.id, DAY, now=_at(9, 0))
+    stored = db.query(AttendanceDay).filter_by(employee_id=e.id, date=DAY).one()
+    assert stored.status == "waiting"
+    h = _headers(client)
+    listed = client.get(f"/api/v1/attendance?from={DAY.isoformat()}&to={DAY.isoformat()}", headers=h)
+    assert listed.status_code == 200
+    assert listed.json()[0]["status"] == "no_exit"
+    assert _export(client, h)[0]["status"] == "no_exit"
+
+
+def test_patch_accepts_no_entry_rejects_unknown(client, db):
+    e, _ = _fixture_employee(db)
+    day_id = db.query(AttendanceDay).filter_by(employee_id=e.id).one().id
+    h = _headers(client)
+    bad = client.patch(
+        f"/api/v1/attendance/{day_id}",
+        json={"status": "nope", "override_note": "x"},
+        headers=h,
+    )
+    assert bad.status_code == 422
+    ok = client.patch(
+        f"/api/v1/attendance/{day_id}",
+        json={"status": "no_entry", "override_note": "exit saja"},
+        headers=h,
+    )
+    assert ok.status_code == 200
+    assert ok.json()["status"] == "no_entry"
+    assert ok.json()["override_note"] == "exit saja"
+
+
+def test_import_exit_without_entry_is_no_entry(client, db):
+    e, _ = _fixture_employee(db)
+    csv_text = (
+        "employee_code,name,date,shift,first_entry,last_exit,duration_min,status,late_minutes,override_note\n"
+        "E1,Budi,2025-01-07,Pagi,,16:05:00,,,\n"
+    )
+    r = client.post(
+        "/api/v1/attendance/import",
+        files={"file": ("in.csv", csv_text.encode(), "text/csv")},
+        headers=_headers(client),
+    )
+    assert r.status_code == 200
+    assert r.json()["created"] == 1
+    row = db.query(AttendanceDay).filter_by(employee_id=e.id, date=date(2025, 1, 7)).one()
+    assert row.status == "no_entry"
+    assert row.duration_min is None and row.late_minutes is None

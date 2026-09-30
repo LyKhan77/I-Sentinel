@@ -23,7 +23,7 @@ router = APIRouter(tags=["attendance"])
 
 CSV_COLUMNS = ["employee_code", "name", "date", "shift", "first_entry", "last_exit",
                "duration_min", "status", "late_minutes", "override_note"]
-VALID_STATUSES = {"ontime", "late", "waiting", "no_exit", "absent"}
+VALID_STATUSES = {"ontime", "late", "waiting", "no_exit", "no_entry", "absent"}
 
 
 class AttendancePatch(BaseModel):
@@ -57,7 +57,7 @@ def _csv_safe(value):
     return f"'{s}" if s[:1] in ("=", "+", "-", "@") else s
 
 
-def _row_dict(day: AttendanceDay, emp: Employee) -> dict:
+def _row_dict(day: AttendanceDay, emp: Employee, now: datetime | None = None) -> dict:
     return {
         "id": day.id,
         "employee_id": day.employee_id,
@@ -67,14 +67,15 @@ def _row_dict(day: AttendanceDay, emp: Employee) -> dict:
         "first_entry": _hhmmss(day.first_entry),
         "last_exit": _hhmmss(day.last_exit),
         "duration_min": day.duration_min,
-        "status": day.status,
+        "status": attendance.effective_status(day, emp.shift if emp else None, now),
         "late_minutes": day.late_minutes,
         "override_note": day.override_note,
         "shift_name": emp.shift_name if emp else None,
     }
 
 
-def _query_days(db: Session, date_: date | None, from_: date | None, to: date | None, employee_id: int | None):
+def _query_days(db: Session, date_: date | None, from_: date | None, to: date | None,
+                employee_id: int | None, desc: bool = True):
     q = (db.query(AttendanceDay, Employee)
          .join(Employee, Employee.id == AttendanceDay.employee_id))
     if date_ is not None:
@@ -85,7 +86,8 @@ def _query_days(db: Session, date_: date | None, from_: date | None, to: date | 
         q = q.filter(AttendanceDay.date <= to)
     if employee_id is not None:
         q = q.filter(AttendanceDay.employee_id == employee_id)
-    return q.order_by(AttendanceDay.date, Employee.employee_code).all()
+    order_date = AttendanceDay.date.desc() if desc else AttendanceDay.date
+    return q.order_by(order_date, Employee.name, Employee.employee_code).all()
 
 
 @router.get("/api/v1/attendance")
@@ -114,12 +116,12 @@ def export_csv(
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(CSV_COLUMNS)
-    for day, emp in _query_days(db, None, from_, to, None):
+    for day, emp in _query_days(db, None, from_, to, None, desc=False):
         w.writerow([
             emp.employee_code, _csv_safe(emp.name), day.date.isoformat(), emp.shift_name or "",
             _hhmmss(day.first_entry), _hhmmss(day.last_exit),
             day.duration_min if day.duration_min is not None else "",
-            day.status,
+            attendance.effective_status(day, emp.shift, None),
             day.late_minutes if day.late_minutes is not None else "",
             _csv_safe(day.override_note or ""),
         ])

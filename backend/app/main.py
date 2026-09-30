@@ -82,9 +82,12 @@ async def lifespan(app: FastAPI):
     node_monitor.start()
     from app.services.monitoring_history import sampler as history_sampler
     history_sampler.start()
+    from app.services.attendance import closer as attendance_closer
+    attendance_closer.start()
     try:
         yield
     finally:
+        attendance_closer.stop()
         history_sampler.stop()
         node_monitor.stop()
         disk_monitor.stop()

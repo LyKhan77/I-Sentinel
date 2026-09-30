@@ -3,6 +3,70 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Refining halaman Attendance (2026-09-30)
+
+- **Konteks:** tabel Attendance tidak punya kolom tanggal (tab Rentang/Per karyawan mencampur
+  hari), dan pemeriksaan menemukan bug logika: status disimpan hanya saat ada event baru atau
+  endpoint manual `close-days` yang **tidak pernah dijadwalkan** — akibatnya entry tanpa exit
+  tetap "MENUNGGU" (durasi "berjalan…") berhari-hari, karyawan yang tidak datang tidak punya
+  baris sehingga "Tidak hadir" selalu 0, dan exit tanpa entry dihitung `absent` (orangnya
+  sebenarnya hadir). Desain: `docs/superpowers/specs/2026-09-30-attendance-refine-design.md`.
+- **Perubahan backend** (`app/services/attendance.py`, `app/api/attendance.py`, `app/main.py`):
+  status baru `no_entry` (hanya exit terdeteksi → perlu koreksi, `late_minutes`/`duration_min`
+  null); `deadline()` (jam selesai shift + `NO_EXIT_GRACE_MIN`, tz lokal); `effective_status()`
+  — `waiting` yang lewat batas tampil `no_exit` saat dibaca (list API + CSV) walau job belum
+  jalan; list API urut `date DESC` lalu nama (CSV tetap kronologis menaik, status efektif);
+  `PATCH`/`import` menerima `no_entry`. Job latar `AttendanceCloser` (`CLOSE_INTERVAL_S=900`,
+  run pertama saat start, sesi DB sendiri, tahan error, stop rapi di lifespan): `close_due`
+  tiap 15 menit + catch-up 7 hari membuat baris `absent` / menutup `waiting` → `no_exit`
+  untuk karyawan aktif ber-shift di hari kerjanya yang sudah lewat batas. **`override_note`
+  non-kosong tidak pernah diubah** oleh `effective_status`, `close_due`, maupun `close_days`.
+  conftest menonaktifkan job di tes (autouse, pola `_quiet_node_monitor`).
+- **Perubahan frontend** (`features/attendance/AttendancePage.tsx`, `api/attendance.ts`,
+  `app/i18n.tsx`): kolom Tanggal (format lokal pendek, tahun bila bukan tahun berjalan) hanya
+  tab Rentang/Per karyawan; Entry/Exit `HH:MM` dengan judul `ENTRY/EXIT (WIB)`; durasi
+  `8j 12m` dan `3j 10m · berjalan` dihitung live tiap 60 s hanya untuk `waiting` hari ini —
+  hari lampau / `no_exit` / `no_entry` / `absent` tampil `—`; label status "DI DALAM",
+  "TANPA EXIT/TANPA ENTRY — PERLU KOREKSI" (oranye), "TIDAK HADIR"; tile Harian jadi filter
+  klik (`aria-pressed`, grid `auto-fit minmax(160px,1fr)` — aman 390 px) termasuk tile baru
+  **Perlu koreksi**; chip filter `lv-chip` di tab Rentang/Per karyawan (penghitungan tile dari
+  semua baris, tabel tersaring; pesan khusus "Tidak ada baris yang cocok dengan filter" saat
+  filter menyaring semua); tombol **Koreksi** hanya admin & baris `no_exit`/`no_entry`
+  (stopPropagation, tanpa double-open); ikon pensil `corrected-<id>` (tooltip = catatan);
+  modal override menawarkan `no_entry`. i18n id/en 720 kunci identik.
+- **Bukti:** backend **617 passed** (baseline `c22eac5` 606; +11, durasi ~120 s tidak naik
+  berarti), vision **233 passed, 3 deselected** (sama), frontend **248 passed** (baseline 237;
+  +11), `npm run build` 0 error, lint 25 warning / 0 error dengan **pasangan rule+file identik
+  baseline**. Cek visual Chromium (stub API berisi semua status): `/attendance` Harian &
+  Rentang 1440 px & 390 px tanpa overflow halaman (`scrollWidth == viewport`), kolom Tanggal
+  benar, chip/tile/tombol Koreksi/ikon koreksi tampil — `docs/evidence/2026-09-30-attendance-
+  {daily,range}-{1440,390}.png` + `range-filter.png` (harness `temp/cdp-attendance.mjs`).
+  Review independen (subagent, diff `e959ba0..0979469`): 8/8 fokus PASS, **0 Critical /
+  0 Important / 2 Minor** — Minor 1 (pesan kosong menyesatkan saat filter menyaring semua)
+  diperbaiki + tes regresi di `cdb7a40`; Minor 2 (`stop()` join 2 s vs catch-up panjang,
+  pola sama `node_health`) dicatat sebagai risiko ~0.
+- **Dampak deploy:** tanpa migrasi; deploy = restart `isentinel-api` (frontend HMR). **Saat
+  pertama start, catch-up 7 hari membuat baris "Tidak hadir" untuk hari kerja tertinggal**
+  (karyawan aktif ber-shift tanpa baris) dan menutup "MENUNGGU" lama → "Tanpa exit"; idempoten
+  (restart ulang tidak menduplikasi).
+- **Rollback:** `git revert` rentang commit + restart `isentinel-api` + build frontend. Baris
+  `absent`/`no_exit` yang sudah dibuat job tetap ada (data turunan; bisa dibersihkan lewat
+  Storage cleanup "Data absensi"); nilai `no_entry` tampil sebagai teks mentah di UI lama.
+- **File:** `backend/app/services/attendance.py`, `backend/app/api/attendance.py`,
+  `backend/app/main.py`, `backend/tests/conftest.py`, `backend/tests/test_attendance_logic.py`,
+  `backend/tests/test_attendance_api.py`, `frontend/src/features/attendance/AttendancePage.tsx`,
+  `frontend/src/api/attendance.ts`, `frontend/src/app/i18n.tsx`,
+  `frontend/src/__tests__/attendance.test.tsx`, `README.md`, `ROADMAP.md` (baris AR),
+  `docs/runbooks/attendance.md` (baru), `docs/evidence/2026-09-30-attendance-*.png`.
+- **Review perencana:** catch-up 7 hari akan membuat "Tidak hadir" untuk hari **sebelum karyawan didaftarkan**
+  (karyawan baru langsung punya beberapa hari absen palsu). `close_due` dan `close_days` kini melewati hari sebelum
+  `employee.created_at` (tanggal lokal) untuk baris baru; tes regresi + fixture tes karyawan diberi `created_at` lama.
+  Backend 618.
+- **Deploy & verifikasi user (2026-09-30):** server `gspe-ai3` @ `a9630cc`, restart API (tanpa migrasi). Catch-up saat
+  start: 2 baris `waiting` lama EMP-001 (25 & 29 Sep) → `no_exit`; `absent` dibuat untuk hari kerja tanpa deteksi
+  23/24/28/29 Sep (EMP-002 mulai tanggal daftar 23 Sep), akhir pekan 26–27 Sep dilewati. Uji user tab Harian/Rentang,
+  koreksi, filter, CSV: **sesuai**. Merge ke `main`.
+
 ### Cleanup data absensi (rekap & riwayat) (2026-09-30)
 
 - **Konteks:** server berisi campuran karyawan uji dan karyawan nyata. Mode cleanup yang sudah ada

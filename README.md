@@ -206,6 +206,41 @@ hapus. Akun sendiri ditandai "(Anda)" — ubah role/nonaktif/hapus dinonaktifkan
   Token yang terbit sebelum fitur ini (tanpa `tv`) tetap berlaku sampai password diganti/akun
   dinonaktifkan — deploy tidak mengeluarkan semua orang.
 
+## Attendance (absensi)
+
+Halaman **Attendance** (`/attendance`) punya tiga tab: **Harian** (ringkasan tanggal
+tertentu), **Rentang tanggal**, dan **Per karyawan**. Rentang/Per karyawan menampilkan
+tabel datar dengan kolom **Tanggal** (format lokal pendek, urut terbaru dulu); Entry/Exit
+ditampilkan `HH:MM` (WIB). Tile ringkasan Harian (Hadir, Di dalam, Perlu koreksi,
+Tidak hadir) bisa diklik untuk menyaring baris; tab Rentang/Per karyawan punya chip
+filter status yang sama. Baris yang dikoreksi manual ditandai ikon pensil dengan
+tooltip berisi catatan.
+
+Arti status:
+
+- **TEPAT WAKTU / TELAT n MNT**: entry + exit terdeteksi; durasi = exit − entry.
+- **DI DALAM** (`waiting`): entry tanpa exit, belum lewat batas. Untuk hari ini
+  durasinya dihitung live tiap menit (`3j 10m · berjalan`); untuk hari lampau tampil `—`.
+- **TANPA EXIT — PERLU KOREKSI** (`no_exit`): entry tanpa exit setelah batas.
+- **TANPA ENTRY — PERLU KOREKSI** (`no_entry`): hanya exit yang terdeteksi
+  (orangnya hadir tapi entry terlewat). Durasi tidak dihitung untuk keduanya.
+- **TIDAK HADIR** (`absent`): karyawan aktif terjadwal kerja tanpa deteksi apa pun —
+  dibuat **otomatis** setelah batas.
+
+Batas hari = **jam selesai shift + `NO_EXIT_GRACE_MIN`** (default 60 menit, tz server).
+Sebuah job latar (`AttendanceCloser`) menutup hari tiap **15 menit** — termasuk
+catch-up **7 hari ke belakang** saat API start — sehingga baris "Tidak hadir" dan
+"Tanpa exit" muncul tanpa menunggu event baru; status yang lewat batas juga langsung
+tampil benar saat dibaca walau job belum jalan. Karyawan tanpa shift tidak pernah
+otomatis "Tidak hadir"/"Tanpa exit".
+
+**Koreksi manual** (admin): klik baris mana pun, atau tombol **Koreksi** di baris
+`no_exit`/`no_entry`, isi status/jam + catatan wajib. Baris yang sudah dikoreksi
+**tidak pernah diubah** oleh job penutupan maupun status efektif — koreksi tetap
+terjaga sampai event absensi baru masuk untuk hari itu.
+
+Detail operasional: `docs/runbooks/attendance.md`.
+
 ## Retensi & Storage
 
 Tab **Storage** di Konfigurasi: pemakaian disk, ukuran per jenis media (clips/snapshots/crops),
