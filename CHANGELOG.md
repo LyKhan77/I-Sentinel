@@ -43,6 +43,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Rollback:** `git revert` dua commit fitur ini; tanpa migrasi, aman di-revert kapan saja — tetapi
   baris `attendance_event`/`attendance_day` yang sudah dihapus lewat mode ini **tidak bisa
   dipulihkan** (itulah alasan pratinjau wajib + konfirmasi ketik `HAPUS`).
+- **Deploy & verifikasi user (2026-09-30):** server `gspe-ai3` @ `cc8a058`, restart API (tanpa migrasi). Dry run di
+  server (1 Sep–kemarin, semua karyawan): 5 riwayat, 6 hari, 2 entri Inbox, 4 file, 2 karyawan; hari ini & tanpa
+  pilihan karyawan → 422. Uji user hapus data karyawan uji: **sesuai**. Merge ke `main`.
 
 ### Status alert Telegram realtime + rapikan tabel aturan (2026-09-30)
 
@@ -73,6 +76,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   ada migrasi/skema yang berubah, aman di-revert kapan saja.
 - **Commit:** `830aad2` broadcast status dispatcher; `343db8b` Events page pakai
   frame alert + fallback polling; `2e682d0` label tabel aturan.
+- **Deploy & verifikasi user (2026-09-30):** ikut deploy `cc8a058` (restart API). Uji user chip status Inbox berubah
+  tanpa reload + tabel aturan rapi: **sesuai**. Merge ke `main`.
 
 ### Monitoring Resource S3 (2026-09-30)
 
