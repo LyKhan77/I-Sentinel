@@ -1,7 +1,7 @@
-# Runbook — Monitoring Resource S1
+# Runbook — Monitoring Resource S1–S3
 
-Halaman **System › Monitoring** (`/monitoring`) dan endpoint `GET /api/v1/monitoring`
-menampilkan kesehatan **saat ini** (tanpa riwayat — grafik tren menyusul di S2).
+Halaman **System › Monitoring** (`/monitoring`) menampilkan **Kondisi saat ini**,
+**Tren** (riwayat 7 hari), dan **Aturan & alert** (aturan kesehatan; admin mengedit).
 
 - Sumber data: heartbeat vision tiap 10 detik → `node.hw` / `node.modules` (JSON, tanpa migrasi).
 - Halaman & endpoint membaca DB + go2rtc; cek layanan di-cache 10 detik. Semua user login boleh membuka.
@@ -16,8 +16,8 @@ menampilkan kesehatan **saat ini** (tanpa riwayat — grafik tren menyusul di S2
 |---|---|---|
 | `node_offline` (kritis) | Kamera terhubung ke node yang sedang offline | Lihat bagian Node di bawah |
 | `not_running` (kritis) | Kamera punya zona aktif ber-behavior, node mengirim heartbeat, tetapi kamera ini tidak ada di daftar worker | Cek model wajah (zona absensi butuh face loaded) dan log vision; jalankan sync konfigurasi ke node (Konfigurasi → Kamera → simpan). Kamera **tanpa zona aktif** tidak dianalisis (live view saja) dan tampil "Tanpa zona aktif", bukan masalah. |
-| `no_frames` (kritis) | Sumber AI `reconnecting`/`stalled` atau frame terakhir > 30 s | Cek NVR/kamera dan stream go2rtc (`/api/streams`); cek log vision `journalctl -u isentinel-vision` |
-| `low_fps` (peringatan) | fps aktual < 80% target, bukan saat `starting` | Cek beban GPU/CPU node, bitrate/kualitas substream, atau NVR yang membatasi fps |
+| `no_frames` (kritis) | Sumber AI `reconnecting`/`stalled` atau frame terakhir > ambang aturan `camera_no_frames` (default 30 s) | Cek NVR/kamera dan stream go2rtc (`/api/streams`); cek log vision `journalctl -u isentinel-vision` |
+| `low_fps` (peringatan) | fps aktual < ambang aturan `camera_low_fps` (default 50 % target), bukan saat `starting` | Cek beban GPU/CPU node, bitrate/kualitas substream, atau NVR yang membatasi fps |
 | `reconnects` (peringatan) | ≥ 3 reconnect sumber dalam 1 jam | Cek kestabilan jaringan/NVR dan kredensial stream |
 | `stream_missing` (peringatan) | `cam_<id>` tidak terdaftar di go2rtc | Konfigurasi → Kamera → **Sync go2rtc** |
 | `no_data` (peringatan) | Node belum mengirim statistik kamera (vision versi lama) | Deploy/restart `isentinel-vision` versi ini |
@@ -88,7 +88,73 @@ Kamera nonaktif ditandai `disabled` dan dihitung terpisah dari ringkasan.
   (tabel di-drop; riwayat terkumpul hilang — data turunan, terkumpul ulang dalam 7 hari) + `git revert`
   rentang commit S2 + build frontend + restart API. Vision **tidak** berubah dan tidak perlu restart.
 
-## Operasi
+## Tab Aturan & alert (S3)
+
+Semua aturan default aktif. Pengaturan global per aturan: ambang, durasi 1–60 menit,
+severity `warning|critical`, aktif, dan Telegram. Tabel berikut memuat default;
+tab Kondisi saat ini memakai ambang kamera/hardware yang sama (aturan nonaktif
+tetap memberi informasi warna). Default FPS S1 berubah 80 % menjadi 50 % target.
+
+Batas ambang: tanpa frame 10–600 s, FPS 10–100 %, suhu GPU 50–110 °C, VRAM/RAM/CPU
+50–100 %, latensi 5–2000 ms, backlog 0–10000. Durasi selalu bilangan bulat.
+
+| Aturan | Pelanggaran per menit | Durasi | Severity / Telegram | Tindakan |
+|---|---|---|---|---|
+| `camera_no_frames` | Kamera dianalisis hilang dari sampel node, atau umur frame maks > 30 s | 2 menit | critical / ON | Cek kamera, NVR, jaringan dan go2rtc |
+| `camera_low_fps` | fps min < 50 % target; `starting` atau tanpa target dilewati | 10 menit | warning / OFF | Cek beban GPU/CPU dan substream |
+| `gpu_temp` | Suhu GPU maks ≥ 85 °C | 5 menit | critical / ON | Cek pendinginan dan beban GPU |
+| `gpu_vram` | VRAM maks ≥ 90 % | 10 menit | warning / OFF | Kurangi beban/model dan cek proses lain |
+| `node_ram` | RAM rata-rata ≥ 90 % | 10 menit | warning / OFF | Cek proses dan penggunaan memori |
+| `node_cpu` | CPU rata-rata ≥ 90 % | 10 menit | warning / OFF | Cek proses node dan host |
+| `infer_latency` | Latensi inferensi rata-rata ≥ 50 ms | 5 menit | warning / OFF | Cek GPU, model, jumlah kamera |
+| `mqtt_backlog` | Backlog maks > 0 | 5 menit | warning / ON | Cek broker dan jaringan node→API |
+
+**Semantik operasional:**
+
+- Evaluasi stateless dari sampel S2 tiap menit; setiap menit selesai dalam durasi
+  harus ada dan melanggar. Menit kosong tidak dihitung sebagai pelanggaran/normal.
+- Pulih setelah dua menit terakhir normal. Node offline atau tanpa sampel sama
+  sekali di lookback menahan alert aktif, termasuk setelah API restart.
+  Satu node mati tidak menyalakan alert tambahan untuk seluruh kamera/GPU.
+- Aturan dimatikan, kamera tidak lagi dianalisis/dihapus, atau GPU hilang dari
+  sampel terbaru: tutup dengan event resolved, tanpa Telegram. Penahanan node
+  offline/tanpa sampel tetap didahulukan.
+- Web selalu menerima event `system`, `payload.kind=health`, state firing/resolved.
+  Telegram per aturan pada kedua transisi, **tanpa pengingat ulang**; resolved
+  severity info. Event kesehatan tidak membuat chip node offline atau arsir S2.
+- Transisi DB dan event disimpan atomik; kegagalan insert event membatalkan transisi
+  sehingga evaluator dapat mencoba lagi. Pengiriman WS/Telegram best-effort,
+  tanpa outbox/retry durable: gangguan transport atau crash setelah commit dapat
+  kehilangan notifikasi langsung, tetapi event tersimpan tetap tersedia di web.
+  Uji lock Postgres nyata belum dilakukan pada sesi implementasi; tes memakai
+  dua koneksi SQLite dan kompilasi SQL Postgres.
+- Badge kamera aktif muncul di Live View/TV, polling 30 detik. Riwayat resolved
+  dipangkas setelah 7 hari; API mengembalikan 50 terbaru.
+- PUT admin-only (viewer 403), invalid/kunci tak dikenal 422; seluruh patch
+  divalidasi sebelum disimpan. DB `health_rules` rusak memakai default field.
+
+**Uji setelah deploy (dengan izin operator):**
+
+1. Catat setting `gpu_temp` lama. Set ambang di bawah suhu saat ini (tetap dalam
+   batas 50–110 °C), durasi 1 menit, Telegram ON bila grup uji sudah siap.
+2. Tunggu ±2–3 menit: satu alert GPU panas, lonceng/toast, dan satu Telegram.
+   Jalankan ulang evaluator/polling tanpa menghasilkan pesan tambahan.
+3. Kembalikan setting lama sehingga suhu normal; tunggu dua menit normal →
+   event info dan Telegram pulih. Pastikan tidak ada chip node offline.
+4. Bila diizinkan, hentikan stream kamera uji: badge tanpa frame di `/live` dan
+   `/live/tv`; pulihkan stream dan periksa badge hilang setelah dua menit normal.
+
+**Deploy/rollback S3:**
+
+- Deploy dilakukan sesi terpisah: `alembic upgrade head` (0020; muat env dari
+  `.env` tanpa mencetak nilainya), restart `isentinel-api`, frontend HMR/build.
+  Vision **tidak** berubah dan tidak perlu restart.
+- Rollback: revert commit S3, `alembic downgrade 0019`, restart API dan
+  HMR/build frontend. **Downgrade menghapus tabel `health_alert` beserta seluruh
+  riwayatnya secara permanen.** Setting `health_rules` diabaikan kode lama;
+  default FPS halaman kembali 80 %. Sampel S2 tetap ada.
+
+## Operasi S1
 
 - Restart monitor menempel pada lifespan API; tidak ada unit terpisah, tidak ada migrasi DB.
 - Uji cepat: `curl -s -b <cookie> localhost:8000/api/v1/monitoring | head -c 400`.

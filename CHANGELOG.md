@@ -3,6 +3,58 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Monitoring Resource S3 (2026-09-30)
+
+- **Konteks:** operator membutuhkan alert berkelanjutan untuk kamera/AI/hardware,
+  bukan hanya status sesaat atau grafik. Delapan aturan global memakai sampel menit S2.
+- **Perubahan:** katalog `health_rules` (default, batas, validasi atomik) dan ambang S1
+  bersama; migrasi `0020_health_alert` (`down_revision="0019"`), model, evaluator
+  stateless setelah sampler, retensi resolved 7 hari; API rules/alerts (PUT admin,
+  GET semua user login); tab ketiga **Aturan & alert** (Carbon, id/en, PUT parsial,
+  polling 30 detik); badge kamera Live View/TV dan label event kesehatan menyala/normal.
+  Event kesehatan tidak membuat chip node offline, outline kamera, atau arsir offline.
+- **Semantik:** setiap menit selesai dalam durasi harus punya sampel dan melanggar;
+  pulih setelah 2 menit normal. Node offline/tanpa sampel menahan alert. Aturan nonaktif
+  atau target hilang ditutup tanpa Telegram. Event web selalu, Telegram per aturan
+  tanpa pengingat ulang. Default FPS rendah S1 sengaja **80 % → 50 % target**.
+  Start menit UTC, unique fence + lock node Postgres, conditional resolve menjaga
+  transisi tunggal saat evaluator diulang; daftar alert di service, bukan SQL router.
+- **Verifikasi:** backend **592 passed** (baseline 549, +43; **119,78 s** vs 117,97 s),
+  vision **233 passed / 3 deselected** (tanpa diff), frontend **229 passed** (223, +6),
+  build 0, lint **25 warning / 0 error**, set **17 pasangan rule+file identik** baseline.
+  Paritas id/en 726 kunci; tanpa dependensi baru. Seluruh tes memakai fake layanan.
+- **Review independen:** satu reviewer baru pada `14edf59..3ca8cbc`, **0 Critical /
+  2 Important / 0 Minor**. Bagian valid diperbaiki di `f9faba6`: transisi alert +
+  event satu commit (gagal insert tidak meninggalkan firing/resolved/closed tanpa
+  event), tiga regresi RED→GREEN; race barrier dua sesi/koneksi SQLite untuk ketiga
+  transisi, satu event/broadcast/send. Target evaluator/history/migrasi 51 pass.
+  Permintaan outbox/retry Telegram tidak diadopsi: spec menetapkan gagal kirim tetap
+  menyimpan alert/event, bukan jaminan exactly-once transport. Telegram/WS tetap
+  best-effort. PostgreSQL hanya review statis + kompilasi `FOR UPDATE`, tanpa server
+  sesuai batasan sesi. Tidak ada re-review; tool tidak menyediakan pemilihan model.
+- **File utama:** `services/{health_rules,health_alerts,monitoring,monitoring_history}.py`,
+  model/migrasi `health_alert`, router/schema monitoring; frontend `AlertsTab.tsx`,
+  `useCameraHealthAlerts.ts`, `CameraTile.tsx`, `LiveWall.tsx`, provider/label
+  notifikasi, API monitoring, i18n, dan `theme.scss`; tes backend/frontend + evidence.
+- **Cek visual:** Chromium stub API, admin/viewer `/monitoring?tab=alerts` pada 1440
+  dan 390 px; viewer seluruh kontrol disabled/tanpa Save. Badge kamera bermasalah
+  saja di Live View 1440/390 dan TV 1440. Lebar dokumen = viewport. Overflow Carbon
+  Toggle (822 > 390) diperbaiki dengan containing block scroller (`2edb414`).
+  Screenshot `docs/evidence/2026-09-30-monitoring-alerts-*.png`; server dev dimatikan.
+- **Flake tercatat:** run frontend awal: kasus streaming Live View gagal (226 pass),
+  rerun file 17 pass. Dua run lain: kasus hapus zona gagal (226 pass), rerun file
+  23 pass. Harness zona kini menunggu snapshot selesai sebelum menggambar, tanpa
+  melemahkan assertion; full suite berikutnya hijau. Kasus “tile di luar layar”
+  tidak gagal. Warning vision lama: fake `T` tanpa `publish_heartbeat`; tidak diubah.
+- **Operasi:** belum deploy/merge. Migrasi 0020 (env `.env`), restart `isentinel-api`
+  + frontend HMR/build pada sesi terpisah; vision tidak perlu restart. Rollback:
+  revert commit S3 + `alembic downgrade 0019` (menghapus riwayat alert permanen),
+  restart API + frontend HMR/build. Rincian: `docs/runbooks/monitoring.md`.
+- **Commit per task:** `f46d738` rules/ambang S1; `046704c` migrasi/model;
+  `8140380` evaluator; `7af1487` API; `2a1749d` tab; `3ca8cbc` badge/event;
+  `2edb414` fix visual + evidence; `f9faba6` fix review + tes konkuren.
+  Dokumentasi ini menutup Task 7.
+
 ### Monitoring Resource S2 (2026-09-30)
 
 - **Konteks:** operator perlu melihat **pola**, bukan hanya kondisi saat ini — mis. GPU penuh tiap pagi atau

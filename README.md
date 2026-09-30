@@ -294,8 +294,10 @@ Yang perlu diketahui:
 
 ## Monitoring Resource
 
-Halaman **System › Monitoring** (`/monitoring`) dapat dibuka **semua user** (read-only)
-dan punya dua tab — **Kondisi saat ini** (`?tab=current`, default) dan **Tren** (`?tab=trend`):
+Halaman **System › Monitoring** (`/monitoring`) dapat dibuka **semua user** dan punya
+tiga tab — **Kondisi saat ini** (`?tab=current`, default), **Tren** (`?tab=trend`), dan
+**Aturan & alert** (`?tab=alerts`). Pengaturan aturan hanya dapat disimpan admin;
+viewer melihat aturan dan alert dalam mode read-only.
 
 - **Ringkasan**: status keseluruhan (terburuk dari kamera/node/layanan) + jumlah
   ok/peringatan/kritis per kelompok; halaman polling tiap 10 detik.
@@ -328,6 +330,35 @@ tampil; kamera ber-node yang belum mengirim statistik diberi `no_data`.
 - Downsample per rentang: 1 jam & 6 jam per menit, 24 jam per 5 menit, 7 hari per
   30 menit. API: `GET /api/v1/monitoring/history?range=…` (semua user login; 422 bila
   rentang tidak valid).
+
+**Tab Aturan & alert** (S3 — kesehatan berkelanjutan):
+
+| Aturan | Ambang default | Durasi | Severity | Telegram |
+|---|---|---|---|---|
+| Kamera tanpa frame | > 30 s, atau kamera tidak ada di sampel node | 2 menit | Kritis | ON |
+| FPS kamera rendah | < 50 % target (lewati `starting`/tanpa target) | 10 menit | Peringatan | OFF |
+| GPU panas | ≥ 85 °C | 5 menit | Kritis | ON |
+| VRAM GPU tinggi | ≥ 90 % | 10 menit | Peringatan | OFF |
+| RAM node tinggi | ≥ 90 % | 10 menit | Peringatan | OFF |
+| CPU node tinggi | ≥ 90 % | 10 menit | Peringatan | OFF |
+| Latensi inferensi tinggi | ≥ 50 ms | 5 menit | Peringatan | OFF |
+| Event tertahan di node | backlog MQTT > 0 | 5 menit | Peringatan | ON |
+
+- Semua aturan default aktif. Admin mengatur aktif, ambang, durasi 1–60 menit,
+  severity, dan Telegram per aturan; nilai disimpan di setting `health_rules`.
+- Evaluator berjalan tiap menit setelah sampel S2 tersimpan: alert menyala hanya bila
+  **setiap menit selesai** dalam durasi punya sampel dan melanggar. Pulih setelah
+  **dua menit normal**; tidak ada pengingat ulang. Node offline atau tanpa sampel
+  di lookback menahan alert, bukan memulihkannya.
+- Event web selalu dibuat saat menyala/pulih; Telegram hanya bila toggle aturan ON.
+  Aturan dinonaktifkan atau target hilang ditutup dengan event resolved tanpa Telegram.
+- Alert aktif dan 50 riwayat terakhir ditampilkan, refresh 30 detik; riwayat resolved
+  dipangkas setelah 7 hari. Alert kamera aktif memberi badge **Tanpa frame/FPS rendah**
+  pada tile Live View dan TV, terpisah dari outline event baru.
+- Ambang tab Kondisi saat ini mengikuti setting yang sama, meski aturan alert
+  dinonaktifkan. Default `low_fps` halaman sengaja berubah **80 % → 50 % target**.
+- API: `GET/PUT /api/v1/monitoring/rules` (PUT admin, invalid → 422);
+  `GET /api/v1/monitoring/alerts`. Migrasi baru `0020_health_alert`; vision tidak berubah.
 
 **Node offline/pulih** (event + Telegram + banner):
 
