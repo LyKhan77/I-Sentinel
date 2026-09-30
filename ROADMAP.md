@@ -401,7 +401,7 @@ Spec: `docs/superpowers/specs/2026-09-23-attendance-face-first-design.md`
 - [x] Overlay TTL 1 s + transisi 150 ms, label gerbang, badge mode player,
       hasil wajah di Events (5 tests frontend baru)
 - [x] Deploy + verifikasi GPU/lapangan spec §11 — runbook
-      `docs/runbooks/attendance-face-first.md`; kalibrasi `face_stats`
+      `docs/runbooks/attendance-face-first.md` (kini digabung ke `docs/runbooks/attendance.md`); kalibrasi `face_stats`
       (blur/width_px) mencatat nilai final di sini
 
 **Bukti:** angka suite per task di `CHANGELOG.md` bagian R5b; range diff

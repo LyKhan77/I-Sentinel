@@ -3,6 +3,21 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Rapikan project & dokumentasi (2026-09-30)
+
+- **Konteks:** artefak lama yang sudah tidak dipakai membingungkan peta repo.
+- **Dihapus:** `mockup-ui/` (6 HTML mockup awal; semua halaman sudah dibangun, tampilan tetap
+  terekam di `docs/evidence/ui-polish/mockup/`, sumber di commit `f493b95`);
+  `docs/runbooks/events-cleanup.md` (digantikan mode cleanup `events` di UI Storage);
+  `docs/runbooks/camera-management-migration.md` (migrasi 0007 sudah lama selesai);
+  `docs/runbooks/attendance-face-first.md` (deploy R5b selesai — bagian zona, label gerbang, dan
+  kalibrasi `face_stats` dipindah ke `docs/runbooks/attendance.md` §Gerbang wajah).
+- **Diubah:** `docs/detection-behavior-inventory.md` diberi banner arsip (snapshot 2026-09-22);
+  peta repo `AGENTS.md`/`README.md` tanpa `mockup-ui/`; komentar `theme.scss` tidak lagi menunjuk
+  path yang dihapus; ROADMAP R5b menunjuk runbook gabungan.
+- **Dampak:** tanpa perubahan kode/perilaku. `temp/` (gitignored) dibersihkan lokal, sisa `data/` + `log.txt`.
+- **Rollback:** `git revert` commit ini.
+
 ### Refining halaman Attendance (2026-09-30)
 
 - **Konteks:** tabel Attendance tidak punya kolom tanggal (tab Rentang/Per karyawan mencampur

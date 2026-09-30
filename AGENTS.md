@@ -92,7 +92,6 @@ I-Sentinel/
 │   ├── superpowers/{plans,specs}/  # Superpowers-generated plans & specs (record only)
 │   ├── runbooks/                # operational procedures + rollback
 │   └── evidence/                # screenshots / measured proof
-├── mockup-ui/                   # approved HTML mockups (UI source of truth)
 ├── README.md  DESIGN.md  ROADMAP.md  CHANGELOG.md  .env.example
 └── temp/                        # gitignored scratch, server notes, snapshots
 ```

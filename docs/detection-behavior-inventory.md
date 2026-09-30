@@ -1,3 +1,7 @@
+> **Arsip — snapshot historis per 2026-09-22.** Tidak diperbarui lagi: alur attendance sudah
+> diganti R5b (face-first, `face_worker`), dan behavior idle/crowd belum tercakup. Kondisi
+> terkini: `README.md`, `docs/runbooks/`, dan kode.
+
 # Inventaris Behavior Deteksi & Event (kondisi saat ini)
 
 Referensi kondisi nyata per **2026-09-22** (branch `feat/events-dwell-crop`, server
