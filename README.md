@@ -54,7 +54,6 @@ isentinel/
 │   │                         #   vision-node.service, isentinel-retention.service
 │   └── sql/                  # alembic migrations
 ├── docs/plans/               # spec + rencana per milestone
-├── mockup-ui/                # mockup disetujui
 └── README.md
 ```
 
@@ -147,8 +146,6 @@ Aturan yang perlu diketahui:
   mengikuti perubahan jam/hari shift lewat config push; shift yang dipakai zona tidak bisa dihapus.
   Jadwal manual dan shift memakai jam dinding lokal (termasuk frame vision bertimestamp monotonic).
   Shift malam/jadwal lintas tengah malam belum didukung; gunakan rentang dalam satu hari.
-
-Detail migrasi skema: `docs/runbooks/camera-management-migration.md`.
 
 Prosedur operasional (restart, backup, tambah kamera, pin GPU, troubleshooting,
 load test): lihat **`docs/RUNBOOK.md`**. Unit systemd di `deploy/systemd/` kini
