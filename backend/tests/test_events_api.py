@@ -124,6 +124,48 @@ def test_stats_today(client):
     assert s["total"] >= 2
     assert s["by_type"]["intrusion"] >= 1 and s["by_type"]["loitering"] >= 1
 
+def _today_local_iso(h, m, s):
+    # Momen lokal hari ini, dikirim sebagai ISO UTC: SQLite menyimpan wall UTC
+    # (offset dibuang), jadi baca-balik naive = UTC — sama seperti asumsi event_stats.
+    from datetime import datetime, date, time, timezone
+    return datetime.combine(date.today(), time(h, m, s)).astimezone().astimezone(timezone.utc).isoformat()
+
+def test_stats_today_excludes_attendance(client):
+    # D1: "Event hari ini" adalah angka keamanan — lintasan face gate tidak dihitung
+    h = _admin_headers(client)
+    client.post("/internal/nodes/1/events", json=_payload(), headers=_ingest_headers())
+    for _ in range(2):
+        client.post("/internal/nodes/1/events", json=_payload(type="attendance"), headers=_ingest_headers())
+    s = client.get("/api/v1/events/stats/today", headers=h).json()
+    assert s["total"] == 1
+    assert "attendance" not in s["by_type"]
+
+def test_stats_today_by_severity_three_keys_sum_to_total(client):
+    h = _admin_headers(client)
+    for sev in ("critical", "warning", "warning", "info"):
+        client.post("/internal/nodes/1/events", json=_payload(severity=sev), headers=_ingest_headers())
+    s = client.get("/api/v1/events/stats/today", headers=h).json()
+    assert s["by_severity"] == {"critical": 1, "warning": 2, "info": 1}
+    assert sum(s["by_severity"].values()) == sum(s["by_hour"]) == s["total"] == 4
+
+def test_stats_today_buckets_by_local_hour(client):
+    # Review focus #1: event tepat di batas hari (00:00:30 dan 23:59:30 lokal)
+    h = _admin_headers(client)
+    client.post("/internal/nodes/1/events",
+                json=_payload(severity="critical", ts_event=_today_local_iso(0, 0, 30)),
+                headers=_ingest_headers())
+    client.post("/internal/nodes/1/events",
+                json=_payload(severity="warning", ts_event=_today_local_iso(23, 59, 30)),
+                headers=_ingest_headers())
+    s = client.get("/api/v1/events/stats/today", headers=h).json()
+    assert len(s["by_hour"]) == 24
+    assert s["by_hour"][0] == 1 and s["by_hour"][23] == 1
+    assert s["critical_by_hour"][0] == 1 and s["critical_by_hour"][23] == 0
+    assert sum(s["critical_by_hour"]) == s["by_severity"]["critical"]
+    # severity tanpa event tetap ada sebagai kunci bernilai 0
+    assert set(s["by_severity"]) == {"critical", "warning", "info"}
+    assert s["by_severity"]["info"] == 0
+
 def test_ws_close_on_bad_token(client):
     try:
         with client.websocket_connect("/api/v1/ws/events?token=bad") as ws:

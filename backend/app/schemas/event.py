@@ -37,3 +37,10 @@ class EventOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+class EventStatsOut(BaseModel):
+    total: int
+    by_type: dict[str, int]
+    by_severity: dict[str, int]
+    by_hour: list[int]
+    critical_by_hour: list[int]
