@@ -4,6 +4,7 @@ import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import MonitoringPage from '../features/monitoring/MonitoringPage'
+import LiveViewPage from '../features/live/LiveViewPage'
 
 const RULES = [
   { rule: 'camera_no_frames', enabled: true, threshold: 30, duration_min: 2, severity: 'critical', telegram: true,
@@ -83,4 +84,28 @@ test('viewer read-only: kontrol nonaktif, tanpa tombol simpan', async () => {
   const row = await screen.findByTestId('rule-row-gpu_temp')
   expect(within(row).getByLabelText(/ambang/i)).toBeDisabled()
   expect(screen.queryByTestId('rules-save')).toBeNull()
+})
+
+
+test('Live View: badge kesehatan di tile kamera beralert; kamera lain tidak; fetch gagal → tanpa badge', async () => {
+  const CAMS = [3, 4].map((id) => ({ id, name: `CAM-${id}`, location: null, host: 'h', rtsp_main: null, rtsp_sub: null,
+    node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null }))
+  let fail = false
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.endsWith('/cameras')) return { ok: true, status: 200, json: () => Promise.resolve(CAMS) }
+    if (u.endsWith('/monitoring/alerts')) {
+      return fail ? { ok: false, status: 500, json: () => Promise.resolve(null) }
+        : { ok: true, status: 200, json: () => Promise.resolve({ active: [{ ...ALERTS.recent[0], id: 9, resolved_at: null }], recent: [] }) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  }))
+  const { unmount } = render(<I18nProvider><MemoryRouter><LiveViewPage /></MemoryRouter></I18nProvider>)
+  expect(await screen.findByTestId('cam-health-3')).toHaveTextContent('Tanpa frame')
+  expect(screen.queryByTestId('cam-health-4')).toBeNull()
+  unmount()
+  fail = true
+  render(<I18nProvider><MemoryRouter><LiveViewPage /></MemoryRouter></I18nProvider>)
+  await screen.findByText('CAM-3')
+  expect(screen.queryByTestId('cam-health-3')).toBeNull()
 })

@@ -128,12 +128,13 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
     const now = Date.now()
     addRecent([e])
     if (e.type === 'system') {
-      const node = String(e.payload?.node ?? '?')
-      setNodes((prev) => [
-        ...prev.filter((n) => n.node !== node),
-        // pulih: chip offline node itu hilang; offline: chip 30 s
-        ...(e.payload?.reason === 'online' ? [] : [{ eventId: e.id, node, until: now + ACTIVE_MS }]),
-      ])
+      if (e.payload?.kind !== 'health') {
+        const node = String(e.payload?.node ?? '?')
+        setNodes((prev) => [
+          ...prev.filter((n) => n.node !== node),
+          ...(e.payload?.reason === 'online' ? [] : [{ eventId: e.id, node, until: now + ACTIVE_MS }]),
+        ])
+      }
     } else if (e.camera_id != null) {
       const zoneName = typeof e.payload?.zone_name === 'string' && e.payload.zone_name ? e.payload.zone_name : null
       setActive((prev) => ({

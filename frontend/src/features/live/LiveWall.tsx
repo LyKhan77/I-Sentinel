@@ -10,6 +10,7 @@ import { playerMode } from './playerMode'
 import { useInView } from './useInView'
 import { useEventAlerts } from '../notifications/EventAlertsProvider'
 import { sevClass, typeKey } from '../notifications/labels'
+import { useCameraHealthAlerts, type CameraHealth } from '../monitoring/useCameraHealthAlerts'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
 
@@ -22,9 +23,10 @@ const STREAM_RETRY_MS = 60000 // tile gagal stream mencoba lagi (TV 24/7 pulih s
 // Kalau playing tidak terjadi dalam STREAM_TIMEOUT_MS → fallback ke snapshot
 // proxy 2 detik; dicoba ulang tiap STREAM_RETRY_MS (TV 24/7 pulih sendiri).
 // Hanya tile dekat viewport yang men-decode video (Pi 5 tanpa decoder H.264 hardware).
-export function CameraTile({ cam, live, big, tv, onClick, onVisibleChange }: {
+export function CameraTile({ cam, live, big, tv, health, onClick, onVisibleChange }: {
   cam: Camera; live: LiveInfo | null; big?: boolean; tv?: boolean; onClick?: () => void
   onVisibleChange?: (visible: boolean) => void
+  health?: CameraHealth
 }) {
   const { t } = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -218,6 +220,12 @@ export function CameraTile({ cam, live, big, tv, onClick, onVisibleChange }: {
           </span>
         </span>
       )}
+      {health && (
+        <span data-testid={`cam-health-${cam.id}`} className={`lv-health lv-health--${sevClass(health.severity)}`}
+          style={{ fontSize: tv ? 'clamp(11px, 0.8vw, 28px)' : 11 }}>
+          ⚠ {t(`health.badge.${health.rule}` as TKey)}
+        </span>
+      )}
     </div>
   )
 }
@@ -304,6 +312,7 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
   onDebugChange?: (open: boolean) => void
 }) {
   const { t } = useT()
+  const health = useCameraHealthAlerts()
   const [debugCam, setDebugCamState] = useState<Camera | null>(null)
   const [showZones, setShowZones] = useState(true)
   const [showDetection, setShowDetection] = useState(true)
@@ -365,7 +374,7 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
       <div className={tv ? 'lv-grid lv-grid--tv' : 'lv-grid'} style={{ '--lv-cols': cols } as React.CSSProperties}>
         {cams.map((cam) => (
           <div key={cam.id} onClick={() => { setBoxes([]); setDebugCam(cam) }} title={t('live.openDebug')}>
-            <CameraTile cam={cam} live={lives[cam.id] ?? null} tv={tv}
+            <CameraTile cam={cam} live={lives[cam.id] ?? null} tv={tv} health={health[cam.id]}
               onVisibleChange={(v) => setHidden((h) => (h[cam.id] === !v ? h : { ...h, [cam.id]: !v }))} />
           </div>
         ))}
@@ -408,7 +417,7 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
               toggled={showDetection} onToggle={(v) => setShowDetection(v)} />
           </div>
           <div style={{ position: 'relative', background: '#000', aspectRatio: '16/9' }}>
-            <CameraTile cam={debugCam} live={lives[debugCam.id] ?? null} big />
+            <CameraTile cam={debugCam} live={lives[debugCam.id] ?? null} big health={health[debugCam.id]} />
             <DebugOverlay camId={debugCam.id} showZones={showZones} showDetection={showDetection} boxes={boxes} names={faceNames} />
           </div>
         </Modal>

@@ -1722,3 +1722,18 @@ button.lv-alert-chip {
   .cds--number { min-inline-size: 110px; }
   .cds--btn { margin-block-start: 16px; }
 }
+
+
+/* Persistent camera-health condition, distinct from the transient event outline. */
+.lv-health {
+  position: absolute;
+  left: 8px;
+  bottom: 32px;
+  z-index: 2;
+  padding: 2px 8px;
+  font-weight: 600;
+  pointer-events: none;
+
+  &--critical { background: #fa4d56; color: #fff; }
+  &--warning, &--info { background: #f1c21b; color: #161616; }
+}

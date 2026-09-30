@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { ToastNotification } from '@carbon/react'
 import { useT } from '../../app/i18n'
 import { useEventAlerts } from './EventAlertsProvider'
-import { eventTitleKey, eventWhere, sevClass } from './labels'
+import { eventTitle, eventWhere, sevClass } from './labels'
 
 export const TOAST_MS = 8000
 const TOAST_KIND = { critical: 'error', warning: 'warning', info: 'info' } as const
@@ -24,7 +24,7 @@ export default function EventToasts() {
             navigate(`/events?event=${e.id}`)
           }}>
           <ToastNotification kind={TOAST_KIND[sevClass(e.severity)]} lowContrast timeout={TOAST_MS}
-            title={t(eventTitleKey(e))} subtitle={eventWhere(e, t, cameraName)}
+            title={eventTitle(e, t)} subtitle={eventWhere(e, t, cameraName)}
             caption={new Date(e.ts_event).toLocaleTimeString(locale)}
             onClose={() => { dismissToast(e.id) }} />
         </div>
