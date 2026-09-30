@@ -62,6 +62,18 @@ def _quiet_node_monitor(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _quiet_history():
+    """Bucket riwayat di memori modul: kosongkan antar tes; sampler latar tidak boleh menyentuh DB nyata."""
+    from app.services import monitoring_history
+    monitoring_history.reset()
+    old = monitoring_history.sampler.interval_s
+    monitoring_history.sampler.interval_s = 3600
+    yield
+    monitoring_history.sampler.interval_s = old
+    monitoring_history.reset()
+
+
+@pytest.fixture(autouse=True)
 def _isolated_secret_store(tmp_path, monkeypatch):
     """Tes tidak pernah membaca/menulis file rahasia asli di ~/.isentinel."""
     from app.core.config import settings

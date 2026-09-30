@@ -25,3 +25,19 @@ export async function getMonitoring(): Promise<Monitoring> {
   if (!res.ok) throw new Error(`monitoring failed: ${res.status}`)
   return res.json()
 }
+
+export type HistoryRange = '1h' | '6h' | '24h' | '7d'
+export type HistPoint = { t: string; avg?: number | null; max?: number | null; min?: number | null }
+export type GpuHistory = { util_pct: HistPoint[]; vram_pct: HistPoint[]; temp_c: HistPoint[] }
+export type NodeHistory = { id: number; name: string
+  series: { cpu_pct: HistPoint[]; ram_pct: HistPoint[]; ms_avg: HistPoint[]; ms_max: HistPoint[]
+    infer_fps: HistPoint[]; mqtt_backlog: HistPoint[]; gpus: Record<string, GpuHistory> }
+  cameras: { id: number; name: string; target_fps: number | null; fps: HistPoint[]; frame_age_s: HistPoint[] }[]
+  offline: { from: string; to: string | null }[] }
+export type MonitoringHistory = { range: HistoryRange; bucket_s: number; from: string; to: string; nodes: NodeHistory[] }
+
+export async function getMonitoringHistory(range: HistoryRange): Promise<MonitoringHistory> {
+  const res = await apiFetch(`/monitoring/history?range=${range}`)
+  if (!res.ok) throw new Error(`monitoring history failed: ${res.status}`)
+  return res.json()
+}

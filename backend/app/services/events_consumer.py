@@ -10,7 +10,7 @@ import paho.mqtt.client as mqtt
 from app.core.config import settings
 from app.models import Event, Node
 from app.schemas.event import EventIn, EventOut
-from app.services import alerting, attendance, node_health
+from app.services import alerting, attendance, monitoring_history, node_health
 from app.services.ingest import ingest_event
 from app.ws.hub import hub
 
@@ -109,6 +109,7 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             node.last_seen = datetime.now(timezone.utc)
             if isinstance(data.get("hw"), dict):
                 node.hw = data["hw"]
+            modules = None
             if isinstance(data.get("modules"), dict):
                 modules = dict(data["modules"])
                 if "cameras" in data:
@@ -117,6 +118,8 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                     modules["mqtt_backlog"] = data["mqtt_backlog"]
                 node.modules = modules
             db.commit()
+            # riwayat S2: nilai heartbeat ini ke bucket menit (modules gabungan: cameras + mqtt_backlog)
+            monitoring_history.record(node.id, data.get("hw") if isinstance(data.get("hw"), dict) else None, modules)
             node_health.mark_online(db, node, since=since)
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/lwt"):
             if data.get("status") != "offline":

@@ -59,6 +59,35 @@ Kamera nonaktif ditandai `disabled` dan dihitung terpisah dari ringkasan.
 - Bila node sengaja dimatikan (maintenance): matikan juga via LWT/stop rapi — setelah 35 detik status menjadi
   `offline` dengan `reason: timeout` dan Telegram terkirim (sekali saja).
 
+## Tab Tren (S2 — riwayat & grafik)
+
+**Cara membaca grafik:**
+
+- **fps kamera** = garis `aktual (min)` terhadap garis putus-putus **target** — fps diambil nilai
+  **terendah** antar worker (detect/face) per menit, jadi fluktuasi ke bawah normal saat dua worker
+  berjalan; fps di bawah target terus-menerus berarti sumber kamera atau GPU terlalu berat.
+- **Umur frame** = maksimum `last_frame_age_s` antar worker; lonjakan sesekali wajar (keyframe/gangguan
+  jaringan), nilai tinggi menetap = frame macet (cek tabel kamera di tab Kondisi saat ini).
+- **Latensi inferensi**: `ms rata-rata` menunjukkan beban GPU rata-rata, `ms maks` menangkap lonjakan
+  (mis. objek banyak). Naik terus di jam yang sama tiap hari = pertimbangkan penjadwalan ulang beban.
+- **Arsir merah** = periode node **offline** (dari event `system` `reason: lwt|timeout`); **celah putus
+  pada garis** = tidak ada sampel (node offline, atau API restart — bucket menit berjalan hilang, ≤ 1 menit).
+- Rentang 24 jam digabung per 5 menit, 7 hari per 30 menit: nilai yang tampil adalah rata-rata/maks/min
+  dari menit-menit di dalam bucket.
+
+**Operasional:**
+
+- Riwayat tersimpan **7 hari** di tabel `monitoring_sample` (±1.440 baris/node/hari); dipangkas tiap jam
+  oleh `HistorySampler` (thread `monitoring-history`, interval 60 detik) — restart API aman.
+- Cek isi tabel: `psql ... -c "SELECT count(*), min(ts), max(ts) FROM monitoring_sample;"` — bila kosong
+  setelah ±2 menit API berjalan, cek apakah heartbeat vision diterima (`node.last_seen` bergerak) dan
+  `journalctl -u isentinel-api | grep "monitoring history"`.
+- Belum ada sampel sama sekali (baru deploy) → tab Tren menampilkan teks "Belum ada data riwayat …".
+- API: `curl -s -b <cookie> "localhost:8000/api/v1/monitoring/history?range=6h" | head -c 400`.
+- Migrasi: `0019_monitoring_sample` (FK `node` ON DELETE CASCADE). Rollback: `alembic downgrade 0018`
+  (tabel di-drop; riwayat terkumpul hilang — data turunan, terkumpul ulang dalam 7 hari) + `git revert`
+  rentang commit S2 + build frontend + restart API. Vision **tidak** berubah dan tidak perlu restart.
+
 ## Operasi
 
 - Restart monitor menempel pada lifespan API; tidak ada unit terpisah, tidak ada migrasi DB.

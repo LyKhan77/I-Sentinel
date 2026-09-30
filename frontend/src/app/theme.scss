@@ -1620,3 +1620,97 @@ button.lv-alert-chip {
   z-index: 9;
   padding: 0;
 }
+
+/* LineChart (SVG): grafik tren Monitoring S2. */
+.lc {
+  position: relative;
+  inline-size: 100%;
+
+  svg {
+    display: block;
+    max-inline-size: 100%;
+  }
+}
+
+.lc__grid {
+  stroke: var(--cds-border-subtle);
+  stroke-width: 1;
+}
+
+.lc__label {
+  fill: var(--cds-text-secondary);
+  font-size: 11px;
+}
+
+.lc__offline {
+  fill: rgba(250, 77, 86, 0.15);
+}
+
+.lc__ref {
+  stroke: var(--cds-text-secondary);
+  stroke-width: 1;
+}
+
+.lc__swatch--ref {
+  background: var(--cds-text-secondary);
+}
+
+.lc__cursor {
+  stroke: var(--cds-text-secondary);
+  stroke-dasharray: 2 2;
+}
+
+.lc__tip {
+  position: absolute;
+  top: 8px;
+  z-index: 1;
+  min-inline-size: 150px;
+  padding: 8px 12px;
+  background: var(--cds-layer-02, #393939);
+  border: 1px solid var(--cds-border-subtle);
+  color: var(--cds-text-primary);
+  font-size: 12px;
+  line-height: 1.6;
+  pointer-events: none;
+}
+
+.lc__tip-time {
+  color: var(--cds-text-secondary);
+}
+
+.lc__swatch {
+  display: inline-block;
+  inline-size: 8px;
+  block-size: 8px;
+  margin-inline-end: 6px;
+}
+
+/* Tab Tren Monitoring (S2). */
+.mon-tabpanel.cds--tab-content {
+  padding: 16px 0 0;
+}
+
+.trend-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 16px;
+}
+
+.trend-cams {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trend-cam__charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+}
