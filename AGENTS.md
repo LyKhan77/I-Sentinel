@@ -194,7 +194,8 @@ Concretely in this repo:
 ## 8. Current State
 
 Components, contracts and data flow: **`ARCHITECTURE.md`**.
-Feature lifecycle, verification, deploy and rollback: **`WORKFLOW.md`**.
+Per-feature app flows: **`WORKFLOW.md`**. Development lifecycle, verification, deploy and
+rollback: **`docs/DEVELOPMENT.md`**.
 Authoritative history and per-change evidence: **`CHANGELOG.md`**.
 Phase status and acceptance proof: **`ROADMAP.md`**.
 Migration/rollback procedures: **`docs/runbooks/`**.
