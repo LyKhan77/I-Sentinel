@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.alert import Alert
-from app.models.attendance import AttendanceEvent
+from app.models.attendance import AttendanceDay, AttendanceEvent
+from app.models.employee import Employee
 from app.models.event import Event
 from app.services import storage_settings
 
@@ -289,11 +290,17 @@ def _null_attendance_copies(db: Session, event_ids: list[str]) -> None:
             {"snapshot_path": None}, synchronize_session=False)
 
 
-def _range_query(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None):
-    """Event pada rentang tanggal lokal server `[dari 00:00, sampai+1 hari 00:00)` (+ filter kamera)."""
+def _local_range(date_from: date, date_to: date) -> tuple[datetime, datetime]:
+    """Batas hari lokal server `[dari 00:00, sampai+1 hari 00:00)` — dipakai semua mode cleanup."""
     tz = datetime.now().astimezone().tzinfo
     start = datetime.combine(date_from, time.min, tzinfo=tz)
     end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
+    return start, end
+
+
+def _range_query(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None):
+    """Event pada rentang tanggal lokal server (+ filter kamera)."""
+    start, end = _local_range(date_from, date_to)
     q = db.query(Event).filter(Event.ts_event >= start, Event.ts_event < end)
     return q.filter(Event.camera_id.in_(camera_ids)) if camera_ids else q
 
@@ -348,14 +355,91 @@ def cleanup_attendance_media(db: Session, date_from: date, date_to: date,
     return {"events": len(events), "files": files, "bytes": freed, "dry_run": False}
 
 
+def cleanup_attendance_data(db: Session, date_from: date, date_to: date,
+                            employee_ids: list[int] | None = None, dry_run: bool = True) -> dict:
+    """Hapus PERMANEN riwayat (attendance_event), rekap (attendance_day, termasuk override_note),
+    entri Inbox absensi terkait, dan medianya untuk karyawan terpilih (`employee_ids=None` = semua
+    karyawan, termasuk event wajah tak dikenal) pada rentang tanggal lokal server.
+
+    Tindakan admin eksplisit, bukan retensi otomatis — tidak bisa dipulihkan. Beda dengan
+    cleanup_attendance_media: mode ini juga menghapus baris riwayat & rekap, bukan cuma media.
+    """
+    start, end = _local_range(date_from, date_to)
+    att_q = db.query(AttendanceEvent).filter(AttendanceEvent.ts_event >= start, AttendanceEvent.ts_event < end)
+    day_q = db.query(AttendanceDay).filter(AttendanceDay.date >= date_from, AttendanceDay.date <= date_to)
+    if employee_ids is not None:
+        att_q = att_q.filter(AttendanceEvent.employee_id.in_(employee_ids))
+        day_q = day_q.filter(AttendanceDay.employee_id.in_(employee_ids))
+    att_rows, day_rows = att_q.all(), day_q.all()
+    eid_set = {row.event_id for row in att_rows if row.event_id}
+
+    events_q = db.query(Event).filter(Event.type == "attendance", Event.ts_event >= start, Event.ts_event < end)
+    if employee_ids is not None:
+        # dengan filter karyawan, wajah tak dikenal (tanpa baris riwayat) tidak ikut
+        inbox_events = events_q.filter(Event.event_id.in_(eid_set)).all() if eid_set else []
+    else:
+        inbox_events = events_q.all()
+
+    emp_ids = {row.employee_id for row in att_rows} | {row.employee_id for row in day_rows}
+    names = dict(db.query(Employee.id, Employee.name).filter(Employee.id.in_(emp_ids))) if emp_ids else {}
+    att_count: dict[int, int] = {}
+    day_count: dict[int, int] = {}
+    for row in att_rows:
+        att_count[row.employee_id] = att_count.get(row.employee_id, 0) + 1
+    for row in day_rows:
+        day_count[row.employee_id] = day_count.get(row.employee_id, 0) + 1
+    # karyawan terhapus dari DB sementara itu → tampilkan sebagai #id, bukan gagal
+    employees = sorted(
+        ({"id": eid, "name": names.get(eid, f"#{eid}"),
+          "attendance_events": att_count.get(eid, 0), "days": day_count.get(eid, 0)} for eid in emp_ids),
+        key=lambda e: e["name"])
+
+    id_set = {ev.id for ev in inbox_events}
+    att_id_set = {row.id for row in att_rows}
+    paths = {p for ev in inbox_events for p in (ev.clip_path, ev.snapshot_path, (ev.payload or {}).get("crop_path")) if p}
+    paths |= {row.snapshot_path for row in att_rows if row.snapshot_path}
+    # file yang juga dirujuk baris di luar seleksi (event lain / attendance_event lain) dipertahankan
+    kept: set[str] = set()
+    for chunk in _chunks(sorted(paths)):
+        rows = db.query(Event.id, Event.clip_path, Event.snapshot_path).filter(
+            or_(Event.clip_path.in_(chunk), Event.snapshot_path.in_(chunk)))
+        kept |= {p for (eid, clip, snap) in rows if eid not in id_set for p in (clip, snap) if p}
+        copies = db.query(AttendanceEvent.id, AttendanceEvent.snapshot_path).filter(
+            AttendanceEvent.snapshot_path.in_(chunk))
+        kept |= {p for (aid, p) in copies if aid not in att_id_set}
+    root = settings.storage_root
+    doomed = [rel for rel in sorted(paths - kept) if (full := _safe_join(root, rel)) and os.path.isfile(full)]
+
+    if dry_run:
+        return {"events": len(inbox_events), "attendance_events": len(att_rows), "days": len(day_rows),
+                "files": len(doomed), "bytes": sum(_size(_safe_join(root, rel)) for rel in doomed),
+                "dry_run": True, "employees": employees}
+
+    # baris dulu dalam satu transaksi (alert → event → riwayat → rekap), file sesudahnya
+    _delete_events(db, sorted(id_set))
+    for chunk in _chunks(sorted(att_id_set)):
+        db.query(AttendanceEvent).filter(AttendanceEvent.id.in_(chunk)).delete(synchronize_session="fetch")
+    for chunk in _chunks(sorted(row.id for row in day_rows)):
+        db.query(AttendanceDay).filter(AttendanceDay.id.in_(chunk)).delete(synchronize_session="fetch")
+    db.commit()
+    files, freed = _remove_files(root, doomed)
+    return {"events": len(inbox_events), "attendance_events": len(att_rows), "days": len(day_rows),
+            "files": files, "bytes": freed, "dry_run": False, "employees": employees}
+
+
 def cleanup(db: Session, date_from: date, date_to: date, camera_ids: list[int] | None = None,
-            types: list[str] | None = None, dry_run: bool = True, mode: str = "events") -> dict:
+            types: list[str] | None = None, dry_run: bool = True, mode: str = "events",
+            employee_ids: list[int] | None = None) -> dict:
     """Hapus event (non-attendance/system) + clip/snapshot + alert-nya pada rentang tanggal lokal server.
 
     mode="attendance_media": hanya media absensi (lihat cleanup_attendance_media).
+    mode="attendance_data": riwayat + rekap + Inbox + media absensi karyawan terpilih (lihat
+    cleanup_attendance_data) — permanen, bukan retensi.
     """
     if mode == "attendance_media":
         return cleanup_attendance_media(db, date_from, date_to, camera_ids, dry_run=dry_run)
+    if mode == "attendance_data":
+        return cleanup_attendance_data(db, date_from, date_to, employee_ids, dry_run=dry_run)
     q = _range_query(db, date_from, date_to, camera_ids).filter(Event.type.notin_(PROTECTED_TYPES))
     if not types:
         q = q.filter(Event.type.notin_(OPT_IN_TYPES))

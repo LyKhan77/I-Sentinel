@@ -111,7 +111,10 @@ test('cleanup: pratinjau lalu konfirmasi hapus', async () => {
   expect(screen.getByTestId('cleanup-delete')).toBeDisabled()
   await userEvent.click(screen.getByTestId('cleanup-preview'))
   expect(await screen.findByTestId('cleanup-preview-result')).toHaveTextContent('3 event · 4 file · 2 kB')
-  expect(cleanupCalls(f)[0]).toEqual({ date_from: '2026-09-01', date_to: '2026-09-10', camera_ids: [], types: [], mode: 'events', dry_run: true })
+  expect(cleanupCalls(f)[0]).toEqual({
+    date_from: '2026-09-01', date_to: '2026-09-10', camera_ids: [], types: [],
+    employee_ids: [], all_employees: false, mode: 'events', dry_run: true,
+  })
   await userEvent.click(screen.getByTestId('cleanup-delete'))
   const dialog = screen.getByRole('dialog')
   expect(dialog).toHaveTextContent('3 event dari 2026-09-01 sampai 2026-09-10')
