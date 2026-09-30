@@ -85,7 +85,8 @@ Modul baru `app/services/monitoring_history.py`.
 - `HistorySampler` (thread, pola `NodeHealthMonitor`): tiap **60 s** → `flush(now)` → insert satu baris per
   (node, bucket) (duplikat `(node_id, ts)` diabaikan), commit; **sekali per jam** hapus baris `ts < now − 7 hari`.
   Konstanta `SAMPLE_INTERVAL_S = 60`, `RETENTION_DAYS = 7`, `PRUNE_EVERY_S = 3600`. Sesi DB sendiri; exception
-  dicatat tanpa mematikan thread; berhenti rapi di lifespan (flush terakhir saat stop). Conftest mematikan interval
+  dicatat tanpa mematikan thread; berhenti rapi di lifespan (tanpa flush akhir — bucket berjalan hilang ≤ 1 menit,
+  sama seperti restart). Conftest mematikan interval
   sampler seperti monitor node.
 - Node dihapus → sampelnya ikut terhapus (cascade).
 
