@@ -47,6 +47,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   CPU/RAM/GPU/inferensi/kamera; cek 6 jam/24 jam setelah ±1 jam; bekukan vision 60 s (izin) → celah + arsir
   merah. Rollback: `git revert` rentang commit S2 + `alembic downgrade 0018` (drop tabel, riwayat hilang —
   data turunan) + restart API + build frontend.
+- **Review perencana:** titik data tunggal di antara celah (mis. menit pertama setelah deploy / node pulih) tidak
+  tergambar karena segmen hanya `M` → kini digambar sebagai dot (`LineChart`, tes regresi). Frontend 223.
 
 ### Monitoring Resource S1 (2026-09-29)
 

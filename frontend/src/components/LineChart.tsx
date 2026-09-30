@@ -59,6 +59,10 @@ export default function LineChart({ title, series, from, to, bucketMs, yMin, yMa
     }
     return d
   }
+  // titik tanpa tetangga dalam 1,5 bucket (sebelum & sesudah) tidak punya segmen garis → gambar sebagai dot
+  const isolated = (points: ChartPoint[]) => points.filter((p, i) =>
+    (i === 0 || p.t - points[i - 1].t > bucketMs * 1.5)
+    && (i === points.length - 1 || points[i + 1].t - p.t > bucketMs * 1.5))
   const fmtTime = (t: number) => new Date(t).toLocaleString(locale, span > 26 * 3600e3
     ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
     : { hour: '2-digit', minute: '2-digit' })
@@ -103,8 +107,13 @@ export default function LineChart({ title, series, from, to, bucketMs, yMin, yMa
           )
         })}
         {series.map((s) => (
-          <path key={s.key} data-testid={`lc-line-${s.key}`} d={path(s.points)} fill="none" stroke={s.color}
-            strokeWidth={1.5} strokeDasharray={s.dashed ? '4 3' : undefined} />
+          <g key={s.key}>
+            <path data-testid={`lc-line-${s.key}`} d={path(s.points)} fill="none" stroke={s.color}
+              strokeWidth={1.5} strokeDasharray={s.dashed ? '4 3' : undefined} />
+            {isolated(s.points).map((p) => (
+              <circle key={p.t} data-testid={`lc-dot-${s.key}`} cx={x(p.t)} cy={y(p.v)} r={2.5} fill={s.color} />
+            ))}
+          </g>
         ))}
         {refLine && (
           <line data-testid="lc-ref" className="lc__ref" x1={PAD.l} x2={PAD.l + w} y1={y(refLine.v)} y2={y(refLine.v)}

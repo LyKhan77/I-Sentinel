@@ -52,3 +52,9 @@ test('aria-label merangkum nilai terakhir; tanpa data tetap render', () => {
   base([{ key: 'x', label: 'X', color: '#000', points: [] }])
   expect(screen.getAllByRole('img')).toHaveLength(2)
 })
+
+test('titik tunggal di antara celah tetap terlihat sebagai dot (mis. menit pertama setelah node pulih)', () => {
+  base([{ key: 'cpu', label: 'CPU', color: '#6929c4', points: pts([0, 1, 10, 20, 21]) }])
+  // menit 10 terisolasi (tetangga > 1,5 bucket di kedua sisi); segmen 0-1 dan 20-21 tetap garis
+  expect(screen.getAllByTestId('lc-dot-cpu')).toHaveLength(1)
+})
