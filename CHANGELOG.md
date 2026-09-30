@@ -52,6 +52,14 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   node offline. File: `backend/app/services/monitoring.py`, `schemas/monitoring.py`, `tests/test_monitoring.py`,
   `frontend/src/features/monitoring/MonitoringPage.tsx`, `api/monitoring.ts`, `i18n.tsx`, runbook. Backend 532,
   frontend 210, build 0.
+- **Fix notifikasi (uji user 2026-09-30):** refresh Live View menyalakan outline/toast/bunyi tanpa event baru.
+  Akar masalah (terverifikasi data server): sejak lonceng hanya memuat riwayat 00:00 kemarin, poll pertama
+  `useLiveEvents` (`limit=50`, semua waktu) membawa event lama (25–28 Sep) yang tidak ada di riwayat → dianggap
+  baru. Event dengan `ts_event` sebelum awal jendela riwayat kini selalu diperlakukan sebagai riwayat (`2a20d21`,
+  tes regresi di `event-alerts.test.tsx`).
+- **Rapikan UI Monitoring (review user):** jarak antar blok/tile/kartu lebih lega, kartu node dikelompokkan
+  (Hardware · GPU · Inferensi AI · Masalah), tabel & layanan ber-padding lebih besar, umur heartbeat "N dtk/mnt/jam",
+  tag Peringatan kuning (`61a6b5f`). Frontend 211, build 0, lint tanpa error.
 
 ### Notifikasi event web UI + outline tile Live View (2026-09-29)
 
