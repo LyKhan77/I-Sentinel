@@ -251,6 +251,15 @@ sweep retensi manual (admin), pengaturan retensi, dan (admin) pembersihan event 
   berulang dibatasi sekali per 24 jam, serta "✅ Disk pulih" saat pemakaian turun di bawah ambang − 2 %
   (setelah pulih, kenaikan lagi di atas ambang mengirim pesan baru). Tanpa token/grup Telegram state tetap
   diperbarui (banner tetap jalan) dan tidak ada error. Token tidak pernah masuk log/pesan.
+- **Data absensi (rekap & riwayat), admin, permanen** (`mode: "attendance_data"`): untuk server dengan
+  campuran karyawan uji dan nyata. Pilih karyawan (wajib) atau centang "Semua karyawan", tanggal
+  maksimum **kemarin** (shift hari ini bisa masih berjalan) → **Pratinjau** menampilkan ringkasan +
+  tabel per karyawan → **Hapus data absensi** mengunci sampai kata `HAPUS` diketik di modal konfirmasi.
+  Menghapus permanen `attendance_event`, `attendance_day` (**termasuk `override_note`**), event Inbox
+  `attendance` terkait, dan medianya untuk seleksi itu; "Semua karyawan" juga menghapus event wajah
+  tak dikenal di rentang tersebut, filter karyawan tidak. File yang masih dirujuk baris di luar
+  seleksi dipertahankan. Audit log mencatat ID karyawan dan jumlah, **tidak pernah nama**. Ekspor CSV
+  attendance untuk rentang yang dibersihkan akan kosong sesudahnya — tidak bisa dipulihkan.
 
 ## Alert Telegram
 

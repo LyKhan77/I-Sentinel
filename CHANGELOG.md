@@ -3,6 +3,47 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Cleanup data absensi (rekap & riwayat) (2026-09-30)
+
+- **Konteks:** server berisi campuran karyawan uji dan karyawan nyata. Mode cleanup yang sudah ada
+  (`events`, `attendance_media`) sengaja tidak pernah menyentuh riwayat/rekap absensi, jadi tidak ada
+  cara membuang data uji tanpa memengaruhi karyawan nyata selain manipulasi DB manual — berisiko dan
+  tidak ter-audit.
+- **Perubahan:** mode ketiga `attendance_data` di `POST /storage/cleanup` (admin) yang menghapus
+  PERMANEN `attendance_event`, `attendance_day` (**termasuk `override_note`** — koreksi manual admin
+  ikut hilang, sesuai keputusan produk: hapus semuanya untuk seleksi, tanpa pengecualian), event Inbox
+  tipe `attendance` terkait beserta alert-nya, dan semua medianya (foto, crop wajah, clip lama) untuk
+  karyawan terpilih atau semua karyawan pada rentang tanggal. Validasi (422): `date_to` maksimum
+  **kemarin** (bukan hari ini — shift mungkin masih berjalan), `camera_ids`/`types` tidak berlaku,
+  wajib `employee_ids` **atau** `all_employees` (XOR — tidak boleh keduanya kosong atau keduanya
+  terisi); mode lain menolak `employee_ids`/`all_employees` bila diisi. `all_employees=true` juga
+  menghapus event wajah tak dikenal (attendance tanpa baris riwayat) di rentang itu; filter karyawan
+  tidak. File yang masih dirujuk baris **di luar** seleksi (karyawan lain / rentang lain) dipertahankan
+  — pola sama dengan `cleanup_attendance_media`. Baris dihapus dalam satu transaksi (alert → event →
+  riwayat → rekap) sebelum file dihapus dari disk; dry run tidak mengubah apa pun dan menampilkan
+  ringkasan + breakdown per karyawan (nama, jumlah riwayat, jumlah hari). Audit log
+  (`attendance data cleanup by <admin>: <from>..<to> employees=<id...|all> → N attendance_events,
+  M days, K events, F files`) **hanya mencatat ID karyawan, tidak pernah nama** (data pribadi).
+  Frontend: radio ketiga "Data absensi (rekap & riwayat)" di kartu Bersihkan event — menyembunyikan
+  kamera & jenis, MultiSelect karyawan + checkbox "Semua karyawan", tanggal maksimum kemarin, tabel
+  pratinjau per karyawan, dan modal konfirmasi yang mengunci tombol Hapus sampai kata `HAPUS` diketik
+  persis (lebih ketat dari dua mode lain — data ini tidak bisa dipulihkan dan memengaruhi ekspor CSV).
+- **File:** `backend/app/schemas/storage.py`, `backend/app/services/retention.py`,
+  `backend/app/api/storage.py`, `backend/tests/test_attendance_data_cleanup.py`,
+  `frontend/src/api/storage.ts`, `frontend/src/features/config/EventCleanupCard.tsx`,
+  `frontend/src/app/i18n.tsx`, `frontend/src/__tests__/storage.test.tsx`,
+  `frontend/src/__tests__/storage-attendance.test.tsx`, `docs/runbooks/storage-retention.md`,
+  `README.md`.
+- **Bukti:** backend **606 passed** (baseline 597, +9), frontend **237 passed** (baseline 232, +5),
+  build exit 0, lint 0 error (rule+file warning identik dengan baseline, tanpa warning baru),
+  `git diff --stat main -- vision` kosong, tanpa dependensi baru, tanpa migrasi DB.
+- **Dampak:** admin bisa membuang data absensi uji per karyawan/rentang dengan aman tanpa menyentuh
+  karyawan lain; setiap penghapusan tercatat di audit log tanpa membocorkan nama karyawan; ekspor CSV
+  untuk rentang yang dibersihkan akan kosong setelahnya (diperingatkan di modal konfirmasi).
+- **Rollback:** `git revert` dua commit fitur ini; tanpa migrasi, aman di-revert kapan saja — tetapi
+  baris `attendance_event`/`attendance_day` yang sudah dihapus lewat mode ini **tidak bisa
+  dipulihkan** (itulah alasan pratinjau wajib + konfirmasi ketik `HAPUS`).
+
 ### Status alert Telegram realtime + rapikan tabel aturan (2026-09-30)
 
 - **Konteks:** chip status alert Telegram di Events (Inbox) tertulis "queued" saat

@@ -3,9 +3,10 @@
 Kegunaan: mengubah retensi clip/snapshot, membersihkan event lama per rentang tanggal dengan aman,
 dan menanggapi peringatan disk hampir penuh. Semua lewat **Konfigurasi → Storage** (admin).
 
-> Data absensi (`event` tipe `attendance`) **tidak pernah** dihapus cleanup, dan rekap
-> `attendance_day` tidak tersentuh. Namun event behavior yang dibersihkan **tidak bisa dipulihkan**
-> — clip/snapshot-nya ikut terhapus dari disk.
+> Data absensi (riwayat `attendance_event`, rekap `attendance_day`, dan event Inbox tipe
+> `attendance`) **tidak pernah** disentuh oleh mode `events`/`attendance_media` maupun retensi
+> otomatis. Satu-satunya cara menghapusnya adalah mode admin eksplisit **"Data absensi (rekap &
+> riwayat)"** di §2.3 — dan begitu dieksekusi, hasilnya **tidak bisa dipulihkan**.
 
 ## 1. Mengubah retensi (clip, snapshot, media absensi)
 
@@ -47,6 +48,31 @@ file yang sudah tidak ada / path di luar `STORAGE_ROOT` dilewati tanpa error; cr
 barisnya sudah bersih dan sisanya disapu orphan sweep. Rentang mengikuti zona waktu lokal server dan
 batasnya `[dari 00:00, sampai+1 hari 00:00)`.
 
+### 2.3 Data absensi (rekap & riwayat) — permanen, bukan retensi
+
+Server produksi biasanya berisi campuran karyawan uji dan karyawan nyata. Mode ini untuk membuang
+data uji tanpa menyentuh karyawan lain — **bukan** proses otomatis, murni tindakan admin eksplisit.
+
+1. **Yang dibersihkan → Data absensi (rekap & riwayat)**. Pilih **Dari/Sampai tanggal** — maksimum
+   **kemarin** (shift hari ini mungkin masih berjalan, jadi hari ini tidak bisa dipilih). Kamera dan
+   Jenis tidak berlaku untuk mode ini (disembunyikan).
+2. Pilih **Karyawan** (MultiSelect, wajib minimal satu) **atau** centang **"Semua karyawan"** — harus
+   salah satu, tidak boleh keduanya kosong atau keduanya terisi (backend menolak 422). "Semua
+   karyawan" juga menghapus event wajah tak dikenal (attendance tanpa baris riwayat) di rentang itu;
+   dengan filter karyawan tertentu, event wajah tak dikenal **tidak** ikut.
+3. **Pratinjau** menampilkan ringkasan (riwayat, hari rekap, entri Inbox, file, ukuran) dan tabel
+   per karyawan (riwayat + hari) — baca dulu sebelum menghapus, dry run tidak mengubah apa pun.
+4. **Hapus data absensi** membuka modal yang mewajibkan mengetik **`HAPUS`** persis sebelum tombol
+   aktif — konfirmasi lebih ketat dari dua mode lain karena tidak ada cara mengembalikannya.
+5. Yang terhapus **permanen**: baris `attendance_event` (riwayat masuk/keluar), `attendance_day`
+   (rekap harian, **termasuk yang punya `override_note`** — koreksi manual admin ikut hilang), event
+   Inbox tipe `attendance` terkait beserta alert-nya, dan semua medianya (foto, crop wajah, clip
+   lama). File yang masih dirujuk baris **di luar** seleksi (karyawan lain / rentang lain) tetap ada.
+   **Ekspor CSV attendance untuk rentang ini akan kosong setelahnya.**
+6. Audit log: `attendance data cleanup by <admin>: <from>..<to> employees=<id...|all> →
+   N attendance_events, M days, K events, F files` — **hanya ID karyawan, tidak pernah nama** (data
+   pribadi tidak masuk log).
+
 ## 3. Menanggapi peringatan disk hampir penuh
 
 - Banner merah "Disk hampir penuh (N %)" muncul di **Dashboard** dan tab **Storage** saat pemakaian
@@ -68,4 +94,7 @@ systemctl list-timers isentinel-retention.timer # jadwal sweep harian
 
 Rollback: `git revert` commit fitur + restart **isentinel-api** (tanpa migrasi; setting `storage` /
 `disk_alert_state` di DB diabaikan kode lama, retensi kembali ke `RETENTION_DAYS`). Event yang sudah
-dibersihkan tidak bisa dipulihkan.
+dibersihkan tidak bisa dipulihkan — berlaku juga untuk data absensi yang dihapus lewat §2.3
+(revert hanya menghapus kode UI/endpoint-nya, bukan mengembalikan baris yang sudah terhapus).
+Cadangkan (dump tabel `attendance_event`/`attendance_day` atau ekspor CSV) sebelum memakai §2.3 bila
+ragu.
