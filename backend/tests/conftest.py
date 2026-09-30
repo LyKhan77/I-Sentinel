@@ -92,3 +92,18 @@ def _no_external_sockets(monkeypatch):
         return original(sock, address)
 
     monkeypatch.setattr(socket.socket, "connect", fake_connect)
+
+
+@pytest.fixture(autouse=True)
+def _quiet_app_consumer(monkeypatch):
+    """Fake the app-owned MQTT lifecycle; unit tests still use the real consumer class."""
+    from app import main
+
+    class FakeConsumer:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(main, "EventConsumer", FakeConsumer)
