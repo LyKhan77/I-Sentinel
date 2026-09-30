@@ -68,10 +68,13 @@ export function att(status: AttendanceStatus, over: Partial<AttendanceRow> = {})
   }
 }
 
+const GB = 1024 ** 3
+
 export function storage(over: Partial<StorageStats> = {}): StorageStats {
   return {
     retention_days: 30, storage_root: '/data/isentinel',
-    disk: { total: 100, used: 62, free: 38, percent: 62 }, kinds: {}, last_sweep: null,
+    // backend mengirim byte (shutil.disk_usage): 62% dari 100 GB
+    disk: { total: 100 * GB, used: 62 * GB, free: 38 * GB, percent: 62 }, kinds: {}, last_sweep: null,
     ...over,
   }
 }
