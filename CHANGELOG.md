@@ -3,6 +3,36 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Status alert Telegram realtime + rapikan tabel aturan (2026-09-30)
+
+- **Konteks:** chip status alert Telegram di Events (Inbox) tertulis "queued" saat
+  event masuk, lalu `alert_dispatcher` mengirim & menetapkan status akhir detik
+  kemudian — browser tidak pernah diberi tahu, jadi chip tetap "Antre" sampai
+  reload manual. Terpisah: tabel **Aturan & alert** Monitoring mengulang label
+  kolom ("Aktif", "Ambang", "Durasi (menit)", "Severity", "Telegram") di tiap baris.
+- **Perubahan:** `alert_dispatcher.process()`/`_reconcile()` broadcast
+  `{kind:"alert", event_id, status}` lewat `hub` setelah status final di-commit
+  (`sent`/`failed`/`not_configured`), dibungkus try/except (`logger.exception`) agar
+  kegagalan WS tidak pernah mengubah baris alert atau menghentikan worker. Events
+  page memakai frame ini (bukan membuangnya) untuk update chip + badge detail live;
+  event/status tak dikenal diabaikan. Fallback saat WS mati: id yang masih `queued`
+  di-cek ulang via `alertsByEvents` tiap 10 detik, berhenti begitu tak ada lagi yang
+  queued. Kosmetik: `Toggle`/`NumberInput`/`Select` per baris tabel aturan pakai
+  `hideLabel` (+ `aria-label` pada Toggle), nama aksesibel tetap `"<aturan> — <kolom>"`.
+- **File:** `backend/app/services/alert_dispatcher.py`,
+  `backend/tests/test_alert_dispatcher.py`, `frontend/src/features/events/EventsPage.tsx`,
+  `frontend/src/__tests__/events.test.tsx`, `frontend/src/features/monitoring/AlertsTab.tsx`.
+- **Bukti:** backend **597 passed** (baseline 592, +5), frontend **232 passed**
+  (baseline 229, +3), build exit 0, lint 0 error (warning rule+file sama dengan
+  baseline, tanpa warning baru), `git diff --stat main -- vision` kosong.
+- **Dampak:** chip/badge Telegram di Inbox ikut status nyata tanpa reload; tabel
+  aturan Monitoring lebih ringkas tanpa kehilangan nama aksesibel (screen reader
+  & tes tetap bisa menargetkan kontrol per baris).
+- **Rollback:** revert tiga commit item ini (`830aad2`, `343db8b`, `2e682d0`); tidak
+  ada migrasi/skema yang berubah, aman di-revert kapan saja.
+- **Commit:** `830aad2` broadcast status dispatcher; `343db8b` Events page pakai
+  frame alert + fallback polling; `2e682d0` label tabel aturan.
+
 ### Monitoring Resource S3 (2026-09-30)
 
 - **Konteks:** operator membutuhkan alert berkelanjutan untuk kamera/AI/hardware,

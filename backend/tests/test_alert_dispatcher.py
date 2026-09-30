@@ -10,6 +10,7 @@ from app.models.telegram_chat import TelegramChat
 from app.models.zone import Zone
 from app.services import telegram
 from app.services.alert_dispatcher import AlertDispatcher
+from app.ws.hub import hub
 
 TOKEN = "123456:" + "B" * 35
 
@@ -24,6 +25,17 @@ def sent(monkeypatch):
 
     monkeypatch.setattr(telegram, "deliver", fake_deliver)
     return calls
+
+
+@pytest.fixture
+def broadcast(monkeypatch):
+    sent = []
+
+    async def fake(payload):
+        sent.append(payload)
+
+    monkeypatch.setattr(hub, "broadcast", fake)
+    return sent
 
 
 def _alert(db, tmp_path, monkeypatch, snapshot=b"\xff\xd8jpg", configured=True):
@@ -177,3 +189,42 @@ def test_recover_requeues_recent_and_fails_stale_queued(db, tmp_path, monkeypatc
     db.refresh(recent); db.refresh(stale)
     assert recent.status == "queued" and d._q.get_nowait() == recent.id
     assert (stale.status, stale.error) == ("failed", "interrupted by restart")
+
+
+def test_process_broadcasts_sent_status(db, tmp_path, sent, monkeypatch, broadcast):
+    alert = _alert(db, tmp_path, monkeypatch)
+    _dispatcher().process(alert.id, db)
+    assert broadcast == [{"kind": "alert", "event_id": alert.event_id, "status": "sent"}]
+
+
+def test_process_broadcasts_failed_status(db, tmp_path, monkeypatch, broadcast):
+    monkeypatch.setattr(telegram, "deliver", lambda *a, **k: ("failed", "Forbidden: bot was kicked"))
+    alert = _alert(db, tmp_path, monkeypatch)
+    _dispatcher().process(alert.id, db)
+    assert broadcast == [{"kind": "alert", "event_id": alert.event_id, "status": "failed"}]
+
+
+def test_process_broadcasts_not_configured_status(db, tmp_path, monkeypatch, broadcast):
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    alert = _alert(db, tmp_path, monkeypatch, configured=False)
+    _dispatcher().process(alert.id, db)
+    assert broadcast == [{"kind": "alert", "event_id": alert.event_id, "status": "not_configured"}]
+
+
+def test_reconcile_broadcasts_failed_status(db, tmp_path, monkeypatch, broadcast):
+    alert = _alert(db, tmp_path, monkeypatch)
+    _dispatcher()._reconcile(db, alert.id)
+    db.refresh(alert)
+    assert alert.status == "failed"
+    assert broadcast == [{"kind": "alert", "event_id": alert.event_id, "status": "failed"}]
+
+
+def test_broadcast_failure_does_not_break_process(db, tmp_path, sent, monkeypatch):
+    async def boom(payload):
+        raise RuntimeError("ws down")
+
+    monkeypatch.setattr(hub, "broadcast", boom)
+    alert = _alert(db, tmp_path, monkeypatch)
+    _dispatcher().process(alert.id, db)
+    db.refresh(alert)
+    assert alert.status == "sent"
