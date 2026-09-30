@@ -213,8 +213,19 @@ class HistorySampler:
             except Exception:
                 db.rollback()
                 raise
+            from app.services import health_alerts  # local import avoids the history/evaluator cycle
+            try:
+                health_alerts.evaluate(db, now)
+            except Exception:
+                db.rollback()
+                logger.warning("health alert evaluation failed", exc_info=True)
             if self._last_prune is None or (now - self._last_prune).total_seconds() >= PRUNE_EVERY_S:
                 prune(db, now)
+                try:
+                    health_alerts.prune(db, now)
+                except Exception:
+                    db.rollback()
+                    logger.warning("health alert prune failed", exc_info=True)
                 self._last_prune = now
             return added
         finally:
@@ -274,7 +285,8 @@ def _merge(parts: list) -> dict | None:
 
 def _offline(db, node: Node, start: datetime, now: datetime) -> list[dict]:
     """Periode offline dari event system node: offline → online berikutnya; tanpa pasangan → to None."""
-    base = db.query(Event).filter(Event.type == "system", Event.node_id == node.id)
+    base = db.query(Event).filter(Event.type == "system", Event.node_id == node.id,
+                                  Event.payload["reason"].as_string().in_(("lwt", "timeout", "online")))
     before = base.filter(Event.ts_event < start).order_by(Event.ts_event.desc()).first()
     within = base.filter(Event.ts_event >= start, Event.ts_event <= now).order_by(Event.ts_event).all()
     is_off = lambda e: _dict(e.payload).get("reason") in ("lwt", "timeout")  # whitelist: hanya dua alasan offline resmi
@@ -283,7 +295,7 @@ def _offline(db, node: Node, start: datetime, now: datetime) -> list[dict]:
         ts = _utc(e.ts_event)
         if is_off(e) and cur is None:
             cur = ts
-        elif not is_off(e) and cur is not None:
+        elif _dict(e.payload).get("reason") == "online" and cur is not None:
             periods.append({"from": _z(cur), "to": _z(ts)})
             cur = None
     if cur is not None:
