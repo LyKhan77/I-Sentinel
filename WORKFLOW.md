@@ -216,5 +216,14 @@ Runbook: `docs/runbooks/monitoring.md`.
 
 **Pengguna:** semua · **Halaman:** `/dashboard`
 
-Ringkasan event hari ini (`GET /api/v1/events/stats/today`), event terbaru, status node dan GPU dari
-heartbeat, serta banner disk hampir penuh. Titik masuk ke Inbox, Live View, dan Monitoring.
+Layout status-first (revamp 2026-09-30): **strip status** sistem (summary Monitoring + health alert aktif,
+teks selalu ikut warna) → **4 tile KPI yang dapat diklik** — Kamera sehat→`/monitoring`, Event hari
+ini→`/events`, Kehadiran hari ini→`/attendance`, Disk→`/configuration?tab=storage` → **chart event per jam**
+hari ini (`GET /api/v1/events/stats/today` — `by_hour`/`critical_by_hour`; tipe `attendance` TIDAK dihitung,
+angka tile adalah hitungan keamanan) → grid dua kolom: **8 event terbaru** (sumber realtime yang sama dengan
+lonceng — nama kamera, Tag severity dengan teks, thumbnail snapshot, tautan `/events?event=<id>`) |
+**masalah aktif** (maks 5, critical dulu; "Semua →" `/monitoring`) + **node ringkas** (status, health, GPU
+pertama util/VRAM; detail di Monitoring). Banner disk saat ≥ ambang tetap di atas. Data via `useDashboardData`
+(polling 15 dtk, kegagalan terisolasi per sumber — sumber gagal tampil "—"/"Gagal memuat", bukan 0 palsu;
+nilai lama bertahan saat poll gagal dan strip menandai basi). Tile/chart ikut terbarukan saat event realtime
+baru tiba. Titik masuk: Inbox (Events), Attendance, Monitoring, Storage.
