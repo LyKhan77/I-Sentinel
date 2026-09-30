@@ -1,12 +1,14 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import StatusStrip from '../features/dashboard/StatusStrip'
 import KpiTiles from '../features/dashboard/KpiTiles'
+import EventsPerHour from '../features/dashboard/EventsPerHour'
+import RecentEvents from '../features/dashboard/RecentEvents'
 import type { DashboardData } from '../features/dashboard/useDashboardData'
-import { emptyData, mon, alert, att, stats, storage } from './dashboardFixtures'
+import { emptyData, mon, alert, att, stats, storage, ev } from './dashboardFixtures'
 
 function show(ui: ReactElement) {
   return render(<I18nProvider><MemoryRouter>{ui}</MemoryRouter></I18nProvider>)
@@ -114,5 +116,77 @@ describe('KpiTiles', () => {
   test('loading renders skeletons', () => {
     const { container } = tiles(emptyData({ loading: true }))
     expect(container.querySelectorAll('.cds--skeleton__text').length).toBeGreaterThan(0)
+  })
+})
+
+describe('EventsPerHour', () => {
+  test('draws only hours up to now', () => {
+    const now = new Date(2026, 8, 30, 10, 30)
+    const s = stats({ by_hour: Array.from({ length: 24 }, (_, h) => h), critical_by_hour: Array(24).fill(0) })
+    show(<EventsPerHour data={emptyData({ stats: s })} now={now} />)
+    const d = screen.getByTestId('lc-line-total').getAttribute('d')!
+    expect(d.match(/[ML]/g)).toHaveLength(11) // jam 0..10 saja, tanpa garis ke masa depan
+    expect(screen.getByTestId('lc-line-critical')).toBeInTheDocument()
+  })
+
+  test('all-zero stats still render both lines without crashing', () => {
+    const now = new Date(2026, 8, 30, 5, 0)
+    show(<EventsPerHour data={emptyData({ stats: stats({ total: 0, by_type: {}, by_severity: { critical: 0, warning: 0, info: 0 } }) })} now={now} />)
+    expect(screen.getByTestId('lc-line-total')).toBeInTheDocument()
+    expect(screen.getByTestId('lc-line-critical')).toBeInTheDocument()
+  })
+
+  test('null stats renders Gagal memuat and no chart', () => {
+    show(<EventsPerHour data={emptyData({ stats: null, failed: FAILED_STATS })} />)
+    expect(screen.getByText('Gagal memuat')).toBeInTheDocument()
+    expect(screen.queryByTestId('lc-line-total')).toBeNull()
+  })
+})
+
+describe('RecentEvents', () => {
+  const camName = (id: number | null) => (id === 1 ? 'Gate-A' : `#${id ?? '?'}`)
+  const recent = (events: Parameters<typeof RecentEvents>[0]['events'], now?: Date) =>
+    show(<RecentEvents events={events} cameraName={camName} now={now} />)
+
+  test('shows camera name, severity text and link to the event', () => {
+    recent([ev(7)])
+    expect(screen.getByText('Gate-A')).toBeInTheDocument()
+    expect(screen.getByText('Critical')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Gate-A/ })).toHaveAttribute('href', '/events?event=7')
+  })
+
+  test('renders at most 8 rows', () => {
+    const { container } = recent(Array.from({ length: 10 }, (_, i) => ev(i + 1)))
+    expect(container.querySelectorAll('a[href^="/events?event="]')).toHaveLength(8)
+  })
+
+  test('unknown severity falls back to a visible tag', () => {
+    recent([ev(3, { severity: 'foo' })])
+    expect(screen.getByText('Warning')).toBeInTheDocument()
+  })
+
+  test('system event without camera shows node text, not #?', () => {
+    const { container } = recent([ev(4, { type: 'system', camera_id: null, payload: { node: 'edge-1' } })])
+    expect(container.textContent).toContain('edge-1')
+    expect(container.textContent).not.toContain('#?')
+  })
+
+  test('older-day event shows a date', () => {
+    const now = new Date(2026, 8, 30, 12, 0)
+    recent([ev(8, { ts_event: '2026-09-29T08:00:00' })], now)
+    expect(screen.getByText(/29\/09/)).toBeInTheDocument()
+  })
+
+  test('thumbnail falls back when the image errors', () => {
+    const { container } = recent([ev(9)])
+    const img = container.querySelector('img.ev-thumb')!
+    fireEvent.error(img)
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('.ev-thumb--empty')).not.toBeNull()
+  })
+
+  test('empty list shows belum ada event', () => {
+    recent([])
+    expect(screen.getByText('belum ada event')).toBeInTheDocument()
   })
 })
