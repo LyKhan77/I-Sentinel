@@ -2,7 +2,10 @@
 
 > Diperbarui di SETIAP fase selesai: status marker + bukti (hasil command/angka) +
 > commit range. Marker: `[x]` selesai+terbukti · `[~]` berjalan · `[ ]` belum · `[!]` gagal/blocked.
-> Detail per fase: `docs/plans/` · Spesifikasi: `docs/plans/2026-09-08-isentinel-design.md`
+> Plan tersisa: `docs/plans/07-edge-jetson.md` · Spesifikasi awal: `docs/plans/2026-09-08-isentinel-design.md` ·
+> Plan fitur: `docs/superpowers/plans/`. Plan Fase 0–5 (`docs/plans/00`–`06`) sudah selesai dan dihapus
+> dari working tree (tetap di riwayat git). `docs/evidence/` kini lokal saja (gitignored); path bukti di
+> bawah merujuk berkas di riwayat git sebelum commit penghapusan.
 
 ## Ringkasan Status
 
@@ -41,7 +44,7 @@
 
 ## Fase 0 — Skeleton
 
-Plan: `docs/plans/01-fase-0-skeleton.md`
+Plan (arsip git): `docs/plans/01-fase-0-skeleton.md`
 
 **Kriteria selesai (dari plan):**
 - [x] Login + bootstrap admin jalan
@@ -69,7 +72,7 @@ Plan: `docs/plans/01-fase-0-skeleton.md`
 
 ## Fase 1 — Vision Inti
 
-Plan: `docs/plans/02-fase-1-vision-inti.md` (9 task, semua selesai + review)
+Plan (arsip git): `docs/plans/02-fase-1-vision-inti.md` (9 task, semua selesai + review)
 
 **Kriteria selesai:**
 - [x] Event deteksi person dari kamera nyata masuk DB < 2 s — bukti: 4 kamera NVR via go2rtc (cam_4..cam_7), event person_detect mengalir (34+37 per 5 mnt pada kamera beraktivitas); kamera tanpa orang = 0 event (detector terbukti benar via direct inference test)
@@ -97,7 +100,7 @@ Plan: `docs/plans/02-fase-1-vision-inti.md` (9 task, semua selesai + review)
 
 ## Fase 2 — Zona, Events, Clips, Web Inbox
 
-Plan: `docs/plans/03-fase-2-zona-events.md` (7 task, semua selesai + review)
+Plan (arsip git): `docs/plans/03-fase-2-zona-events.md` (7 task, semua selesai + review)
 
 **Kriteria selesai:**
 - [x] Zona digambar via UI (klik-titik min 3, tutup start-point) → push config ke node — editor polygon + validasi backend + push MQTT retained terbukti (config 24 kamera + zona terkirim ke vision-node)
@@ -122,7 +125,7 @@ Plan: `docs/plans/03-fase-2-zona-events.md` (7 task, semua selesai + review)
 
 ## Fase 3 — Loitering, Running, Alerting (foundation)
 
-Plan: `docs/plans/04-fase-3-analyzers-alerting.md` (6 task, selesai + review)
+Plan (arsip git): `docs/plans/04-fase-3-analyzers-alerting.md` (6 task, selesai + review)
 
 **Kriteria selesai:**
 - [x] Unit: loitering timer (7 test), running threshold + anisotropi sumbu-y (10 test), rate-limit window — hijau CPU (64 vision + 122 backend)
@@ -146,7 +149,7 @@ Plan: `docs/plans/04-fase-3-analyzers-alerting.md` (6 task, selesai + review)
 
 ## Fase 4 — Absensi Wajah
 
-Plan: `docs/plans/05-fase-4-absensi.md` (7 task, selesai + review)
+Plan (arsip git): `docs/plans/05-fase-4-absensi.md` (7 task, selesai + review)
 
 **Kriteria selesai:**
 - [x] Unit: agregasi attendance_days (ontime/late/waiting/no_exit/absent), face match threshold gallery kecil, min-3-foto — hijau CPU (199 backend + 79 vision + 36 frontend)
@@ -305,7 +308,7 @@ sama seperti snapshot — jangan dibuka tanpa autentikasi, go2rtc tidak punya au
 
 ## Fase 5 — Hardening — **DONE (2026-09-21)**
 
-Plan: `docs/plans/06-fase-5-hardening.md` (12 task, 66 step — dikembangkan dari brief 2026-09-15)
+Plan (arsip git): `docs/plans/06-fase-5-hardening.md` (12 task, 66 step — dikembangkan dari brief 2026-09-15)
 
 **Status: DONE.** Task 1–8 (retensi+sweeper+timer, storage API+halaman, rate-limit
 login, resiliensi), Task 9 (device pin + GPU probe heartbeat + UI delegasi device),

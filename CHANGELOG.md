@@ -3,6 +3,19 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Evidence lokal & plan tersisa hanya Edge Jetson (2026-09-30)
+
+- **Konteks:** `docs/evidence/` (22 MB screenshot) terus menumpuk di git; `docs/plans/` masih berisi plan
+  Fase 0–5 yang sudah selesai sehingga terkesan masih terbuka (checkbox tidak pernah dicentang).
+- **Diubah:** `docs/evidence/` di-untrack (`git rm --cached`) dan masuk `.gitignore` — berkas tetap di
+  mesin lokal, bukti uji berikutnya disimpan lokal saja; `docs/plans/00`–`06` dihapus (tetap di riwayat
+  git); `07-edge-jetson.md` ditandai satu-satunya milestone tersisa; spec desain awal diberi banner arsip.
+- **Dokumentasi:** `AGENTS.md` (status Fase 0–5 selesai, migrasi terakhir 0020, branch dari `main`,
+  unit systemd sudah direkonsiliasi, evidence lokal), `README.md` (peta docs), `ROADMAP.md` (header +
+  rujukan plan fase jadi "arsip git").
+- **Dampak:** tanpa perubahan kode. Path `docs/evidence/…` di CHANGELOG/ROADMAP lama merujuk riwayat git.
+- **Rollback:** `git revert` commit ini (evidence kembali ter-track).
+
 ### Rapikan project & dokumentasi (2026-09-30)
 
 - **Konteks:** artefak lama yang sudah tidak dipakai membingungkan peta repo.
