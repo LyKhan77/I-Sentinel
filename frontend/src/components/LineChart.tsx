@@ -85,7 +85,7 @@ export default function LineChart({ title, series, from, to, bucketMs, yMin, yMa
         {shaded.map((r, i) => {
           const a = x(Math.max(r.from, from))
           const b = x(Math.min(r.to, to))
-          return b > a || b === a ? (
+          return b >= a ? (
             <rect key={i} className="lc__offline" data-testid="lc-offline" x={a} y={PAD.t} width={Math.max(2, b - a)} height={h} />
           ) : null
         })}

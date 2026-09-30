@@ -1684,3 +1684,33 @@ button.lv-alert-chip {
   block-size: 8px;
   margin-inline-end: 6px;
 }
+
+/* Tab Tren Monitoring (S2). */
+.mon-tabpanel.cds--tab-content {
+  padding: 16px 0 0;
+}
+
+.trend-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 16px;
+}
+
+.trend-cams {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trend-cam__charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+}
