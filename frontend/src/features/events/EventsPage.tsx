@@ -116,8 +116,17 @@ export default function EventsPage() {
 
   // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
   useLiveEvents((raw) => {
-    const e = raw as EventOut & { kind?: string }
-    if (e?.kind === 'alert') return // buang broadcast alert — eksplisit by kind
+    const msg = raw as { kind?: string; event_id?: number; status?: AlertStatus }
+    if (msg?.kind === 'alert') {
+      // broadcast status akhir alert (alert_dispatcher) → update chip tanpa reload
+      const status = msg.status
+      if (typeof msg.event_id !== 'number' || !status || !(status in ALERT_KEY)) return // status/id tak dikenal → abaikan
+      const match = events.find((p) => p.id === msg.event_id)
+      if (!match) return // event belum ada di list ter-load → abaikan
+      setAlertMap((am) => ({ ...am, [match.event_id]: status }))
+      return
+    }
+    const e = raw as EventOut
     if (typeof e?.id !== 'number') return // buang frame non-event lain
     setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, 200)))
   })
@@ -187,6 +196,17 @@ export default function EventsPage() {
     if (ids.length === 0) { setAlertMap({}); return }
     alertsByEvents(ids).then(setAlertMap).catch(() => setAlertMap({}))
   }, [events])
+
+  // fallback saat WS mati (polling saja): re-cek status yang masih 'queued' tiap 10s,
+  // berhenti begitu tak ada lagi yang queued (WS push sudah menutup celah ini lebih cepat)
+  useEffect(() => {
+    const queuedIds = events.slice(0, 50).filter((e) => alertMap[e.event_id] === 'queued').map((e) => e.event_id)
+    if (queuedIds.length === 0) return
+    const timer = setInterval(() => {
+      alertsByEvents(queuedIds).then((res) => setAlertMap((am) => ({ ...am, ...res }))).catch(() => {})
+    }, 10000)
+    return () => clearInterval(timer)
+  }, [events, alertMap])
 
   // event terpilih: dari map, fallback listAlerts bila di luar 50 teratas
   useEffect(() => {

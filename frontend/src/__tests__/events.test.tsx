@@ -387,6 +387,110 @@ test('?event=<id> opens that event in the detail panel', async () => {
   expect(screen.getByTestId('event-detail')).toHaveTextContent('loitering')
 })
 
+// --- Item A: status alert Telegram realtime -------------------------------
+
+class FakeWS {
+  onmessage: ((ev: { data: string }) => void) | null = null
+  onerror: (() => void) | null = null
+  constructor(_url: string) {}
+  close() {}
+  send() {}
+  addEventListener() {}
+  removeEventListener() {}
+}
+
+function stubFetchWithAlerts(events: EventOut[], alerts: Record<string, string>) {
+  return vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve(alerts) }
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(events) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+}
+
+test('alert WS frame updates status chip live tanpa reload', async () => {
+  const handlers: FakeWS[] = []
+  class Capturing extends FakeWS {
+    constructor(url: string) { super(url); handlers.push(this) }
+  }
+  vi.stubGlobal('WebSocket', Capturing as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetchWithAlerts(EVENTS, { 'ev-1': 'queued' }))
+  renderPage()
+
+  await screen.findByTestId('event-item-1')
+  expect((await screen.findAllByText('MENGIRIM…')).length).toBeGreaterThan(0)
+
+  await act(async () => {
+    handlers[0].onmessage?.({ data: JSON.stringify({ kind: 'alert', event_id: 1, status: 'sent' }) })
+  })
+
+  expect((await screen.findAllByText('TELEGRAM TERKIRIM')).length).toBeGreaterThan(0)
+  expect(screen.queryByText('MENGIRIM…')).not.toBeInTheDocument()
+})
+
+test('alert WS frame dengan event_id atau status tak dikenal diabaikan', async () => {
+  const handlers: FakeWS[] = []
+  class Capturing extends FakeWS {
+    constructor(url: string) { super(url); handlers.push(this) }
+  }
+  vi.stubGlobal('WebSocket', Capturing as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetchWithAlerts(EVENTS, { 'ev-1': 'queued' }))
+  renderPage()
+
+  await screen.findByTestId('event-item-1')
+  expect((await screen.findAllByText('MENGIRIM…')).length).toBeGreaterThan(0)
+
+  await act(async () => {
+    handlers[0].onmessage?.({ data: JSON.stringify({ kind: 'alert', event_id: 999, status: 'sent' }) })
+  })
+  await act(async () => {
+    handlers[0].onmessage?.({ data: JSON.stringify({ kind: 'alert', event_id: 1, status: 'bogus' }) })
+  })
+
+  // tak berubah: status ev-1 masih queued
+  expect((await screen.findAllByText('MENGIRIM…')).length).toBeGreaterThan(0)
+  expect(screen.queryByText('TELEGRAM TERKIRIM')).not.toBeInTheDocument()
+})
+
+test('fallback polling: status queued dicek ulang tiap 10s, berhenti setelah resolve', async () => {
+  vi.useFakeTimers()
+  let alerts: Record<string, string> = { 'ev-1': 'queued' }
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve(alerts) }
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(EVENTS) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  expect(screen.getAllByText('MENGIRIM…').length).toBeGreaterThan(0)
+
+  const byEventsCalls = () => fetchMock.mock.calls.filter(([u]) => String(u).includes('/alerts/by-events')).length
+  const before = byEventsCalls()
+
+  alerts = { 'ev-1': 'sent' } // server sudah menyelesaikan kirim, WS dianggap mati (tidak ada frame)
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+  expect(byEventsCalls()).toBeGreaterThan(before)
+  expect(screen.queryAllByText('MENGIRIM…')).toHaveLength(0)
+  expect(screen.getAllByText('TELEGRAM TERKIRIM').length).toBeGreaterThan(0)
+
+  const afterResolved = byEventsCalls()
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+  expect(byEventsCalls()).toBe(afterResolved) // tidak ada lagi yang queued → interval berhenti
+
+  vi.useRealTimers()
+})
+
 test('inbox shows zone names; deleted zone falls back to #id', async () => {
   const withZones: EventOut[] = [
     { ...EVENTS[0], zone_id: 7 },
