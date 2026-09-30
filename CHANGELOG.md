@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Dokumen ARCHITECTURE.md & WORKFLOW.md (2026-09-30)
+
+- **Konteks:** arsitektur dan cara kerja tim tersebar di README, AGENTS.md, dan riwayat chat.
+- **Baru:** `ARCHITECTURE.md` (topologi, unit systemd, lapisan backend + thread latar, data utama,
+  vision pipeline, kontrak MQTT/HTTP internal/WebSocket, alur utama, frontend, keamanan & storage);
+  `WORKFLOW.md` (siklus brainstorm → spec → plan → eksekusi → review → deploy → uji user → merge,
+  branch & commit, verifikasi, deploy `gspe-ai3`, rollback, dokumen yang ikut diperbarui, aturan keamanan).
+- **Diubah:** `README.md` dan `AGENTS.md` menautkan kedua dokumen.
+- **Dampak:** dokumentasi saja. **Rollback:** `git revert` commit ini.
+
 ### Evidence lokal & plan tersisa hanya Edge Jetson (2026-09-30)
 
 - **Konteks:** `docs/evidence/` (22 MB screenshot) terus menumpuk di git; `docs/plans/` masih berisi plan

@@ -2,6 +2,9 @@
 
 Sistem surveillance AI: FastAPI backend + vision-node + frontend.
 
+Dokumen inti: **`ARCHITECTURE.md`** (komponen, kontrak MQTT/HTTP/WS, alur data) ·
+**`WORKFLOW.md`** (siklus fitur, verifikasi, deploy, rollback) · `ROADMAP.md` · `CHANGELOG.md`.
+
 ## Arsitektur
 
 ```
@@ -56,7 +59,7 @@ isentinel/
 ├── docs/plans/               # spec desain awal + milestone tersisa (Edge Jetson)
 ├── docs/superpowers/         # spec + plan per fitur (catatan)
 ├── docs/runbooks/            # prosedur operasional per fitur
-└── README.md
+├── README.md  ARCHITECTURE.md  WORKFLOW.md  ROADMAP.md  CHANGELOG.md
 ```
 
 ## Run (dev lokal)
