@@ -94,6 +94,38 @@ def test_idempotent_same_minute(db, sent):
     assert len(_active(db)) == 1 and len(_health_events(db)) == 1 and len(sent["tg"]) == 1
 
 
+@pytest.mark.parametrize("transition", ["firing", "resolved", "closed"])
+def test_event_write_failure_rolls_back_health_transition(db, sent, monkeypatch, transition):
+    n = _node(db)
+    _samples(db, n, 5, lambda i: gpu(90))
+    at = NOW
+    if transition != "firing":
+        ha.evaluate(db, now=NOW, send=_tg(sent))
+        if transition == "resolved":
+            _samples(db, n, 2, lambda i: gpu(60), end=NOW + 2 * MIN)
+            at = NOW + 2 * MIN
+        else:
+            health_rules.put(db, {"gpu_temp": {"enabled": False}})
+        sent["tg"].clear()
+
+    original = ha.ingest_event
+    def failed_insert(*args, **kwargs):
+        raise RuntimeError("simulated event write failure")
+    monkeypatch.setattr(ha, "ingest_event", failed_insert)
+    with pytest.raises(RuntimeError, match="simulated event write failure"):
+        ha.evaluate(db, now=at, send=_tg(sent))
+    db.rollback()
+    assert len(_active(db)) == (0 if transition == "firing" else 1)
+    assert len(_health_events(db)) == (0 if transition == "firing" else 1)
+    assert sent["tg"] == []
+
+    monkeypatch.setattr(ha, "ingest_event", original)
+    result = ha.evaluate(db, now=at, send=_tg(sent))
+    assert len(result[transition if transition != "firing" else "fired"]) == 1
+    assert len(_health_events(db)) == (1 if transition == "firing" else 2)
+    assert len(sent["tg"]) == (0 if transition == "closed" else 1)
+
+
 def test_resolves_after_two_normal_minutes(db, sent):
     n = _node(db)
     _samples(db, n, 5, lambda i: gpu(90))
@@ -274,3 +306,78 @@ def test_health_events_do_not_end_offline_history_period(db):
     db.commit()
     periods = mh._offline(db, n, NOW - 5 * MIN, NOW)
     assert periods == [{"from": "2026-09-30T07:57:30Z", "to": "2026-09-30T07:59:30Z"}]
+
+
+@pytest.mark.parametrize("transition", ["firing", "resolved", "closed"])
+def test_concurrent_independent_sessions_deliver_one_transition(tmp_path, sent, transition):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from sqlalchemy import create_engine
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.orm import Query, sessionmaker
+    from app.core.db import Base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'race.sqlite'}",
+                           connect_args={"check_same_thread": False, "timeout": 5})
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    at = NOW
+    with factory() as seed:
+        n = _node(seed)
+        _samples(seed, n, 5, lambda i: gpu(90))
+        if transition != "firing":
+            ha.evaluate(seed, now=NOW, send=_tg(sent))
+            if transition == "resolved":
+                _samples(seed, n, 2, lambda i: gpu(60), end=NOW + 2 * MIN)
+                at = NOW + 2 * MIN
+            else:
+                health_rules.put(seed, {"gpu_temp": {"enabled": False}})
+    sent["tg"].clear()
+    sent["ws"].clear()
+    barrier = Barrier(2)
+    connections = set()
+    pg_locks = []
+
+    class RacingQuery(Query):
+        def first(self):
+            statement = self.statement.compile(dialect=postgresql.dialect())
+            if "FOR UPDATE" in str(statement):
+                pg_locks.append(str(statement))
+            result = super().first()
+            if transition != "closed" and statement.params.get("rule_1") == "gpu_temp":
+                self.rendezvous()
+            return result
+
+        def __iter__(self):
+            result = list(super().__iter__())
+            if transition == "closed" and self.column_descriptions[0]["entity"] is HealthAlert:
+                self.rendezvous()
+            return iter(result)
+
+        def rendezvous(self):
+            if not self.session.info.get("raced"):
+                self.session.info["raced"] = True
+                connections.add(id(self.session.connection().connection.driver_connection))
+                barrier.wait(timeout=5)
+
+    concurrent = sessionmaker(bind=engine, query_cls=RacingQuery)
+    def worker():
+        with concurrent() as session:
+            return ha.evaluate(session, now=at, send=_tg(sent))
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(worker) for _ in range(2)]
+            results = [future.result(timeout=15) for future in futures]
+        key = "fired" if transition == "firing" else transition
+        assert sum(len(result[key]) for result in results) == 1
+        assert len(connections) == 2
+        if transition != "closed":
+            assert pg_locks  # Dialect compilation only; no live PostgreSQL server.
+        with factory() as check:
+            assert len(_active(check)) == (1 if transition == "firing" else 0)
+            assert len(_health_events(check)) == (1 if transition == "firing" else 2)
+        assert len(sent["ws"]) == 1
+        assert len(sent["tg"]) == (0 if transition == "closed" else 1)
+    finally:
+        engine.dispose()

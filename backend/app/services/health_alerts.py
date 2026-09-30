@@ -81,10 +81,15 @@ def _targets(node: Node, by_min: dict, cams: list[Camera]) -> list[tuple[str, st
 
 
 def _emit(db, node: Node, camera_id, severity: str, payload: dict, now: datetime) -> None:
-    camera_id = camera_id if camera_id is not None and db.get(Camera, camera_id) is not None else None
-    status, ev = ingest_event(db, {"event_id": str(uuid.uuid4()), "type": "system", "node_id": node.id,
-                                   "camera_id": camera_id, "severity": severity, "ts_event": now.isoformat(),
-                                   "payload": payload})
+    # ingest_event commits the pending health transition and its web event together.
+    try:
+        camera_id = camera_id if camera_id is not None and db.get(Camera, camera_id) is not None else None
+        status, ev = ingest_event(db, {"event_id": str(uuid.uuid4()), "type": "system", "node_id": node.id,
+                                       "camera_id": camera_id, "severity": severity, "ts_event": now.isoformat(),
+                                       "payload": payload})
+    except Exception:
+        db.rollback()
+        raise
     if status == "created" and ev is not None:
         try:
             asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
@@ -154,7 +159,7 @@ def evaluate(db, now: datetime | None = None, send=None) -> dict:
                                     severity=r["severity"], value=last_val, threshold=th, started_at=cur)
                     db.add(a)
                     try:
-                        db.commit()
+                        db.flush()
                     except IntegrityError:
                         db.rollback()
                         if db.query(HealthAlert.id).filter_by(rule=rule, target=target, started_at=cur).first():
@@ -175,8 +180,8 @@ def evaluate(db, now: datetime | None = None, send=None) -> dict:
             if all(v is False for v, _ in recent):
                 changed = db.query(HealthAlert).filter(HealthAlert.id == a.id, HealthAlert.resolved_at.is_(None)).update(
                     {"resolved_at": now}, synchronize_session="fetch")
-                db.commit()
                 if not changed:
+                    db.rollback()
                     continue
                 lasted = max(1, round((now - _utc(a.started_at)).total_seconds() / 60))
                 _emit(db, node, a.camera_id, "info",
@@ -191,13 +196,15 @@ def evaluate(db, now: datetime | None = None, send=None) -> dict:
             continue
         changed = db.query(HealthAlert).filter(HealthAlert.id == a.id, HealthAlert.resolved_at.is_(None)).update(
             {"resolved_at": now}, synchronize_session="fetch")
-        db.commit()
         if not changed:
+            db.rollback()
             continue
         node = node_by_id.get(a.node_id)
         if node is not None:
             _emit(db, node, a.camera_id, "info",
                   payload(a.rule, a.target, a.label, a.value, a.threshold, "resolved", {"closed": True}), now)
+        else:
+            db.commit()
         result["closed"].append(k)
     return result
 
