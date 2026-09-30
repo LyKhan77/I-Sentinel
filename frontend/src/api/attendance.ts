@@ -1,6 +1,6 @@
 import { apiFetch } from './client'
 
-export type AttendanceStatus = 'ontime' | 'late' | 'waiting' | 'no_exit' | 'absent'
+export type AttendanceStatus = 'ontime' | 'late' | 'waiting' | 'no_exit' | 'no_entry' | 'absent'
 
 export type AttendanceRow = {
   id: number

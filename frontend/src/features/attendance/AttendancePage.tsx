@@ -29,12 +29,13 @@ import {
   type AttendanceStatus,
 } from '../../api/attendance'
 
-const STATUSES: AttendanceStatus[] = ['ontime', 'late', 'waiting', 'no_exit', 'absent']
+const STATUSES: AttendanceStatus[] = ['ontime', 'late', 'waiting', 'no_exit', 'no_entry', 'absent']
 const STATUS_COLOR: Record<AttendanceStatus, string> = {
   ontime: '#42be65',
   late: '#f1c21b',
-  waiting: '#8d8d8d',
+  waiting: '#4589ff',
   no_exit: '#ff832b',
+  no_entry: '#ff832b',
   absent: '#fa4d56',
 }
 
@@ -42,6 +43,15 @@ function todayIso() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+function fmtDay(iso: string, locale: string) {
+  const d = new Date(`${iso}T00:00:00`)
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
+  return d.toLocaleDateString(locale, opts)
+}
+
+const hhmm = (raw: string | null) => (raw ? raw.slice(0, 5) : '—')
 
 function initials(name: string | null) {
   if (!name) return '?'
@@ -98,7 +108,7 @@ function TabButton({ active, label, onClick, testId }: { active: boolean; label:
 }
 
 export default function AttendancePage() {
-  const { t } = useT()
+  const { t, locale } = useT()
   const [tab, setTab] = useState<'daily' | 'range' | 'employee'>('daily')
   const [date, setDate] = useState(todayIso)
   const [from, setFrom] = useState(todayIso)
@@ -111,6 +121,7 @@ export default function AttendancePage() {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [editing, setEditing] = useState<AttendanceRow | null>(null)
+  const [now, setNow] = useState(() => new Date())
   const [form, setForm] = useState<{ entry: string; exit: string; status: AttendanceStatus; note: string }>({
     entry: '',
     exit: '',
@@ -121,6 +132,11 @@ export default function AttendancePage() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isAdmin = me?.role === 'admin'
+
+  useEffect(() => {
+    const iv = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(iv)
+  }, [])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -197,7 +213,15 @@ export default function AttendancePage() {
     r.status === 'late' ? t('at.status.late').replace('{n}', String(r.late_minutes ?? 0)) : t(`at.status.${r.status}` as TKey)
 
   const duration = (r: AttendanceRow) => {
-    if (r.duration_min == null) return r.status === 'waiting' ? t('at.duration.running') : '—'
+    // "berjalan" hanya untuk waiting hari ini yang punya jam masuk; hari lampau/koreksi → —
+    if (r.status === 'waiting' && r.date === todayIso() && r.first_entry) {
+      const start = new Date(`${r.date}T${r.first_entry}`)
+      const mins = Math.max(0, Math.floor((now.getTime() - start.getTime()) / 60000))
+      return t('at.duration.running')
+        .replace('{h}', String(Math.floor(mins / 60)))
+        .replace('{m}', String(mins % 60))
+    }
+    if (r.duration_min == null) return '—'
     return t('at.duration.hm').replace('{h}', String(Math.floor(r.duration_min / 60))).replace('{m}', String(r.duration_min % 60))
   }
 
@@ -211,7 +235,15 @@ export default function AttendancePage() {
     if ((r.late_minutes ?? 0) > 0 && (maxLate === null || (r.late_minutes ?? 0) > (maxLate.late_minutes ?? 0))) maxLate = r
   }
 
-  const headers = ['at.col.employee', 'at.col.shift', 'at.col.entry', 'at.col.exit', 'at.col.duration', 'at.col.status'] as const
+  const headers = [
+    ...(tab !== 'daily' ? ['at.col.date' as const] : []),
+    'at.col.employee',
+    'at.col.shift',
+    'at.col.entry',
+    'at.col.exit',
+    'at.col.duration',
+    'at.col.status',
+  ] as const
 
   return (
     <div className="app-page">
@@ -313,7 +345,9 @@ export default function AttendancePage() {
             <TableHead>
               <TableRow>
                 {headers.map((h) => (
-                  <TableHeader key={h}>{t(h)}</TableHeader>
+                  <TableHeader key={h} data-testid={h === 'at.col.date' ? 'at-col-date' : undefined}>
+                    {t(h)}
+                  </TableHeader>
                 ))}
               </TableRow>
             </TableHead>
@@ -325,6 +359,9 @@ export default function AttendancePage() {
                   onClick={() => openOverride(r)}
                   style={{ cursor: isAdmin ? 'pointer' : 'default' }}
                 >
+                  {tab !== 'daily' && (
+                    <TableCell data-testid={`at-date-${r.id}`}>{fmtDay(r.date, locale)}</TableCell>
+                  )}
                   <TableCell>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 28, height: 28, background: '#333', color: '#c6c6c6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
@@ -337,9 +374,11 @@ export default function AttendancePage() {
                     </div>
                   </TableCell>
                   <TableCell>{r.shift_name ?? '—'}</TableCell>
-                  <TableCell style={{ fontFamily: 'monospace' }}>{r.first_entry || '—'}</TableCell>
-                  <TableCell style={{ fontFamily: 'monospace' }}>{r.last_exit || '—'}</TableCell>
-                  <TableCell>{duration(r)}</TableCell>
+                  <TableCell style={{ fontFamily: 'monospace' }}>{hhmm(r.first_entry)}</TableCell>
+                  <TableCell style={{ fontFamily: 'monospace' }}>{hhmm(r.last_exit)}</TableCell>
+                  <TableCell>
+                    <span data-testid={`at-dur-${r.id}`}>{duration(r)}</span>
+                  </TableCell>
                   <TableCell>
                     <StatusBadge status={r.status} label={statusLabel(r)} />
                   </TableCell>
