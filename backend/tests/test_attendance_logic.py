@@ -28,8 +28,10 @@ def _shift(db, start="07:00", end="16:00", tol=15):
     return s
 
 
-def _emp(db, shift=None, code="E1"):
-    e = Employee(name="Budi", employee_code=code, shift_id=shift.id if shift else None)
+def _emp(db, shift=None, code="E1", created_at=None):
+    # default jauh di masa lalu: tanggal uji (MON, 2025) harus setelah karyawan terdaftar
+    e = Employee(name="Budi", employee_code=code, shift_id=shift.id if shift else None,
+                 created_at=created_at or datetime(2020, 1, 1, tzinfo=LOCAL_TZ))
     db.add(e)
     db.commit()
     db.refresh(e)
@@ -624,3 +626,15 @@ def test_closer_runs_on_start_survives_error_and_stops(monkeypatch):
         time.sleep(0.01)
     c.stop()
     assert len(calls) >= 2 and not c._thread.is_alive()
+
+
+def test_close_due_no_absent_before_employee_registered(db):
+    # uji lapangan: catch-up 7 hari tidak boleh membuat "Tidak hadir" untuk hari sebelum karyawan didaftarkan
+    sh = _shift(db)
+    now = _at(*MON, 10, 0) + timedelta(days=8)          # Selasa minggu berikutnya
+    registered = now - timedelta(days=2)                 # didaftarkan hari Minggu
+    e = _emp(db, sh, created_at=registered)
+    attendance.close_due(db, now=now)
+    days = {r.date for r in db.query(AttendanceDay).filter_by(employee_id=e.id)}
+    assert days == {(now - timedelta(days=1)).date()}   # hanya Senin (hari kerja setelah terdaftar)
+    assert attendance.close_days(db, (now - timedelta(days=4)).date(), now=now) == 0  # manual juga dilewati

@@ -47,7 +47,8 @@ def _fixture_employee(db, code="E1", name="Budi"):
     db.add(sh)
     db.commit()
     db.refresh(sh)
-    e = Employee(name=name, employee_code=code, shift_id=sh.id)
+    # terdaftar jauh sebelum DAY: penutupan hari tidak melewati hari sebelum karyawan didaftarkan
+    e = Employee(name=name, employee_code=code, shift_id=sh.id, created_at=datetime(2020, 1, 1, tzinfo=LOCAL_TZ))
     db.add(e)
     db.commit()
     db.refresh(e)

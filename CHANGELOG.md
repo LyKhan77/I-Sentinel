@@ -58,6 +58,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `frontend/src/api/attendance.ts`, `frontend/src/app/i18n.tsx`,
   `frontend/src/__tests__/attendance.test.tsx`, `README.md`, `ROADMAP.md` (baris AR),
   `docs/runbooks/attendance.md` (baru), `docs/evidence/2026-09-30-attendance-*.png`.
+- **Review perencana:** catch-up 7 hari akan membuat "Tidak hadir" untuk hari **sebelum karyawan didaftarkan**
+  (karyawan baru langsung punya beberapa hari absen palsu). `close_due` dan `close_days` kini melewati hari sebelum
+  `employee.created_at` (tanggal lokal) untuk baris baru; tes regresi + fixture tes karyawan diberi `created_at` lama.
+  Backend 618.
 
 ### Cleanup data absensi (rekap & riwayat) (2026-09-30)
 

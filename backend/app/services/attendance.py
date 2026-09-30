@@ -232,7 +232,8 @@ def close_days(db, day, now: datetime | None = None) -> int:
         if shift is None or day.isoweekday() not in (shift.workdays or []):
             continue
         row = db.query(AttendanceDay).filter_by(employee_id=emp.id, date=day).first()
-        if row is not None and _has_override(row):
+        registered = _registered_on(emp)
+        if (row is not None and _has_override(row)) or (row is None and registered and day < registered):
             continue
         recompute_day(db, emp.id, day, now=now)
         n += 1
@@ -241,6 +242,11 @@ def close_days(db, day, now: datetime | None = None) -> int:
 
 def _has_override(row) -> bool:
     return bool((row.override_note or "").strip())
+
+
+def _registered_on(emp) -> "date | None":
+    """Tanggal lokal karyawan didaftarkan; hari sebelumnya tidak boleh dicatat "Tidak hadir"."""
+    return _local(emp.created_at).date() if emp.created_at is not None else None
 
 
 def close_due(db, now: datetime | None = None, days_back: int = CLOSE_DAYS_BACK) -> dict:
@@ -256,6 +262,9 @@ def close_due(db, now: datetime | None = None, days_back: int = CLOSE_DAYS_BACK)
                 continue
             row = db.query(AttendanceDay).filter_by(employee_id=emp.id, date=day).first()
             if row is None:
+                registered = _registered_on(emp)
+                if registered and day < registered:
+                    continue  # belum terdaftar hari itu → bukan "Tidak hadir"
                 recompute_day(db, emp.id, day, now=now)
                 created += 1
             elif row.status == "waiting" and not _has_override(row):
