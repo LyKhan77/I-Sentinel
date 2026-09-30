@@ -76,6 +76,7 @@ class CameraHealthOut(BaseModel):
     node_id: int | None = None
     node_name: str | None = None
     enabled: bool
+    analyzed: bool = False  # punya zona aktif ber-behavior → worker vision diharapkan jalan
     health: str
     issues: list[str]
     ai: CameraAiOut | None = None

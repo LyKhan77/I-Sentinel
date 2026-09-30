@@ -134,7 +134,7 @@ export default function MonitoringPage() {
                           <HealthTag h={c.health} />
                           {c.issues.map((i) => <span key={i} className="mon-issue">{t(issueKey(i))}</span>)}
                         </td>
-                        <td>{c.ai ? t(stateKey(c.ai.state)) : '—'}</td>
+                        <td>{c.ai ? t(stateKey(c.ai.state)) : c.analyzed ? '—' : t('mon.state.idle')}</td>
                         <td>{c.ai ? `${fmt(c.ai.fps, '', 1)} / ${fmt(c.ai.target_fps, '', 1)}` : '—'}</td>
                         <td>{c.ai ? fmt(c.ai.last_frame_age_s, ' s', 1) : '—'}</td>
                         <td>{c.ai ? c.ai.reconnects_1h : '—'}</td>

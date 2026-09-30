@@ -8,6 +8,7 @@ from app.core.db import get_db
 from app.models.camera import Camera
 from app.models.node import Node
 from app.models.setting import Setting
+from app.models.zone import Zone
 from app.services import monitoring
 
 from tests.conftest import viewer_headers
@@ -53,12 +54,20 @@ def _node(db, **over):
     return n
 
 
-def _cam(db, id, node=None, enabled=True):
+def _cam(db, id, node=None, enabled=True, zone=True):
     c = Camera(id=id, name=f"CAM-{id:02d}", host="1.2.3.4", node_id=node.id if node else None,
                enabled=enabled, ai_fps=5.0)
     db.add(c)
     db.commit()
+    if zone:  # zona aktif ber-behavior = kamera dianalisis vision (worker diharapkan jalan)
+        _zone(db, id)
     return c
+
+
+def _zone(db, camera_id, active=True, behaviors=None):
+    db.add(Zone(camera_id=camera_id, name=f"z{camera_id}", type="behavior", polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[{"kind": "intrusion"}] if behaviors is None else behaviors, active=active))
+    db.commit()
 
 
 def _stat(id, **over):
@@ -271,3 +280,27 @@ def test_endpoint_viewer_ok_and_requires_login(client):
     assert r.status_code == 200
     body = r.json()
     assert {"generated_at", "summary", "server", "nodes", "cameras", "services"} <= set(body)
+
+
+def test_camera_without_active_analytics_not_expected_to_run(db):
+    # data nyata 2026-09-30: kamera tanpa zona aktif tidak punya worker (live view saja) → bukan "not_running"
+    n = _node(db)
+    _cam(db, 1, n, zone=False)
+    _cam(db, 2, n, zone=False)
+    _zone(db, 2, active=False)                 # zona nonaktif
+    _cam(db, 3, n, zone=False)
+    _zone(db, 3, behaviors=[])                 # zona visual saja
+    _with_cams(n, db, [])
+    snap = monitoring.snapshot(db, now=NOW)
+    for cid in (1, 2, 3):
+        row = _cam_row(snap, cid)
+        assert row["ai"] is None and row["analyzed"] is False and "not_running" not in row["issues"]
+    assert _cam_row(snap, 1)["health"] == "ok" and _cam_row(snap, 2)["health"] == "ok"
+    assert _cam_row(snap, 3)["issues"] == ["stream_missing"]  # stub go2rtc tanpa cam_3: cek stream tetap jalan
+
+
+def test_unanalyzed_camera_unaffected_by_node_offline(db):
+    n = _node(db, status="offline")
+    _cam(db, 1, n, zone=False)
+    row = _cam_row(monitoring.snapshot(db, now=NOW), 1)
+    assert row["health"] == "ok" and "node_offline" not in row["issues"]

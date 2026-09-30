@@ -8,7 +8,7 @@ import NodeOfflineBanner from '../components/NodeOfflineBanner'
 
 const cam = (id: number, health: string, issues: string[] = [], over = {}) => ({
   id, name: `CAM-${id}`, location: 'Gudang', node_id: 1, node_name: 'server', enabled: health !== 'disabled',
-  health, issues,
+  analyzed: true, health, issues,
   ai: { state: 'streaming', fps: 5, target_fps: 5, last_frame_age_s: 0.3, reconnects_1h: 0, motion_skip_pct: 40 },
   stream: { registered: true }, ...over,
 })
@@ -24,7 +24,7 @@ const DATA = {
             inference: { detector: { model: 'yolo26s.engine', device: 'auto', ms_avg: 7.9, ms_max: 15.2, infer_fps: 48 },
                          face: { loaded: true, queue: 0 }, mqtt_backlog: 0 } }],
   cameras: [cam(1, 'ok'), cam(2, 'critical', ['no_frames'], { ai: { state: 'stalled', fps: 0, target_fps: 5, last_frame_age_s: 45, reconnects_1h: 2, motion_skip_pct: null } }),
-            cam(3, 'warning', ['low_fps'])],
+            cam(3, 'warning', ['low_fps']), cam(4, 'ok', [], { analyzed: false, ai: null })],
   services: [{ key: 'database', health: 'ok', detail: null, latency_ms: 1.2 },
              { key: 'retention', health: 'warning', detail: null, latency_ms: null }],
 }
@@ -50,7 +50,8 @@ test('ringkasan, node, dan kamera urut kritis → peringatan → sehat', async (
   expect(screen.getByTestId('mon-node-1')).toHaveTextContent('61')
   expect(screen.getByTestId('mon-server')).toBeInTheDocument()
   const rows = screen.getAllByTestId(/^mon-cam-\d+$/)
-  expect(rows.map((r) => r.dataset.testid)).toEqual(['mon-cam-2', 'mon-cam-3', 'mon-cam-1'])
+  expect(rows.map((r) => r.dataset.testid)).toEqual(['mon-cam-2', 'mon-cam-3', 'mon-cam-1', 'mon-cam-4'])
+  expect(screen.getByTestId('mon-cam-4')).toHaveTextContent('Tanpa zona aktif') // live view saja, bukan masalah
   expect(within(rows[0]).getByText('Tidak ada frame')).toBeInTheDocument()
 })
 

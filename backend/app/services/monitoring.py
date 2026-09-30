@@ -16,6 +16,7 @@ from app.models.alert import Alert
 from app.models.camera import Camera
 from app.models.node import Node
 from app.models.setting import Setting
+from app.models.zone import Zone
 from app.services import events_consumer, go2rtc, host_stats, retention, storage_settings, telegram
 from app.services.node_health import _aware
 
@@ -86,8 +87,11 @@ def _merge_workers(entries: list[dict]) -> dict | None:
             "motion_skip_pct": skips[0] if skips else None}
 
 
-def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, streams: set[str] | None) -> dict:
-    row = {"id": cam.id, "name": cam.name, "location": cam.location, "node_id": cam.node_id,
+def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, streams: set[str] | None,
+                analyzed: bool = True) -> dict:
+    """analyzed = kamera punya zona aktif ber-behavior; tanpa itu vision tidak menjalankan worker (live view saja)."""
+    analyzed = cam.node_id is not None and analyzed
+    row = {"analyzed": analyzed, "id": cam.id, "name": cam.name, "location": cam.location, "node_id": cam.node_id,
            "node_name": node.name if node else None, "enabled": bool(cam.enabled), "issues": [],
            "ai": None, "stream": {"registered": None if streams is None else f"cam_{cam.id}" in streams}}
     if not cam.enabled:
@@ -96,7 +100,7 @@ def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, stre
     crit, warn = [], []
     if streams is not None and f"cam_{cam.id}" not in streams:
         warn.append("stream_missing")
-    if cam.node_id is not None:
+    if analyzed:
         if node is None or node.status == "offline":
             crit.append("node_offline")
         elif entries is None:
@@ -275,12 +279,19 @@ def snapshot(db, now: datetime | None = None) -> dict:
     except Exception:
         logger.warning("monitoring camera query failed", exc_info=True)
         cameras = []
+    try:
+        # sama dengan vision: worker jalan bila ada zona aktif dengan behavior (behaviors [] = visual saja)
+        analyzed_ids = {cid for cid, bs in db.query(Zone.camera_id, Zone.behaviors).filter(Zone.active.is_(True))
+                        if isinstance(bs, list) and bs}
+    except Exception:
+        logger.warning("monitoring zone query failed", exc_info=True)
+        analyzed_ids = {c.id for c in cameras}  # tanpa data zona: anggap dianalisis (perilaku lama)
     for cam in cameras:
         node = by_id.get(cam.node_id) if cam.node_id is not None else None
         bucket = per_node.get(cam.node_id) if node is not None else None
         # bucket None = node tanpa statistik kamera; [] = kamera tidak ada di heartbeat (not_running)
         entries = None if bucket is None else bucket.get(cam.id, [])
-        cams.append(_camera_row(cam, node, entries, streams))
+        cams.append(_camera_row(cam, node, entries, streams, analyzed=cam.id in analyzed_ids))
     node_rows = [_node_row(n, now) for n in nodes]
     used, total = host_stats.ram_mb()
     disk = _disk(settings.storage_root)

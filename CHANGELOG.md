@@ -45,6 +45,13 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   tersimpan di broker.
 - **Deploy:** restart `isentinel-vision` (fix LWT + heartbeat baru) dan `isentinel-api` (monitor + endpoint);
   frontend build/HMR. Tanpa migrasi.
+- **Fix uji deploy (2026-09-30):** di data nyata 6 kamera aktif tampil kritis `not_running` padahal tidak punya
+  zona aktif — vision memang tidak menjalankan worker untuk kamera tanpa zona aktif ber-behavior (live view saja).
+  Kamera kini hanya diharapkan berjalan bila punya zona `active` dengan `behaviors` tidak kosong (sama dengan
+  logika vision); selain itu `analyzed: false`, status sehat, kolom Sumber AI "Tanpa zona aktif", tidak terpengaruh
+  node offline. File: `backend/app/services/monitoring.py`, `schemas/monitoring.py`, `tests/test_monitoring.py`,
+  `frontend/src/features/monitoring/MonitoringPage.tsx`, `api/monitoring.ts`, `i18n.tsx`, runbook. Backend 532,
+  frontend 210, build 0.
 
 ### Notifikasi event web UI + outline tile Live View (2026-09-29)
 

@@ -10,7 +10,7 @@ export type MonNode = { id: number; name: string; status: string; last_seen: str
   inference: { detector: { model: string | null; device: string | null; ms_avg: number | null; ms_max: number | null
     infer_fps: number | null }; face: { loaded: boolean | null; queue: number | null }; mqtt_backlog: number | null } }
 export type MonCamera = { id: number; name: string; location: string | null; node_id: number | null
-  node_name: string | null; enabled: boolean; health: Health; issues: string[]
+  node_name: string | null; enabled: boolean; analyzed: boolean; health: Health; issues: string[]
   ai: { state: string | null; fps: number | null; target_fps: number | null; last_frame_age_s: number | null
     reconnects_1h: number; motion_skip_pct: number | null } | null
   stream: { registered: boolean | null } }

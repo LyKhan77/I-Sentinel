@@ -15,7 +15,7 @@ menampilkan kesehatan **saat ini** (tanpa riwayat — grafik tren menyusul di S2
 | Kode | Arti | Langkah |
 |---|---|---|
 | `node_offline` (kritis) | Kamera terhubung ke node yang sedang offline | Lihat bagian Node di bawah |
-| `not_running` (kritis) | Node mengirim heartbeat, tetapi kamera ini tidak ada di daftar worker | Cek zona aktif & `motion_enabled` kamera (kamera tanpa zona aktif memang tidak dianalisis); jalankan sync konfigurasi ke node (Konfigurasi → Kamera → simpan) |
+| `not_running` (kritis) | Kamera punya zona aktif ber-behavior, node mengirim heartbeat, tetapi kamera ini tidak ada di daftar worker | Cek model wajah (zona absensi butuh face loaded) dan log vision; jalankan sync konfigurasi ke node (Konfigurasi → Kamera → simpan). Kamera **tanpa zona aktif** tidak dianalisis (live view saja) dan tampil "Tanpa zona aktif", bukan masalah. |
 | `no_frames` (kritis) | Sumber AI `reconnecting`/`stalled` atau frame terakhir > 30 s | Cek NVR/kamera dan stream go2rtc (`/api/streams`); cek log vision `journalctl -u isentinel-vision` |
 | `low_fps` (peringatan) | fps aktual < 80% target, bukan saat `starting` | Cek beban GPU/CPU node, bitrate/kualitas substream, atau NVR yang membatasi fps |
 | `reconnects` (peringatan) | ≥ 3 reconnect sumber dalam 1 jam | Cek kestabilan jaringan/NVR dan kredensial stream |
