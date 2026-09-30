@@ -63,3 +63,63 @@ def test_garbage_and_nulls_skipped():
     mh.record(1, {"host": {"cpu_pct": None, "ram_used_mb": 5, "ram_total_mb": 0}}, None, now=T0)
     mh.record(2, None, None, now=T0)
     assert all(data == {} for *_, data in mh.flush(T0 + timedelta(minutes=1)))
+
+
+def _node(db, name="server"):
+    n = Node(name=name, status="online")
+    db.add(n)
+    db.commit()
+    return n
+
+
+def _naive(dt):
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _ts_list(db):
+    return [_naive(r.ts) if r.ts.tzinfo else r.ts for r in db.query(MonitoringSample).order_by(MonitoringSample.ts)]
+
+
+def test_sampler_writes_skips_duplicate_and_prunes_hourly(db):
+    n = _node(db)
+    nid = n.id  # run_once menutup sesi yang dibagikan — tangkap id sebelum instance detach
+    db.add(MonitoringSample(node_id=nid, ts=T0 - timedelta(days=8), data={"cpu_pct": {"avg": 1.0}}))
+    db.commit()
+    s = mh.HistorySampler(session_factory=lambda: db)
+    mh.record(nid, *_hb(), now=T0)
+    assert s.run_once(now=T0 + timedelta(minutes=1)) == 1
+    assert _ts_list(db) == [_naive(T0)]  # sampel 8 hari dipangkas pada run pertama
+
+    mh.record(nid, *_hb(), now=T0)  # bucket menit yang sama datang terlambat → duplikat diabaikan
+    db.add(MonitoringSample(node_id=nid, ts=T0 - timedelta(days=9), data={}))
+    db.commit()
+    assert s.run_once(now=T0 + timedelta(minutes=2)) == 0
+    assert len(_ts_list(db)) == 2  # prune belum jalan (< 1 jam sejak prune terakhir)
+    s.run_once(now=T0 + timedelta(minutes=62))
+    assert _ts_list(db) == [_naive(T0)]
+
+
+def test_sampler_skips_unknown_node_and_empty(db):
+    n = _node(db)
+    mh.record(999, *_hb(), now=T0)            # node sudah dihapus
+    mh.record(n.id, None, None, now=T0)       # heartbeat tanpa metrik
+    s = mh.HistorySampler(session_factory=lambda: db)
+    assert s.run_once(now=T0 + timedelta(minutes=1)) == 0
+    assert _ts_list(db) == []
+
+
+def test_sampler_thread_survives_error_and_stops(monkeypatch):
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("db down")
+
+    s = mh.HistorySampler(interval_s=0.01, session_factory=boom)
+    s.start()
+    import time
+    deadline = time.monotonic() + 2
+    while len(calls) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    s.stop()
+    assert len(calls) >= 2 and not s._thread.is_alive()

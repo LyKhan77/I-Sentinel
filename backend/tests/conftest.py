@@ -66,7 +66,10 @@ def _quiet_history():
     """Bucket riwayat di memori modul: kosongkan antar tes; sampler latar tidak boleh menyentuh DB nyata."""
     from app.services import monitoring_history
     monitoring_history.reset()
+    old = monitoring_history.sampler.interval_s
+    monitoring_history.sampler.interval_s = 3600
     yield
+    monitoring_history.sampler.interval_s = old
     monitoring_history.reset()
 
 

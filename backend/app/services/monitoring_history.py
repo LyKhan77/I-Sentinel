@@ -7,11 +7,18 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+from app.core.db import SessionLocal
+from app.models.monitoring_sample import MonitoringSample
+from app.models.node import Node
 
 logger = logging.getLogger(__name__)
 
 STATE_RANK = {"streaming": 0, "starting": 1, "stalled": 2, "reconnecting": 3}
+SAMPLE_INTERVAL_S = 60
+RETENTION_DAYS = 7
+PRUNE_EVERY_S = 3600
 # kunci terakhir path metrik → agregasi yang disimpan
 AGG = {"cpu_pct": ("avg", "max"), "ram_pct": ("avg", "max"), "util_pct": ("avg", "max"),
        "vram_pct": ("max",), "temp_c": ("max",), "ms_avg": ("avg",), "ms_max": ("max",),
@@ -155,3 +162,78 @@ def flush(now: datetime | None = None) -> list[tuple[int, datetime, dict]]:
         done = sorted(k for k in _buckets if k[1] < current)
         items = [(k, _buckets.pop(k)) for k in done]
     return [(node_id, ts, _summarize(b)) for (node_id, ts), b in items]
+
+
+def write(db, rows: list[tuple[int, datetime, dict]]) -> int:
+    """Simpan bucket selesai; node tak dikenal / data kosong / duplikat (node, ts) dilewati."""
+    rows = [r for r in rows if r[2]]
+    if not rows:
+        return 0
+    known = {nid for (nid,) in db.query(Node.id).filter(Node.id.in_({r[0] for r in rows}))}
+    added = 0
+    for node_id, ts, data in rows:
+        if node_id not in known:
+            continue
+        if db.query(MonitoringSample.id).filter_by(node_id=node_id, ts=ts).first() is not None:
+            continue
+        db.add(MonitoringSample(node_id=node_id, ts=ts, data=data))
+        added += 1
+    db.commit()
+    return added
+
+
+def prune(db, now: datetime) -> int:
+    n = db.query(MonitoringSample).filter(MonitoringSample.ts < now - timedelta(days=RETENTION_DAYS)).delete(
+        synchronize_session=False)
+    db.commit()
+    return n
+
+
+class HistorySampler:
+    """Thread latar: tiap interval_s tulis bucket selesai; pangkas > RETENTION_DAYS sekali per jam."""
+
+    def __init__(self, interval_s: float = SAMPLE_INTERVAL_S, session_factory=SessionLocal):
+        self.interval_s = interval_s
+        self._session_factory = session_factory
+        self._last_prune: datetime | None = None
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def run_once(self, now: datetime | None = None) -> int:
+        now = now or datetime.now(timezone.utc)
+        rows = flush(now)  # dikeluarkan dulu: bila DB gagal, bucket dibuang (memori tidak menumpuk)
+        db = self._session_factory()
+        try:
+            try:
+                added = write(db, rows)
+            except Exception:
+                db.rollback()
+                raise
+            if self._last_prune is None or (now - self._last_prune).total_seconds() >= PRUNE_EVERY_S:
+                prune(db, now)
+                self._last_prune = now
+            return added
+        finally:
+            db.close()
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="monitoring-history")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self.interval_s):
+            try:
+                self.run_once()
+            except Exception:
+                logger.warning("monitoring history sample failed", exc_info=True)
+
+
+sampler = HistorySampler()
