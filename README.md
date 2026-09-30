@@ -3,7 +3,7 @@
 Sistem surveillance AI: FastAPI backend + vision-node + frontend.
 
 Dokumen inti: **`ARCHITECTURE.md`** (komponen, kontrak MQTT/HTTP/WS, alur data) ·
-**`WORKFLOW.md`** (siklus fitur, verifikasi, deploy, rollback) · `ROADMAP.md` · `CHANGELOG.md`.
+**`WORKFLOW.md`** (alur per fitur) · `docs/DEVELOPMENT.md` (siklus pengembangan, deploy, rollback) · `ROADMAP.md` · `CHANGELOG.md`.
 
 ## Arsitektur
 

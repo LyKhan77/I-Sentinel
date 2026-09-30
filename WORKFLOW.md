@@ -1,113 +1,220 @@
-# WORKFLOW — I-Sentinel
+# WORKFLOW — Alur per Fitur
 
-Cara kerja pengembangan dari ide sampai fitur ter-merge di `main`. Aturan agent lengkap ada di
-`AGENTS.md`; arsitektur di `ARCHITECTURE.md`; status fase di `ROADMAP.md`.
+Alur kerja setiap fitur I-Sentinel: siapa yang memakai, langkah di UI, dan apa yang terjadi di
+sistem. Komponen dan kontrak teknis ada di `ARCHITECTURE.md`; detail aturan per halaman di
+`README.md`; prosedur operasional di `docs/runbooks/`; cara kerja pengembangan di
+`docs/DEVELOPMENT.md`.
 
-## 1. Siklus fitur
+Urutan penyiapan sistem baru: **§1 Login → §3 Kamera → §5 Deteksi & node → §6 Zona → §10 Telegram →
+§11 Enrollment & shift**. Setelah itu fitur lain berjalan otomatis.
 
-```
-Brainstorm ─► Spec ─► Plan ─► Eksekusi ─► Review ─► Deploy ─► Uji user ─► Docs verifikasi ─► Merge
- (chat)      (docs/   (docs/   (branch    (log     (izin     (lapangan)  (CHANGELOG,        (--no-ff
-             super-   super-   feat/*)    eksekutor) user)               ROADMAP)          ke main)
-             powers/  powers/
-             specs)   plans)
-```
+Role: **admin** = semua konfigurasi, enrollment, koreksi, cleanup. **viewer** = read-only semua menu
+(akun TV sebaiknya viewer khusus).
 
-1. **Brainstorm** — diskusi di chat: tujuan, keputusan user, opsi + rekomendasi. Klasifikasi:
-   - **Bounded** (perubahan kecil pada alur yang sudah ada): desain singkat di chat → persetujuan
-     user → langsung dikerjakan, tanpa file spec/plan.
-   - **Arsitektural** (subsistem baru, kontrak berubah): lanjut ke spec + plan.
-2. **Spec** — `docs/superpowers/specs/YYYY-MM-DD-<topik>-design.md`: kondisi kode, keputusan user,
-   desain, penanganan error, pengujian, verifikasi lapangan, di luar scope, rollback. User me-review.
-3. **Plan** — `docs/superpowers/plans/YYYY-MM-DD-<topik>.md`: task kecil TDD (tes gagal → implementasi →
-   tes lulus → commit) dengan path file, antarmuka, dan perintah verifikasi. User me-review.
-   Spec dan plan adalah **catatan permanen**; tidak diduplikasi dan tidak diperbarui setelah selesai.
-4. **Eksekusi** — di branch `feat/<slug>` dari `main`, salah satu cara:
-   - **Native handoff**: prompt eksekutor di `temp/prompt-<topik>-exec.txt` untuk sesi baru;
-     eksekutor mengerjakan plan, menjalankan review independen, menulis ringkasan ke
-     `temp/log.txt`, lalu **berhenti setelah `git push`**.
-   - **Subagent**: sesi perencana membagi task ke subagent + reviewer per task.
-5. **Review** — sesi perencana membaca `temp/log.txt`, memeriksa diff dan hasil tes, memperbaiki
-   temuan sebelum deploy.
-6. **Deploy** — hanya dengan izin eksplisit user (§4).
-7. **Uji user** — user menguji di lapangan; feedback diperbaiki di branch yang sama lalu deploy ulang.
-8. **Docs verifikasi** — catat hasil deploy + uji user di `CHANGELOG.md`, tandai baris `ROADMAP.md`.
-9. **Merge** — setelah user menyatakan "sudah sesuai": `git merge --no-ff` ke `main`, push, dan
-   checkout server kembali ke `main`.
+---
 
-Checkpoint sesi (untuk melanjutkan setelah konteks habis): `.cooper/context/` (gitignored).
+## 1. Login & sesi
 
-## 2. Branch & commit
+**Pengguna:** semua · **Halaman:** `/login`
 
-- Branch: `feat/<slug>`, `fix/<slug>`, `chore/<slug>`, `docs/<slug>` dari `main`.
-- Satu commit per perubahan fungsional, format Conventional Commits berbahasa Indonesia
-  (`feat(attendance): …`, `fix(monitoring): …`, `docs: …`).
-- **Tanpa atribusi AI** di commit, PR, kode, maupun dokumen (tidak ada `Co-Authored-By` AI).
-- Setiap perubahan dicatat di `CHANGELOG.md`: konteks, file, bukti, dampak, rollback.
-- File baru yang tidak boleh masuk git (rahasia, hasil generate, scratch) → `.gitignore`.
+1. Pengguna mengisi username + password (tombol tampilkan password tersedia).
+2. `POST /api/v1/auth/login` memeriksa bcrypt dan rate-limit per (username, IP): gagal berulang →
+   lockout `LOGIN_LOCKOUT_MIN`.
+3. Berhasil → cookie httpOnly berisi JWT (klaim versi `tv`), masa berlaku `ACCESS_TOKEN_EXPIRE_MIN`
+   (default 48 jam) dan diperpanjang otomatis selama halaman aktif.
+4. Setiap request memeriksa versi token dan status akun; token versi lama atau akun nonaktif → 401 →
+   kembali ke login.
 
-## 3. Verifikasi sebelum push
+Admin awal dibuat otomatis saat API start (`ADMIN_PASSWORD` di `.env`).
 
-```bash
-cd backend  && pytest tests -q -m "not gpu"      # server: pytest tests -q
-cd vision   && pytest tests -q -m "not gpu"
-cd frontend && npx vitest run && npm run lint && npm run build
-```
+## 2. Manajemen user
 
-- Tes harus gagal pada bug yang masuk akal, bukan mengunci detail implementasi.
-- UI diperiksa di app yang berjalan (desktop 1440 px dan mobile 390 px tanpa overflow horizontal).
-  Screenshot disimpan di `docs/evidence/` — **lokal saja, gitignored**.
-- Migrasi dicek idempoten (upgrade → downgrade → upgrade).
-- `[x]` di ROADMAP hanya dengan angka/keluaran nyata.
+**Pengguna:** admin · **Halaman:** Konfigurasi → User
 
-## 4. Deploy ke `gspe-ai3`
+1. Admin menambah user (username 3–64 karakter, password 8 karakter–72 byte, role).
+2. Per baris: ubah role, reset password, nonaktifkan/aktifkan, hapus. Akun sendiri tidak bisa
+   diubah role/dinonaktifkan/dihapus.
+3. Reset password, ganti password sendiri, atau nonaktifkan → `token_version` naik → semua sesi lain
+   user itu keluar (termasuk koneksi WebSocket). Browser yang mengganti password tetap login.
 
-Akses baca ke server bebas; **tulis, deploy, restart, dan push butuh izin eksplisit user.**
+## 3. Registrasi kamera
 
-```bash
-ssh gspe-ai3
-cd /home/gspe-ai3/project_cv/I-Sentinel
-git fetch && git checkout feat/<slug> && git pull
+**Pengguna:** admin · **Halaman:** Konfigurasi → Kamera
 
-# migrasi (bila ada) — env dimuat tanpa dicetak
-cd backend && set -a && . ../.env && set +a && /home/gspe-ai3/isentinel-venv/bin/alembic upgrade head && cd ..
+1. **+ Tambah kamera** → isi Nama, Lokasi, IP (port opsional), path mainstream, path substream
+   (kosong = sama dengan mainstream), pilih kredensial (`Default (NVR)` dari `.env` atau profil).
+2. Opsional **Lanjutan → Deteksi otomatis**: `POST /api/v1/cameras/scan` memindai channel NVR dan mengisi path.
+3. **Tes koneksi** → `POST /api/v1/cameras/probe`: resolusi/fps/codec MAIN & SUB + thumbnail.
+4. **Simpan** → baris `camera` + `stream_source`; grup lokasi dibuat otomatis; konfigurasi go2rtc
+   ditulis ulang; config push ke node.
+5. Kamera muncul di Live View. **Deteksi baru berjalan setelah kamera punya zona aktif (§6).**
 
-# restart tanpa sudo: kill proses cgroup, unit Restart=always
-kill $(cat /sys/fs/cgroup/system.slice/vision-node.service/cgroup.procs)     # bila vision berubah
-kill $(cat /sys/fs/cgroup/system.slice/isentinel-api.service/cgroup.procs)   # bila backend berubah
-curl -s localhost:8000/api/v1/health                                          # {"status":"ok"}
-journalctl -u isentinel-api -n 50 --no-pager
-```
+Kredensial khusus: DB hanya menyimpan referensi `store:cred_<id>`; password di `CAMERA_SECRETS_FILE`.
+Import massal: menu **Lanjutan → Import CCTV** (pratinjau → terapkan). Menghapus kamera tidak
+menghapus riwayat event.
 
-- Frontend: Vite dev server (`isentinel-web`) memuat perubahan lewat HMR setelah `git pull`.
-- Bila vision dan API sama-sama berubah, restart **vision dulu**, lalu API.
-- Dependensi Python dipasang dengan `pip install -e` di venv yang tepat (`isentinel-venv` untuk API,
-  `vision-venv` untuk vision); jangan `uv sync` / `uv lock`.
-- Verifikasi hasil di server lewat query/endpoint read-only; jangan mencetak isi `.env` atau rahasia.
-- Setelah merge: `git checkout main && git pull` di server (tanpa restart bila kodenya identik).
+## 4. Live View & Mode TV
 
-## 5. Rollback
+**Pengguna:** semua · **Halaman:** `/live`, `/live/tv?screen=<nama>`
 
-- Kode: `git revert` commit/merge terkait, lalu restart unit yang terdampak.
-- Migrasi: `alembic downgrade <revisi>` sesuai bagian rollback di spec/runbook; backup DB dulu bila
-  migrasi menghapus data.
-- Data turunan yang dibuat job (mis. baris absensi otomatis) dijelaskan di bagian rollback spec.
+1. Grid kamera 2/3/4 kolom, filter lokasi, pemilih kamera **Kamera (n/m)**; pengaturan tersimpan per
+   layar di `localStorage`.
+2. Tile memutar stream go2rtc (WebRTC/MSE) hanya saat dekat layar; di luar layar menampilkan
+   snapshot terakhir lewat proxy API (`GET /api/v1/cameras/{id}/snapshot`, wajib login).
+3. Klik tile → **debugger**: kotak deteksi live (`detections` via WebSocket), label gerbang wajah
+   pada kamera attendance.
+4. **Mode TV**: kiosk tanpa menu, auto-scroll, toolbar auto-hide, stream gagal dicoba ulang tiap
+   60 s. Runbook Raspberry Pi: `docs/runbooks/live-view-tv-pi.md`.
+5. Event baru memberi outline tile 30 s (§9); alert kesehatan kamera memberi badge
+   **Tanpa frame / FPS rendah** (§14).
 
-## 6. Dokumen yang ikut diperbarui
+## 5. Konfigurasi deteksi & node
 
-| Perubahan | Dokumen |
-|---|---|
-| Fitur/alur aplikasi | `README.md`, runbook terkait di `docs/runbooks/` |
-| Komponen, kontrak, thread, tabel | `ARCHITECTURE.md` |
-| Cara kerja tim | `WORKFLOW.md`, `AGENTS.md` |
-| Setiap commit fungsional | `CHANGELOG.md` |
-| Fase/fitur selesai | `ROADMAP.md` |
-| Operasional server | `docs/RUNBOOK.md` |
+**Pengguna:** admin · **Halaman:** Konfigurasi → Deteksi & Model, Konfigurasi → Node
 
-## 7. Aturan keamanan
+1. **Deteksi & Model** (`PUT /api/v1/detector-settings`): FPS AI default, confidence, filter gerak
+   (motion), dan gerbang wajah attendance (lebar min, skor deteksi, yaw, blur, jumlah frame).
+2. **Node**: pilih GPU untuk detektor (`PUT /nodes/{id}/detector-device`) dan untuk model wajah
+   (`PUT /nodes/{id}/face-device`).
+3. Perubahan dikirim lewat config push (MQTT retained) → node menerapkan tanpa restart manual.
+4. Node mengirim heartbeat tiap 10 s (perangkat, GPU, statistik kamera) yang tampil di Dashboard dan
+   Monitoring.
 
-- Jangan commit/cetak password, token, atau isi `.env`; kredensial hanya di `.env` server dan
-  `CAMERA_SECRETS_FILE`. Token Telegram diisi user lewat UI, tidak pernah lewat chat.
-- `temp/` gitignored: scratch, prompt handoff, `temp/log.txt`, dan `temp/data/` (catatan server
-  lokal — tidak disalin ke dokumen).
-- Paparan LAN diterima; tidak ada komponen yang dibuka ke publik.
+## 6. Zona deteksi & behavior
+
+**Pengguna:** admin · **Halaman:** Konfigurasi → Zona Deteksi
+
+1. Pilih kamera → gambar polygon di frame (klik titik, tutup di titik awal, drag untuk memindah).
+2. Isi nama, behavior (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`, atau attendance
+   dengan arah `entry`/`exit`), severity, jadwal (**24/7**, **Jam tertentu**, **Ikut shift**).
+3. Per behavior: toggle **Snapshot**, **Clip**, **Telegram**. Behavior aktif wajib punya Snapshot atau
+   Clip (422 `needs snapshot or clip`); attendance wajib snapshot.
+4. **Simpan** → `zone` → config push → node memulai worker untuk kamera itu.
+5. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
+
+Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam belum didukung.
+
+## 7. Event behavior (deteksi → Inbox)
+
+**Pengguna:** otomatis · **Hasil:** halaman `/events`
+
+1. Node: frame substream → YOLO26s (TensorRT) → ByteTrack → analyzer.
+   - `intrusion`: orang masuk zona; `loitering`: terlalu lama di zona; `running`: kecepatan tinggi;
+   - `idle_zone`: zona kosong selama `trigger_seconds`; `crowd`: jumlah ≥ `min_count` selama
+     `trigger_seconds`. Keduanya mengirim pengingat tiap `reminder_minutes` selama kondisi berlanjut.
+2. Event dikirim (MQTT/HTTP, antrean disk bila putus) → API `ingest`: dedup, simpan `event`, broadcast
+   WebSocket.
+3. Recorder node menyusun **klip pra-buffer** dari ring mainstream + snapshot beranotasi → upload blob
+   → `isentinel/events/media` → path media diisi ke event.
+4. Paralel: notifikasi web (§9) dan alert Telegram (§10).
+
+## 8. Event Inbox
+
+**Pengguna:** semua · **Halaman:** `/events`
+
+1. Daftar kiri: filter jenis, rentang waktu, kamera, pencarian; data dari `GET /api/v1/events`
+   dan update realtime via WebSocket.
+2. Detail kanan: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah, metadata, status
+   alert Telegram (`queued/sent/failed/rate_limited/not_configured`, realtime).
+3. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan dari Telegram
+   `…/events?event=<id>` membuka event langsung (LAN saja).
+
+## 9. Notifikasi web
+
+**Pengguna:** semua · **Lokasi:** lonceng header, Live View, Mode TV
+
+1. Event behavior atau node offline/pulih masuk via WebSocket → `EventAlertsProvider`.
+2. Badge lonceng + panel tab **Hari ini / Kemarin**, toast 8 s, bunyi pendek (bisa di-mute).
+3. Live View: outline warna severity 30 s pada tile; tile di luar layar → chip di kanan bawah.
+4. Status dibaca & mute disimpan per browser. Absensi dan alert kesehatan tidak memicu toast
+   node offline.
+
+## 10. Alert Telegram
+
+**Pengguna:** admin (setup), staf (penerima) · **Halaman:** Konfigurasi → Notifikasi
+
+1. **Setup satu kali**: buat bot di @BotFather → tambahkan ke grup staf, kirim satu pesan →
+   tempel token → **Simpan** → **Deteksi grup** → pilih grup → **Simpan** → **Kirim pesan uji**.
+   Token disimpan di `CAMERA_SECRETS_FILE`, tidak pernah tampil lagi.
+2. Nyalakan toggle **Telegram** per behavior di zona (§6).
+3. Saat event: `alerting` memeriksa toggle, `ALERT_MIN_SEVERITY`, dan rate-limit (per kamera, zona,
+   tipe, track; critical tanpa batas, lainnya 2 menit) → baris `alert` berstatus `queued`.
+4. `alert_dispatcher` (thread terpisah) mengirim foto + caption HTML → status `sent`/`failed` →
+   broadcast ke Inbox.
+
+Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert kesehatan dengan toggle ON (§14).
+
+## 11. Enrollment karyawan & shift
+
+**Pengguna:** admin · **Halaman:** `/enrollment` (tab Karyawan, Shift)
+
+1. **Shift**: nama, jam mulai–selesai (dalam satu hari), hari kerja, toleransi telat (default 15 menit).
+2. **Karyawan**: kode, nama, NIK, shift, status aktif.
+3. **Foto wajah**: unggah 3–5 foto (`POST /employees/{id}/photos[/batch]`) → API meng-embed dengan
+   InsightFace `buffalo_l` → tolak `no_face` / `low_quality` → simpan `face_embedding` → galeri
+   pencocokan di-refresh.
+4. Karyawan siap absensi bila punya ≥ 3 foto valid (`enrollment-status`). Foto bisa dihapus satu per
+   satu atau semua biometrik sekaligus.
+
+## 12. Absensi
+
+**Pengguna:** otomatis + admin (koreksi) · **Halaman:** `/attendance`
+
+1. Karyawan lewat zona attendance → `face_worker` di node mengumpulkan frame wajah yang lolos gerbang
+   kualitas → embedding + crop dikirim sebagai event `attendance` (arah entry/exit).
+2. API mencocokkan ke galeri (cosine ≥ `face_match_threshold`, default 0,40). Cocok → `attendance_event` →
+   `recompute_day` memperbarui `attendance_day`. Tidak cocok → event berlabel `Unknown` (oranye) di
+   Inbox, tidak masuk rekap.
+3. Status: tepat waktu/telat (entry + exit), **Di dalam** (`waiting`), **Tanpa exit** (`no_exit`),
+   **Tanpa entry** (`no_entry`), **Tidak hadir** (`absent`). Batas hari = selesai shift +
+   `NO_EXIT_GRACE_MIN` (60 menit).
+4. `AttendanceCloser` tiap 15 menit (catch-up 7 hari saat start) membuat `absent` untuk karyawan aktif
+   terjadwal yang tidak terdeteksi dan menutup `waiting` lewat batas menjadi `no_exit`.
+5. Admin mengoreksi baris (tombol **Koreksi**, catatan wajib) → `override_note` → baris tidak diubah
+   job lagi (kecuali ada event absensi baru hari itu).
+6. Export/import CSV (`rekap.csv`); tab Harian, Rentang tanggal, Per karyawan dengan filter status.
+
+Runbook: `docs/runbooks/attendance.md` (termasuk kalibrasi gerbang wajah).
+
+## 13. Retensi & Storage
+
+**Pengguna:** admin (ubah), viewer (lihat) · **Halaman:** Konfigurasi → Storage
+
+1. Lihat pemakaian disk dan ukuran per jenis media (`GET /api/v1/storage/stats`).
+2. Atur retensi `clip_days`, `snapshot_days`, `attendance_days`, dan ambang disk
+   (`PUT /storage/settings`).
+3. **Sweep otomatis** harian 03:00 (`isentinel-retention.timer`) atau **Sweep sekarang**
+   (`POST /storage/sweep`): hapus media lewat retensi; event yang kehilangan media terakhirnya ikut
+   dihapus (kecuali `system`).
+4. **Cleanup per rentang** (`POST /storage/cleanup`, selalu **Pratinjau** dulu):
+   - `events`: event + media + alert (opsional kamera/jenis; attendance tidak pernah ikut);
+   - `attendance_media`: media absensi saja, rekap tetap;
+   - `attendance_data`: rekap & riwayat per karyawan, maks kemarin, konfirmasi ketik `HAPUS`.
+5. Disk ≥ ambang → banner di Storage/Dashboard + Telegram (pengingat maks 1×/24 jam), pulih di
+   bawah ambang − 2 %.
+
+Runbook: `docs/runbooks/storage-retention.md`.
+
+## 14. Monitoring Resource
+
+**Pengguna:** semua (admin mengatur aturan) · **Halaman:** `/monitoring`
+
+1. **Kondisi saat ini** (polling 10 s): status keseluruhan, kartu node + server (CPU/RAM/disk, GPU,
+   inferensi, backlog MQTT), tabel kamera (state stream, fps, umur frame), layanan (DB, go2rtc, MQTT,
+   retensi, Telegram, disk).
+2. **Node offline**: LWT atau heartbeat > 35 s (`NodeHealthMonitor`, cek 15 s) → event `system` +
+   Telegram + banner di semua halaman; pulih → event + Telegram "pulih".
+3. **Tren**: `HistorySampler` menyimpan bucket per menit ke `monitoring_sample` (7 hari) → grafik
+   1 jam / 6 jam / 24 jam / 7 hari dengan arsir periode offline.
+4. **Aturan & alert**: 8 aturan (kamera tanpa frame, FPS rendah, GPU panas, VRAM, RAM, CPU, latensi,
+   backlog) dievaluasi tiap menit; menyala bila setiap menit dalam durasi melanggar, pulih setelah
+   2 menit normal → `health_alert` + event web + Telegram bila toggle ON + badge tile kamera.
+
+Runbook: `docs/runbooks/monitoring.md`.
+
+## 15. Dashboard
+
+**Pengguna:** semua · **Halaman:** `/dashboard`
+
+Ringkasan event hari ini (`GET /api/v1/events/stats/today`), event terbaru, status node dan GPU dari
+heartbeat, serta banner disk hampir penuh. Titik masuk ke Inbox, Live View, dan Monitoring.

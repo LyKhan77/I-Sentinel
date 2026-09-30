@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### WORKFLOW.md jadi alur per fitur (2026-09-30)
+
+- **Konteks:** yang dimaksud WORKFLOW adalah alur kerja setiap fitur aplikasi, bukan siklus pengembangan.
+- **Diubah:** isi lama (siklus fitur, branch/commit, verifikasi, deploy, rollback) dipindah ke
+  `docs/DEVELOPMENT.md`; `WORKFLOW.md` baru berisi 15 alur fitur (login, user, kamera, Live View/TV,
+  deteksi & node, zona, event behavior, Inbox, notifikasi web, Telegram, enrollment & shift, absensi,
+  retensi & storage, monitoring, dashboard) — pengguna, langkah UI, alur sistem, rujukan runbook.
+  `README.md`/`AGENTS.md` menautkan ketiganya.
+- **Dampak:** dokumentasi saja. **Rollback:** `git revert` commit ini.
+
 ### Dokumen ARCHITECTURE.md & WORKFLOW.md (2026-09-30)
 
 - **Konteks:** arsitektur dan cara kerja tim tersebar di README, AGENTS.md, dan riwayat chat.
