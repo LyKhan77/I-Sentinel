@@ -93,7 +93,7 @@ I-Sentinel/
 │   ├── superpowers/{plans,specs}/  # Superpowers-generated plans & specs (record only)
 │   ├── runbooks/                # operational procedures + rollback
 │   └── evidence/                # local screenshots / measured proof (gitignored)
-├── README.md  DESIGN.md  ROADMAP.md  CHANGELOG.md  .env.example
+├── README.md  ARCHITECTURE.md  WORKFLOW.md  DESIGN.md  ROADMAP.md  CHANGELOG.md  .env.example
 └── temp/                        # gitignored scratch, server notes, snapshots
 ```
 
@@ -193,6 +193,8 @@ Concretely in this repo:
 
 ## 8. Current State
 
+Components, contracts and data flow: **`ARCHITECTURE.md`**.
+Feature lifecycle, verification, deploy and rollback: **`WORKFLOW.md`**.
 Authoritative history and per-change evidence: **`CHANGELOG.md`**.
 Phase status and acceptance proof: **`ROADMAP.md`**.
 Migration/rollback procedures: **`docs/runbooks/`**.
