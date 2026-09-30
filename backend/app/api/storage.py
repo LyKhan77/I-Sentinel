@@ -73,18 +73,26 @@ def run_sweep(
 
 @router.post("/cleanup")
 def cleanup_events(body: CleanupIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
+    # None = semua karyawan; identitas karyawan tidak pernah masuk log (hanya id)
+    employee_ids = None if body.all_employees else body.employee_ids
     if body.dry_run:
         return retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=True,
-                                 mode=body.mode)
+                                 mode=body.mode, employee_ids=employee_ids)
     try:
         result = retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=False,
-                                   mode=body.mode)
+                                   mode=body.mode, employee_ids=employee_ids)
     except Exception:
         logger.exception("event cleanup by %s failed: %s..%s cameras=%s types=%s",
                          admin.username, body.date_from, body.date_to, body.camera_ids or "all",
                          body.types or "all")
         raise
-    logger.info("event cleanup by %s: %s..%s cameras=%s types=%s mode=%s → %s events, %s files, %s bytes",
-                admin.username, body.date_from, body.date_to, body.camera_ids or "all",
-                body.types or "all", body.mode, result["events"], result["files"], result["bytes"])
+    if body.mode == "attendance_data":
+        logger.info("attendance data cleanup by %s: %s..%s employees=%s → %s attendance_events, %s days, "
+                    "%s events, %s files",
+                    admin.username, body.date_from, body.date_to, "all" if body.all_employees else body.employee_ids,
+                    result["attendance_events"], result["days"], result["events"], result["files"])
+    else:
+        logger.info("event cleanup by %s: %s..%s cameras=%s types=%s mode=%s → %s events, %s files, %s bytes",
+                    admin.username, body.date_from, body.date_to, body.camera_ids or "all",
+                    body.types or "all", body.mode, result["events"], result["files"], result["bytes"])
     return result
