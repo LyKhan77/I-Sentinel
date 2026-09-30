@@ -59,11 +59,13 @@ export default function MonitoringPage() {
     .sort((a, b) => HEALTH_ORDER[a.health] - HEALTH_ORDER[b.health] || a.name.localeCompare(b.name))
 
   return (
-    <div className="mon-page">
-      <header className="mon-header">
-        <h1 className="mon-title">{t('mon.title')}</h1>
-        <p className="en-muted">{t('mon.subtitle')}</p>
-      </header>
+    <div className="app-page mon-page">
+      <div className="app-page__head">
+        <div>
+          <h1 className="app-page__title">{t('mon.title')}</h1>
+          <p className="app-page__sub">{t('mon.subtitle')}</p>
+        </div>
+      </div>
       {failed && <div data-testid="mon-error"><InlineNotification kind="error" lowContrast hideCloseButton title={t('mon.error')} /></div>}
       {data && (
         <>

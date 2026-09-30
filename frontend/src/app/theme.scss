@@ -1394,21 +1394,15 @@ button.lv-alert-chip {
 
 /* Monitoring Resource: ringkasan, kartu node, tabel kamera, layanan. Jarak lega: halaman dibaca sekilas
    dari jauh (command center), jadi tiap blok dipisah jelas. */
+// padding & judul halaman dari .app-page (sama dengan halaman lain); di sini hanya jarak antar blok
 .mon-page {
   display: flex;
   flex-direction: column;
-  gap: 32px;
-  padding-block-end: 48px;
-}
+  gap: 16px;
 
-.mon-header {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mon-title {
-  font-weight: 300;
+  > .app-page__head {
+    margin-block-end: 4px; // gap flex sudah memberi jarak
+  }
 }
 
 .mon-summary {
@@ -1420,26 +1414,27 @@ button.lv-alert-chip {
 .mon-tile {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 20px 24px;
+  gap: 4px;
+  padding: 14px 16px;
   background: var(--cds-layer-01);
   border: 1px solid var(--cds-border-subtle);
   border-inline-start: 4px solid var(--cds-border-subtle);
 
   > span {
     color: var(--cds-text-secondary);
-    font-size: 14px;
+    font-size: 12px;
+    letter-spacing: 0.32px;
   }
 
   strong {
-    font-size: 32px;
-    font-weight: 400;
-    line-height: 1.1;
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 1.2;
   }
 
   small {
     color: var(--cds-text-secondary);
-    font-size: 13px;
+    font-size: 12px;
   }
 
   &--ok { border-inline-start-color: #42be65; }
@@ -1449,13 +1444,13 @@ button.lv-alert-chip {
 
 .mon-nodes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
   align-items: start;
 }
 
 .mon-card {
-  padding: 24px;
+  padding: 14px 16px; // sama dengan .st-card
   background: var(--cds-layer-01);
   border: 1px solid var(--cds-border-subtle);
 }
@@ -1466,11 +1461,11 @@ button.lv-alert-chip {
   justify-content: space-between;
   gap: 12px 16px;
   flex-wrap: wrap;
-  margin-block-end: 20px;
+  margin-block-end: 12px;
 }
 
 .mon-card__title {
-  font-size: 16px;
+  font-size: 14px; // sama dengan .st-card__title
   font-weight: 600;
 }
 
@@ -1481,7 +1476,7 @@ button.lv-alert-chip {
 }
 
 .mon-group {
-  padding-block: 16px;
+  padding-block: 12px;
   border-block-start: 1px solid var(--cds-border-subtle);
 
   &:last-child {
@@ -1490,7 +1485,7 @@ button.lv-alert-chip {
 }
 
 .mon-group__title {
-  margin-block-end: 12px;
+  margin-block-end: 8px;
   color: var(--cds-text-secondary);
   font-size: 12px;
   font-weight: 600;
@@ -1501,7 +1496,7 @@ button.lv-alert-chip {
 .mon-kv {
   display: grid;
   grid-template-columns: minmax(120px, max-content) 1fr;
-  gap: 10px 24px;
+  gap: 8px 24px;
   font-size: 14px;
 
   dt {
@@ -1524,8 +1519,8 @@ button.lv-alert-chip {
 
 .mon-table-wrap {
   overflow-x: auto; // tabel lebar di 390 px: scroll di dalam kartu, halaman tidak overflow
-  margin-inline: -24px;
-  padding-inline: 24px;
+  margin-inline: -16px;
+  padding-inline: 16px;
 }
 
 .mon-table {
@@ -1535,7 +1530,7 @@ button.lv-alert-chip {
 
   th,
   td {
-    padding: 14px 16px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--cds-border-subtle);
     text-align: start;
     vertical-align: middle;
@@ -1576,7 +1571,7 @@ button.lv-alert-chip {
     grid-template-columns: minmax(160px, 220px) auto 1fr;
     align-items: center;
     gap: 8px 24px;
-    padding: 14px 0;
+    padding: 12px 0;
     border-bottom: 1px solid var(--cds-border-subtle);
     font-size: 14px;
 
@@ -1593,15 +1588,6 @@ button.lv-alert-chip {
 }
 
 @media (max-width: 671px) {
-  .mon-card {
-    padding: 16px;
-  }
-
-  .mon-table-wrap {
-    margin-inline: -16px;
-    padding-inline: 16px;
-  }
-
   .mon-services li {
     grid-template-columns: 1fr auto;
 
@@ -1619,7 +1605,7 @@ button.lv-alert-chip {
 
 /* Banner node offline: AppShell di atas konten; TV fixed di atas wall (di bawah toolbar z-index 10). */
 .node-banner {
-  margin-block-end: 16px;
+  padding: 16px 32px 0; // sejajar dengan padding .app-page (24px 32px) di bawahnya
 
   .cds--inline-notification {
     max-inline-size: none;
@@ -1632,5 +1618,5 @@ button.lv-alert-chip {
   left: 0;
   right: 0;
   z-index: 9;
-  margin: 0;
+  padding: 0;
 }
