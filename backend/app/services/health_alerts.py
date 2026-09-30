@@ -210,3 +210,20 @@ def prune(db, now: datetime) -> int:
         synchronize_session=False)
     db.commit()
     return n
+
+
+def list_alerts(db) -> dict:
+    """Return severity-ordered active alerts and the latest 50 resolved alerts, with UTC timestamps."""
+    def item(a: HealthAlert) -> dict:
+        out = {key: getattr(a, key) for key in ("id", "rule", "target", "label", "node_id", "camera_id",
+                                               "severity", "value", "threshold")}
+        return {**out, "unit": health_rules.CATALOG.get(a.rule, {}).get("unit", ""),
+                "started_at": _utc(a.started_at),
+                "resolved_at": _utc(a.resolved_at) if a.resolved_at is not None else None}
+
+    active = db.query(HealthAlert).filter(HealthAlert.resolved_at.is_(None)).all()
+    ranks = {"critical": 0, "warning": 1}
+    active.sort(key=lambda a: (ranks.get(a.severity, 2), _utc(a.started_at), a.id))
+    recent = (db.query(HealthAlert).filter(HealthAlert.resolved_at.isnot(None))
+              .order_by(HealthAlert.resolved_at.desc(), HealthAlert.id.desc()).limit(50).all())
+    return {"active": [item(a) for a in active], "recent": [item(a) for a in recent]}

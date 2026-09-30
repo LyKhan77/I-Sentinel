@@ -2,6 +2,8 @@ import pytest
 
 from app.models.setting import Setting
 from app.services import health_rules as hr
+from tests.conftest import admin_headers, viewer_headers
+from tests.test_monitoring import client
 
 
 def test_defaults_match_catalog():
@@ -37,3 +39,45 @@ def test_put_partial_and_validation(db):
         with pytest.raises(ValueError):
             hr.put(db, bad)
     assert hr.get(db)["gpu_temp"]["threshold"] == 75  # PUT gagal tidak mengubah apa pun
+
+
+def test_rules_endpoints(client):
+    assert client.get("/api/v1/monitoring/rules").status_code == 401
+    viewer = viewer_headers(client)
+    admin = admin_headers(client)
+    client.cookies.clear()  # cookie auth takes precedence over Bearer in this app
+    r = client.get("/api/v1/monitoring/rules", headers=viewer)
+    assert r.status_code == 200 and r.json()[0]["rule"] == "camera_no_frames"
+    assert {"unit", "min", "max", "target", "threshold", "duration_min"} <= set(r.json()[0])
+    body = {"gpu_temp": {"threshold": 80, "telegram": False}}
+    assert client.put("/api/v1/monitoring/rules", json=body, headers=viewer).status_code == 403
+    r = client.put("/api/v1/monitoring/rules", json=body, headers=admin)
+    assert r.status_code == 200
+    assert next(x for x in r.json() if x["rule"] == "gpu_temp")["threshold"] == 80
+    for bad in ({"gpu_temp": {"threshold": 999}}, {"nope": {}}, {"gpu_temp": {"color": "red"}},
+                {"gpu_temp": {"enabled": "yes"}}, {"gpu_temp": {"threshold": None}},
+                {"gpu_temp": {"threshold": 75}, "node_cpu": {"duration_min": 0}}):
+        assert client.put("/api/v1/monitoring/rules", json=bad, headers=admin).status_code == 422
+    rules = client.get("/api/v1/monitoring/rules", headers=viewer).json()
+    assert next(x for x in rules if x["rule"] == "gpu_temp")["threshold"] == 80
+
+
+def test_alerts_endpoint_active_and_recent(client, db):
+    from datetime import datetime, timedelta, timezone
+    from app.models.health_alert import HealthAlert
+    from app.models.node import Node
+    assert client.get("/api/v1/monitoring/alerts").status_code == 401
+    viewer = viewer_headers(client)
+    n = db.query(Node).filter_by(name="server").one()
+    t = datetime.now(timezone.utc)
+    db.add_all([
+        HealthAlert(rule="gpu_temp", target=f"gpu:{n.id}:0", node_id=n.id, label="GPU 0 · server", severity="critical",
+                    value=90, threshold=85, started_at=t - timedelta(minutes=5)),
+        HealthAlert(rule="node_cpu", target=f"node:{n.id}", node_id=n.id, label="server", severity="warning",
+                    value=95, threshold=90, started_at=t - timedelta(hours=2), resolved_at=t - timedelta(hours=1)),
+    ])
+    db.commit()
+    body = client.get("/api/v1/monitoring/alerts", headers=viewer).json()
+    assert [a["rule"] for a in body["active"]] == ["gpu_temp"] and body["active"][0]["unit"] == "°C"
+    assert [a["rule"] for a in body["recent"]] == ["node_cpu"]
+    assert datetime.fromisoformat(body["active"][0]["started_at"]).utcoffset() == timedelta(0)
