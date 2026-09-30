@@ -1894,3 +1894,33 @@ button.lv-alert-chip {
   color: var(--cds-text-helper, #8d8d8d);
   white-space: nowrap;
 }
+
+.dash-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  margin-block-start: 8px;
+  font-size: 13px;
+  background: var(--cds-layer-01, #262626);
+  border: 1px solid var(--cds-border-subtle, #393939);
+}
+
+.dash-row__title {
+  min-inline-size: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-row__label {
+  font-size: 12px;
+  color: var(--cds-text-helper, #8d8d8d);
+}
+
+.dash-row__value {
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--cds-text-helper, #8d8d8d);
+  white-space: nowrap;
+}

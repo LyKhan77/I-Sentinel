@@ -7,8 +7,10 @@ import StatusStrip from '../features/dashboard/StatusStrip'
 import KpiTiles from '../features/dashboard/KpiTiles'
 import EventsPerHour from '../features/dashboard/EventsPerHour'
 import RecentEvents from '../features/dashboard/RecentEvents'
+import ActiveIssues from '../features/dashboard/ActiveIssues'
+import NodeCompact from '../features/dashboard/NodeCompact'
 import type { DashboardData } from '../features/dashboard/useDashboardData'
-import { emptyData, mon, alert, att, stats, storage, ev } from './dashboardFixtures'
+import { emptyData, mon, monNode, alert, att, stats, storage, ev } from './dashboardFixtures'
 
 function show(ui: ReactElement) {
   return render(<I18nProvider><MemoryRouter>{ui}</MemoryRouter></I18nProvider>)
@@ -188,5 +190,83 @@ describe('RecentEvents', () => {
   test('empty list shows belum ada event', () => {
     recent([])
     expect(screen.getByText('belum ada event')).toBeInTheDocument()
+  })
+})
+
+const FAILED_ALERTS = { monitoring: false, alerts: true, stats: false, attendance: false, storage: false }
+
+describe('ActiveIssues', () => {
+  test('lists critical first and caps at 5', () => {
+    const mixed = [
+      alert({ id: 1, label: 'CAM-1', severity: 'warning', started_at: '2026-09-30T01:00:00Z' }),
+      alert({ id: 2, label: 'CAM-2', severity: 'critical', started_at: '2026-09-29T01:00:00Z' }),
+      alert({ id: 3, label: 'CAM-3', severity: 'warning', started_at: '2026-09-30T02:00:00Z' }),
+      alert({ id: 4, label: 'CAM-4', severity: 'critical', started_at: '2026-09-30T03:00:00Z' }),
+      alert({ id: 5, label: 'CAM-5', severity: 'warning', started_at: '2026-09-30T04:00:00Z' }),
+      alert({ id: 6, label: 'CAM-6', severity: 'warning', started_at: '2026-09-30T05:00:00Z' }),
+      alert({ id: 7, label: 'CAM-7', severity: 'warning', started_at: '2026-09-30T06:00:00Z' }),
+    ]
+    const { container } = show(<ActiveIssues data={emptyData({ alerts: mixed })} />)
+    const rows = container.querySelectorAll('.dash-row')
+    expect(rows).toHaveLength(5)
+    expect(rows[0].textContent).toContain('Critical')
+    expect(rows[0].textContent).toContain('CAM-4') // critical terbaru; warning berikutnya urut terbaru
+    expect(rows[1].textContent).toContain('CAM-2') // critical lama tetap sebelum semua warning
+    expect(rows[2].textContent).toContain('CAM-7')
+  })
+
+  test('shows rule title and label', () => {
+    show(<ActiveIssues data={emptyData({ alerts: [alert()] })} />)
+    expect(screen.getByText('Kamera tanpa frame')).toBeInTheDocument()
+    expect(screen.getByText('CAM-01')).toBeInTheDocument()
+  })
+
+  test('empty shows Tidak ada masalah aktif', () => {
+    show(<ActiveIssues data={emptyData({ alerts: [] })} />)
+    expect(screen.getByText('Tidak ada masalah aktif')).toBeInTheDocument()
+  })
+
+  test('failed and null shows Gagal memuat', () => {
+    show(<ActiveIssues data={emptyData({ alerts: null, failed: FAILED_ALERTS })} />)
+    expect(screen.getByText('Gagal memuat')).toBeInTheDocument()
+  })
+
+  test('links to monitoring for the full list', () => {
+    show(<ActiveIssues data={emptyData({ alerts: [] })} />)
+    expect(screen.getByRole('link', { name: /Semua/ })).toHaveAttribute('href', '/monitoring')
+  })
+})
+
+describe('NodeCompact', () => {
+  test('online node shows name, online text and GPU summary', () => {
+    show(<NodeCompact data={emptyData({ monitoring: mon() })} />)
+    expect(screen.getByText('server')).toBeInTheDocument()
+    expect(screen.getByText('online')).toBeInTheDocument()
+    expect(screen.getByText('GPU0 55% · VRAM 21%')).toBeInTheDocument()
+  })
+
+  test('offline node shows offline text', () => {
+    show(<NodeCompact data={emptyData({ monitoring: mon({ nodes: [monNode({ status: 'offline' })] }) })} />)
+    expect(screen.getByText('offline')).toBeInTheDocument()
+  })
+
+  test('node without GPU shows a dash', () => {
+    show(<NodeCompact data={emptyData({ monitoring: mon({ nodes: [monNode({ gpus: [] })] }) })} />)
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  test('links to Monitoring detail', () => {
+    show(<NodeCompact data={emptyData({ monitoring: mon() })} />)
+    expect(screen.getByRole('link', { name: /Detail di Monitoring/ })).toHaveAttribute('href', '/monitoring')
+  })
+
+  test('failed monitoring shows Gagal memuat', () => {
+    show(<NodeCompact data={emptyData({ monitoring: null, failed: FAILED_MONITORING })} />)
+    expect(screen.getByText('Gagal memuat')).toBeInTheDocument()
+  })
+
+  test('no nodes shows belum ada node', () => {
+    show(<NodeCompact data={emptyData({ monitoring: mon({ nodes: [] }) })} />)
+    expect(screen.getByText('belum ada node')).toBeInTheDocument()
   })
 })
