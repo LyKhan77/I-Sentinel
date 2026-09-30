@@ -1723,6 +1723,11 @@ button.lv-alert-chip {
   .cds--btn { margin-block-start: 16px; }
 }
 
+.health-alerts .mon-table-wrap {
+  // Carbon's absolute toggle controls must stay inside the horizontal scroller.
+  position: relative;
+}
+
 
 /* Persistent camera-health condition, distinct from the transient event outline. */
 .lv-health {
