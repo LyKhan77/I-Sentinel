@@ -60,6 +60,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Rapikan UI Monitoring (review user):** jarak antar blok/tile/kartu lebih lega, kartu node dikelompokkan
   (Hardware · GPU · Inferensi AI · Masalah), tabel & layanan ber-padding lebih besar, umur heartbeat "N dtk/mnt/jam",
   tag Peringatan kuning (`61a6b5f`). Frontend 211, build 0, lint tanpa error.
+  Lanjutan: halaman memakai `.app-page` (padding 24/32 px, judul/sub sama dengan halaman lain), kartu & tile
+  mengikuti ukuran `.st-card` (14/16 px), banner node offline sejajar konten (`0ab28ee`).
 
 ### Notifikasi event web UI + outline tile Live View (2026-09-29)
 
