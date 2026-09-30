@@ -61,6 +61,8 @@ function renderEditor(onChange: (z: Zone[]) => void, zones: Zone[] = []) {
 /** Gambar segitiga lalu tunggu panel properti zona baru muncul. */
 async function drawTriangle() {
   await waitFor(() => expect(screen.getByTestId('zone-draw-start')).toBeInTheDocument())
+  // Wait for the camera's async initialization before drawing; the initial camera effect resets points.
+  await waitFor(() => expect(screen.getByTestId('zone-svg').parentElement?.querySelector('img')).not.toBeNull())
   const svg = screen.getByTestId('zone-svg')
   stubRect(svg)
   fireEvent.click(screen.getByTestId('zone-draw-start'))

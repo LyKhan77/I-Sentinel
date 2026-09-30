@@ -1714,3 +1714,11 @@ button.lv-alert-chip {
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
 }
+
+
+.health-rules {
+  .mon-table { min-inline-size: 850px; }
+  input { max-inline-size: 110px; }
+  .cds--number { min-inline-size: 110px; }
+  .cds--btn { margin-block-start: 16px; }
+}

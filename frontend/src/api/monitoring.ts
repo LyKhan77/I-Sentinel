@@ -41,3 +41,33 @@ export async function getMonitoringHistory(range: HistoryRange): Promise<Monitor
   if (!res.ok) throw new Error(`monitoring history failed: ${res.status}`)
   return res.json()
 }
+
+
+export const ALERTS_POLL_MS = 30_000
+export type HealthRule = { rule: string; enabled: boolean; threshold: number; duration_min: number
+  severity: 'warning' | 'critical'; telegram: boolean; unit: string; min: number; max: number
+  target: 'camera' | 'gpu' | 'node' }
+export type HealthRuleEdit = Pick<HealthRule, 'enabled' | 'threshold' | 'duration_min' | 'severity' | 'telegram'>
+export type HealthAlert = { id: number; rule: string; target: string; label: string; node_id: number
+  camera_id: number | null; severity: string; value: number | null; threshold: number; unit: string
+  started_at: string; resolved_at: string | null }
+export type HealthAlerts = { active: HealthAlert[]; recent: HealthAlert[] }
+
+export async function getHealthRules(): Promise<HealthRule[]> {
+  const res = await apiFetch('/monitoring/rules')
+  if (!res.ok) throw new Error(`rules failed: ${res.status}`)
+  return res.json()
+}
+
+export async function putHealthRules(patch: Record<string, Partial<HealthRuleEdit>>): Promise<HealthRule[]> {
+  const res = await apiFetch('/monitoring/rules', { method: 'PUT', body: JSON.stringify(patch) })
+  if (res.status === 422) throw new Error('invalid')
+  if (!res.ok) throw new Error(`rules save failed: ${res.status}`)
+  return res.json()
+}
+
+export async function getHealthAlerts(): Promise<HealthAlerts> {
+  const res = await apiFetch('/monitoring/alerts')
+  if (!res.ok) throw new Error(`alerts failed: ${res.status}`)
+  return res.json()
+}
