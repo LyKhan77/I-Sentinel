@@ -54,6 +54,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `8140380` evaluator; `7af1487` API; `2a1749d` tab; `3ca8cbc` badge/event;
   `2edb414` fix visual + evidence; `f9faba6` fix review + tes konkuren.
   Dokumentasi ini menutup Task 7.
+- **Deploy & verifikasi user (2026-09-30):** server `gspe-ai3` @ `1dd9fb3` — `alembic upgrade head` (0020) + restart
+  API 13:25; log evaluator bersih, `/rules` & `/alerts` OK, `evaluate` + `history` dijalankan manual di Postgres (kunci
+  baris node, `payload->>'reason'`) tanpa error. Uji user tab Aturan & alert: **sesuai**. Merge ke `main`.
 
 ### Monitoring Resource S2 (2026-09-30)
 
