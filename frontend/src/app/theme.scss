@@ -1392,11 +1392,19 @@ button.lv-alert-chip {
   font-size: clamp(13px, 1vw, 32px);
 }
 
-/* Monitoring Resource: ringkasan, kartu node, tabel kamera, layanan. */
+/* Monitoring Resource: ringkasan, kartu node, tabel kamera, layanan. Jarak lega: halaman dibaca sekilas
+   dari jauh (command center), jadi tiap blok dipisah jelas. */
 .mon-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 32px;
+  padding-block-end: 48px;
+}
+
+.mon-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .mon-title {
@@ -1405,26 +1413,33 @@ button.lv-alert-chip {
 
 .mon-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1px;
-  background: var(--cds-border-subtle);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
 }
 
 .mon-tile {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 16px;
+  gap: 8px;
+  padding: 20px 24px;
   background: var(--cds-layer-01);
-  border-inline-start: 4px solid transparent;
+  border: 1px solid var(--cds-border-subtle);
+  border-inline-start: 4px solid var(--cds-border-subtle);
+
+  > span {
+    color: var(--cds-text-secondary);
+    font-size: 14px;
+  }
 
   strong {
-    font-size: 28px;
+    font-size: 32px;
     font-weight: 400;
+    line-height: 1.1;
   }
 
   small {
     color: var(--cds-text-secondary);
+    font-size: 13px;
   }
 
   &--ok { border-inline-start-color: #42be65; }
@@ -1434,24 +1449,60 @@ button.lv-alert-chip {
 
 .mon-nodes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.mon-card {
+  padding: 24px;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
 }
 
 .mon-card__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px 16px;
   flex-wrap: wrap;
+  margin-block-end: 20px;
+}
+
+.mon-card__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mon-card__sub {
+  margin-block-start: 4px;
+  color: var(--cds-text-secondary);
+  font-size: 13px;
+}
+
+.mon-group {
+  padding-block: 16px;
+  border-block-start: 1px solid var(--cds-border-subtle);
+
+  &:last-child {
+    padding-block-end: 0;
+  }
+}
+
+.mon-group__title {
+  margin-block-end: 12px;
+  color: var(--cds-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.32px;
+  text-transform: uppercase;
 }
 
 .mon-kv {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 12px;
-  margin-block: 8px;
-  font-size: 13px;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 10px 24px;
+  font-size: 14px;
 
   dt {
     color: var(--cds-text-secondary);
@@ -1463,39 +1514,54 @@ button.lv-alert-chip {
 }
 
 .mon-issues {
-  margin: 8px 0 0;
-  padding-inline-start: 16px;
-  color: var(--cds-support-warning, #f1c21b);
-  font-size: 13px;
+  margin: 0;
+  padding-inline-start: 18px;
+  color: #f1c21b;
+  font-size: 14px;
+  line-height: 1.8;
   list-style: disc;
 }
 
 .mon-table-wrap {
   overflow-x: auto; // tabel lebar di 390 px: scroll di dalam kartu, halaman tidak overflow
+  margin-inline: -24px;
+  padding-inline: 24px;
 }
 
 .mon-table {
   inline-size: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 
   th,
   td {
-    padding: 8px 12px;
+    padding: 14px 16px;
     border-bottom: 1px solid var(--cds-border-subtle);
     text-align: start;
+    vertical-align: middle;
     white-space: nowrap;
   }
 
   th {
+    padding-block: 10px;
     color: var(--cds-text-secondary);
+    font-size: 13px;
     font-weight: 600;
+  }
+
+  th:first-child,
+  td:first-child {
+    padding-inline-start: 0;
+  }
+
+  tbody tr:hover {
+    background: var(--cds-layer-hover-01);
   }
 }
 
 .mon-issue {
-  display: inline-block;
-  margin-inline-start: 6px;
+  display: block;
+  margin-block-start: 6px;
   color: var(--cds-text-secondary);
   font-size: 12px;
 }
@@ -1506,13 +1572,49 @@ button.lv-alert-chip {
   padding: 0;
 
   li {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) auto 1fr;
     align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding: 8px 0;
+    gap: 8px 24px;
+    padding: 14px 0;
     border-bottom: 1px solid var(--cds-border-subtle);
+    font-size: 14px;
+
+    &:last-child {
+      border-bottom: 0;
+    }
   }
+}
+
+.mon-services__detail {
+  color: var(--cds-text-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 671px) {
+  .mon-card {
+    padding: 16px;
+  }
+
+  .mon-table-wrap {
+    margin-inline: -16px;
+    padding-inline: 16px;
+  }
+
+  .mon-services li {
+    grid-template-columns: 1fr auto;
+
+    .mon-services__detail {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+/* Tag Carbon tidak punya warna kuning: Peringatan disamakan dengan titik severity Events. */
+.cds--tag.mon-tag--warning {
+  background: #f1c21b;
+  color: #161616;
 }
 
 /* Banner node offline: AppShell di atas konten; TV fixed di atas wall (di bawah toolbar z-index 10). */
