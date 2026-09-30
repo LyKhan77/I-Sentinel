@@ -36,6 +36,7 @@
 | MO3 | Monitoring Resource S3 (ambang & alert kesehatan) | [x] deploy + verifikasi user 2026-09-30 | — | spec + plan 2026-09-30; migrasi 0020 (health_alert), setting health_rules (8 aturan), evaluator per menit di sampler, tab Aturan & alert, badge tile Live View/TV; backend 592, vision 233 (3 deselected), frontend 229, build 0; review independen 2 Important diperbaiki (`f9faba6`); query Postgres (FOR UPDATE, payload->>'reason') diverifikasi di server | `f46d738..1dd9fb3` |
 | IA | Status alert Telegram realtime di Inbox + rapikan tabel aturan | [x] deploy + verifikasi user 2026-09-30 | — | desain di chat (bounded), eksekusi subagent; backend 597, frontend 232 | `830aad2..c7598d2` |
 | AD | Cleanup data absensi (rekap & riwayat) per karyawan & rentang | [x] deploy + verifikasi user 2026-09-30 | — | desain di chat (bounded), eksekusi subagent; pilihan karyawan wajib, maks kemarin, ketik HAPUS, audit ID saja; backend 606, frontend 237 | `6372f98..cc8a058` |
+| AR | Refining halaman Attendance (kolom Tanggal, status efektif, penutupan hari otomatis, koreksi) | [ ] menunggu deploy + verifikasi user | — | spec + plan 2026-09-30; backend 617, vision 233 (3 deselected), frontend 248, build 0, lint set lama; tanpa migrasi — deploy = restart isentinel-api saja (catch-up 7 hari membuat baris "Tidak hadir" saat start); review independen 8/8 PASS, 0C/0I/2M (1 diperbaiki) | `ad23dea..HEAD` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
