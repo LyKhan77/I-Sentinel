@@ -88,19 +88,26 @@ export default function AlertsTab({ isAdmin }: { isAdmin: boolean }) {
         <thead><tr>{cols(['rule', 'enabled', 'threshold', 'duration', 'severity', 'telegram'])}</tr></thead>
         <tbody>{rules.map((rule) => {
           const r = { ...rule, ...edit[rule.rule] }
+          const name = label(r.rule)
+          // label per kolom disembunyikan (header tabel sudah menyebutnya); nama aksesibel
+          // tetap "aturan — kolom" via hideLabel (NumberInput/Select) / aria-label (Toggle,
+          // yang tanpa labelText juga otomatis menyembunyikan teks Mati/Nyala di sisi switch)
           return <tr key={r.rule} data-testid={`rule-row-${r.rule}`}>
-            <td>{label(r.rule)} {r.unit && <small>({r.unit})</small>}</td>
-            <td><Toggle id={`enabled-${r.rule}`} size="sm" labelText={t('health.col.enabled')} labelA={t('health.off')} labelB={t('health.on')}
+            <td>{name} {r.unit && <small>({r.unit})</small>}</td>
+            <td><Toggle id={`enabled-${r.rule}`} size="sm" hideLabel aria-label={`${name} — ${t('health.col.enabled')}`}
               toggled={r.enabled} disabled={disabled} onToggle={(enabled) => change(r.rule, { enabled })} /></td>
-            <td><NumberInput id={`threshold-${r.rule}`} size="sm" label={t('health.col.threshold')} min={r.min} max={r.max} step={1}
+            <td><NumberInput id={`threshold-${r.rule}`} size="sm" hideLabel label={`${name} — ${t('health.col.threshold')}`}
+              min={r.min} max={r.max} step={1}
               value={r.threshold} disabled={disabled} onChange={(_, data) => change(r.rule, { threshold: Number(data.value) })} /></td>
-            <td><NumberInput id={`duration-${r.rule}`} size="sm" label={t('health.col.duration')} min={1} max={60} step={1}
+            <td><NumberInput id={`duration-${r.rule}`} size="sm" hideLabel label={`${name} — ${t('health.col.duration')}`}
+              min={1} max={60} step={1}
               value={r.duration_min} disabled={disabled} onChange={(_, data) => change(r.rule, { duration_min: Number(data.value) })} /></td>
-            <td><Select id={`severity-${r.rule}`} size="sm" labelText={t('health.col.severity')} value={r.severity} disabled={disabled}
+            <td><Select id={`severity-${r.rule}`} size="sm" hideLabel labelText={`${name} — ${t('health.col.severity')}`}
+              value={r.severity} disabled={disabled}
               onChange={(e) => change(r.rule, { severity: e.target.value as HealthRuleEdit['severity'] })}>
               <SelectItem value="warning" text={t('health.sev.warning')} /><SelectItem value="critical" text={t('health.sev.critical')} />
             </Select></td>
-            <td><Toggle id={`telegram-${r.rule}`} size="sm" labelText={t('health.col.telegram')} labelA={t('health.off')} labelB={t('health.on')}
+            <td><Toggle id={`telegram-${r.rule}`} size="sm" hideLabel aria-label={`${name} — ${t('health.col.telegram')}`}
               toggled={r.telegram} disabled={disabled} onToggle={(telegram) => change(r.rule, { telegram })} /></td>
           </tr>
         })}</tbody></table></div>
