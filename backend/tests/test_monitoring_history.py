@@ -1,11 +1,17 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from fastapi.testclient import TestClient
+
+from app.core.db import get_db
+from app.main import app
 from app.models.camera import Camera
 from app.models.event import Event
 from app.models.monitoring_sample import MonitoringSample
 from app.models.node import Node
 from app.services import monitoring_history as mh
+from tests.conftest import viewer_headers
 
 T0 = datetime(2026, 9, 30, 8, 0, tzinfo=timezone.utc)
 
@@ -123,3 +129,96 @@ def test_sampler_thread_survives_error_and_stops(monkeypatch):
         time.sleep(0.01)
     s.stop()
     assert len(calls) >= 2 and not s._thread.is_alive()
+
+
+def _sample(db, node, ts, **data):
+    db.add(MonitoringSample(node_id=node.id, ts=ts, data=data))
+    db.commit()
+
+
+def _event(db, node, ts, reason):
+    db.add(Event(event_id=str(uuid.uuid4()), type="system", node_id=node.id,
+                 severity="info" if reason == "online" else "warning", ts_event=ts,
+                 payload={"node": node.name, "reason": reason}))
+    db.commit()
+
+
+def _z(dt):
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def test_query_downsample_per_range(db):
+    n = _node(db)
+    for i in range(30):  # 07:30 .. 07:59, satu sampel per menit
+        _sample(db, n, T0 - timedelta(minutes=i + 1), cpu_pct={"avg": float(i), "max": float(i) + 1})
+    r = mh.query(db, "1h", now=T0)
+    assert r["bucket_s"] == 60 and len(r["nodes"][0]["series"]["cpu_pct"]) == 30
+    assert r["from"] == _z(T0 - timedelta(hours=1)) and r["to"] == _z(T0)
+    r24 = mh.query(db, "24h", now=T0)
+    pts = r24["nodes"][0]["series"]["cpu_pct"]
+    assert r24["bucket_s"] == 300 and len(pts) == 6
+    # bucket 07:30 berisi menit 07:30..07:34 (i = 29..25): avg dari avg, max dari max
+    assert pts[0] == {"t": "2026-09-30T07:30:00Z", "avg": 27.0, "max": 30.0}
+    assert mh.query(db, "7d", now=T0)["bucket_s"] == 1800
+
+
+def test_query_gaps_not_filled_and_gpu_camera_series(db):
+    n = _node(db)
+    db.add(Camera(id=3, name="Lorong", host="1.2.3.4"))
+    db.commit()
+    cam = {"fps": {"min": 4.0, "avg": 5.0}, "target_fps": 5.0, "frame_age_s": {"max": 0.3}, "state": "streaming"}
+    _sample(db, n, T0 - timedelta(minutes=10), gpus={"0": {"temp_c": {"max": 60.0}}},
+            cameras={"3": cam, "99": cam})
+    _sample(db, n, T0 - timedelta(minutes=5), gpus={"0": {"temp_c": {"max": 70.0}}}, cameras={"3": cam})
+    node = mh.query(db, "1h", now=T0)["nodes"][0]
+    assert [p["max"] for p in node["series"]["gpus"]["0"]["temp_c"]] == [60.0, 70.0]  # 2 titik, celah tidak diisi
+    cams = {c["id"]: c for c in node["cameras"]}
+    assert cams[3]["name"] == "Lorong" and cams[3]["target_fps"] == 5.0
+    assert cams[3]["fps"][0] == {"t": _z(T0 - timedelta(minutes=10)), "min": 4.0, "avg": 5.0}
+    assert cams[99]["name"] == "#99"  # kamera terhapus
+
+
+def test_query_merge_state_and_min(db):
+    n = _node(db)
+    ts = T0 - timedelta(minutes=20)  # dua menit dalam satu bucket 5 menit (24h)
+    _sample(db, n, ts, cameras={"3": {"fps": {"min": 5.0, "avg": 5.0}, "state": "streaming"}})
+    _sample(db, n, ts + timedelta(minutes=1), cameras={"3": {"fps": {"min": 1.0, "avg": 3.0}, "state": "stalled"}})
+    cam = mh.query(db, "24h", now=T0)["nodes"][0]["cameras"][0]
+    assert cam["fps"] == [{"t": _z(ts), "min": 1.0, "avg": 4.0}]
+
+
+def test_offline_periods_from_system_events(db):
+    n = _node(db)
+    _event(db, n, T0 - timedelta(hours=3), "timeout")   # sebelum rentang: node offline di awal rentang 1h
+    _event(db, n, T0 - timedelta(minutes=50), "online")
+    _event(db, n, T0 - timedelta(minutes=20), "lwt")    # belum pulih
+    offline = mh.query(db, "1h", now=T0)["nodes"][0]["offline"]
+    assert offline == [{"from": _z(T0 - timedelta(hours=1)), "to": _z(T0 - timedelta(minutes=50))},
+                       {"from": _z(T0 - timedelta(minutes=20)), "to": None}]
+
+
+def test_node_without_samples_listed_empty(db):
+    _node(db)
+    node = mh.query(db, "6h", now=T0)["nodes"][0]
+    assert node["series"]["cpu_pct"] == [] and node["cameras"] == [] and node["offline"] == []
+
+
+@pytest.fixture
+def client(db, monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "admin_username", "admin")
+    monkeypatch.setattr(settings, "admin_password", "boot123")
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+def test_history_endpoint_auth_and_validation(client):
+    assert client.get("/api/v1/monitoring/history").status_code == 401
+    headers = viewer_headers(client)  # login setelah cek 401: TestClient menyimpan cookie sesi
+    r = client.get("/api/v1/monitoring/history?range=1h", headers=headers)
+    assert r.status_code == 200 and r.json()["bucket_s"] == 60
+    assert "from" in r.json()
+    assert client.get("/api/v1/monitoring/history?range=2h", headers=headers).status_code == 422
+    assert client.get("/api/v1/monitoring/history", headers=headers).json()["range"] == "6h"

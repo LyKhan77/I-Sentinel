@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HostOut(BaseModel):
@@ -104,3 +104,57 @@ class MonitoringOut(BaseModel):
     nodes: list[NodeHealthOut]
     cameras: list[CameraHealthOut]
     services: list[ServiceOut]
+
+
+class PointOut(BaseModel):
+    t: str
+    avg: float | None = None
+    max: float | None = None
+    min: float | None = None
+
+
+class GpuSeriesOut(BaseModel):
+    util_pct: list[PointOut] = []
+    vram_pct: list[PointOut] = []
+    temp_c: list[PointOut] = []
+
+
+class NodeSeriesOut(BaseModel):
+    cpu_pct: list[PointOut]
+    ram_pct: list[PointOut]
+    ms_avg: list[PointOut]
+    ms_max: list[PointOut]
+    infer_fps: list[PointOut]
+    mqtt_backlog: list[PointOut]
+    gpus: dict[str, GpuSeriesOut]
+
+
+class CameraSeriesOut(BaseModel):
+    id: int
+    name: str
+    fps: list[PointOut]
+    frame_age_s: list[PointOut]
+    target_fps: float | None = None
+
+
+class OfflineOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    from_: str = Field(alias="from")
+    to: str | None = None
+
+
+class NodeHistoryOut(BaseModel):
+    id: int
+    name: str
+    series: NodeSeriesOut
+    cameras: list[CameraSeriesOut]
+    offline: list[OfflineOut]
+
+
+class MonitoringHistoryOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    range: str
+    bucket_s: int
+    from_: str = Field(alias="from")
+    to: str
+    nodes: list[NodeHistoryOut]

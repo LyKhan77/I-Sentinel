@@ -10,6 +10,8 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from app.core.db import SessionLocal
+from app.models.camera import Camera
+from app.models.event import Event
 from app.models.monitoring_sample import MonitoringSample
 from app.models.node import Node
 
@@ -237,3 +239,92 @@ class HistorySampler:
 
 
 sampler = HistorySampler()
+
+RANGES = {"1h": (timedelta(hours=1), 60), "6h": (timedelta(hours=6), 60),
+          "24h": (timedelta(hours=24), 300), "7d": (timedelta(days=7), 1800)}
+NODE_KEYS = ("cpu_pct", "ram_pct", "ms_avg", "ms_max", "infer_fps", "mqtt_backlog")
+GPU_KEYS = ("util_pct", "vram_pct", "temp_c")
+
+
+def _utc(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+
+def _z(dt: datetime) -> str:
+    return _utc(dt).isoformat().replace("+00:00", "Z")
+
+
+def _floor(dt: datetime, bucket_s: int) -> datetime:
+    ts = int(_utc(dt).timestamp())
+    return datetime.fromtimestamp(ts - ts % bucket_s, tz=timezone.utc)
+
+
+def _merge(parts: list) -> dict | None:
+    """Gabung agregat beberapa menit: avg → rata-rata, max → maks, min → min."""
+    parts = [p for p in parts if isinstance(p, dict)]
+    out = {}
+    for kind, fn in (("avg", lambda v: sum(v) / len(v)), ("max", max), ("min", min)):
+        vals = [_num(p.get(kind)) for p in parts if _num(p.get(kind)) is not None]
+        if vals:
+            out[kind] = round(fn(vals), 1)
+    return out or None
+
+
+def _offline(db, node: Node, start: datetime, now: datetime) -> list[dict]:
+    """Periode offline dari event system node: offline → online berikutnya; tanpa pasangan → to None."""
+    base = db.query(Event).filter(Event.type == "system", Event.node_id == node.id)
+    before = base.filter(Event.ts_event < start).order_by(Event.ts_event.desc()).first()
+    within = base.filter(Event.ts_event >= start, Event.ts_event <= now).order_by(Event.ts_event).all()
+    is_off = lambda e: _dict(e.payload).get("reason") != "online"
+    periods, cur = [], (start if before is not None and is_off(before) else None)
+    for e in within:
+        ts = _utc(e.ts_event)
+        if is_off(e) and cur is None:
+            cur = ts
+        elif not is_off(e) and cur is not None:
+            periods.append({"from": _z(cur), "to": _z(ts)})
+            cur = None
+    if cur is not None:
+        periods.append({"from": _z(cur), "to": None})
+    return periods
+
+
+def query(db, range_key: str, now: datetime | None = None) -> dict:
+    """Deret tren per node untuk satu rentang (downsample ke bucket_s; bucket kosong tidak dikirim)."""
+    span, bucket_s = RANGES[range_key]
+    now = _utc(now or datetime.now(timezone.utc))
+    start = now - span
+    nodes = db.query(Node).order_by(Node.name).all()
+    names = {cid: name for cid, name in db.query(Camera.id, Camera.name)}
+    grouped: dict[int, dict[datetime, list[dict]]] = {}
+    for r in db.query(MonitoringSample).filter(MonitoringSample.ts >= start).order_by(MonitoringSample.ts):
+        grouped.setdefault(r.node_id, {}).setdefault(_floor(r.ts, bucket_s), []).append(_dict(r.data))
+    out = []
+    for n in nodes:
+        series = {k: [] for k in NODE_KEYS}
+        gpus: dict[str, dict] = {}
+        cams: dict[str, dict] = {}
+        for b, datas in sorted(grouped.get(n.id, {}).items()):
+            t = _z(b)
+            for k in NODE_KEYS:
+                if (pt := _merge([d.get(k) for d in datas])) is not None:
+                    series[k].append({"t": t, **pt})
+            for gi in sorted({g for d in datas for g in _dict(d.get("gpus"))}):
+                for k in GPU_KEYS:
+                    pt = _merge([_dict(_dict(d.get("gpus")).get(gi)).get(k) for d in datas])
+                    if pt is not None:
+                        gpus.setdefault(gi, {key: [] for key in GPU_KEYS})[k].append({"t": t, **pt})
+            for ci in {c for d in datas for c in _dict(d.get("cameras")) if str(c).isdigit()}:
+                entries = [_dict(_dict(d.get("cameras")).get(ci)) for d in datas]
+                cam = cams.setdefault(ci, {"fps": [], "frame_age_s": [], "target_fps": None})
+                for k in ("fps", "frame_age_s"):
+                    if (pt := _merge([e.get(k) for e in entries])) is not None:
+                        cam[k].append({"t": t, **pt})
+                targets = [_num(e.get("target_fps")) for e in entries if _num(e.get("target_fps")) is not None]
+                if targets:
+                    cam["target_fps"] = targets[-1]
+        cam_rows = [{"id": int(ci), "name": names.get(int(ci), f"#{ci}"), **c} for ci, c in cams.items()]
+        cam_rows.sort(key=lambda c: c["name"])
+        out.append({"id": n.id, "name": n.name, "series": {**series, "gpus": gpus}, "cameras": cam_rows,
+                    "offline": _offline(db, n, start, now)})
+    return {"range": range_key, "bucket_s": bucket_s, "from": _z(start), "to": _z(now), "nodes": out}
