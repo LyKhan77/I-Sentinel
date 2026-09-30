@@ -62,6 +62,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   tag Peringatan kuning (`61a6b5f`). Frontend 211, build 0, lint tanpa error.
   Lanjutan: halaman memakai `.app-page` (padding 24/32 px, judul/sub sama dengan halaman lain), kartu & tile
   mengikuti ukuran `.st-card` (14/16 px), banner node offline sejajar konten (`0ab28ee`).
+- **Deploy & verifikasi user (2026-09-29/30):** server `gspe-ai3` — restart vision lalu API (09:11/09:12), fix
+  susulan via restart API + HMR. Uji user: halaman Monitoring (kamera dianalisis Streaming + fps, kamera tanpa zona
+  "Tanpa zona aktif"), akses viewer, refresh Live View tanpa outline palsu, dan node offline/pulih (vision
+  dibekukan 60 s: event `timeout` 27 s setelah beku + event `online` saat lanjut, satu per transisi, Telegram, banner
+  AppShell/TV, chip, toast): **sesuai**. Merge ke `main`.
 
 ### Notifikasi event web UI + outline tile Live View (2026-09-29)
 
