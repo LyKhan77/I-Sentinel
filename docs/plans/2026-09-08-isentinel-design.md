@@ -1,3 +1,6 @@
+> **Spesifikasi awal (2026-09-08), arsip.** Kondisi terkini: `README.md`, `ROADMAP.md`, `CHANGELOG.md`,
+> dan spec per fitur di `docs/superpowers/specs/` (mis. absensi kini face-first R5b, bukan `face_gate`).
+
 # I-Sentinel — Design Spec
 
 Tanggal: 2026-09-08 · Status: menunggu review user · Mockup: `mockup-ui/`

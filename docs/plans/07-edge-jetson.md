@@ -1,10 +1,11 @@
 # Milestone Brief — Edge: Jetson Orin Nano
 
-> Brief. Baru dikembangkan menjadi plan detail SETELAH Fase 5 selesai dan keputusan pembelian/jumlah Jetson ada.
+> Brief — **satu-satunya milestone tersisa.** Fase 5 selesai (2026-09-21). Dikembangkan menjadi plan detail
+> setelah keputusan pembelian/jumlah Jetson ada.
 
 **Goal:** Sebagian kamera dipindah ke Jetson Orin Nano: vision-node + go2rtc jalan di edge, server tetap pusat DB/alert/UI. Bukti: kamera di edge-01 menghasilkan event + clip yang masuk sistem identik dengan kamera di server; edge diputus LAN → event tetap masuk setelah reconnect (store-and-forward terbukti).
 
-**Prasyarat:** Fase 5 done; hardware Jetson + JetPack (TensorRT) siap; kamera edge terpasang fisik dekat edge box.
+**Prasyarat:** Fase 5 done ✓; hardware Jetson + JetPack (TensorRT) siap; kamera edge terpasang fisik dekat edge box.
 
 ## Scope
 

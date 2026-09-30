@@ -14,7 +14,8 @@ It does two jobs:
 - **Attendance**: face enrollment (InsightFace `buffalo_l`), face gate at entry
   cameras, shift-based attendance days and CSV export/import.
 
-Status: pre-release `0.x`, Fase 0–4e done, Fase 5 (hardening) in progress.
+Status: pre-release `0.x`, Fase 0–5 done plus the feature cycles in `ROADMAP.md`; the only
+remaining milestone is Fase E (Jetson edge).
 Deployment target today is one dev/prod server (`gspe-ai3`); Jetson Orin Nano edge
 split is planned (Fase E).
 
@@ -67,7 +68,7 @@ I-Sentinel/
 │   │   ├── services/            # probe, stream_endpoint, go2rtc, config_push, ingest,
 │   │   │                        #   events_consumer, face, attendance, alerting, retention
 │   │   └── ws/hub.py            # websocket fan-out
-│   ├── alembic/versions/        # migrations (latest: 0007_camera_management_expand)
+│   ├── alembic/versions/        # migrations (latest: 0020_health_alert)
 │   ├── scripts/                 # camera_management_migrate, retention_sweep,
 │   │                            #   download_face_models
 │   └── tests/                   # pytest (marker `gpu` = needs CUDA/RTSP)
@@ -88,10 +89,10 @@ I-Sentinel/
 ├── deploy/                      # go2rtc, mosquitto, systemd units, bootstrap.sh,
 │                                #   loadtest/resilience.sh, vision.env.example
 ├── docs/
-│   ├── plans/                   # design + per-phase plans (00-master … 07-edge-jetson)
+│   ├── plans/                   # original design spec + remaining milestone (07-edge-jetson)
 │   ├── superpowers/{plans,specs}/  # Superpowers-generated plans & specs (record only)
 │   ├── runbooks/                # operational procedures + rollback
-│   └── evidence/                # screenshots / measured proof
+│   └── evidence/                # local screenshots / measured proof (gitignored)
 ├── README.md  DESIGN.md  ROADMAP.md  CHANGELOG.md  .env.example
 └── temp/                        # gitignored scratch, server notes, snapshots
 ```
@@ -142,10 +143,8 @@ Server facts: host `gspe-ai3`, LAN `192.168.2.133`, VPN `10.8.0.162`, project
 `/home/gspe-ai3/project_cv/I-Sentinel`, runtime data in the sibling
 `I-Sentinel-data/{api,vision}`. Credentials live in `temp/data/server-info.txt`
 (gitignored) and the server `.env` — never commit them, never paste them into
-docs, commits, or code. Units in `deploy/systemd/` still carry `/opt/isentinel` +
-`User=isentinel` while the running ones use the `project_cv` path + `User=gspe-ai3`;
-reconciling them is Fase 5 Task 12 (`docs/plans/06-fase-5-hardening.md`), so treat
-the repo units as not-yet-authoritative.
+docs, commits, or code. Units in `deploy/systemd/` were reconciled with the running ones
+(`project_cv` path + `User=gspe-ai3`) in Fase 5 Task 12; operations: `docs/RUNBOOK.md`.
 
 ## 6. Coding Conventions
 
@@ -178,14 +177,13 @@ Concretely in this repo:
    criteria, and how each step will be verified. Save the plan to
    `docs/superpowers/plans/` (spec to `docs/superpowers/specs/`) using the
    `Superpowers` skill, and get it validated by the user.
-3. **Branch**: work off a feature branch (`feat/<slug>`, current:
-   `feat/camera-management-b-prime`). Propose a new branch for any feature or
+3. **Branch**: work off a feature branch (`feat/<slug>`) from `main`. Propose a new branch for any feature or
    discussion outside the current context.
 4. **Implement surgically**: smallest diff that solves the request; reuse existing
    helpers; no speculative abstractions.
 5. **Verify with evidence**: backend `pytest -m "not gpu"`, `npx vitest run`,
    `npm run build`; UI changes verified against the running app (screenshot into
-   `docs/evidence/`); migrations checked for idempotency. `[x]` only with pasted
+   `docs/evidence/`, local only — gitignored, never committed); migrations checked for idempotency. `[x]` only with pasted
    output/numbers.
 6. **Commit per functional change** (Conventional Commits) and record it in
    `CHANGELOG.md`: context, files changed, evidence, impact, rollback. Update

@@ -5,6 +5,8 @@
 .cooperstructure/
 .impeccable/
 temp/
+# screenshot/bukti uji lokal — tidak di-commit agar repo tidak menumpuk
+docs/evidence/
 __pycache__/
 node_modules/
 *.pyc

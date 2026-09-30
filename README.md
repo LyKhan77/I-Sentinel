@@ -53,7 +53,9 @@ isentinel/
 │   ├── systemd/              # isentinel-api.service, isentinel-recorder.service,
 │   │                         #   vision-node.service, isentinel-retention.service
 │   └── sql/                  # alembic migrations
-├── docs/plans/               # spec + rencana per milestone
+├── docs/plans/               # spec desain awal + milestone tersisa (Edge Jetson)
+├── docs/superpowers/         # spec + plan per fitur (catatan)
+├── docs/runbooks/            # prosedur operasional per fitur
 └── README.md
 ```
 
