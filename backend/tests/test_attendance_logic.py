@@ -530,3 +530,26 @@ def test_face_snapshot_labeled_with_name_or_unknown(db, monkeypatch):
     db.commit()
     attendance.handle_face_event(db, ev2)
     assert calls == [(True, e.name), (True, "Unknown")]
+
+
+def test_exit_without_entry_is_no_entry(db):
+    sh = _shift(db)
+    e = _emp(db, sh)
+    _camera(db)
+    _att_event(db, e.id, "exit", _at(*MON, 16, 5))
+    row = attendance.recompute_day(db, e.id, _at(*MON, 16, 5).date(), now=_at(*MON, 18, 0))
+    assert row.status == "no_entry" and row.duration_min is None and row.late_minutes is None
+
+
+def test_effective_status_waiting_past_deadline_is_no_exit(db):
+    sh = _shift(db)  # 07:00-16:00, grace default 60 → batas 17:00
+    e = _emp(db, sh)
+    _camera(db)
+    _att_event(db, e.id, "entry", _at(*MON, 7, 5))
+    row = attendance.recompute_day(db, e.id, _at(*MON, 7, 5).date(), now=_at(*MON, 9, 0))
+    assert row.status == "waiting"
+    assert attendance.effective_status(row, sh, now=_at(*MON, 16, 59)) == "waiting"
+    assert attendance.effective_status(row, sh, now=_at(*MON, 17, 0)) == "no_exit"
+    row.override_note = "dikoreksi HR"
+    assert attendance.effective_status(row, sh, now=_at(*MON, 18, 0)) == "waiting"  # koreksi manual tidak diubah
+    assert attendance.effective_status(row, None, now=_at(*MON, 23, 0)) == "waiting"  # tanpa shift

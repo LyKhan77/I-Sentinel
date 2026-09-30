@@ -33,11 +33,17 @@ def _shift_dt(shift, day, hhmm: str) -> datetime:
     return datetime(day.year, day.month, day.day, int(hhmm[:2]), int(hhmm[3:]), tzinfo=LOCAL_TZ)
 
 
+def deadline(shift, day) -> datetime:
+    """Batas penutupan hari: jam shift selesai + toleransi no_exit (tz lokal)."""
+    return _shift_dt(shift, day, shift.end_time) + timedelta(minutes=settings.no_exit_grace_min)
+
+
 def compute_status(shift, first_entry, last_exit, now: datetime | None = None):
     """(status, late_minutes, duration_min). Pure — input sudah tz lokal."""
     now = _local(now) or datetime.now(LOCAL_TZ)
     if first_entry is None:
-        return "absent", None, None
+        # hanya exit terdeteksi: orangnya hadir tapi entry terlewat → perlu koreksi, bukan absent
+        return ("no_entry" if last_exit is not None else "absent"), None, None
 
     if last_exit is not None:
         duration = round((last_exit - first_entry).total_seconds() / 60)
@@ -49,10 +55,16 @@ def compute_status(shift, first_entry, last_exit, now: datetime | None = None):
 
     if shift is None:
         return "waiting", None, None
-    end_grace = _shift_dt(shift, first_entry.date(), shift.end_time) + timedelta(
-        minutes=settings.no_exit_grace_min
-    )
-    return ("waiting" if now < end_grace else "no_exit"), None, None
+    return ("waiting" if now < deadline(shift, first_entry.date()) else "no_exit"), None, None
+
+
+def effective_status(row, shift, now: datetime | None = None) -> str:
+    """Status untuk ditampilkan: `waiting` yang sudah lewat batas → `no_exit` walau job belum jalan.
+    Baris yang dikoreksi manual (override_note) dan karyawan tanpa shift tidak diubah."""
+    if row.status != "waiting" or (row.override_note or "").strip() or shift is None:
+        return row.status
+    now = _local(now) or datetime.now(LOCAL_TZ)
+    return "no_exit" if now >= deadline(shift, row.date) else "waiting"
 
 
 def recompute_day(db, employee_id: int, day, now: datetime | None = None) -> AttendanceDay:
