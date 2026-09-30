@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -152,6 +152,19 @@ def test_heartbeat_bad_hw_shape_ignored(db, broadcast):
                    json.dumps({"ts": "x", "hw": "junk"}).encode())
     node = db.query(Node).filter_by(name="vision-1").one()
     assert node.hw is None and node.status == "online"
+
+
+def test_heartbeat_records_history(db, broadcast):
+    from app.services import monitoring_history as mh
+    db.add(Node(name="vision-1", status="online"))
+    db.commit()
+    hb = {"ts": "x", "hw": {"host": {"cpu_pct": 42.0}, "gpus": []},
+          "modules": {"detector": {"ms_avg": 7.0}}, "cameras": [], "mqtt_backlog": 0}
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps(hb).encode())
+    handle_message(db, "isentinel/nodes/vision-1/heartbeat", json.dumps({"ts": "x"}).encode())  # format lama
+    node = db.query(Node).filter_by(name="vision-1").one()
+    rows = mh.flush(datetime.now(timezone.utc) + timedelta(minutes=2))
+    assert [(n, d["cpu_pct"]["avg"]) for n, _, d in rows] == [(node.id, 42.0)]
 
 
 # --- R3: relay detections topic → WS -----------------------------------------
