@@ -464,3 +464,26 @@ test('asNotifyEvent menolak tipe warisan Object.prototype', () => {
   }
   expect(asNotifyEvent({ id: 1, event_id: 'e-1', type: 'intrusion' })?.id).toBe(1)
 })
+
+// ---- regresi uji lapangan 2026-09-30 ----
+test('refresh: event lama dari poll pertama useLiveEvents (di luar jendela riwayat) tidak memicu outline/toast/bunyi', async () => {
+  // riwayat = sejak 00:00 kemarin; poll pertama useLiveEvents = 50 event terbaru SEMUA waktu → event lusa tidak ada di riwayat
+  const base = stubFetch()
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?limit=50')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([...(history as Ev[]), ev(5, { ts_event: noon(3) }), ev(4, { camera_id: 2, ts_event: noon(2) })]) }
+    }
+    return base(url)
+  }))
+  renderWith(<><LiveViewPage />{shell}</>, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  await act(async () => {}) // poll pertama selesai diproses
+  expect(screen.getByTestId('toast-ids')).toHaveTextContent('')
+  expect(screen.getByTestId('active')).toHaveTextContent('')
+  expect(document.querySelector('.lv-alert')).toBeNull()
+  expect(beep).not.toHaveBeenCalled()
+  send(ev(12)) // event baru sungguhan tetap jalan
+  expect(screen.getByTestId('cam-alert-1')).toBeInTheDocument()
+})
