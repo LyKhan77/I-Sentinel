@@ -5,10 +5,12 @@ Waktu disimpan tz-aware. Semua perbandingan dilakukan di timezone server
 (zona lokal saat insert), Postgres mengembalikan aware UTC.
 """
 import logging
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.core.config import settings
+from app.core.db import SessionLocal
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
 from app.services import face
@@ -18,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 LOCAL_TZ = datetime.now().astimezone().tzinfo  # tz server (WIB +07)
 VALID_DIRECTIONS = {"entry", "exit"}
+CLOSE_INTERVAL_S = 900
+CLOSE_DAYS_BACK = 7
 
 
 def _local(dt: datetime | None) -> datetime | None:
@@ -220,12 +224,86 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
 
 
 def close_days(db, day, now: datetime | None = None) -> int:
-    """Recompute semua karyawan aktif dengan shift pada hari kerja `day`. Tanpa event → absent."""
+    """Recompute semua karyawan aktif dengan shift pada hari kerja `day`. Tanpa event → absent.
+    Baris yang sudah dikoreksi manual (override_note) dilewati."""
     n = 0
     for emp in db.query(Employee).filter(Employee.active.is_(True)).all():
         shift = emp.shift
         if shift is None or day.isoweekday() not in (shift.workdays or []):
             continue
+        row = db.query(AttendanceDay).filter_by(employee_id=emp.id, date=day).first()
+        if row is not None and _has_override(row):
+            continue
         recompute_day(db, emp.id, day, now=now)
         n += 1
     return n
+
+
+def _has_override(row) -> bool:
+    return bool((row.override_note or "").strip())
+
+
+def close_due(db, now: datetime | None = None, days_back: int = CLOSE_DAYS_BACK) -> dict:
+    """Tutup hari yang sudah lewat batas untuk karyawan aktif ber-shift di hari kerjanya:
+    buat baris (absent / dari event) bila belum ada; hitung ulang `waiting`. Baris dikoreksi dilewati."""
+    now = _local(now) or datetime.now(LOCAL_TZ)
+    created = updated = 0
+    emps = [e for e in db.query(Employee).filter(Employee.active.is_(True)).all() if e.shift is not None]
+    for back in range(days_back, -1, -1):
+        day = (now - timedelta(days=back)).date()
+        for emp in emps:
+            if day.isoweekday() not in (emp.shift.workdays or []) or now < deadline(emp.shift, day):
+                continue
+            row = db.query(AttendanceDay).filter_by(employee_id=emp.id, date=day).first()
+            if row is None:
+                recompute_day(db, emp.id, day, now=now)
+                created += 1
+            elif row.status == "waiting" and not _has_override(row):
+                recompute_day(db, emp.id, day, now=now)
+                updated += 1
+    return {"created": created, "updated": updated}
+
+
+class AttendanceCloser:
+    """Thread latar: close_due tiap interval_s; run pertama saat start (catch-up setelah API restart)."""
+
+    def __init__(self, interval_s: float = CLOSE_INTERVAL_S, session_factory=SessionLocal,
+                 run_on_start: bool = True):
+        self.interval_s = interval_s
+        self.run_on_start = run_on_start
+        self._session_factory = session_factory
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def run_once(self, now: datetime | None = None) -> dict:
+        db = self._session_factory()
+        try:
+            return close_due(db, now=now)
+        finally:
+            db.close()
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="attendance-closer")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+
+    def _loop(self) -> None:
+        first = self.run_on_start
+        while first or not self._stop.wait(self.interval_s):
+            first = False
+            if self._stop.is_set():
+                break
+            try:
+                self.run_once()
+            except Exception:
+                logger.warning("attendance close failed", exc_info=True)
+
+
+closer = AttendanceCloser()

@@ -62,6 +62,14 @@ def _quiet_node_monitor(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _quiet_attendance_closer(monkeypatch):
+    """Penutup hari latar tidak boleh menyentuh DB nyata selama tes."""
+    from app.services import attendance
+    monkeypatch.setattr(attendance.closer, "interval_s", 3600)
+    monkeypatch.setattr(attendance.closer, "run_on_start", False)
+
+
+@pytest.fixture(autouse=True)
 def _quiet_history():
     """Bucket riwayat di memori modul: kosongkan antar tes; sampler latar tidak boleh menyentuh DB nyata."""
     from app.services import monitoring_history

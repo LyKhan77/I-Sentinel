@@ -1,6 +1,6 @@
 """Attendance logic — agregasi harian, handle_face_event, close_days. Tanpa insightface."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.camera import Camera
@@ -553,3 +553,74 @@ def test_effective_status_waiting_past_deadline_is_no_exit(db):
     row.override_note = "dikoreksi HR"
     assert attendance.effective_status(row, sh, now=_at(*MON, 18, 0)) == "waiting"  # koreksi manual tidak diubah
     assert attendance.effective_status(row, None, now=_at(*MON, 23, 0)) == "waiting"  # tanpa shift
+
+
+def test_close_due_absent_only_after_deadline_and_workdays(db):
+    sh = _shift(db)            # Senin-Jumat 07:00-16:00, batas 17:00
+    e = _emp(db, sh, code="E1")
+    _emp(db, None, code="E2")  # tanpa shift → tidak pernah absent
+    off = _emp(db, sh, code="E3")
+    off.active = False
+    db.commit()
+    day = _at(*MON, 9, 0).date()
+    assert attendance.close_due(db, now=_at(*MON, 16, 59), days_back=0) == {"created": 0, "updated": 0}
+    assert db.query(AttendanceDay).count() == 0  # hari ini sebelum batas: belum "tidak hadir"
+    r = attendance.close_due(db, now=_at(*MON, 17, 0), days_back=0)
+    assert r == {"created": 1, "updated": 0}
+    row = db.query(AttendanceDay).one()
+    assert row.employee_id == e.id and row.date == day and row.status == "absent"
+
+
+def test_close_due_turns_waiting_into_no_exit_and_skips_override(db):
+    sh = _shift(db)
+    a = _emp(db, sh, code="A")
+    b = _emp(db, sh, code="B")
+    _camera(db)
+    for emp in (a, b):
+        _att_event(db, emp.id, "entry", _at(*MON, 7, 5))
+        attendance.recompute_day(db, emp.id, _at(*MON, 7, 5).date(), now=_at(*MON, 8, 0))
+    rb = db.query(AttendanceDay).filter_by(employee_id=b.id).one()
+    rb.override_note = "koreksi HR"
+    db.commit()
+    r = attendance.close_due(db, now=_at(*MON, 18, 0), days_back=0)
+    assert r["updated"] == 1
+    assert db.query(AttendanceDay).filter_by(employee_id=a.id).one().status == "no_exit"
+    assert db.query(AttendanceDay).filter_by(employee_id=b.id).one().status == "waiting"  # tidak disentuh
+
+
+def test_close_due_catch_up_and_idempotent(db):
+    sh = _shift(db)
+    _emp(db, sh)
+    now = _at(*MON, 10, 0) + timedelta(days=8)  # Selasa minggu berikutnya 10:00, hari ini belum lewat batas
+    first = attendance.close_due(db, now=now)            # 7 hari ke belakang
+    again = attendance.close_due(db, now=now)
+    workdays = sum(1 for i in range(1, 8) if (now - timedelta(days=i)).isoweekday() <= 5)
+    assert first["created"] == workdays and again == {"created": 0, "updated": 0}
+    assert db.query(AttendanceDay).count() == workdays
+
+
+def test_close_days_skips_override(db):
+    sh = _shift(db)
+    e = _emp(db, sh)
+    day = _at(*MON, 9, 0).date()
+    db.add(AttendanceDay(employee_id=e.id, date=day, status="ontime", override_note="manual"))
+    db.commit()
+    attendance.close_days(db, day, now=_at(*MON, 23, 0))
+    assert db.query(AttendanceDay).one().status == "ontime"
+
+
+def test_closer_runs_on_start_survives_error_and_stops(monkeypatch):
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("db down")
+
+    c = attendance.AttendanceCloser(interval_s=0.01, session_factory=boom, run_on_start=True)
+    c.start()
+    import time
+    deadline = time.monotonic() + 2
+    while len(calls) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    c.stop()
+    assert len(calls) >= 2 and not c._thread.is_alive()
