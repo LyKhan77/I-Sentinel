@@ -62,6 +62,36 @@ idempoten — start ulang tidak menduplikasi baris.
 - Import: upsert per `(employee_code, date)`; `first_entry` kosong + `last_exit` terisi
   → status `no_entry`; `override_note` di-set `import` sehingga baris tidak ditimpa job.
 
+## Gerbang wajah (face-first)
+
+### Zona attendance
+
+Zona attendance digambar di **area kepala** (polygon kecil di
+sekitar kepala/atas badan pada frame utama), bukan seluruh area pintu. Gunakan
+editor zona; arah gate `entry`/`exit`. Zona tanpa arah
+diabaikan worker (tidak ada fallback person).
+
+### Membaca label gerbang di debugger
+
+Live View → klik tile kamera attendance → modal debugger. Kotak biru (`face`)
+dengan label:
+
+- `di luar zona` — wajah terdeteksi di luar polygon zone;
+- `wajah terlalu kecil` — lebar wajah < `face_min_width_px`;
+- `skor rendah` — skor deteksi SCRFD < `face_min_det_score`;
+- `menyamping` — yaw > `face_max_yaw`;
+- `buram` — blur < `face_blur_min`.
+
+Label berupa angka (mis. `0.82`) = lolos gerbang; angkanya skor kualitas frame itu, dan
+worker sedang mengumpulkan frame bagus (default 3) sebelum menerbitkan satu event.
+
+### Kalibrasi `face_stats`
+
+Perlu ≥10 lintasan nyata lewat gerbang. Buka debugger, catat distribusi label
+`buram` (nilai blur) dan `wajah terlalu kecil` (width_px) dari log/overlay, lalu
+setel `face_blur_min` dan `face_min_width_px` di Konfigurasi → Deteksi & Model →
+Advanced → "Wajah attendance" agar wajah bagus lolos dan noise dibuang. Nilai
+
 ## Troubleshooting
 
 | Gejala | Kemungkinan | Langkah |
