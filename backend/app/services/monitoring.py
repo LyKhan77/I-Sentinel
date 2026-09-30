@@ -17,16 +17,12 @@ from app.models.camera import Camera
 from app.models.node import Node
 from app.models.setting import Setting
 from app.models.zone import Zone
-from app.services import events_consumer, go2rtc, host_stats, retention, storage_settings, telegram
+from app.services import events_consumer, go2rtc, health_rules, host_stats, retention, storage_settings, telegram
 from app.services.node_health import _aware
 
 logger = logging.getLogger(__name__)
 
-FRAME_STALE_S = 30
-LOW_FPS_RATIO = 0.8
 RECONNECT_WARN = 3
-GPU_TEMP_WARN_C = 85
-VRAM_WARN_PCT = RAM_WARN_PCT = CPU_WARN_PCT = 90
 HEARTBEAT_LATE_S = 20
 SWEEP_STALE_H = 26
 SERVICE_CACHE_S = 10
@@ -35,6 +31,31 @@ RANK = {"ok": 0, "unknown": 0, "warning": 1, "critical": 2}
 STATE_RANK = {"streaming": 0, "starting": 1, None: 1, "stalled": 2, "reconnecting": 3}
 
 _cache: dict = {"at": None, "services": None}
+
+
+def _thresholds(rules: dict) -> dict:
+    """Translate effective health rules into current-condition thresholds."""
+    return {"frame_stale_s": rules["camera_no_frames"]["threshold"],
+            "low_fps_ratio": rules["camera_low_fps"]["threshold"] / 100,
+            "gpu_temp_c": rules["gpu_temp"]["threshold"], "vram_pct": rules["gpu_vram"]["threshold"],
+            "ram_pct": rules["node_ram"]["threshold"], "cpu_pct": rules["node_cpu"]["threshold"]}
+
+
+def _default_thresholds() -> dict:
+    return _thresholds(health_rules.get_defaults())
+
+
+def analyzed_camera_ids(db) -> set[int]:
+    """Return cameras with active analytics zones, retaining the legacy DB-error fallback."""
+    try:
+        return {cid for cid, bs in db.query(Zone.camera_id, Zone.behaviors).filter(Zone.active.is_(True))
+                if isinstance(bs, list) and bs}
+    except Exception:
+        logger.warning("monitoring zone query failed", exc_info=True)
+        try:
+            return {cid for cid, in db.query(Camera.id)}
+        except Exception:
+            return set()
 
 
 def reset_cache() -> None:
@@ -88,8 +109,9 @@ def _merge_workers(entries: list[dict]) -> dict | None:
 
 
 def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, streams: set[str] | None,
-                analyzed: bool = True) -> dict:
+                analyzed: bool = True, th: dict | None = None) -> dict:
     """analyzed = kamera punya zona aktif ber-behavior; tanpa itu vision tidak menjalankan worker (live view saja)."""
+    th = th if th is not None else _default_thresholds()
     analyzed = cam.node_id is not None and analyzed
     row = {"analyzed": analyzed, "id": cam.id, "name": cam.name, "location": cam.location, "node_id": cam.node_id,
            "node_name": node.name if node else None, "enabled": bool(cam.enabled), "issues": [],
@@ -115,10 +137,10 @@ def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, stre
                 warn.append("no_data")
             else:
                 age = ai["last_frame_age_s"]
-                if ai["state"] in ("reconnecting", "stalled") or (age is not None and age > FRAME_STALE_S):
+                if ai["state"] in ("reconnecting", "stalled") or (age is not None and age > th["frame_stale_s"]):
                     crit.append("no_frames")
                 elif (ai["state"] != "starting" and ai["fps"] is not None and ai["target_fps"]
-                        and ai["fps"] < LOW_FPS_RATIO * ai["target_fps"]):
+                        and ai["fps"] < th["low_fps_ratio"] * ai["target_fps"]):
                     warn.append("low_fps")
                 if ai["reconnects_1h"] >= RECONNECT_WARN:
                     warn.append("reconnects")
@@ -127,7 +149,8 @@ def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, stre
     return row
 
 
-def _node_row(node: Node, now: datetime) -> dict:
+def _node_row(node: Node, now: datetime, th: dict | None = None) -> dict:
+    th = th if th is not None else _default_thresholds()
     hw, mods = _dict(node.hw), _dict(node.modules)
     host = _dict(hw.get("host"))
     gpus = [g for g in _list(hw.get("gpus")) if isinstance(g, dict)]
@@ -142,15 +165,15 @@ def _node_row(node: Node, now: datetime) -> dict:
     else:
         if age is not None and age > HEARTBEAT_LATE_S:
             issues.append("heartbeat_late")
-        if any((_num(g.get("temp_c")) or 0) >= GPU_TEMP_WARN_C for g in gpus):
+        if any((_num(g.get("temp_c")) or 0) >= th["gpu_temp_c"] for g in gpus):
             issues.append("gpu_hot")
         if any(_num(g.get("vram_total_mb")) and (_num(g.get("vram_used_mb")) or 0) / g["vram_total_mb"] * 100
-               >= VRAM_WARN_PCT for g in gpus):
+               >= th["vram_pct"] for g in gpus):
             issues.append("vram_high")
         used, total = _num(host.get("ram_used_mb")), _num(host.get("ram_total_mb"))
-        if used is not None and total and used / total * 100 >= RAM_WARN_PCT:
+        if used is not None and total and used / total * 100 >= th["ram_pct"]:
             issues.append("ram_high")
-        if (_num(host.get("cpu_pct")) or 0) >= CPU_WARN_PCT:
+        if (_num(host.get("cpu_pct")) or 0) >= th["cpu_pct"]:
             issues.append("cpu_high")
         if backlog:
             issues.append("mqtt_backlog")
@@ -254,6 +277,10 @@ def _services(db, now: datetime) -> tuple[list[dict], set[str] | None]:
 
 def snapshot(db, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
+    try:
+        th = _thresholds(health_rules.get(db))
+    except Exception:
+        th = _default_thresholds()
     services, streams = _services(db, now)
     try:
         nodes = db.query(Node).order_by(Node.name).all()
@@ -279,20 +306,14 @@ def snapshot(db, now: datetime | None = None) -> dict:
     except Exception:
         logger.warning("monitoring camera query failed", exc_info=True)
         cameras = []
-    try:
-        # sama dengan vision: worker jalan bila ada zona aktif dengan behavior (behaviors [] = visual saja)
-        analyzed_ids = {cid for cid, bs in db.query(Zone.camera_id, Zone.behaviors).filter(Zone.active.is_(True))
-                        if isinstance(bs, list) and bs}
-    except Exception:
-        logger.warning("monitoring zone query failed", exc_info=True)
-        analyzed_ids = {c.id for c in cameras}  # tanpa data zona: anggap dianalisis (perilaku lama)
+    analyzed_ids = analyzed_camera_ids(db)
     for cam in cameras:
         node = by_id.get(cam.node_id) if cam.node_id is not None else None
         bucket = per_node.get(cam.node_id) if node is not None else None
         # bucket None = node tanpa statistik kamera; [] = kamera tidak ada di heartbeat (not_running)
         entries = None if bucket is None else bucket.get(cam.id, [])
-        cams.append(_camera_row(cam, node, entries, streams, analyzed=cam.id in analyzed_ids))
-    node_rows = [_node_row(n, now) for n in nodes]
+        cams.append(_camera_row(cam, node, entries, streams, analyzed=cam.id in analyzed_ids, th=th))
+    node_rows = [_node_row(n, now, th) for n in nodes]
     used, total = host_stats.ram_mb()
     disk = _disk(settings.storage_root)
 

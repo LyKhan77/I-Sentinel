@@ -5,7 +5,7 @@ import { Notification as NotificationIcon } from '@carbon/icons-react'
 import type { EventOut } from '../../api/events'
 import { useT } from '../../app/i18n'
 import { useEventAlerts } from './EventAlertsProvider'
-import { dayStart, eventTitleKey, eventWhere, sevClass } from './labels'
+import { dayStart, eventTitle, eventWhere, sevClass } from './labels'
 
 const BADGE_MAX = 99
 
@@ -88,7 +88,7 @@ export default function NotificationBell() {
                             onClick={() => go(`/events?event=${e.id}`)}>
                             <span className={`ev-dot ev-dot--${sevClass(e.severity)}`} aria-hidden="true" />
                             <span className="nb__text">
-                              <span>{t(eventTitleKey(e))}</span>
+                              <span>{eventTitle(e, t)}</span>
                               <span className="nb__sub">{eventWhere(e, t, cameraName)}</span>
                               <span className="nb__sub">
                                 {new Date(e.ts_event).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}

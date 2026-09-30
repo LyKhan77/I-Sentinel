@@ -100,7 +100,7 @@ def test_healthy_camera_and_summary(db):
     ({"state": "reconnecting"}, "no_frames", "critical"),
     ({"state": "stalled"}, "no_frames", "critical"),
     ({"last_frame_age_s": 31.0}, "no_frames", "critical"),
-    ({"fps": 3.0}, "low_fps", "warning"),
+    ({"fps": 2.0}, "low_fps", "warning"),
     ({"reconnects_1h": 3}, "reconnects", "warning"),
 ])
 def test_camera_rules(db, stat, issue, health):
@@ -304,3 +304,19 @@ def test_unanalyzed_camera_unaffected_by_node_offline(db):
     _cam(db, 1, n, zone=False)
     row = _cam_row(monitoring.snapshot(db, now=NOW), 1)
     assert row["health"] == "ok" and "node_offline" not in row["issues"]
+
+
+def test_page_thresholds_follow_health_rules(db):
+    from app.services import health_rules
+    _node(db, hw={"gpus": [{"idx": 0, "temp_c": 80, "vram_used_mb": 1, "vram_total_mb": 10}], "host": {}})
+    assert "gpu_hot" not in monitoring.snapshot(db, now=NOW)["nodes"][0]["issues"]
+    health_rules.put(db, {"gpu_temp": {"threshold": 75}})
+    monitoring.reset_cache()
+    assert "gpu_hot" in monitoring.snapshot(db, now=NOW)["nodes"][0]["issues"]
+
+
+def test_camera_above_half_target_is_healthy(db):
+    n = _node(db)
+    _cam(db, 1, n)
+    _with_cams(n, db, [_stat(1, fps=3.0)])
+    assert _cam_row(monitoring.snapshot(db, now=NOW), 1)["health"] == "ok"

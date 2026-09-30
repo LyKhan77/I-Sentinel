@@ -1714,3 +1714,31 @@ button.lv-alert-chip {
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
 }
+
+
+.health-rules {
+  .mon-table { min-inline-size: 850px; }
+  input { max-inline-size: 110px; }
+  .cds--number { min-inline-size: 110px; }
+  .cds--btn { margin-block-start: 16px; }
+}
+
+.health-alerts .mon-table-wrap {
+  // Carbon's absolute toggle controls must stay inside the horizontal scroller.
+  position: relative;
+}
+
+
+/* Persistent camera-health condition, distinct from the transient event outline. */
+.lv-health {
+  position: absolute;
+  left: 8px;
+  bottom: 32px;
+  z-index: 2;
+  padding: 2px 8px;
+  font-weight: 600;
+  pointer-events: none;
+
+  &--critical { background: #fa4d56; color: #fff; }
+  &--warning, &--info { background: #f1c21b; color: #161616; }
+}

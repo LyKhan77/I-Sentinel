@@ -487,3 +487,19 @@ test('refresh: event lama dari poll pertama useLiveEvents (di luar jendela riway
   send(ev(12)) // event baru sungguhan tetap jalan
   expect(screen.getByTestId('cam-alert-1')).toBeInTheDocument()
 })
+
+
+test('event kesehatan: berlabel aturan, tanpa chip node offline; resolved → "… normal"', async () => {
+  renderWith(<><LiveViewPage />{shell}</>, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  const health = (id: number, state: string, severity: string) => ev(id, { type: 'system', camera_id: null, zone_id: null,
+    severity, payload: { kind: 'health', rule: 'gpu_temp', target: 'gpu:1:0', label: 'GPU 0 · server', state } })
+  send(health(40, 'firing', 'critical'))
+  expect(screen.getByTestId('toast-40')).toHaveTextContent('GPU panas')
+  expect(screen.getByTestId('toast-40')).toHaveTextContent('GPU 0 · server')
+  expect(screen.queryByTestId('alert-chip-node')).toBeNull()
+  expect(screen.getByTestId('nodes')).toHaveTextContent('')
+  send(health(41, 'resolved', 'info'))
+  expect(screen.getByTestId('toast-41')).toHaveTextContent('GPU panas normal')
+})

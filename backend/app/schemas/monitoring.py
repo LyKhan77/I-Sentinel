@@ -158,3 +158,48 @@ class MonitoringHistoryOut(BaseModel):
     from_: str = Field(alias="from")
     to: str
     nodes: list[NodeHistoryOut]
+
+
+from typing import Literal
+
+
+class HealthRuleOut(BaseModel):
+    rule: str
+    enabled: bool
+    threshold: float
+    duration_min: int
+    severity: str
+    telegram: bool
+    unit: str
+    min: float
+    max: float
+    target: str
+
+
+class HealthRulePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enabled: bool | None = None
+    threshold: float | None = None
+    duration_min: int | None = None
+    severity: Literal["warning", "critical"] | None = None
+    telegram: bool | None = None
+
+
+class HealthAlertOut(BaseModel):
+    id: int
+    rule: str
+    target: str
+    label: str
+    node_id: int
+    camera_id: int | None = None
+    severity: str
+    value: float | None = None
+    threshold: float
+    unit: str
+    started_at: datetime
+    resolved_at: datetime | None = None
+
+
+class HealthAlertsOut(BaseModel):
+    active: list[HealthAlertOut]
+    recent: list[HealthAlertOut]

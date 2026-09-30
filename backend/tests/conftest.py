@@ -78,3 +78,32 @@ def _isolated_secret_store(tmp_path, monkeypatch):
     """Tes tidak pernah membaca/menulis file rahasia asli di ~/.isentinel."""
     from app.core.config import settings
     monkeypatch.setattr(settings, "camera_secrets_file", str(tmp_path / "secrets" / "store.json"))
+
+
+@pytest.fixture(autouse=True)
+def _no_external_sockets(monkeypatch):
+    """Keep the test suite independent of live TCP services."""
+    import socket
+    original = socket.socket.connect
+
+    def fake_connect(sock, address):
+        if sock.family in (socket.AF_INET, socket.AF_INET6):
+            raise OSError("External TCP is disabled in tests")
+        return original(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", fake_connect)
+
+
+@pytest.fixture(autouse=True)
+def _quiet_app_consumer(monkeypatch):
+    """Fake the app-owned MQTT lifecycle; unit tests still use the real consumer class."""
+    from app import main
+
+    class FakeConsumer:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(main, "EventConsumer", FakeConsumer)
