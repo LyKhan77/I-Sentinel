@@ -8,6 +8,7 @@ saat startup `recover` mengantre ulang baris `queued` ≤ 10 menit dan menandai 
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import queue
@@ -21,11 +22,21 @@ from app.models.alert import Alert
 from app.models.camera import Camera
 from app.models.zone import Zone
 from app.services import telegram
+from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
 QUEUE_MAX = 200
 RECOVER_WINDOW = timedelta(minutes=10)  # alert queued lebih tua dari ini basi → failed
 _WAKE = object()  # sinyal stop: bangunkan worker yang sedang menunggu get()
+
+
+def _broadcast_status(event_id: int, status: str) -> None:
+    """Kabari UI status akhir alert. Tidak pernah raise: kegagalan broadcast tidak boleh
+    mengubah baris alert atau menghentikan dispatcher."""
+    try:
+        asyncio.run(hub.broadcast({"kind": "alert", "event_id": event_id, "status": status}))
+    except Exception:
+        logger.exception("alert status broadcast failed for event %s", event_id)
 
 
 class AlertDispatcher:
@@ -124,6 +135,7 @@ class AlertDispatcher:
             if alert is not None and alert.status == "queued":
                 alert.status, alert.error = "failed", "dispatcher error"
                 db.commit()
+                _broadcast_status(alert.event_id, alert.status)
         except Exception:
             logger.exception("could not reconcile alert %s", alert_id)
 
@@ -153,6 +165,7 @@ class AlertDispatcher:
         if not token or chat is None:
             alert.status, alert.error = "not_configured", None
             db.commit()
+            _broadcast_status(alert.event_id, alert.status)
             return
         event = alert.event
         camera = db.get(Camera, alert.camera_id) if alert.camera_id else None
@@ -165,6 +178,7 @@ class AlertDispatcher:
         status, error = telegram.deliver(token, chat.chat_id, caption, photo)
         alert.status, alert.error, alert.chat_id = status, error, chat.chat_id
         db.commit()
+        _broadcast_status(alert.event_id, alert.status)
 
 
 dispatcher = AlertDispatcher()
