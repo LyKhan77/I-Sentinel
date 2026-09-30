@@ -222,3 +222,16 @@ def test_history_endpoint_auth_and_validation(client):
     assert "from" in r.json()
     assert client.get("/api/v1/monitoring/history?range=2h", headers=headers).status_code == 422
     assert client.get("/api/v1/monitoring/history", headers=headers).json()["range"] == "6h"
+
+
+def test_offline_ignores_unrelated_system_events(db):
+    """Event system node dengan reason selain lwt/timeout (mis. config_applied) bukan periode offline."""
+    n = _node(db)
+    _event(db, n, T0 - timedelta(minutes=40), "config_applied")
+    _event(db, n, T0 - timedelta(minutes=30), "online")
+    assert mh.query(db, "1h", now=T0)["nodes"][0]["offline"] == []
+
+
+def test_minute_treats_naive_datetime_as_utc():
+    """Datetime naive dibaca sebagai UTC (konsisten dengan _utc), bukan zona lokal mesin."""
+    assert mh._minute(datetime(2026, 9, 30, 8, 0)) == T0

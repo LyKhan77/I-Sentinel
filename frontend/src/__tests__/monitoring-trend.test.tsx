@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
@@ -87,4 +87,22 @@ test('klik tab Tren dari Kondisi saat ini mengubah URL', async () => {
   renderAt('/monitoring')
   await userEvent.click(screen.getByRole('tab', { name: 'Tren' }))
   expect(screen.getByTestId('loc')).toHaveTextContent('tab=trend')
+})
+
+test('ganti node: centakan MultiSelect mengikuti kamera node baru', async () => {
+  const HIST2 = { ...HIST, nodes: [HIST.nodes[0],
+    { ...HIST.nodes[0], id: 2, name: 'edge-1', cameras: [cam(6), cam(7), cam(8), cam(9)] }] }
+  reply = async () => ({ ok: true, status: 200, json: () => Promise.resolve(HIST2) })
+  const { container } = renderAt('/monitoring?tab=trend')
+  await screen.findByTestId('trend-chart-cpu')
+  Element.prototype.scrollIntoView = vi.fn()
+  fireEvent.click(container.querySelector('#trend-node .cds--list-box__field')!)
+  fireEvent.click(await screen.findByRole('option', { name: 'edge-1' }))
+  expect(await screen.findByTestId('trend-cam-6')).toBeInTheDocument()
+  fireEvent.click(container.querySelector('#trend-cams .cds--list-box__field')!)
+  await screen.findByRole('option', { name: 'CAM-9' }) // menu node baru terbuka
+  const checked = [...container.querySelectorAll('#trend-cams li[aria-checked="true"]')]
+    .map((el) => el.getAttribute('aria-label'))
+  expect(checked).toEqual(['CAM-6', 'CAM-7', 'CAM-8', 'CAM-9']) // default maks 4 node baru
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
 })

@@ -40,6 +40,8 @@ def _list(v) -> list:
 
 
 def _minute(dt: datetime) -> datetime:
+    # naive dibaca sebagai UTC (konsisten dengan _utc), bukan zona lokal mesin
+    dt = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).replace(second=0, microsecond=0)
 
 
@@ -275,7 +277,7 @@ def _offline(db, node: Node, start: datetime, now: datetime) -> list[dict]:
     base = db.query(Event).filter(Event.type == "system", Event.node_id == node.id)
     before = base.filter(Event.ts_event < start).order_by(Event.ts_event.desc()).first()
     within = base.filter(Event.ts_event >= start, Event.ts_event <= now).order_by(Event.ts_event).all()
-    is_off = lambda e: _dict(e.payload).get("reason") != "online"
+    is_off = lambda e: _dict(e.payload).get("reason") in ("lwt", "timeout")  # whitelist: hanya dua alasan offline resmi
     periods, cur = [], (start if before is not None and is_off(before) else None)
     for e in within:
         ts = _utc(e.ts_event)

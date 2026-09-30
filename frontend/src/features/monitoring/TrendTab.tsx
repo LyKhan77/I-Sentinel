@@ -97,7 +97,7 @@ export default function TrendTab() {
             <section className="mon-card">
               <header className="mon-card__head">
                 <h3 className="mon-card__title">{t('trend.cameras')}</h3>
-                <MultiSelect<NonNullable<typeof node>['cameras'][number]> id="trend-cams" titleText="" label={t('trend.cameras')}
+                <MultiSelect<NonNullable<typeof node>['cameras'][number]> key={node.id} id="trend-cams" titleText="" label={t('trend.cameras')}
                   size="sm" items={node.cameras} itemToString={(c) => c?.name ?? ''} initialSelectedItems={cams}
                   onChange={({ selectedItems }) => setCamIds((selectedItems ?? []).slice(0, MAX_CAMS).map((c) => c.id))} />
               </header>
