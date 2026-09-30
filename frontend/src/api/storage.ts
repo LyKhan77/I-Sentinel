@@ -49,16 +49,28 @@ export async function saveStorageSettings(s: StorageSettings): Promise<StorageSe
   return res.json()
 }
 
-// events = hapus event behavior + media; attendance_media = hanya foto/crop absensi (rekap & riwayat tetap)
-export type CleanupMode = 'events' | 'attendance_media'
+// events = hapus event behavior + media; attendance_media = hanya foto/crop absensi (rekap & riwayat
+// tetap); attendance_data = hapus permanen riwayat + rekap + Inbox + media absensi karyawan terpilih
+export type CleanupMode = 'events' | 'attendance_media' | 'attendance_data'
 export type CleanupFilter = {
   date_from: string
   date_to: string
   camera_ids: number[]
   types: string[]
+  employee_ids: number[] // hanya berlaku untuk mode attendance_data
+  all_employees: boolean // hanya berlaku untuk mode attendance_data
   mode: CleanupMode
 }
-export type CleanupResult = { events: number; files: number; bytes: number; dry_run: boolean }
+export type CleanupEmployeeBreakdown = { id: number; name: string; attendance_events: number; days: number }
+export type CleanupResult = {
+  events: number
+  files: number
+  bytes: number
+  dry_run: boolean
+  attendance_events?: number
+  days?: number
+  employees?: CleanupEmployeeBreakdown[]
+}
 
 export async function cleanupEvents(f: CleanupFilter, dryRun: boolean): Promise<CleanupResult> {
   const res = await apiFetch('/storage/cleanup', { method: 'POST', body: JSON.stringify({ ...f, dry_run: dryRun }) })
