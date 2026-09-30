@@ -13,7 +13,13 @@ export type EventOut = {
   snapshot_path: string | null
 }
 
-export type EventStats = { total: number; by_type: Record<string, number> }
+export type EventStats = {
+  total: number
+  by_type: Record<string, number>
+  by_severity: Record<string, number>
+  by_hour: number[]
+  critical_by_hour: number[]
+}
 
 export type EventListParams = { camera_id?: number; type?: string; types?: string[]; since?: string; limit?: number }
 
