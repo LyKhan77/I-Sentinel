@@ -62,6 +62,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   (karyawan baru langsung punya beberapa hari absen palsu). `close_due` dan `close_days` kini melewati hari sebelum
   `employee.created_at` (tanggal lokal) untuk baris baru; tes regresi + fixture tes karyawan diberi `created_at` lama.
   Backend 618.
+- **Deploy & verifikasi user (2026-09-30):** server `gspe-ai3` @ `a9630cc`, restart API (tanpa migrasi). Catch-up saat
+  start: 2 baris `waiting` lama EMP-001 (25 & 29 Sep) → `no_exit`; `absent` dibuat untuk hari kerja tanpa deteksi
+  23/24/28/29 Sep (EMP-002 mulai tanggal daftar 23 Sep), akhir pekan 26–27 Sep dilewati. Uji user tab Harian/Rentang,
+  koreksi, filter, CSV: **sesuai**. Merge ke `main`.
 
 ### Cleanup data absensi (rekap & riwayat) (2026-09-30)
 
