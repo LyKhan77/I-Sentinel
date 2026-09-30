@@ -11,19 +11,21 @@ import LiveTvPage from './features/live/LiveTvPage'
 import EventsPage from './features/events/EventsPage'
 import AttendancePage from './features/attendance/AttendancePage'
 import EnrollmentPage from './features/enrollment/EnrollmentPage'
+import MonitoringPage from './features/monitoring/MonitoringPage'
 import { I18nProvider, useT } from './app/i18n'
 import { getMe } from './api/client'
 import { EventAlertsProvider } from './features/notifications/EventAlertsProvider'
 import type { Me } from './api/client'
 
 // ponytail: segmen pertama path → label nav; route placeholder nyata ditambah saat fiturnya ada
-const SEGMENT_TO_KEY: Record<string, 'nav.dashboard' | 'nav.live' | 'nav.events' | 'nav.attendance' | 'nav.enrollment' | 'nav.configuration'> = {
+const SEGMENT_TO_KEY: Record<string, 'nav.dashboard' | 'nav.live' | 'nav.events' | 'nav.attendance' | 'nav.enrollment' | 'nav.configuration' | 'nav.monitoring'> = {
   dashboard: 'nav.dashboard',
   live: 'nav.live',
   events: 'nav.events',
   attendance: 'nav.attendance',
   enrollment: 'nav.enrollment',
   configuration: 'nav.configuration',
+  monitoring: 'nav.monitoring',
 }
 
 function Placeholder() {
@@ -73,6 +75,7 @@ const router = createBrowserRouter([
           { path: 'events', element: <EventsPage /> },
           { path: 'attendance', element: <AttendancePage /> },
           { path: 'enrollment', element: <EnrollmentPage /> },
+          { path: 'monitoring', element: <MonitoringPage /> },
           { path: 'configuration', element: <ConfigurationPage /> },
           { path: '*', element: <Placeholder /> },
         ],

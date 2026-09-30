@@ -1,5 +1,7 @@
 from urllib.parse import urlsplit
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -37,6 +39,7 @@ class NodeOut(BaseModel):
     name: str
     type: str
     status: str
+    last_seen: datetime | None = None
     hw: dict | None = None
     modules: dict | None = None
     detector_device: str | None = None

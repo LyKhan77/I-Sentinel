@@ -20,12 +20,14 @@ import {
   Settings,
   Logout,
   Password,
+  Activity,
 } from '@carbon/icons-react'
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
 import ChangePasswordModal from '../features/auth/ChangePasswordModal'
 import NotificationBell from '../features/notifications/NotificationBell'
 import EventToasts from '../features/notifications/EventToasts'
+import NodeOfflineBanner from '../components/NodeOfflineBanner'
 
 const COLLAPSE_KEY = 'isentinel_sidenav_collapsed'
 const DESKTOP_QUERY = '(min-width: 1056px)' // breakpoint lg Carbon
@@ -50,7 +52,10 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
   },
   {
     key: 'nav.group.system',
-    items: [{ to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true }],
+    items: [
+      { to: '/monitoring', key: 'nav.monitoring', icon: Activity },
+      { to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
+    ],
   },
 ]
 
@@ -217,6 +222,7 @@ export default function AppShell() {
         {pwDone && (
           <InlineNotification kind="success" lowContrast title={t('pw.done')} onCloseButtonClick={() => setPwDone(false)} />
         )}
+        <NodeOfflineBanner />
         <Outlet context={me} />
       </main>
       {pwOpen && <ChangePasswordModal onClose={(changed) => { setPwOpen(false); setPwDone(changed) }} />}

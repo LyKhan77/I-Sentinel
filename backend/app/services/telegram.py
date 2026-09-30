@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import re
 import time
 import urllib.error
@@ -18,6 +19,8 @@ from app.core.config import settings
 from app.models.setting import Setting
 from app.models.telegram_chat import TelegramChat
 from app.services import secret_store
+
+logger = logging.getLogger(__name__)
 
 API = "https://api.telegram.org/bot{token}/{method}"
 TOKEN_KEY = "telegram_bot_token"
@@ -168,6 +171,18 @@ def deliver(token: str, chat_id: str, caption: str, photo: bytes | None = None, 
         if attempt < retries - 1:
             sleep(2 ** attempt)
     return "failed", last
+
+
+def send_text(db, text: str) -> bool:
+    """Teks ke grup aktif. Tanpa token/grup → False tanpa mengirim. Tidak pernah raise; tanpa token di log."""
+    token = get_token()
+    chat = active_chat(db)
+    if not token or chat is None:
+        return False
+    status, error = deliver(token, chat.chat_id, text, retries=1)
+    if status != "sent":
+        logger.warning("telegram system message failed: %s", error)
+    return status == "sent"
 
 
 def format_caption(event, camera_name: str, zone_name: str | None, app_url: str | None, tz=None) -> str:

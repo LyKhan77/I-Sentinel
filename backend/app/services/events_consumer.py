@@ -4,14 +4,13 @@ import logging
 import threading
 from datetime import datetime, timezone
 import time
-import uuid
 
 import paho.mqtt.client as mqtt
 
 from app.core.config import settings
 from app.models import Event, Node
 from app.schemas.event import EventIn, EventOut
-from app.services import alerting, attendance
+from app.services import alerting, attendance, node_health
 from app.services.ingest import ingest_event
 from app.ws.hub import hub
 
@@ -22,6 +21,21 @@ MEDIA_TOPIC = "isentinel/events/media"
 DETECTIONS_PREFIX = "isentinel/detections/"
 LWT_TOPIC = "isentinel/nodes/+/lwt"
 HEARTBEAT_TOPIC = "isentinel/nodes/+/heartbeat"
+
+connected = threading.Event()  # status koneksi consumer ke broker (monitoring)
+
+
+def _cameras(raw) -> list[dict]:
+    """Heartbeat baru: [{id, worker, state, ...}]; lama: [id] → [{"id": id}] (tanpa statistik)."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for c in raw:
+        if isinstance(c, dict) and isinstance(c.get("id"), int):
+            out.append(c)
+        elif isinstance(c, int) and not isinstance(c, bool):
+            out.append({"id": c})
+    return out
 
 
 def handle_message(db, topic: str, payload: bytes) -> None:
@@ -91,28 +105,28 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             if node is None:
                 logger.warning("heartbeat for unknown node %r", name)
                 return
-            node.status = "online"
+            since = node.last_seen
             node.last_seen = datetime.now(timezone.utc)
             if isinstance(data.get("hw"), dict):
                 node.hw = data["hw"]
             if isinstance(data.get("modules"), dict):
-                node.modules = data["modules"]
+                modules = dict(data["modules"])
+                if "cameras" in data:
+                    modules["cameras"] = _cameras(data.get("cameras"))
+                if isinstance(data.get("mqtt_backlog"), int):
+                    modules["mqtt_backlog"] = data["mqtt_backlog"]
+                node.modules = modules
             db.commit()
+            node_health.mark_online(db, node, since=since)
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/lwt"):
+            if data.get("status") != "offline":
+                return  # "online" dari node (menimpa retained) / payload kosong
             name = topic.split("/")[2]
             node = db.query(Node).filter_by(name=name).first()
             if node is None:
                 logger.warning("LWT for unknown node %r", name)
                 return
-            node.status = "offline"
-            db.commit()
-            ingest_event(db, {
-                "event_id": str(uuid.uuid4()),
-                "type": "system",
-                "node_id": node.id,
-                "severity": "warning",
-                "payload": {"node": name, "reason": "lwt"},
-            })
+            node_health.mark_offline(db, node, "lwt")
     except Exception:
         logger.exception("Error handling MQTT message on %s", topic)
 
@@ -145,6 +159,7 @@ class EventConsumer:
                     client.username_pw_set(settings.mqtt_username, settings.mqtt_password or None)
                 client.on_connect = self._on_connect
                 client.on_message = self._on_message
+                client.on_disconnect = self._on_disconnect
                 host, _, port = settings.mqtt_url.rpartition(":")
                 client.connect(host or settings.mqtt_url, int(port) if port else 1883)
                 client.reconnect_delay_set(min_delay=1, max_delay=30)
@@ -159,7 +174,11 @@ class EventConsumer:
                 (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
+        connected.set()
         client.subscribe(self._subscriptions())
+
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties):
+        connected.clear()
 
     def _on_message(self, client, userdata, msg):
         from app.core.db import SessionLocal  # local import: avoid engine at module import in tests

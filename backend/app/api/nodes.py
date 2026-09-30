@@ -4,7 +4,7 @@ import re
 from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.api.deps import get_current_user, require_admin
-from app.models.node import Node, mark_stale_nodes
+from app.models.node import Node
 from app.schemas.camera import NodeOut
 from app.services.config_push import publish_node_config
 
@@ -14,7 +14,6 @@ _CUDA_RE = re.compile(r"^cuda:(\d+)$")
 
 @router.get("", response_model=list[NodeOut])
 def list_nodes(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    mark_stale_nodes(db)
     return db.query(Node).all()
 
 

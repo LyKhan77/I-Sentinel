@@ -110,3 +110,26 @@ def test_heartbeat_reports_detector_call_count(fake_nvml):
     PersonDetector.detect_ms_total = 140.0
 
     assert node._detector_module_info()["detect_n"] == 7
+
+
+def _proc(tmp_path, stat_line, avail_kb=4_000_000, total_kb=16_000_000):
+    (tmp_path / "stat").write_text(stat_line + "\ncpu0 1 1 1 1 0 0 0 0\n")
+    (tmp_path / "meminfo").write_text(f"MemTotal: {total_kb} kB\nMemFree: 1 kB\nMemAvailable: {avail_kb} kB\n")
+    return str(tmp_path)
+
+
+def test_host_stats_cpu_delta_ram_disk(tmp_path, monkeypatch):
+    monkeypatch.setattr(hardware, "_prev_cpu", None)
+    root = _proc(tmp_path, "cpu  100 0 100 800 0 0 0 0 0 0")
+    first = hardware.host_stats(str(tmp_path), proc_root=root)
+    assert first["cpu_pct"] is None  # butuh dua sampel
+    assert first["ram_total_mb"] == 15625 and first["ram_used_mb"] == 11719
+    assert 0 <= first["disk_used_pct"] <= 100 and first["disk_free_gb"] > 0
+    _proc(tmp_path, "cpu  200 0 200 900 0 0 0 0 0 0")  # +200 busy, +100 idle
+    assert hardware.host_stats(str(tmp_path), proc_root=root)["cpu_pct"] == 66.7
+
+
+def test_host_stats_without_proc_is_null(tmp_path, monkeypatch):
+    monkeypatch.setattr(hardware, "_prev_cpu", None)
+    s = hardware.host_stats(str(tmp_path), proc_root=str(tmp_path / "missing"))
+    assert s["cpu_pct"] is None and s["ram_total_mb"] is None and s["disk_free_gb"] is not None

@@ -3,6 +3,71 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Monitoring Resource S1 (2026-09-29)
+
+- **Konteks:** operator perlu satu halaman kondisi saat ini (kamera, inferensi AI, hardware, layanan) dan
+  deteksi node offline/pulih yang andal. Ditemukan bug terverifikasi: LWT MQTT `retain=True` tidak pernah
+  dibersihkan → setiap API restart membaca LWT `offline` lama dan mencatat event `system` "Node offline" palsu
+  (bukti server: hanya 2 event `system` di DB, tepat waktu start `isentinel-api` 11:39:32 & 15:04:02).
+- **Perubahan:** (a) vision — `FrameSource.stats()` (state, umur frame, reconnect 1 jam), fps/skip per worker
+  kamera, jendela inferensi (`ms_avg/ms_max/infer_fps`), antrean face, backlog MQTT, host `/proc`
+  (CPU/RAM/disk) + GPU `temp_c`/`power_w`, dan **LWT `{"status":"online"}` retained qos 1 saat connect**;
+  (b) backend — `node_health` (satu-satunya jalur ubah `node.status`, event `system` + WS + Telegram sekali per
+  transisi, `NodeHealthMonitor` tiap 15 s, timeout 35 s, `unknown → online` tanpa event; `mark_stale_nodes`
+  dihapus, `GET /nodes` tidak lagi menyapu status), `telegram.send_text`, heartbeat menyimpan `cameras` +
+  `mqtt_backlog` ke JSON `node.modules`, `GET /api/v1/monitoring` (semua user, agregasi DB + go2rtc + cek
+  layanan cache 10 s, `NodeOut.last_seen`); (c) frontend — halaman `System › Monitoring` (polling 10 s, tabel
+  kamera urut kritis→peringatan→sehat + filter "Hanya bermasalah", kartu node/server, layanan), banner node
+  offline persisten (AppShell + mode TV), notifikasi "Node pulih" + chip offline hilang.
+- **File:** `vision/vision/{pipeline/source,node,face_worker,hardware,pipeline/detector,transport/mqtt}.py`,
+  `backend/app/services/{node_health,monitoring,host_stats,telegram,disk_alert,events_consumer,go2rtc}.py`,
+  `backend/app/{api/events,api/nodes,api/monitoring,models/node,schemas/camera,schemas/monitoring,main}.py`,
+  `frontend/src/{api/monitoring.ts,features/monitoring/*,components/NodeOfflineBanner.tsx,
+  features/notifications/*,app/*,main.tsx}`; runbook `docs/runbooks/monitoring.md`.
+- **Bukti:** backend **530 passed** (baseline 491), vision **233 passed / 3 deselected** (baseline 223),
+  frontend **210 passed** (baseline 203), build 0, lint set pasangan rule+file identik dengan baseline (16/16);
+  bukti visual Chromium `docs/evidence/2026-09-29-monitoring-{page-1440,page-390,banner-appshell,banner-tv}.png`
+  (`/monitoring` 1440 & 390 px: `scrollWidth == viewport`, tabel kamera scroll di dalam kartunya; banner muncul
+  saat node offline dan hilang dengan `?online=1`, termasuk mode TV).
+- **Review independen (subagent reviewer, diff `d25d0ab..239ec71`):** fokus 1/2/6/7 PASS; 3 temuan valid
+  diperbaiki di `c446e5e` + tes regresi: (a) `NodeHealthMonitor` mati bila pembuatan/penutupan sesi DB melempar
+  (kini dicatat dan thread lanjut); (b) `ai.state` bertipe ngawur dari node membuat response validation → HTTP 500
+  (kini dikoersi ke `null`) dan heartbeat tanpa key `cameras` dianggap kritis `not_running` padahal statistik
+  belum ada → `no_data` warning; (c) DB benar-benar mati membuat `snapshot()` melempar (kini degradasi: layanan
+  `database` critical, node/kamera kosong, endpoint tetap 200). Tidak diverifikasi (tanpa Postgres/uvicorn/broker
+  nyata): perilaku timestamptz Postgres, pengiriman WS dari thread worker di uvicorn, dan uji lapangan LWT
+  (butuh izin user — spec §6).
+- **Dampak:** heartbeat vision sedikit lebih besar (statistik host/kamera) dan API menjalankan satu thread monitor
+  (`node-health`, cek 15 s); cek layanan di halaman di-cache 10 s. Tanpa dependensi baru, **tanpa migrasi**
+  (data baru di JSON `node.hw`/`node.modules`).
+- **Rollback:** `git revert` rentang S1 + build frontend + restart vision & API; kode lama mengabaikan field JSON
+  tambahan. Catatan: kode lama kembali membawa bug LWT retained kecuali retained `online` dari node baru masih
+  tersimpan di broker.
+- **Deploy:** restart `isentinel-vision` (fix LWT + heartbeat baru) dan `isentinel-api` (monitor + endpoint);
+  frontend build/HMR. Tanpa migrasi.
+- **Fix uji deploy (2026-09-30):** di data nyata 6 kamera aktif tampil kritis `not_running` padahal tidak punya
+  zona aktif — vision memang tidak menjalankan worker untuk kamera tanpa zona aktif ber-behavior (live view saja).
+  Kamera kini hanya diharapkan berjalan bila punya zona `active` dengan `behaviors` tidak kosong (sama dengan
+  logika vision); selain itu `analyzed: false`, status sehat, kolom Sumber AI "Tanpa zona aktif", tidak terpengaruh
+  node offline. File: `backend/app/services/monitoring.py`, `schemas/monitoring.py`, `tests/test_monitoring.py`,
+  `frontend/src/features/monitoring/MonitoringPage.tsx`, `api/monitoring.ts`, `i18n.tsx`, runbook. Backend 532,
+  frontend 210, build 0.
+- **Fix notifikasi (uji user 2026-09-30):** refresh Live View menyalakan outline/toast/bunyi tanpa event baru.
+  Akar masalah (terverifikasi data server): sejak lonceng hanya memuat riwayat 00:00 kemarin, poll pertama
+  `useLiveEvents` (`limit=50`, semua waktu) membawa event lama (25–28 Sep) yang tidak ada di riwayat → dianggap
+  baru. Event dengan `ts_event` sebelum awal jendela riwayat kini selalu diperlakukan sebagai riwayat (`2a20d21`,
+  tes regresi di `event-alerts.test.tsx`).
+- **Rapikan UI Monitoring (review user):** jarak antar blok/tile/kartu lebih lega, kartu node dikelompokkan
+  (Hardware · GPU · Inferensi AI · Masalah), tabel & layanan ber-padding lebih besar, umur heartbeat "N dtk/mnt/jam",
+  tag Peringatan kuning (`61a6b5f`). Frontend 211, build 0, lint tanpa error.
+  Lanjutan: halaman memakai `.app-page` (padding 24/32 px, judul/sub sama dengan halaman lain), kartu & tile
+  mengikuti ukuran `.st-card` (14/16 px), banner node offline sejajar konten (`0ab28ee`).
+- **Deploy & verifikasi user (2026-09-29/30):** server `gspe-ai3` — restart vision lalu API (09:11/09:12), fix
+  susulan via restart API + HMR. Uji user: halaman Monitoring (kamera dianalisis Streaming + fps, kamera tanpa zona
+  "Tanpa zona aktif"), akses viewer, refresh Live View tanpa outline palsu, dan node offline/pulih (vision
+  dibekukan 60 s: event `timeout` 27 s setelah beku + event `online` saat lanjut, satu per transisi, Telegram, banner
+  AppShell/TV, chip, toast): **sesuai**. Merge ke `main`.
+
 ### Notifikasi event web UI + outline tile Live View (2026-09-29)
 
 - **Konteks:** operator command center perlu tahu event baru tanpa membuka halaman Events; tile kamera yang kena

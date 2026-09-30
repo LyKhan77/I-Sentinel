@@ -291,3 +291,40 @@ Yang perlu diketahui:
   dan tautan klip di akhir. Pengingat ditandai di judul. Snapshot behavior berlabel
   jenis kejadian; snapshot absensi berlabel nama karyawan (atau `Unknown` oranye
   untuk wajah tak dikenal).
+
+## Monitoring Resource
+
+Halaman **System › Monitoring** (`/monitoring`) dapat dibuka **semua user** (read-only)
+dan menampilkan kondisi saat ini — bukan grafik/riwayat (itu siklus S2):
+
+- **Ringkasan**: status keseluruhan (terburuk dari kamera/node/layanan) + jumlah
+  ok/peringatan/kritis per kelompok; halaman polling tiap 10 detik.
+- **Kartu node + server pusat**: umur heartbeat, CPU/RAM/disk, per-GPU (util, VRAM,
+  suhu, daya), inferensi (model/device, ms rata-rata & maks per jendela heartbeat,
+  fps inferensi, antrean wajah, backlog MQTT), daftar masalah.
+- **Tabel kamera**: state sumber AI (`streaming`/`starting`/`reconnecting`/`stalled`),
+  fps aktual/target, umur frame terakhir, reconnect 1 jam, skip motion, status stream
+  go2rtc; filter **Hanya bermasalah**; urut kritis → peringatan → sehat.
+- **Layanan**: database, go2rtc, broker MQTT, sweep retensi, Telegram, disk — dicek
+  dengan cache 10 detik; kegagalan menjadi status **kritis** tanpa membuat endpoint 500.
+
+Sumber data: heartbeat vision tiap 10 detik (statistik per worker kamera, jendela
+inferensi, host `/proc`, GPU NVML) yang disimpan apa adanya di JSON `node.hw` /
+`node.modules` — **tanpa migrasi DB**. Node lama (vision versi sebelumnya) tetap
+tampil; kamera ber-node yang belum mengirim statistik diberi `no_data`.
+
+**Node offline/pulih** (event + Telegram + banner):
+
+- Node dianggap offline bila LWT MQTT diterima atau heartbeat terakhir lebih tua dari
+  **35 detik** (`NodeHealthMonitor`, cek tiap 15 detik). Transisi `online → offline`
+  membuat satu event `system` warning (`reason: lwt|timeout`) + satu pesan Telegram;
+  `offline → online` membuat event info `system` (`reason: online`) + Telegram "pulih".
+  `unknown → online` (node baru) tidak membuat event.
+- **Banner persisten** muncul di semua halaman (AppShell) dan mode TV selama ada node
+  offline, dan hilang sendiri saat node kembali online; lonceng/toast menampilkan
+  "Node pulih" tanpa chip offline.
+- **LWT retained diperbaiki**: vision mempublikasikan `{"status":"online"}` retained
+  saat connect sehingga retained "offline" lama dari broker tidak lagi membuat event
+  "Node offline" palsu setiap kali API restart; backend mengabaikan payload LWT non-offline.
+
+Kode masalah dan langkah penanganan: `docs/runbooks/monitoring.md`.

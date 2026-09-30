@@ -339,6 +339,18 @@ test('toast: tampil untuk event baru, klik isi → detail, klik tutup hanya menu
   expect(screen.queryByTestId('toast-12')).toBeNull()
 })
 
+test('event system reason online: label "pulih", menghapus chip offline node', async () => {
+  renderWith(<><LiveViewPage />{shell}</>, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  send(ev(30, { type: 'system', camera_id: null, zone_id: null, severity: 'warning', payload: { node: 'vision-1', reason: 'lwt' } }))
+  expect(screen.getByTestId('alert-chip-node')).toHaveTextContent('Node vision-1 offline')
+  send(ev(31, { type: 'system', camera_id: null, zone_id: null, severity: 'info', payload: { node: 'vision-1', reason: 'online' } }))
+  expect(screen.queryByTestId('alert-chip-node')).toBeNull()
+  expect(screen.getByTestId('toast-31')).toHaveTextContent('Node pulih')
+  expect(screen.getByTestId('toast-31')).toHaveTextContent('Node vision-1 pulih')
+})
+
 // ---- Live View: outline tile, chip, bunyi TV (Task 3) ----
 class FakeIO {
   static all: FakeIO[] = []
@@ -451,4 +463,27 @@ test('asNotifyEvent menolak tipe warisan Object.prototype', () => {
     expect(asNotifyEvent({ id: 1, event_id: 'e-1', type, ts_event: new Date().toISOString() })).toBeNull()
   }
   expect(asNotifyEvent({ id: 1, event_id: 'e-1', type: 'intrusion' })?.id).toBe(1)
+})
+
+// ---- regresi uji lapangan 2026-09-30 ----
+test('refresh: event lama dari poll pertama useLiveEvents (di luar jendela riwayat) tidak memicu outline/toast/bunyi', async () => {
+  // riwayat = sejak 00:00 kemarin; poll pertama useLiveEvents = 50 event terbaru SEMUA waktu → event lusa tidak ada di riwayat
+  const base = stubFetch()
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?limit=50')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([...(history as Ev[]), ev(5, { ts_event: noon(3) }), ev(4, { camera_id: 2, ts_event: noon(2) })]) }
+    }
+    return base(url)
+  }))
+  renderWith(<><LiveViewPage />{shell}</>, '/live')
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('recent')).toHaveTextContent('11,10'))
+  await act(async () => {}) // poll pertama selesai diproses
+  expect(screen.getByTestId('toast-ids')).toHaveTextContent('')
+  expect(screen.getByTestId('active')).toHaveTextContent('')
+  expect(document.querySelector('.lv-alert')).toBeNull()
+  expect(beep).not.toHaveBeenCalled()
+  send(ev(12)) // event baru sungguhan tetap jalan
+  expect(screen.getByTestId('cam-alert-1')).toBeInTheDocument()
 })

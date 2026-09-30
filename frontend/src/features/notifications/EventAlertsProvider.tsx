@@ -108,6 +108,7 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
   const seen = useRef(new Set<number>())
   const buffer = useRef<EventOut[] | null>([]) // null = riwayat sudah diproses
   const historyFailed = useRef(false)
+  const historyFrom = useRef(dayStart(1).getTime()) // awal jendela riwayat (ms); event sebelumnya = riwayat
   const lastBeep = useRef(-Infinity)
   const mutedRef = useRef(muted)
   useEffect(() => {
@@ -128,7 +129,11 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
     addRecent([e])
     if (e.type === 'system') {
       const node = String(e.payload?.node ?? '?')
-      setNodes((prev) => [...prev.filter((n) => n.node !== node), { eventId: e.id, node, until: now + ACTIVE_MS }])
+      setNodes((prev) => [
+        ...prev.filter((n) => n.node !== node),
+        // pulih: chip offline node itu hilang; offline: chip 30 s
+        ...(e.payload?.reason === 'online' ? [] : [{ eventId: e.id, node, until: now + ACTIVE_MS }]),
+      ])
     } else if (e.camera_id != null) {
       const zoneName = typeof e.payload?.zone_name === 'string' && e.payload.zone_name ? e.payload.zone_name : null
       setActive((prev) => ({
@@ -146,7 +151,10 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
   // riwayat gagal dimuat → event aliran yang sudah basi = riwayat, bukan kejadian baru.
   // Nilai balik = id event yang diperlakukan sebagai riwayat (0 bila event baru).
   const route = (e: EventOut) => {
-    if (historyFailed.current && Date.now() - Date.parse(e.ts_event) >= STALE_MS) {
+    const ts = Date.parse(e.ts_event)
+    // Sebelum jendela riwayat (00:00 kemarin) = bukan kejadian baru: poll pertama useLiveEvents memuat 50 event
+    // terbaru SEMUA waktu (bukan hanya jendela lonceng), jadi event lama itu tidak ada di riwayat.
+    if (ts < historyFrom.current || (historyFailed.current && Date.now() - ts >= STALE_MS)) {
       addRecent([e])
       return e.id
     }
@@ -176,7 +184,9 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
       return maxStale
     }
     // riwayat = event pemicu sejak 00:00 kemarin; filter jenis di backend agar absensi tidak memakan limit
-    listEvents({ since: dayStart(1).toISOString(), types: Object.keys(NOTIFY_TYPES), limit: HISTORY_LIMIT })
+    const from = dayStart(1)
+    historyFrom.current = from.getTime()
+    listEvents({ since: from.toISOString(), types: Object.keys(NOTIFY_TYPES), limit: HISTORY_LIMIT })
       .then((list) => {
         if (!alive) return
         const hist = list.map(asNotifyEvent).filter((e): e is EventOut => e !== null)

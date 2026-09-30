@@ -37,7 +37,15 @@ class MqttTransport:
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         client.subscribe(self._config_topic, qos=1)
+        # LWT offline di-retain broker: timpa dengan "online" agar backend yang subscribe ulang
+        # (mis. API restart) tidak membaca offline lama sebagai node mati.
+        client.publish(f"isentinel/nodes/{self.cfg.node_id}/lwt", json.dumps({"status": "online"}),
+                       qos=1, retain=True)
         self._flush(client)
+
+    def backlog(self) -> int:
+        """Event yang masih di antrean disk (broker putus / belum terkirim)."""
+        return self._queue.size()
 
     def _on_message(self, client, userdata, msg):
         if msg.topic != self._config_topic or self._on_config is None:

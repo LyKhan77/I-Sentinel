@@ -151,3 +151,52 @@ def test_closed_live_source_stops_iteration():
     src.close()
     with pytest.raises(StopIteration):
         next(src)
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def _stats_src(clock):
+    src = FrameSource("rtsp://x/cam_1", 5.0, clock=clock)
+    src._started_mono = clock()  # start() tanpa thread reader: seam yang sama dipakai reader loop
+    return src
+
+
+def test_stats_starting_then_streaming_then_stalled():
+    clock = _Clock()
+    src = _stats_src(clock)
+    assert src.stats() == {"state": "starting", "last_frame_age_s": None, "reconnects_1h": 0}
+    src._on_frame()
+    clock.t += 2
+    assert src.stats()["state"] == "streaming" and src.stats()["last_frame_age_s"] == 2.0
+    clock.t += 9  # 11 s tanpa frame: RTSP macet tanpa error read
+    assert src.stats()["state"] == "stalled"
+
+
+def test_stats_no_frame_after_grace_is_reconnecting():
+    clock = _Clock()
+    src = _stats_src(clock)
+    clock.t += 31
+    assert src.stats()["state"] == "reconnecting"
+
+
+def test_stats_reconnect_window_1h():
+    clock = _Clock()
+    src = _stats_src(clock)
+    src._on_frame()
+    src._on_fail()
+    assert src.stats()["state"] == "reconnecting"
+    src._on_reconnect(True)
+    clock.t += 1800
+    src._on_fail()
+    src._on_reconnect(True)
+    src._on_frame()
+    assert src.stats() == {"state": "streaming", "last_frame_age_s": 0.0, "reconnects_1h": 2}
+    clock.t += 1801  # reconnect pertama lewat 1 jam
+    src._on_frame()
+    assert src.stats()["reconnects_1h"] == 1

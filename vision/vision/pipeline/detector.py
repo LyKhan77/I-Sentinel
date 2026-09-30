@@ -23,6 +23,7 @@ class PersonDetector:
 
     detect_ms_total = 0.0
     detect_n = 0
+    window_max_ms = 0.0  # max detik/frame sejak heartbeat terakhir (direset pemanggil)
 
     def __init__(self, model_path: str, nms: bool = False, conf: float = 0.4, imgsz: int = 640,
                  device: str = ""):
@@ -51,8 +52,10 @@ class PersonDetector:
             frame, conf=self.conf, iou=0.7 if self.nms else 0.0, imgsz=self.imgsz,
             verbose=False, **kwargs
         )
-        PersonDetector.detect_ms_total += (time.perf_counter() - t0) * 1000
+        ms = (time.perf_counter() - t0) * 1000
+        PersonDetector.detect_ms_total += ms
         PersonDetector.detect_n += 1
+        PersonDetector.window_max_ms = max(PersonDetector.window_max_ms, ms)
         out: list[Detection] = []
         for r in results:
             h, w = r.orig_shape

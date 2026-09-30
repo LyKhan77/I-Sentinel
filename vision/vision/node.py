@@ -124,6 +124,8 @@ class CameraWorker(threading.Thread):
         )
         self.events: list[dict] = []  # test hook
         self.source = None
+        self.frames = 0          # frame diproses (heartbeat: fps jendela)
+        self.motion_skipped = 0  # frame dilewati motion gate (heartbeat: skip %)
 
     def run(self):
         cam_id = self.camera_cfg.camera_id
@@ -134,10 +136,12 @@ class CameraWorker(threading.Thread):
             for frame in self.source:
                 if self.stop_event.is_set():
                     break
+                self.frames += 1
                 if self.motion_gate is not None and not self.motion_gate.update(frame.data, frame.ts):
                     # Tanpa gerak: lewati inferensi (hemat GPU), tapi tracker tetap
                     # diberi update kosong supaya track lama expire secara alami —
                     # objek diam tetap terdeteksi via force_interval_s gate.
+                    self.motion_skipped += 1
                     tracker.update([], frame.ts)
                     continue
                 try:
@@ -248,8 +252,11 @@ class VisionNode:
         self._default_detector = detector_factory is None
         self.stop_event = threading.Event()
         self._workers: list[CameraWorker | FaceGateWorker] = []
+        # (camera_id, kind) -> (frames, motion_skipped, monotonic) heartbeat sebelumnya
+        self._cam_prev: dict[tuple[int, str], tuple[int, int, float]] = {}
         self._await_config = False  # a configured node must not exit with zero workers
         self._face_settings = FaceSettings()
+        self._det_prev: tuple[float, int, float] | None = None  # (ms_total, n, monotonic) heartbeat lalu
         self.events: list[dict] = []  # test hook: all worker events
         from .face import FaceEmbedder
         self.face = (FaceEmbedder(self.cfg.face_model_dir
@@ -474,15 +481,46 @@ class VisionNode:
     def _signal(self, signum, frame):
         self.stop_event.set()
 
-    def _detector_module_info(self) -> dict:
-        """modules.detector payload: device pin, model name, ms/frame measurement."""
+    def _camera_stats(self, now: float) -> list[dict]:
+        """Satu entri per worker (detect / face): kesehatan sumber + fps & skip motion di jendela heartbeat."""
+        out = []
+        for w in list(self._workers):
+            kind = "detect" if isinstance(w, CameraWorker) else "face"
+            key = (w.camera_id, kind)
+            frames, skipped = getattr(w, "frames", 0), getattr(w, "motion_skipped", 0)
+            prev = self._cam_prev.get(key)
+            self._cam_prev[key] = (frames, skipped, now)
+            fps = skip = None
+            # prev None = jendela pertama; frames < prev = worker baru setelah config reload
+            if prev is not None and frames >= prev[0] and now > prev[2]:
+                df = frames - prev[0]
+                fps = round(df / (now - prev[2]), 1)
+                if kind == "detect" and getattr(w, "motion_gate", None) is not None and df > 0:
+                    skip = round((skipped - prev[1]) / df * 100, 1)
+            src = getattr(w, "source", None)
+            s = src.stats() if src is not None and hasattr(src, "stats") else {}
+            out.append({"id": w.camera_id, "worker": kind, "state": s.get("state"), "fps": fps,
+                        "target_fps": getattr(src, "target_fps", None),
+                        "last_frame_age_s": s.get("last_frame_age_s"),
+                        "reconnects_1h": s.get("reconnects_1h"), "motion_skip_pct": skip})
+        return out
+
+    def _detector_module_info(self, now: float | None = None) -> dict:
+        """modules.detector: device, model, ms/frame kumulatif (kompatibel) + jendela sejak heartbeat lalu."""
+        now = time.monotonic() if now is None else now
         model = getattr(self, "_detector_settings", {}).get("model") or self.cfg.detector_model
-        ms = None
-        if self._default_detector and PersonDetector.detect_n:
-            ms = round(PersonDetector.detect_ms_total / PersonDetector.detect_n, 1)
-        return {"device": self.cfg.detector_device or "auto",
-                "model": os.path.basename(model), "ms_per_frame": ms,
-                "detect_n": PersonDetector.detect_n}
+        total, n = PersonDetector.detect_ms_total, PersonDetector.detect_n
+        ms = round(total / n, 1) if self._default_detector and n else None
+        prev, self._det_prev = self._det_prev, (total, n, now)
+        ms_avg = infer_fps = None
+        if prev is not None and n > prev[1] and now > prev[2]:
+            ms_avg = round((total - prev[0]) / (n - prev[1]), 1)
+            infer_fps = round((n - prev[1]) / (now - prev[2]), 1)
+        ms_max = round(PersonDetector.window_max_ms, 1) if PersonDetector.window_max_ms else None
+        PersonDetector.window_max_ms = 0.0
+        return {"device": self.cfg.detector_device or "auto", "model": os.path.basename(model),
+                "ms_per_frame": ms, "detect_n": n, "ms_avg": ms_avg, "ms_max": ms_max,
+                "infer_fps": infer_fps}
 
     def _face_module_info(self) -> dict:
         """Report face model state and inference counters without forcing model load."""
@@ -490,21 +528,24 @@ class VisionNode:
         return {"device": self.cfg.face_device or "auto",
                 "loaded": bool(f is not None and f.loaded()),
                 "detect_n": f.detect_n if f is not None else 0,
-                "embed_n": f.embed_n if f is not None else 0}
+                "embed_n": f.embed_n if f is not None else 0,
+                "queue": sum(w.pending() for w in self._workers if isinstance(w, FaceGateWorker))}
 
     def _heartbeat_loop(self):
         while not self.stop_event.is_set():
-            cam_ids = sorted({w.camera_id for w in getattr(self, "_workers", [])})
+            now = time.monotonic()
             try:
-                cpu = os.getloadavg()[0]
+                cpu = os.getloadavg()[0]  # field lama (kompatibel); host.cpu_pct = persen sebenarnya
             except (AttributeError, OSError):
                 cpu = None
+            backlog = getattr(self.transport, "backlog", None)
             hb = {"ts": _iso(time.time()), "cpu_percent": cpu, "gpu_mem": None,
-                  "cameras": cam_ids}
-            hw = hardware.collect_gpu_info()
-            if hw:
-                hb["hw"] = hw
-            hb["modules"] = {"detector": self._detector_module_info(),
+                  "cameras": self._camera_stats(now),
+                  "mqtt_backlog": backlog() if callable(backlog) else None}
+            hw = hardware.collect_gpu_info() or {}
+            hw["host"] = hardware.host_stats(self.cfg.data_dir)
+            hb["hw"] = hw
+            hb["modules"] = {"detector": self._detector_module_info(now),
                              "face": self._face_module_info()}
             self.transport.publish_heartbeat(hb)
             self.stop_event.wait(self.cfg.heartbeat_s)

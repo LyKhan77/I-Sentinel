@@ -85,6 +85,7 @@ class FaceGateWorker(threading.Thread):
         self._media_busy = threading.Event()
         self._media_pending = threading.Event()
         self._pending_events: queue.SimpleQueue = queue.SimpleQueue()
+        self.frames = 0  # frame main-stream diproses (heartbeat: fps jendela)
 
     def run(self) -> None:
         """Consume source until stopped; event/media finalization runs separately."""
@@ -103,6 +104,7 @@ class FaceGateWorker(threading.Thread):
                         self._publish([])
                     self._expire()
                     continue
+                self.frames += 1
                 if frame.data is None:
                     continue
                 if self.motion_gate is not None and not self.motion_gate.update(frame.data, frame.ts):
@@ -124,6 +126,10 @@ class FaceGateWorker(threading.Thread):
         self.stop_event.set()
         if self.source is not None:
             self.source.close()
+
+    def pending(self) -> int:
+        """Jumlah event wajah yang menunggu finalisasi media (heartbeat: antrean face)."""
+        return self._pending_events.qsize()
 
     def _process(self, frame) -> None:
         h, w = frame.data.shape[:2]

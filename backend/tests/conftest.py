@@ -55,6 +55,13 @@ def _reset_login_ratelimit():
 
 
 @pytest.fixture(autouse=True)
+def _quiet_node_monitor(monkeypatch):
+    """Monitor node latar tidak boleh menyentuh DB nyata selama tes (interval panjang)."""
+    from app.services import node_health
+    monkeypatch.setattr(node_health.monitor, "interval_s", 3600)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_secret_store(tmp_path, monkeypatch):
     """Tes tidak pernah membaca/menulis file rahasia asli di ~/.isentinel."""
     from app.core.config import settings
