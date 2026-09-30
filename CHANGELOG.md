@@ -49,6 +49,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   data turunan) + restart API + build frontend.
 - **Review perencana:** titik data tunggal di antara celah (mis. menit pertama setelah deploy / node pulih) tidak
   tergambar karena segmen hanya `M` → kini digambar sebagai dot (`LineChart`, tes regresi). Frontend 223.
+- **Deploy & verifikasi user (2026-09-30):** hapus 3 event `system` palsu lama (4757/4760/4761, LWT saat restart API)
+  agar arsir 7 hari tidak palsu; server `gspe-ai3` @ `f58046e` — `alembic upgrade head` (0019) + restart API 11:20,
+  sampel pertama 11:21, `/history` OK. Uji user tab Tren (grafik node/GPU/inferensi/kamera, tooltip, ganti rentang,
+  390 px): **sesuai**. Merge ke `main`.
 
 ### Monitoring Resource S1 (2026-09-29)
 
