@@ -96,6 +96,7 @@ def list_events(
     severity: list[str] | None = Query(None),  # boleh berulang: ?severity=a&severity=b
     since: datetime | None = None,
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=10_000),
     user=Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -104,7 +105,8 @@ def list_events(
     if type: q = q.filter(Event.type.in_(type))
     if severity: q = q.filter(Event.severity.in_(severity))
     if since: q = q.filter(Event.ts_event >= since)
-    return q.order_by(Event.ts_event.desc()).limit(limit).all()
+    # id DESC = pemutus seri: ts_event sama tetap urut pasti antar-halaman (paginasi offset)
+    return q.order_by(Event.ts_event.desc(), Event.id.desc()).offset(offset).limit(limit).all()
 
 MAX_EVENT_ID = 2**31 - 1  # Event.id = INTEGER (int4 di Postgres); di atas ini query melempar, bukan "tidak ada"
 

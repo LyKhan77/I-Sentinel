@@ -129,6 +129,46 @@ def test_list_events_limit(client):
     h = _admin_headers(client)
     assert len(client.get("/api/v1/events?limit=2", headers=h).json()) == 2
 
+def test_list_events_offset_pages_do_not_overlap(client):
+    # paginasi offset: halaman tidak tumpang tindih dan urutan tetap menurun
+    from datetime import datetime, timezone, timedelta
+    base = datetime(2026, 10, 1, 10, 0, 0, tzinfo=timezone.utc)
+    ids = [
+        client.post(
+            "/internal/nodes/1/events",
+            json=_payload(ts_event=(base + timedelta(minutes=i)).isoformat()),
+            headers=_ingest_headers(),
+        ).json()["id"]
+        for i in range(5)
+    ]
+    h = _admin_headers(client)
+    pages = [client.get(f"/api/v1/events?limit=2&offset={o}", headers=h).json() for o in (0, 2, 4)]
+    assert [len(p) for p in pages] == [2, 2, 1]
+    got = [e["id"] for page in pages for e in page]
+    assert len(got) == 5 and sorted(got) == sorted(ids)
+    assert got == sorted(ids, reverse=True)
+
+def test_list_events_order_is_deterministic_for_equal_ts(client):
+    # pemutus seri id DESC: ts_event sama tetap punya urutan pasti antar-halaman
+    from datetime import datetime, timezone
+    ts = datetime(2026, 10, 1, 10, 0, 0, tzinfo=timezone.utc).isoformat()
+    ids = [
+        client.post("/internal/nodes/1/events", json=_payload(ts_event=ts), headers=_ingest_headers()).json()["id"]
+        for _ in range(3)
+    ]
+    h = _admin_headers(client)
+    expected = sorted(ids, reverse=True)
+    got = [e["id"] for e in client.get("/api/v1/events", headers=h).json()]
+    assert got == expected
+    second = client.get("/api/v1/events?limit=1&offset=1", headers=h).json()
+    assert [e["id"] for e in second] == [expected[1]]
+
+def test_list_events_offset_validation(client):
+    h = _admin_headers(client)
+    assert client.get("/api/v1/events?offset=-1", headers=h).status_code == 422
+    assert client.get("/api/v1/events?offset=10001", headers=h).status_code == 422
+    assert client.get("/api/v1/events?offset=0", headers=h).status_code == 200
+
 def test_stats_today(client):
     client.post("/internal/nodes/1/events", json=_payload(), headers=_ingest_headers())
     client.post("/internal/nodes/1/events", json=_payload(type="loitering"), headers=_ingest_headers())
