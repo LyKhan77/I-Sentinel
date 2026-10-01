@@ -109,7 +109,7 @@ def test_live_endpoint_shape_and_404(client, monkeypatch):
     assert body["webrtc"] == f"{base}/api/ws?src=cam_{cid}_main"
     assert body["mse"] == f"{base}/api/stream.mse?src=cam_{cid}_main"
     assert body["hls"] == f"{base}/api/stream.m3u8?src=cam_{cid}_main"
-    # snapshot bukan URL go2rtc: port 1984 tidak terjangkau dari LAN, jadi lewat proxy API
+    # snapshot bukan URL go2rtc: lewat proxy API agar same-origin dan di belakang auth
     assert body["snapshot"] == f"/api/v1/cameras/{cid}/snapshot"
 
 
@@ -135,6 +135,22 @@ def test_live_endpoint_prefers_go2rtc_public_host_over_request_host(client, monk
     r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "localhost:8000"})
     assert r.status_code == 200
     assert r.json()["webrtc"].startswith("http://192.168.2.133:1984/api/ws?src=")
+
+
+def test_live_endpoint_urls_follow_go2rtc_url_port(client, monkeypatch):
+    """Pin regresi fakta 4 spec port non-default: port di URL ke browser
+    (webrtc/mse/hls) mengikuti port di GO2RTC_URL via _rewrite_host —
+    ganti port go2rtc cukup lewat setting, tanpa ubah kode."""
+    monkeypatch.setattr(settings, "go2rtc_url", "http://localhost:7702")
+    monkeypatch.setattr(settings, "go2rtc_public_host", "192.168.2.133")
+    h = _admin_headers(client)
+    cid = client.post("/api/v1/cameras", json={"name": "camport", "host": "10.0.0.9"}, headers=h).json()["id"]
+    r = client.get(f"/api/v1/cameras/{cid}/live", headers={**h, "Host": "localhost:7701"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["webrtc"].startswith("http://192.168.2.133:7702/api/ws?src=")
+    assert body["mse"].startswith("http://192.168.2.133:7702/api/stream.mse?src=")
+    assert body["hls"].startswith("http://192.168.2.133:7702/api/stream.m3u8?src=")
 
 
 def test_live_endpoint_public_host_blank_falls_back_to_request(client, monkeypatch):

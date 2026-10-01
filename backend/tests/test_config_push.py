@@ -61,6 +61,29 @@ def test_build_node_config_server_includes_active_cam_and_zones_excludes_disable
         "snapshot": True, "clip": True, "telegram": False,
     }]
 
+def test_build_node_config_server_source_url_uses_go2rtc_rtsp_url(db, monkeypatch):
+    """Alamat RTSP node server diambil dari settings, bukan tertanam di kode."""
+    monkeypatch.setattr(settings, "go2rtc_rtsp_url", "rtsp://127.0.0.1:7705")
+    node = _node(db)
+    cam = _cam(db, node.id)
+
+    cfg = config_push.build_node_config(db, node)
+
+    assert cfg["cameras"][0]["source_url"] == f"rtsp://127.0.0.1:7705/cam_{cam.id}"
+
+
+def test_build_node_config_server_source_url_ignores_trailing_slash(db, monkeypatch):
+    """Trailing slash pada GO2RTC_RTSP_URL tidak boleh menghasilkan '//cam_N'."""
+    monkeypatch.setattr(settings, "go2rtc_rtsp_url", "rtsp://127.0.0.1:7705/")
+    node = _node(db)
+    cam = _cam(db, node.id)
+
+    cfg = config_push.build_node_config(db, node)
+
+    assert cfg["cameras"][0]["source_url"] == f"rtsp://127.0.0.1:7705/cam_{cam.id}"
+    assert "//cam_" not in cfg["cameras"][0]["source_url"]
+
+
 def test_build_node_config_edge_uses_resolved_exact_substream(db, monkeypatch):
     monkeypatch.setenv("CAMERA_CRED_EDGE", "edge-pass")
     node = _node(db, name="edge-1", type="edge")

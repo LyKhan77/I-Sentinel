@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     mqtt_username: str = ""
     mqtt_password: str = ""
     go2rtc_url: str = "http://localhost:1984"
+    # alamat RTSP go2rtc yang dipakai vision node `server`; tidak dikirim ke browser
+    go2rtc_rtsp_url: str = "rtsp://localhost:8554"
     # Host yang dipakai untuk URL go2rtc yang dikirim KE BROWSER (webrtc/mse/hls/snapshot).
     # Kosong = pakai host dari header Host request. Header itu tidak bisa dipercaya
     # begitu ada reverse proxy (proxy Vite dev menggantinya jadi localhost:8000),
