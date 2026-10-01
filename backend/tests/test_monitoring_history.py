@@ -235,3 +235,90 @@ def test_offline_ignores_unrelated_system_events(db):
 def test_minute_treats_naive_datetime_as_utc():
     """Datetime naive dibaca sebagai UTC (konsisten dengan _utc), bukan zona lokal mesin."""
     assert mh._minute(datetime(2026, 9, 30, 8, 0)) == T0
+
+
+# --- Mode jendela `from`/`to` (panel Bukti event system) --------------------
+
+
+def test_history_window_returns_only_samples_inside_at_60s_buckets(db):
+    n = _node(db)
+    start, end = T0 - timedelta(minutes=30), T0
+    _sample(db, n, start - timedelta(minutes=1), cpu_pct={"avg": 1.0})   # sebelum jendela
+    _sample(db, n, start, cpu_pct={"avg": 2.0})                          # tepat di awal jendela
+    _sample(db, n, end - timedelta(minutes=5), cpu_pct={"avg": 3.0})
+    _sample(db, n, end + timedelta(minutes=1), cpu_pct={"avg": 4.0})     # setelah jendela
+    r = mh.query_window(db, start, end)
+    assert r["range"] == "custom" and r["bucket_s"] == 60
+    assert r["from"] == _z(start) and r["to"] == _z(end)
+    assert r["nodes"][0]["series"]["cpu_pct"] == [
+        {"t": _z(start), "avg": 2.0},
+        {"t": _z(end - timedelta(minutes=5)), "avg": 3.0},
+    ]
+
+
+def test_history_window_node_id_filters_nodes(db):
+    a = _node(db, name="server")
+    b = _node(db, name="edge-1")
+    _sample(db, a, T0 - timedelta(minutes=10), cpu_pct={"avg": 1.0})
+    _sample(db, b, T0 - timedelta(minutes=10), cpu_pct={"avg": 2.0})
+    r = mh.query_window(db, T0 - timedelta(minutes=30), T0, node_id=b.id)
+    assert [n["name"] for n in r["nodes"]] == ["edge-1"]
+    assert r["nodes"][0]["series"]["cpu_pct"][0]["avg"] == 2.0
+
+
+def test_history_window_naive_bounds_treated_as_utc(db):
+    """Batas jendela naive = UTC (kolom monitoring_sample menyimpan wall-time UTC naif di SQLite)."""
+    n = _node(db)
+    _sample(db, n, _naive(T0 - timedelta(minutes=10)), cpu_pct={"avg": 5.0})
+    r = mh.query_window(db, _naive(T0 - timedelta(minutes=30)), _naive(T0))
+    assert len(r["nodes"][0]["series"]["cpu_pct"]) == 1
+
+
+def test_history_window_offline_bounded_by_end(db):
+    n = _node(db)
+    start, end = T0 - timedelta(minutes=30), T0
+    _event(db, n, T0 - timedelta(minutes=20), "timeout")  # belum pulih → to null
+    assert mh.query_window(db, start, end)["nodes"][0]["offline"] == [{"from": _z(T0 - timedelta(minutes=20)), "to": None}]
+
+    _event(db, n, T0 - timedelta(minutes=5), "online")
+    assert mh.query_window(db, start, end)["nodes"][0]["offline"] == [
+        {"from": _z(T0 - timedelta(minutes=20)), "to": _z(T0 - timedelta(minutes=5))}
+    ]
+
+
+def test_history_window_outside_retention_is_empty_not_error(client):
+    headers = viewer_headers(client)
+    end = T0 - timedelta(days=30)
+    start = end - timedelta(minutes=30)
+    r = client.get(f"/api/v1/monitoring/history?from={_z(start)}&to={_z(end)}", headers=headers)
+    assert r.status_code == 200
+    assert r.json()["nodes"][0]["series"]["cpu_pct"] == []
+
+
+def test_history_window_requires_auth(client):
+    r = client.get("/api/v1/monitoring/history?from=2026-09-30T07:30:00Z&to=2026-09-30T08:00:00Z")
+    assert r.status_code == 401
+
+
+def test_history_window_validation(client):
+    headers = viewer_headers(client)
+    win = "from=2026-09-30T07:30:00Z&to=2026-09-30T08:00:00Z"
+    assert client.get(f"/api/v1/monitoring/history?{win}", headers=headers).status_code == 200
+    assert client.get(f"/api/v1/monitoring/history?range=1h&{win}", headers=headers).status_code == 422
+    assert client.get(f"/api/v1/monitoring/history?from=2026-09-30T07:30:00Z", headers=headers).status_code == 422
+    assert client.get(f"/api/v1/monitoring/history?to=2026-09-30T08:00:00Z", headers=headers).status_code == 422
+    same = "from=2026-09-30T08:00:00Z&to=2026-09-30T08:00:00Z"
+    assert client.get(f"/api/v1/monitoring/history?{same}", headers=headers).status_code == 422
+    back = "from=2026-09-30T08:00:00Z&to=2026-09-30T07:00:00Z"
+    assert client.get(f"/api/v1/monitoring/history?{back}", headers=headers).status_code == 422
+    six = "from=2026-09-30T02:00:00Z&to=2026-09-30T08:00:00Z"
+    assert client.get(f"/api/v1/monitoring/history?{six}", headers=headers).status_code == 200
+    over = "from=2026-09-30T01:59:59Z&to=2026-09-30T08:00:00Z"
+    assert client.get(f"/api/v1/monitoring/history?{over}", headers=headers).status_code == 422
+
+
+def test_history_window_default_range_unchanged(client):
+    """Tanpa from/to, `range` tetap default 6h seperti sebelumnya."""
+    headers = viewer_headers(client)
+    r = client.get("/api/v1/monitoring/history", headers=headers)
+    assert r.status_code == 200 and r.json()["range"] == "6h" and r.json()["bucket_s"] == 60
