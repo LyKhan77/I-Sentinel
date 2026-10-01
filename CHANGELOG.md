@@ -3,6 +3,19 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Filter Events di URL, muat lebih banyak, tab Konfigurasi viewer — deploy dan uji UI user (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`c6be585`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
+- **Deploy `gspe-ai3`:** `git checkout feat/events-list-url-paging` (dari `main` @ `afd95ff`, tree bersih) → `c6be585`; tanpa migrasi; hanya API yang di-restart
+  (cgroup kill, backend berubah); frontend lewat Vite dev server (`isentinel-web`). Restart API butuh ±35–40 dtk karena proses lama menunggu shutdown graceful.
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}`; `GET /events?offset=200` dan `GET /events?camera_id=<20 digit>` tanpa auth → 401 (rute hidup); `openapi.json`
+  memuat `offset` (0–10000) dan `camera_id` `maximum: 2147483647`; web `:5173` → 200; proses baru 0 error/traceback.
+- **Uji UI user:** "sudah sesuai" (konfirmasi di chat, 2026-10-01; tanpa screenshot) atas daftar cek: filter di URL (salin/buka di tab baru, Back, reload), daftar menyempit seketika,
+  "Muat lebih banyak" tanpa duplikat dan batas 1000, tile Dashboard "Event hari ini" → `/events?type=security&range=today`, viewer hanya tab Storage tanpa kilatan, URL `?camera=` raksasa diabaikan, 390 px.
+- **Catatan:** satu `QueuePool limit of size 5 overflow 10 reached` (1× dalam 24 jam) tercatat tepat saat proses API lama shutdown; proses baru bersih. Pola yang mungkin melatarbelakangi:
+  `ws_events` memegang satu koneksi DB selama WebSocket hidup (tiap tab `/events` membuka dua WS). Belum diubah; kandidat perbaikan berikutnya.
+- **Rollback:** `git revert` merge ini atau commit per task (tanpa migrasi); server: `git checkout main && git pull` + restart API.
+
 ### Perbaikan review filter di URL, muat lebih banyak, tab Konfigurasi viewer (2026-10-01)
 
 - **Konteks:** review sesi perencanaan atas `feat/events-list-url-paging` menemukan lima hal: (R1) daftar tidak menyempit seketika saat filter diganti
