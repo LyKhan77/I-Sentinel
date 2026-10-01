@@ -3,6 +3,21 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Perbaikan review bukti event system permanen (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `feat/events-permanent-evidence` menemukan satu hal: `systemEvidence` masih mengosongkan `charts` bila `node_id` kosong
+  (`nodeId == null || …`), padahal spec/plan menyatakan bukti tersimpan tidak membutuhkan `node_id`. Event yang justru berbukti permanen (mis. node sudah dihapus)
+  kehilangan grafiknya dan menampilkan "Tidak ada rincian tambahan untuk event ini".
+- **Diubah:** `features/events/systemEvidence.ts` — `charts` hanya dikosongkan untuk jalur fetch (`nodeId == null` atau kedaluwarsa); bukti tersimpan selalu menghasilkan grafik.
+  Deviasi eksekutor `135118e` (jendela tersimpan `to = max(from + n·step, ts_event)` agar penanda waktu event tetap tampil) disetujui: waktu bukti dan `ts_event` sama-sama dari jam server.
+- **Uji (ditulis gagal dulu):** `system-evidence.test.ts` (bukti valid + `node_id` kosong/null → satu grafik, `stored` terisi; tanpa bukti dan tanpa `node_id` → tanpa grafik),
+  `system-evidence-panel.test.tsx` (event 10 hari, `node_id: null` → grafik tergambar, tanpa permintaan history).
+- **Evidence (Mac lokal, berurutan):** backend `653 passed, 489 warnings in 132.17s` (tidak berubah); frontend `Test Files 33 passed (33)` / `Tests 420 passed (420)` (417 + 3);
+  `npm run build` exit 0; `npm run lint` 24 baris, pasangan (file, rule) identik baseline; `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/events` kosong.
+- **Dampak:** event system berbukti tersimpan tetap bergrafik walau `node_id` kosong; jalur lama tidak berubah.
+- **Catatan:** `GET /events` kini membawa `payload.evidence` (±1–3 KB per event system) pada tiap baris dan frame WebSocket; event system jarang sehingga dapat diterima.
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi.
+
 ### Bukti event system permanen (`payload.evidence`) (2026-10-01)
 
 - **Konteks:** panel Bukti event system dulu hanya bergrafik dari `GET /monitoring/history` (retensi 7 hari), sehingga event sistem yang usianya melewati 7 hari kehilangan grafik.

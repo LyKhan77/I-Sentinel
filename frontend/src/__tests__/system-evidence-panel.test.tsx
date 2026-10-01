@@ -218,3 +218,17 @@ test('event bertimestamp masa depan menampilkan catatan tanpa data dan tanpa req
   expect(screen.getByText('Aturan')).toBeInTheDocument()
   expect(calls).toEqual([])
 })
+
+test('stored evidence still draws charts when node_id is missing, without any history request', async () => {
+  const calls = stubHistory(historyBody(node()))
+  const from = NOW - 10 * 24 * 3_600_000 - 3 * MIN
+  renderPanel(ev({ kind: 'health', rule: 'node_cpu', target: 'node:1', label: 'Server', value: 91.5,
+    threshold: 90, unit: '%', duration_min: 5, state: 'firing',
+    evidence: { v: 1, from: T(from), step_s: 60, series: { value: [80, 90, 91.5] } } },
+  NOW - 10 * 24 * 3_600_000, { node_id: null }))
+
+  expect(await screen.findByTestId('lc-line-value')).toBeInTheDocument()
+  expect(screen.queryByText('Tidak ada rincian tambahan untuk event ini')).not.toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 20))
+  expect(calls).toHaveLength(0)
+})

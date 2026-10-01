@@ -280,8 +280,9 @@ export function systemEvidence(e: EventOut, t: (k: TKey) => string, now: number)
     // ts jauh di masa depan (jam node salah) → from >= to: API menolak (422); anggap tak ada jendela
     window: win && win.from < win.to ? win : null,
     facts,
-    // grafik butuh node konkret: tanpa node_id tidak ada deret yang bisa diambil
-    charts: nodeId == null || (expired && stored == null) ? [] : charts,
+    // jalur fetch butuh node konkret dan data < 7 hari; bukti tersimpan sudah membawa deretnya sendiri,
+    // jadi tetap tampil walau node_id kosong (node dihapus) atau event sudah tua
+    charts: stored != null ? charts : (nodeId == null || expired ? [] : charts),
     stored,
   }
 }

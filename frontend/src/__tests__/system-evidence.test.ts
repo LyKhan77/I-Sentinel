@@ -382,3 +382,24 @@ describe('systemEvidence (perbaikan review)', () => {
     expect(e.charts).toEqual([])
   })
 })
+
+describe('stored systemEvidence tanpa node_id', () => {
+  test('bukti tersimpan tetap menghasilkan grafik walau node_id kosong (node sudah dihapus)', () => {
+    const from = NOW - 3 * MIN
+    const withEvidence = (extra: Partial<EventOut>) => systemEvidence(
+      ev(NOW - 2 * MIN, { kind: 'health', rule: 'node_cpu', target: 'node:1', label: 'Server', threshold: 90, unit: '%',
+        state: 'firing', evidence: { v: 1, from: T(from), step_s: 60, series: { value: [90, 91] } } }, extra), t, NOW)
+    for (const nodeId of [undefined, null] as const) {
+      const e = withEvidence({ node_id: nodeId })
+      expect(e.nodeId).toBeNull()
+      expect(e.stored).not.toBeNull()
+      expect(e.charts).toHaveLength(1)
+    }
+  })
+
+  test('tanpa bukti tersimpan dan tanpa node_id tetap tidak ada grafik (jalur lama)', () => {
+    const e = systemEvidence(ev(NOW - 2 * MIN, { kind: 'health', rule: 'node_cpu', threshold: 90, unit: '%', state: 'firing' }), t, NOW)
+    expect(e.stored).toBeNull()
+    expect(e.charts).toEqual([])
+  })
+})
