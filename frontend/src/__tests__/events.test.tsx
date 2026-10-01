@@ -886,6 +886,8 @@ function DeeplinkProbe() {
       <span data-testid="loc">{loc.pathname + loc.search}</span>
       <span data-testid="nav-type">{navType}</span>
       <button data-testid="nav-btn" onClick={() => nav('/events?event=2')}>go</button>
+      <button data-testid="nav-filter" onClick={() => nav('/events?type=system')}>filter</button>
+      <button data-testid="back-btn" onClick={() => nav(-1)}>back</button>
     </>
   )
 }
@@ -1083,4 +1085,130 @@ test('while the by-id fetch is pending a loading placeholder is shown, not the f
   await act(async () => { release(PINNED) })
   expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-777')
   expect(screen.queryByTestId('event-detail-loading')).not.toBeInTheDocument()
+})
+
+// --- Filter hidup di URL (Task 2) ------------------------------------------
+
+test('filters come alive from the initial URL', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?type=system&severity=critical')
+
+  await screen.findByTestId('event-item-1')
+  const q = new URLSearchParams(listCalls(fetchMock)[0].split('?')[1])
+  expect(q.getAll('type')).toEqual(['system'])
+  expect(q.getAll('severity')).toEqual(['critical'])
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Sistem')
+  expect(screen.getByRole('combobox', { name: 'Severity' })).toHaveTextContent('critical')
+  expect(screen.getByTestId('filter-reset')).toBeInTheDocument()
+})
+
+test('changing a filter writes the URL with replace', async () => {
+  stubScrollIntoView()
+  vi.stubGlobal('fetch', stubFetch())
+  renderWithProbe()
+
+  await screen.findByTestId('event-item-1')
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+
+  await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/events?type=system'))
+  expect(screen.getByTestId('nav-type')).toHaveTextContent('REPLACE') // riwayat tidak menumpuk
+})
+
+test('reset clears filters but keeps ?event=', async () => {
+  stubScrollIntoView()
+  vi.stubGlobal('fetch', stubFetch())
+  renderWithProbe('/events?event=2&type=system&severity=critical&range=24h')
+
+  await screen.findByTestId('event-detail')
+  await userEvent.click(screen.getByTestId('filter-reset'))
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/events?event=2'))
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+  expect(screen.getByLabelText('Rentang')).toHaveValue('all')
+})
+
+test('Back restores the previous filter', async () => {
+  stubScrollIntoView()
+  vi.stubGlobal('fetch', stubFetch())
+  renderWithProbe()
+
+  await screen.findByTestId('event-item-1')
+  await userEvent.click(screen.getByTestId('nav-filter')) // push eksternal, seperti lonceng
+  await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/events?type=system'))
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Sistem')
+
+  await userEvent.click(screen.getByTestId('back-btn'))
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/events'))
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+})
+
+test('range today sends since at local midnight', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.selectOptions(screen.getByLabelText('Rentang'), 'today')
+  await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(before))
+
+  const q = new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1])
+  const now = new Date()
+  expect(q.get('since')).toBe(new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString())
+})
+
+test('type security sends every type except attendance', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Keamanan (tanpa absensi)' }))
+  await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(before))
+
+  const q = new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1])
+  const types = q.getAll('type')
+  expect(types).toHaveLength(7)
+  expect(types).toContain('intrusion')
+  expect(types).toContain('system')
+  expect(types).not.toContain('attendance')
+})
+
+test('invalid URL values fall back to defaults without a crash', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?type=foo&camera=abc&severity=x&range=99d')
+
+  await screen.findByTestId('event-item-1')
+  const q = new URLSearchParams(listCalls(fetchMock)[0].split('?')[1])
+  expect(q.getAll('type')).toEqual([])
+  expect(q.get('camera_id')).toBeNull()
+  expect(q.getAll('severity')).toEqual([])
+  expect(q.get('since')).toBeNull()
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+  expect(screen.getByLabelText('Rentang')).toHaveValue('all')
+  expect(screen.queryByTestId('filter-reset')).not.toBeInTheDocument()
+})
+
+test('search box writes q to the URL and filters client-side without a new request', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderWithProbe()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.type(screen.getByLabelText('Cari'), 'CAM-02')
+
+  await waitFor(() => expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument())
+  expect(screen.getByTestId('event-item-2')).toBeInTheDocument()
+  expect(screen.getByTestId('loc')).toHaveTextContent('/events?q=CAM-02')
+  expect(listCalls(fetchMock).length).toBe(before) // pencarian tetap klien
 })
