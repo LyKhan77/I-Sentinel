@@ -3,6 +3,19 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Bukti event system permanen — deploy dan merge (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`0514fcd`), user mengizinkan push, deploy, lalu merge.
+- **Deploy `gspe-ai3`:** `git checkout feat/events-permanent-evidence` (dari `main` @ `cf6f07e`, tree bersih) → `0514fcd`; tanpa migrasi; hanya API yang di-restart (cgroup kill, backend berubah);
+  frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}` (±10 dtk setelah restart); `openapi.json` terbaca; `GET /events` tanpa auth → 401; web `:5173` → 200; journal API 2 menit pertama 0 error/traceback.
+- **Uji UI user: BELUM dilakukan dengan event berbukti.** Event lama tidak memiliki `payload.evidence`, sehingga verifikasi hanya bisa dengan event **baru** (health alert menyala/pulih atau node offline sesudah deploy);
+  user menilai uji itu memerlukan pemasukan event dan menyetujui merge tanpa uji tersebut (keputusan 2026-10-01). Bukti yang ada: 653 uji backend (termasuk pembangunan bukti firing/resolved/node offline, batas 360 titik,
+  kegagalan bukti tidak menggagalkan event), 420 uji frontend, dan smoke render mock (event berbukti tersimpan bergrafik tanpa permintaan history, event 10 hari tetap bergrafik).
+- **Cara memverifikasi nanti (tanpa mengganggu layanan):** Monitoring → aturan `infer_latency` ambang 5 ms, durasi 5 menit (Telegram default mati) → ±6 menit → event `firing` baru di Events harus bergrafik langsung tanpa jeda fetch,
+  lalu kembalikan ke 50 ms → ±2 menit → event `resolved` berbukti. Atau tunggu health alert/node offline berikutnya. Jangan menghentikan vision node di produksi untuk uji ini.
+- **Rollback:** `git revert` merge ini atau commit per task (tanpa migrasi); event yang sudah memuat `evidence` tetap valid (field tambahan diabaikan klien lama); server: `git checkout main && git pull` + restart API.
+
 ### Perbaikan review bukti event system permanen (2026-10-01)
 
 - **Konteks:** review sesi perencanaan atas `feat/events-permanent-evidence` menemukan satu hal: `systemEvidence` masih mengosongkan `charts` bila `node_id` kosong
