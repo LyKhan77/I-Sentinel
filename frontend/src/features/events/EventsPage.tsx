@@ -10,6 +10,10 @@ import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type Tele
 import { useLiveEvents } from '../../api/useWs'
 import { eventTitle, eventWhere } from '../notifications/labels'
 import { EVENT_TYPES, eventTypeLabel } from './eventTypes'
+import {
+  RANGE_IDS, SECURITY, parseFilters, writeFilters, typesFor, sinceFor, matchesFilters,
+  appendPage, mergeFirstPage, type Filters, type RangeId,
+} from './eventFilters'
 import EvidencePanel from './EvidencePanel'
 
 const SEV_VALUES = ['critical', 'warning', 'info']
@@ -44,13 +48,6 @@ const ALERT_BADGE: Record<AlertStatus, string> = {
   queued: 'ev-badge--not_configured',
 }
 
-// Rentang waktu toolbar (mockup 03) → param `since`. `all` default: riwayat lama
-// tetap tampil. Tipe/Kamera/Severity/Rentang semuanya difilter di server;
-// pencarian teks tetap murni client-side.
-const RANGE_IDS = ['all', '24h', '7d', '30d'] as const
-type RangeId = (typeof RANGE_IDS)[number]
-const RANGE_HOURS: Partial<Record<RangeId, number>> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
-
 // Tabstrip detail (mockup 03): media dipisah per tab, metadata grid (Details)
 // selalu di bawah media. Crop wajah hanya untuk event attendance — satu-satunya
 // tipe yang mengirim payload.crop_path; attendance tidak merekam klip, jadi tanpa tab Clip.
@@ -64,8 +61,10 @@ const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
 // Clip insiden baru ada ±post (default 8 s) setelah orang terakhir terlihat (maks 120 s) — tunggu 3 menit.
 const CLIP_PENDING_MS = 3 * 60_000
 
-// Batas API `GET /events` (le=200): daftar lebih panjang dari ini tidak terjangkau.
+// Batas API `GET /events` (le=200) = ukuran halaman "Muat lebih banyak".
 const LIMIT = 200
+// Batas baris di klien (D5): setelah ini tombol "Muat lebih banyak" diganti petunjuk batas.
+const MAX_EVENTS = 1000
 
 function timeStr(ts: string): string {
   return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
@@ -84,11 +83,13 @@ export default function EventsPage() {
   const [events, setEvents] = useState<EventOut[]>([])
   const [cams, setCams] = useState<{ id: number; name: string }[]>([])
   const [zoneNames, setZoneNames] = useState<Record<number, string>>({})
-  const [typeFilter, setTypeFilter] = useState<string | null>(null)
-  const [camFilter, setCamFilter] = useState<number | null>(null)
-  const [sevFilter, setSevFilter] = useState<string | null>(null)
-  const [range, setRange] = useState<RangeId>('all')
-  const [query, setQuery] = useState('')
+  // filter Tipe/Kamera/Severity/Rentang/pencarian hidup di URL (D1): dibaca tiap render,
+  // ditulis lewat setter bentuk fungsi + replace — deep link, reload, dan Back/Forward
+  // memulihkannya; param lain (mis. `event`) terjaga. Pencarian tetap murni client-side.
+  const search = searchParams.toString()
+  const filters = useMemo(() => parseFilters(new URLSearchParams(search)), [search])
+  const { type: typeFilter, camera: camFilter, severity: sevFilter, range, q: query } = filters
+  const setFilter = (patch: Partial<Filters>) => setSearchParams((prev) => writeFilters(prev, patch), { replace: true })
   // `?event=<id>` = sumber kebenaran pemilihan (K1): dibaca tiap render, bukan hanya saat
   // mount — klik lonceng/toast saat halaman sudah terbuka tetap berpindah. Tak valid → null.
   const rawParam = searchParams.get('event')
@@ -98,7 +99,11 @@ export default function EventsPage() {
   const [pinned, setPinned] = useState<{ id: number; status: 'ok' | 'missing' | 'error'; event: EventOut | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
-  // nomor permintaan: respons lama yang tiba belakangan dibuang (filter berubah cepat)
+  const [hasMore, setHasMore] = useState(false) // halaman terakhir yang diambil penuh LIMIT
+  const [loadingMore, setLoadingMore] = useState(false)
+  // generasi daftar: hanya refresh mode 'replace' (filter berubah) yang menaikkannya; respons yang
+  // tiba setelah generasi berganti dibuang. Refresh 'merge' dan "Muat lebih banyak" hanya membandingkan,
+  // supaya interval klip tertunda tidak menelan halaman yang sedang dimuat.
   const reqRef = useRef(0)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
   const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
@@ -108,28 +113,28 @@ export default function EventsPage() {
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const hasFilter = typeFilter != null || camFilter != null || sevFilter != null || range !== 'all' || query.trim() !== ''
-  const resetFilters = () => {
-    setTypeFilter(null)
-    setCamFilter(null)
-    setSevFilter(null)
-    setRange('all')
-    setQuery('')
-  }
+  const resetFilters = () => setFilter({ type: null, camera: null, severity: null, range: 'all', q: '' })
 
-  const refresh = useCallback(async () => {
-    const hours = RANGE_HOURS[range]
-    const since = hours ? new Date(Date.now() - hours * 3_600_000).toISOString() : undefined
-    const req = ++reqRef.current
+  // mode 'replace' (filter berubah) mengganti daftar + mereset hasMore;
+  // mode 'merge' (interval klip tertunda) menggabung halaman pertama tanpa membuang yang termuat
+  const refresh = useCallback(async (mode: 'replace' | 'merge' = 'replace') => {
+    const since = sinceFor(range, new Date())
+    const req = mode === 'replace' ? ++reqRef.current : reqRef.current
     try {
       const rows = await listEvents({
         limit: LIMIT,
         since,
-        types: typeFilter ? [typeFilter] : undefined,
+        types: typesFor(typeFilter),
         camera_id: camFilter ?? undefined,
         severities: sevFilter ? [sevFilter] : undefined,
       })
       if (req !== reqRef.current) return // respons basi: permintaan lebih baru sudah jalan
-      setEvents(rows)
+      if (mode === 'merge') {
+        setEvents((prev) => mergeFirstPage(prev, rows, MAX_EVENTS))
+      } else {
+        setEvents(rows)
+        setHasMore(rows.length === LIMIT)
+      }
       setLoadFailed(false)
     } catch {
       if (req !== reqRef.current) return
@@ -142,6 +147,33 @@ export default function EventsPage() {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // "Muat lebih banyak": halaman berikutnya digabung di akhir (dedupe id),
+  // respons yang tiba setelah filter berubah dibuang lewat token yang sama dengan `refresh`
+  const loadMore = async () => {
+    const offset = events.length
+    const req = reqRef.current
+    setLoadingMore(true)
+    try {
+      const rows = await listEvents({
+        limit: LIMIT,
+        offset,
+        since: sinceFor(range, new Date()),
+        types: typesFor(typeFilter),
+        camera_id: camFilter ?? undefined,
+        severities: sevFilter ? [sevFilter] : undefined,
+      })
+      if (req !== reqRef.current) return
+      setEvents((prev) => appendPage(prev, rows, MAX_EVENTS))
+      setHasMore(rows.length === LIMIT)
+      setLoadFailed(false)
+    } catch {
+      if (req !== reqRef.current) return
+      setLoadFailed(true)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   // kamera dan zona sekali saat mount — bukan tiap filter berubah (`refresh` ikut berubah)
   useEffect(() => {
@@ -168,15 +200,17 @@ export default function EventsPage() {
     const e = raw as EventOut
     if (typeof e?.id !== 'number') return // buang frame non-event lain
     // filter aktif dikirim ke server; event live dari tipe/kamera/severity lain tidak boleh ikut masuk
-    if (typeFilter && e.type !== typeFilter) return
-    if (camFilter != null && e.camera_id !== camFilter) return
-    if (sevFilter && e.severity !== sevFilter) return
-    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, LIMIT)))
+    if (!matchesFilters(e, filters)) return
+    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, MAX_EVENTS)))
   })
 
   // tiga dropdown memakai bentuk item yang sama: "Semua" + opsi; nilai = primitif
   const typeItems = useMemo<FilterItem[]>(
-    () => [{ value: ALL_VALUE, label: t('events.filterAll') }, ...EVENT_TYPES.map((v) => ({ value: v, label: eventTypeLabel(v, t) }))],
+    () => [
+      { value: ALL_VALUE, label: t('events.filterAll') },
+      { value: SECURITY, label: t('events.type.security') },
+      ...EVENT_TYPES.map((v) => ({ value: v, label: eventTypeLabel(v, t) })),
+    ],
     [t],
   )
   const camItems = useMemo<FilterItem[]>(
@@ -210,6 +244,7 @@ export default function EventsPage() {
   // pencarian teks tetap client-side atas hasil server yang sudah terfilter
   const needle = query.trim().toLowerCase()
   const filtered = events.filter((e) => {
+    if (!matchesFilters(e, filters)) return false // daftar langsung menyempit; server tetap otoritas data
     if (!needle) return true
     const haystack = e.type === 'system'
       ? [eventTitle(e, t), eventWhere(e, t, camNameById), e.severity, e.event_id]
@@ -260,7 +295,7 @@ export default function EventsPage() {
   // poll live hanya menambah event baru; clip_path yang datang belakangan perlu refetch
   useEffect(() => {
     if (!clipPending) return
-    const timer = setInterval(refresh, 5000)
+    const timer = setInterval(() => refresh('merge'), 5000)
     return () => clearInterval(timer)
   }, [clipPending, refresh])
 
@@ -350,7 +385,7 @@ export default function EventsPage() {
           items={typeItems}
           itemToString={(i) => i?.label ?? ''}
           selectedItem={selectedTypeItem}
-          onChange={({ selectedItem }) => setTypeFilter((selectedItem?.value as string | null) ?? null)}
+          onChange={({ selectedItem }) => setFilter({ type: (selectedItem?.value as string | null) ?? null })}
         />
         <Dropdown<FilterItem>
           className="events-filter"
@@ -360,7 +395,7 @@ export default function EventsPage() {
           items={camItems}
           itemToString={(i) => i?.label ?? ''}
           selectedItem={selectedCamItem}
-          onChange={({ selectedItem }) => setCamFilter((selectedItem?.value as number | null) ?? null)}
+          onChange={({ selectedItem }) => setFilter({ camera: (selectedItem?.value as number | null) ?? null })}
         />
         <Dropdown<FilterItem>
           className="events-filter"
@@ -370,14 +405,14 @@ export default function EventsPage() {
           items={sevItems}
           itemToString={(i) => i?.label ?? ''}
           selectedItem={selectedSevItem}
-          onChange={({ selectedItem }) => setSevFilter((selectedItem?.value as string | null) ?? null)}
+          onChange={({ selectedItem }) => setFilter({ severity: (selectedItem?.value as string | null) ?? null })}
         />
         <Select
           className="events-filter"
           id="filter-range"
           labelText={t('events.col.range')}
           value={range}
-          onChange={(e) => setRange(e.target.value as RangeId)}
+          onChange={(e) => setFilter({ range: e.target.value as RangeId })}
         >
           {RANGE_IDS.map((id) => (
             <SelectItem key={id} value={id} text={t(`events.range.${id}` as TKey)} />
@@ -389,7 +424,7 @@ export default function EventsPage() {
             labelText={t('events.search')}
             placeholder={t('events.searchHint')}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setFilter({ q: e.target.value })}
           />
         </div>
         {hasFilter && (
@@ -406,14 +441,14 @@ export default function EventsPage() {
         {!loading && (
           <span className="ev-count" data-testid="event-count">
             {filtered.length}
-            {events.length >= LIMIT && '+'} {t('events.countUnit')}
+            {hasMore && '+'} {t('events.countUnit')}
           </span>
         )}
       </div>
 
-      {events.length >= LIMIT && (
+      {hasMore && events.length < MAX_EVENTS && (
         <p className="ev-limit-hint" data-testid="event-limit-hint">
-          {t('events.limitHint').replace('{n}', String(LIMIT))}
+          {t('events.limitHint').replace('{n}', String(events.length))}
         </p>
       )}
 
@@ -423,7 +458,8 @@ export default function EventsPage() {
         <p className="ev-empty">{events.length === 0 ? t('events.empty') : t('events.emptyFiltered')}</p>
       ) : (
         <div className="events-split">
-          {/* kiri: daftar event */}
+          {/* kiri: daftar event + tombol muat lebih banyak */}
+          <div>
           <ul data-testid="event-list" className="ev-list">
             {filtered.map((e) => (
               <li key={e.id}>
@@ -469,6 +505,18 @@ export default function EventsPage() {
               </li>
             ))}
           </ul>
+          {hasMore && events.length < MAX_EVENTS && !loadingMore && (
+            <Button kind="ghost" size="sm" data-testid="events-load-more" onClick={loadMore}>
+              {t('events.loadMore')}
+            </Button>
+          )}
+          {loadingMore && <InlineLoading description={t('common.loading')} />}
+          {events.length >= MAX_EVENTS && (
+            <p className="ev-limit-hint" data-testid="event-cap-hint">
+              {t('events.capHint').replace('{n}', String(MAX_EVENTS))}
+            </p>
+          )}
+          </div>
 
           {/* kanan: detail panel */}
           {resolving && (

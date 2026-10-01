@@ -28,7 +28,8 @@ export default function KpiTiles({ data }: { data: DashboardData }) {
     },
     {
       source: 'stats',
-      to: '/events',
+      // angka tile = security tanpa absensi sejak tengah malam → tautan memakai filter yang sama (D2/D3)
+      to: '/events?type=security&range=today',
       label: t('dash.eventsToday'),
       value: data.stats ? String(data.stats.total) : '—',
       sub: data.stats ? t('dash.ev.critical').replace('{n}', String(data.stats.by_severity.critical ?? 0)) : '',

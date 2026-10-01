@@ -115,20 +115,31 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 1. Daftar kiri: filter Tipe, Kamera, Severity, Rentang waktu, dan pencarian; data dari `GET /api/v1/events`
    dan update realtime via WebSocket. Tipe/Kamera/Severity/Rentang difilter **di server** (lima sekaligus
    jadi satu query), pencarian teks tetap di klien.
-2. Setiap dropdown punya opsi **Semua** (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul
-   begitu ada filter non-default — kembali ke daftar penuh tanpa reload. Opsi Tipe statis (daftar tipe ingest,
-   berlabel lokal), bukan turunan event yang sedang termuat. Daftar dibatasi 200 event terbaru: hitungan jadi
-   `N+ event` disertai petunjuk untuk mempersempit filter. Respons lama yang tiba belakangan dibuang.
-3. Detail kanan — **event kamera**: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah,
+2. **Filter hidup di URL** (`?type=&camera=&severity=&range=&q=`): deep link, reload, dan Back/Forward
+   memulihkan filter; perubahan menulis URL dengan `replace` (riwayat tidak menumpuk) dan menjaga param lain
+   termasuk `?event=`. Nilai tak valid di URL jatuh ke default tanpa error; nilai default tidak ditulis.
+   Opsi Tipe bertambah **"Keamanan (tanpa absensi)"** (`type=security` = semua tipe kecuali `attendance`,
+   dikirim sebagai daftar `type`) dan Rentang bertambah **Hari ini** (`range=today`, sejak 00:00 lokal) —
+   keduanya menyamakan semantik angka "Event hari ini" di Dashboard. Setiap dropdown punya opsi **Semua**
+   (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul begitu ada filter non-default —
+   menghapus kelima param filter, `?event=` tetap ada. Opsi Tipe statis (daftar tipe ingest, berlabel lokal),
+   bukan turunan event yang sedang termuat. Respons lama yang tiba belakangan dibuang.
+3. **Muat lebih banyak**: daftar memuat 200 event per halaman (`LIMIT`) dengan urutan `ts_event DESC, id DESC`.
+   Saat halaman penuh, hitungan jadi `N+ event` + petunjuk dan tombol **Muat lebih banyak** mengambil halaman
+   berikutnya (`offset`, digabung dengan dedupe `id` — event baru yang menggeser halaman tidak menduplikasi
+   baris). Daftar dibatasi **1000 baris** (`MAX_EVENTS`): setelah itu tombol diganti petunjuk batas dan filter
+   perlu dipersempit. Refetch klip tertunda (poll 5 dtk) menggabung halaman pertama tanpa membuang halaman
+   yang sudah dimuat; ganti filter mengganti daftar dan mereset halaman.
+4. Detail kanan — **event kamera**: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah,
    metadata, status alert Telegram (`queued/sent/failed/rate_limited/not_configured`, realtime).
-4. Detail kanan — **event system** (node offline/pulih, health alert): panel **Bukti** menggantikan tab media.
+5. Detail kanan — **event system** (node offline/pulih, health alert): panel **Bukti** menggantikan tab media.
    Fakta dari payload (aturan, target, nilai, ambang, durasi aturan, status) selalu tampil; grafik tren dari
    `GET /api/v1/monitoring/history?from&to&node_id` menampilkan seri agregat yang sama dengan pengecekan alert
    (mis. `camera_low_fps` dalam persen target FPS) beserta garis ambang dan penanda waktu event. Jendela tren
    maksimum 6 jam; data lebih tua dari 7 hari hanya menampilkan fakta. Gagal memuat grafik tidak menyembunyikan
    fakta. Event system memakai judul/lokasi terlokalisasi (bukan `system · cam null`) dan tidak pernah
    menunggu klip.
-5. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan `/events?event=<id>` (Telegram,
+6. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan `/events?event=<id>` (Telegram,
    lonceng/toast, Dashboard) selalu membuka event yang dituju: bila halaman sudah terbuka pilihannya ikut pindah;
    event di luar 200 terbaru (atau tersaring filter) diambil lewat `GET /api/v1/events/{id}` dan disematkan di
    panel detail dengan catatan kecil; klik baris menulis `?event=<id>` ke URL (replace, riwayat tidak menumpuk);
@@ -235,7 +246,8 @@ Runbook: `docs/runbooks/monitoring.md`.
 
 Layout status-first (revamp 2026-09-30): **strip status** sistem (summary Monitoring + health alert aktif,
 teks selalu ikut warna) → **4 tile KPI yang dapat diklik** — Kamera sehat→`/monitoring`, Event hari
-ini→`/events`, Kehadiran hari ini→`/attendance`, Disk→`/configuration?tab=storage` → **chart event per jam**
+ini→`/events?type=security&range=today` (filter yang sama dengan angka tile: keamanan tanpa absensi, sejak
+tengah malam), Kehadiran hari ini→`/attendance`, Disk→`/configuration?tab=storage` → **chart event per jam**
 hari ini (`GET /api/v1/events/stats/today` — `by_hour`/`critical_by_hour`; tipe `attendance` TIDAK dihitung,
 angka tile adalah hitungan keamanan) → grid dua kolom: **8 event terbaru** (sumber realtime yang sama dengan
 lonceng — nama kamera, Tag severity dengan teks, thumbnail snapshot, tautan `/events?event=<id>`) |

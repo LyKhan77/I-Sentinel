@@ -1,9 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import ConfigurationPage from '../features/config/ConfigurationPage'
+
+// halaman hidup di dalam AppShell yang memberi sesi lewat Outlet context (null = sesi belum termuat)
+const ADMIN = { id: 1, username: 'admin', role: 'admin' }
 
 const camera = { id: 1, name: 'CAM-01', location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, main_path: null, sub_path: null, node_id: 1, source_id: null, location_group_id: null, credential_override_id: null, source: null, location_group: null, credential_override: null, enabled: true, status: 'online', probe_main: null, probe_sub: null, ai_fps: null, confidence: null, analyzers: null, motion_enabled: null }
 const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, face_min_width_px: 80, face_min_det_score: 0.6, face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3, updated_at: '2026-09-22T00:00:00Z' }
@@ -17,7 +20,7 @@ test('detection tab saves per-camera fps and global motion settings', async () =
     const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone] : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
     return { ok: true, status: 200, json: async () => body }
   }))
-  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><Routes><Route element={<Outlet context={ADMIN} />}><Route path="/configuration" element={<ConfigurationPage />} /></Route></Routes></MemoryRouter></I18nProvider>)
 
   expect(await screen.findByText('Deteksi & Model')).toBeInTheDocument()
   await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
@@ -47,7 +50,7 @@ test('grup Wajah attendance di Advanced ikut tersimpan', async () => {
     const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone] : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
     return { ok: true, status: 200, json: async () => body }
   }))
-  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><Routes><Route element={<Outlet context={ADMIN} />}><Route path="/configuration" element={<ConfigurationPage />} /></Route></Routes></MemoryRouter></I18nProvider>)
 
   expect(await screen.findByText('Deteksi & Model')).toBeInTheDocument()
   await userEvent.click(screen.getByText('Advanced'))
@@ -69,7 +72,7 @@ test('kolom override kosong bukan keadaan invalid — kosong berarti pakai nilai
     const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone] : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
     return { ok: true, status: 200, json: async () => body }
   }))
-  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><Routes><Route element={<Outlet context={ADMIN} />}><Route path="/configuration" element={<ConfigurationPage />} /></Route></Routes></MemoryRouter></I18nProvider>)
 
   expect(await screen.findByText('Deteksi & Model')).toBeInTheDocument()
   await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
@@ -102,7 +105,7 @@ test('tabel memuat semua kamera dengan Status AI dari zona aktif, tanpa chip ana
       : { id: 1, username: 'admin', role: 'admin' }
     return { ok: true, status: 200, json: async () => body }
   }))
-  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><Routes><Route element={<Outlet context={ADMIN} />}><Route path="/configuration" element={<ConfigurationPage />} /></Route></Routes></MemoryRouter></I18nProvider>)
 
   expect(await screen.findByTestId('ai-status-1')).toHaveTextContent('Aktif · 2 zona')
   expect(screen.getByTestId('ai-status-2')).toHaveTextContent('Tidak jalan (tanpa zona aktif)')
@@ -120,7 +123,7 @@ test('tiap kamera punya tautan Atur zona, tanpa tombol Reset override', async ()
       : url.includes('/cameras') ? [camera] : { id: 1, username: 'admin', role: 'admin' }
     return { ok: true, status: 200, json: async () => body }
   }))
-  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><Routes><Route element={<Outlet context={ADMIN} />}><Route path="/configuration" element={<ConfigurationPage />} /></Route></Routes></MemoryRouter></I18nProvider>)
   const link = await screen.findByRole('link', { name: 'Atur zona →' })
   expect(link).toHaveAttribute('href', '/configuration?tab=zones&camera=1')
   expect(screen.queryByRole('button', { name: 'Reset override' })).not.toBeInTheDocument()
