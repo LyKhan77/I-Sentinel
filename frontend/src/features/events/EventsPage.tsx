@@ -12,7 +12,7 @@ import { eventTitle, eventWhere } from '../notifications/labels'
 import { EVENT_TYPES, eventTypeLabel } from './eventTypes'
 import {
   RANGE_IDS, SECURITY, parseFilters, writeFilters, typesFor, sinceFor, matchesFilters,
-  type Filters, type RangeId,
+  appendPage, mergeFirstPage, type Filters, type RangeId,
 } from './eventFilters'
 import EvidencePanel from './EvidencePanel'
 
@@ -61,8 +61,10 @@ const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
 // Clip insiden baru ada ±post (default 8 s) setelah orang terakhir terlihat (maks 120 s) — tunggu 3 menit.
 const CLIP_PENDING_MS = 3 * 60_000
 
-// Batas API `GET /events` (le=200): daftar lebih panjang dari ini tidak terjangkau.
+// Batas API `GET /events` (le=200) = ukuran halaman "Muat lebih banyak".
 const LIMIT = 200
+// Batas baris di klien (D5): setelah ini tombol "Muat lebih banyak" diganti petunjuk batas.
+const MAX_EVENTS = 1000
 
 function timeStr(ts: string): string {
   return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
@@ -97,6 +99,8 @@ export default function EventsPage() {
   const [pinned, setPinned] = useState<{ id: number; status: 'ok' | 'missing' | 'error'; event: EventOut | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
+  const [hasMore, setHasMore] = useState(false) // halaman terakhir yang diambil penuh LIMIT
+  const [loadingMore, setLoadingMore] = useState(false)
   // nomor permintaan: respons lama yang tiba belakangan dibuang (filter berubah cepat)
   const reqRef = useRef(0)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
@@ -109,7 +113,9 @@ export default function EventsPage() {
   const hasFilter = typeFilter != null || camFilter != null || sevFilter != null || range !== 'all' || query.trim() !== ''
   const resetFilters = () => setFilter({ type: null, camera: null, severity: null, range: 'all', q: '' })
 
-  const refresh = useCallback(async () => {
+  // mode 'replace' (filter berubah) mengganti daftar + mereset hasMore;
+  // mode 'merge' (interval klip tertunda) menggabung halaman pertama tanpa membuang yang termuat
+  const refresh = useCallback(async (mode: 'replace' | 'merge' = 'replace') => {
     const since = sinceFor(range, new Date())
     const req = ++reqRef.current
     try {
@@ -121,7 +127,12 @@ export default function EventsPage() {
         severities: sevFilter ? [sevFilter] : undefined,
       })
       if (req !== reqRef.current) return // respons basi: permintaan lebih baru sudah jalan
-      setEvents(rows)
+      if (mode === 'merge') {
+        setEvents((prev) => mergeFirstPage(prev, rows, MAX_EVENTS))
+      } else {
+        setEvents(rows)
+        setHasMore(rows.length === LIMIT)
+      }
       setLoadFailed(false)
     } catch {
       if (req !== reqRef.current) return
@@ -134,6 +145,33 @@ export default function EventsPage() {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // "Muat lebih banyak": halaman berikutnya digabung di akhir (dedupe id),
+  // respons yang tiba setelah filter berubah dibuang lewat token yang sama dengan `refresh`
+  const loadMore = async () => {
+    const offset = events.length
+    const req = ++reqRef.current
+    setLoadingMore(true)
+    try {
+      const rows = await listEvents({
+        limit: LIMIT,
+        offset,
+        since: sinceFor(range, new Date()),
+        types: typesFor(typeFilter),
+        camera_id: camFilter ?? undefined,
+        severities: sevFilter ? [sevFilter] : undefined,
+      })
+      if (req !== reqRef.current) return
+      setEvents((prev) => appendPage(prev, rows, MAX_EVENTS))
+      setHasMore(rows.length === LIMIT)
+      setLoadFailed(false)
+    } catch {
+      if (req !== reqRef.current) return
+      setLoadFailed(true)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   // kamera dan zona sekali saat mount — bukan tiap filter berubah (`refresh` ikut berubah)
   useEffect(() => {
@@ -161,7 +199,7 @@ export default function EventsPage() {
     if (typeof e?.id !== 'number') return // buang frame non-event lain
     // filter aktif dikirim ke server; event live dari tipe/kamera/severity lain tidak boleh ikut masuk
     if (!matchesFilters(e, filters)) return
-    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, LIMIT)))
+    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, MAX_EVENTS)))
   })
 
   // tiga dropdown memakai bentuk item yang sama: "Semua" + opsi; nilai = primitif
@@ -254,7 +292,7 @@ export default function EventsPage() {
   // poll live hanya menambah event baru; clip_path yang datang belakangan perlu refetch
   useEffect(() => {
     if (!clipPending) return
-    const timer = setInterval(refresh, 5000)
+    const timer = setInterval(() => refresh('merge'), 5000)
     return () => clearInterval(timer)
   }, [clipPending, refresh])
 
@@ -400,14 +438,14 @@ export default function EventsPage() {
         {!loading && (
           <span className="ev-count" data-testid="event-count">
             {filtered.length}
-            {events.length >= LIMIT && '+'} {t('events.countUnit')}
+            {hasMore && '+'} {t('events.countUnit')}
           </span>
         )}
       </div>
 
-      {events.length >= LIMIT && (
+      {hasMore && (
         <p className="ev-limit-hint" data-testid="event-limit-hint">
-          {t('events.limitHint').replace('{n}', String(LIMIT))}
+          {t('events.limitHint').replace('{n}', String(events.length))}
         </p>
       )}
 
@@ -417,7 +455,8 @@ export default function EventsPage() {
         <p className="ev-empty">{events.length === 0 ? t('events.empty') : t('events.emptyFiltered')}</p>
       ) : (
         <div className="events-split">
-          {/* kiri: daftar event */}
+          {/* kiri: daftar event + tombol muat lebih banyak */}
+          <div>
           <ul data-testid="event-list" className="ev-list">
             {filtered.map((e) => (
               <li key={e.id}>
@@ -463,6 +502,18 @@ export default function EventsPage() {
               </li>
             ))}
           </ul>
+          {hasMore && events.length < MAX_EVENTS && !loadingMore && (
+            <Button kind="ghost" size="sm" data-testid="events-load-more" onClick={loadMore}>
+              {t('events.loadMore')}
+            </Button>
+          )}
+          {loadingMore && <InlineLoading description={t('common.loading')} />}
+          {events.length >= MAX_EVENTS && (
+            <p className="ev-limit-hint" data-testid="event-cap-hint">
+              {t('events.capHint').replace('{n}', String(MAX_EVENTS))}
+            </p>
+          )}
+          </div>
 
           {/* kanan: detail panel */}
           {resolving && (

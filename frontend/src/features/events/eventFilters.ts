@@ -65,3 +65,15 @@ export function matchesFilters(e: EventOut, f: Filters): boolean {
   if (f.severity != null && e.severity !== f.severity) return false
   return true
 }
+
+/** Halaman berikutnya digabung di akhir: buang id yang sudah ada, potong ke cap. */
+export function appendPage(prev: EventOut[], rows: EventOut[], cap: number): EventOut[] {
+  const seen = new Set(prev.map((e) => e.id))
+  return [...prev, ...rows.filter((e) => !seen.has(e.id))].slice(0, cap)
+}
+
+/** Halaman pertama digabung di depan (urutan server); baris lama yang tak ada dipertahankan urut. */
+export function mergeFirstPage(prev: EventOut[], rows: EventOut[], cap: number): EventOut[] {
+  const fresh = new Set(rows.map((e) => e.id))
+  return [...rows, ...prev.filter((e) => !fresh.has(e.id))].slice(0, cap)
+}

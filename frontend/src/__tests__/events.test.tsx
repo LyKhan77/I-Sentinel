@@ -1212,3 +1212,148 @@ test('search box writes q to the URL and filters client-side without a new reque
   expect(screen.getByTestId('loc')).toHaveTextContent('/events?q=CAM-02')
   expect(listCalls(fetchMock).length).toBe(before) // pencarian tetap klien
 })
+
+// --- Muat lebih banyak (Task 3) --------------------------------------------
+
+function genEvents(n: number, startId = 1): EventOut[] {
+  return Array.from({ length: n }, (_, i) => ({
+    ...EVENTS[0], id: startId + i, event_id: `ev-g-${startId + i}`,
+    ts_event: new Date(Date.parse('2026-02-12T10:00:00Z') - i * 1000).toISOString(),
+    clip_path: null, snapshot_path: null,
+  }))
+}
+
+// stub daftar yang menghormati offset/limit (server nyata memotong halaman)
+function stubPagedFetch(all: EventOut[], onRequest?: (offset: number) => void) {
+  return vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve({}) }
+    if (u.includes('/events?')) {
+      const q = new URLSearchParams(u.split('?')[1])
+      const offset = Number(q.get('offset') ?? 0)
+      const limit = Number(q.get('limit') ?? 50)
+      onRequest?.(offset)
+      return { ok: true, status: 200, json: () => Promise.resolve(all.slice(offset, offset + limit)) }
+    }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+}
+
+test('load more appends the next page and requests offset = loaded count', async () => {
+  const fetchMock = stubPagedFetch(genEvents(205))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  expect(screen.getByTestId('event-count')).toHaveTextContent('200+')
+  await userEvent.click(screen.getByTestId('events-load-more'))
+
+  await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('205 event'))
+  const offsets = listCalls(fetchMock).map((u) => new URLSearchParams(u.split('?')[1]).get('offset'))
+  expect(offsets).toContain('200')
+  expect(screen.getByTestId('event-item-205')).toBeInTheDocument()
+  // halaman terakhir tidak penuh → tombol hilang
+  expect(screen.queryByTestId('events-load-more')).not.toBeInTheDocument()
+})
+
+test('load more does not duplicate rows that a live event shifted', async () => {
+  const all = genEvents(205)
+  // event live masuk sebelum halaman kedua diambil → server ikut menggeser barisnya
+  const fetchMock = stubPagedFetch(all, (offset) => {
+    if (offset === 200) all.unshift({ ...genEvents(1, 999)[0], id: 999, event_id: 'ev-g-999' })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  await userEvent.click(screen.getByTestId('events-load-more'))
+
+  await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('205 event'))
+  expect(screen.getAllByTestId('event-item-200')).toHaveLength(1)
+  expect(screen.getAllByTestId('event-item-205')).toHaveLength(1)
+})
+
+test('load more button disappears when the last page is not full', async () => {
+  vi.stubGlobal('fetch', stubPagedFetch(genEvents(150)))
+  renderPage()
+
+  await screen.findByTestId('event-item-1')
+  expect(screen.queryByTestId('events-load-more')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('event-limit-hint')).not.toBeInTheDocument()
+  expect(screen.getByTestId('event-count')).toHaveTextContent('150 event')
+})
+
+test('load more stops at the cap and shows the cap hint', async () => {
+  vi.stubGlobal('fetch', stubPagedFetch(genEvents(1200)))
+  renderPage()
+
+  for (const n of [400, 600, 800, 1000]) {
+    await userEvent.click(await screen.findByTestId('events-load-more'))
+    await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent(`${n}+`))
+  }
+  expect(screen.queryByTestId('events-load-more')).not.toBeInTheDocument()
+  expect(screen.getByTestId('event-cap-hint')).toHaveTextContent('1000')
+}, 20000)
+
+test('interval refresh keeps already loaded pages', async () => {
+  const all = genEvents(205)
+  all[0] = { ...all[0], ts_event: new Date().toISOString() } // event segar tanpa klip → polling klip 5 dtk
+  const fetchMock = stubPagedFetch(all)
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  await userEvent.click(screen.getByTestId('events-load-more'))
+  await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('205 event'))
+
+  const before = listCalls(fetchMock).length
+  await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(before), { timeout: 7000 })
+  expect(screen.getByTestId('event-item-205')).toBeInTheDocument() // halaman kedua tidak dibuang
+  expect(screen.getByTestId('event-count')).toHaveTextContent('205 event')
+}, 10000)
+
+test('changing the filter while a load-more is in flight discards that response', async () => {
+  stubScrollIntoView()
+  let release: ((rows: EventOut[]) => void) | null = null
+  const all = genEvents(205)
+  const base = stubPagedFetch(all)
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?') && u.includes('offset=200')) {
+      return { ok: true, status: 200, json: () => new Promise<EventOut[]>((res) => { release = res }) }
+    }
+    return base(u)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  await userEvent.click(screen.getByTestId('events-load-more'))
+  await waitFor(() => expect(release).not.toBeNull())
+
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  await waitFor(() => expect(listCalls(fetchMock).some((u) => u.includes('type=system'))).toBe(true))
+
+  await act(async () => { release?.(all.slice(200, 205)) })
+  expect(screen.queryByTestId('event-item-205')).not.toBeInTheDocument()
+})
+
+test('filter change resets the list and hasMore', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubPagedFetch(genEvents(205))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  await userEvent.click(screen.getByTestId('events-load-more'))
+  await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('205 event'))
+
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('200+'))
+  expect(screen.queryByTestId('event-item-205')).not.toBeInTheDocument()
+  expect(screen.getByTestId('events-load-more')).toBeInTheDocument()
+})

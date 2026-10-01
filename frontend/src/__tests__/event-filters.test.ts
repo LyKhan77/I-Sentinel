@@ -5,6 +5,8 @@ import {
   typesFor,
   sinceFor,
   matchesFilters,
+  appendPage,
+  mergeFirstPage,
   SECURITY,
   type Filters,
 } from '../features/events/eventFilters'
@@ -97,4 +99,20 @@ test('matchesFilters checks camera and severity too', () => {
   expect(matchesFilters(ev(), F({ camera: 2 }))).toBe(false)
   expect(matchesFilters(ev(), F({ severity: 'warning' }))).toBe(false)
   expect(matchesFilters(ev(), F({ type: 'intrusion', camera: 1, severity: 'critical' }))).toBe(true)
+})
+
+test('appendPage appends at the end, drops duplicate ids and truncates to cap', () => {
+  const prev = [ev({ id: 1 }), ev({ id: 2 })]
+  const rows = [ev({ id: 2 }), ev({ id: 3 }), ev({ id: 4 })]
+  expect(appendPage(prev, rows, 10).map((e) => e.id)).toEqual([1, 2, 3, 4])
+  expect(appendPage(prev, rows, 3).map((e) => e.id)).toEqual([1, 2, 3])
+})
+
+test('mergeFirstPage puts fresh rows first, keeps the rest in order and truncates to cap', () => {
+  const prev = [ev({ id: 1 }), ev({ id: 2 }), ev({ id: 3 })]
+  const rows = [ev({ id: 4 }), ev({ id: 2, severity: 'info' })] // id 2 versi baru
+  const merged = mergeFirstPage(prev, rows, 10)
+  expect(merged.map((e) => e.id)).toEqual([4, 2, 1, 3])
+  expect(merged.find((e) => e.id === 2)?.severity).toBe('info') // isi baris ikut yang baru
+  expect(mergeFirstPage(prev, rows, 2).map((e) => e.id)).toEqual([4, 2])
 })
