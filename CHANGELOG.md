@@ -3,6 +3,20 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Tautan event by id — deploy dan uji UI user (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`c776a0b`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
+- **Deploy `gspe-ai3`:** `git checkout fix/events-deeplink` (dari `main` @ `9c8b220`, tree bersih) → `c776a0b`; tanpa migrasi;
+  hanya API yang di-restart (cgroup kill, backend berubah); frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}`; `GET /events/<id>` dan `GET /events/99999999999999999999` tanpa auth → 401
+  (rute hidup); `openapi.json` memuat `/api/v1/events/{event_id}`; web `:5173` → 200; journal API 20 baris terakhir 0 error/traceback.
+- **Uji UI user:** "sudah sesuai" (konfirmasi di chat, 2026-10-01; tanpa screenshot) atas daftar cek: tautan event lama, klik lonceng/toast
+  saat sudah di `/events`, id terhapus/raksasa → peringatan, klik baris memperbarui URL tanpa menumpuk riwayat, salin URL ke tab baru,
+  tautan menang atas filter, 390 px.
+- **Catatan:** L1 (sematan tetap saat filter mengecualikan event yang diklik), L2 (kolom kiri kosong tanpa pesan bila daftar kosong dan ada event
+  tersemat), L3 (selisih deploy API lama → "tidak ditemukan") dinilai dapat diterima, tidak diubah.
+- **Rollback:** `git revert` merge ini atau commit per task (tanpa migrasi); server: `git checkout main && git pull` + restart API.
+
 ### Perbaikan review tautan event by id (2026-10-01)
 
 - **Konteks:** review sesi perencanaan atas `fix/events-deeplink` menemukan dua hal: (M1) saat membuka `/events?event=<id luar daftar>`,
