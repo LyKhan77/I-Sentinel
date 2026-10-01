@@ -58,3 +58,13 @@ test('titik tunggal di antara celah tetap terlihat sebagai dot (mis. menit perta
   // menit 10 terisolasi (tetangga > 1,5 bucket di kedua sisi); segmen 0-1 dan 20-21 tetap garis
   expect(screen.getAllByTestId('lc-dot-cpu')).toHaveLength(1)
 })
+
+test('digits=0 formats values without decimals', () => {
+  base([{ key: 'cpu', label: 'CPU', color: '#6929c4', points: pts([0], () => 3) }], { digits: 0 })
+  expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('CPU 3 %'))
+})
+
+test('tanpa prop digits, nilai tetap satu desimal', () => {
+  base([{ key: 'cpu', label: 'CPU', color: '#6929c4', points: pts([0], () => 3) }])
+  expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('CPU 3.0 %'))
+})

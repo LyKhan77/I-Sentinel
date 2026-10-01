@@ -20,11 +20,13 @@ type Props = {
   title: string; series: ChartSeries[]; from: number; to: number; bucketMs: number
   yMin?: number; yMax?: number; unit?: string; shaded?: { from: number; to: number }[]
   height?: number; refLine?: { v: number; label: string }; locale: string; testId?: string
+  /** Desimal nilai di tooltip/aria (label sumbu Y tetap angka mentah); default 1. */
+  digits?: number
 }
 
 /** Grafik garis SVG ringan (tanpa dependensi): celah saat data kosong, arsir offline, tooltip hover. */
 export default function LineChart({ title, series, from, to, bucketMs, yMin, yMax, unit = '', shaded = [],
-  height = 180, refLine, locale, testId }: Props) {
+  height = 180, refLine, locale, testId, digits = 1 }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [width, setWidth] = useState(600)
   const [hover, setHover] = useState<number | null>(null)
@@ -71,7 +73,7 @@ export default function LineChart({ title, series, from, to, bucketMs, yMin, yMa
     for (const p of s.points) if (!best || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p
     return best && Math.abs(best.t - t) <= bucketMs ? best : null
   }
-  const fmtV = (v: number) => `${v.toFixed(1)}${unit}`
+  const fmtV = (v: number) => `${v.toFixed(digits)}${unit}`
   const aria = `${title}: ${series.map((s) => {
     const last = s.points.at(-1)
     return `${s.label} ${last ? fmtV(last.v) : '—'}`

@@ -1742,3 +1742,199 @@ button.lv-alert-chip {
   &--critical { background: #fa4d56; color: #fff; }
   &--warning, &--info { background: #f1c21b; color: #161616; }
 }
+
+/* Dashboard status-first (revamp 2026-09-30). */
+.dash-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  margin-block-end: 16px;
+  background: var(--cds-layer-01, #262626);
+  border: 1px solid var(--cds-border-subtle, #393939);
+}
+
+.dash-dot {
+  display: inline-block;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  flex: 0 0 10px;
+
+  &--ok { background: var(--cds-support-success, #24a148); }
+  &--warning { background: var(--cds-support-warning, #f1c21b); }
+  &--critical { background: var(--cds-support-error, #da1e28); }
+  &--neutral { background: var(--cds-text-helper, #8d8d8d); }
+}
+
+.dash-strip__text { font-size: 14px; }
+
+.dash-strip__note {
+  color: var(--cds-text-helper, #8d8d8d);
+  font-size: 12px;
+}
+
+.dash-strip__link { margin-inline-start: auto; }
+
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-block-end: 16px;
+}
+
+.dash-tile {
+  display: block;
+  padding: 16px;
+  text-decoration: none;
+  background: var(--cds-layer-01, #262626);
+  border: 1px solid var(--cds-border-subtle, #393939);
+
+  &:hover { border-color: var(--cds-border-strong, #6f6f6f); }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-interactive, #0f62fe);
+    outline-offset: -2px;
+  }
+}
+
+.dash-tile__label {
+  font-size: 12px;
+  letter-spacing: 0.32px;
+  text-transform: uppercase;
+  color: var(--cds-text-helper, #8d8d8d);
+}
+
+.dash-tile__value {
+  font-size: 30px;
+  font-weight: 300;
+  margin-block-start: 6px;
+  color: var(--cds-text-primary, #f4f4f4);
+}
+
+.dash-tile__sub {
+  font-size: 12px;
+  margin-block-start: 6px;
+  color: var(--cds-text-secondary, #c6c6c6);
+}
+
+.dash-section {
+  margin-block-end: 16px;
+}
+
+.dash-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-block-end: 8px;
+}
+
+.dash-section__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dash-section__link {
+  margin-inline-start: auto;
+  font-size: 13px;
+}
+
+.dash-card {
+  padding: 12px 16px;
+  background: var(--cds-layer-01, #262626);
+  border: 1px solid var(--cds-border-subtle, #393939);
+}
+
+.dash-muted {
+  color: var(--cds-text-helper, #8d8d8d);
+  font-size: 13px;
+}
+
+.dash-event {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  margin-block-start: 8px;
+  text-decoration: none;
+  background: var(--cds-layer-01, #262626);
+  border: 1px solid var(--cds-border-subtle, #393939);
+  color: var(--cds-text-primary, #f4f4f4);
+
+  &:hover { border-color: var(--cds-border-strong, #6f6f6f); }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-interactive, #0f62fe);
+    outline-offset: -2px;
+  }
+}
+
+.dash-event__body {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.dash-event__title {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-event__where {
+  font-size: 12px;
+  color: var(--cds-text-helper, #8d8d8d);
+}
+
+.dash-event__time {
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--cds-text-helper, #8d8d8d);
+  white-space: nowrap;
+}
+
+.dash-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  margin-block-start: 8px;
+  font-size: 13px;
+  background: var(--cds-layer-01, #262626);
+  border: 1px solid var(--cds-border-subtle, #393939);
+}
+
+.dash-row__title {
+  min-inline-size: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-row__label {
+  font-size: 12px;
+  color: var(--cds-text-helper, #8d8d8d);
+}
+
+.dash-row__value {
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--cds-text-helper, #8d8d8d);
+  white-space: nowrap;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 0 16px;
+
+  @media (max-width: 899px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.dash-side {
+  min-inline-size: 0;
+}

@@ -35,7 +35,7 @@ isentinel/
 │   │   ├── models/           # SQLAlchemy models
 │   │   ├── schemas/          # Pydantic
 │   │   ├── services/         # probe, attendance, alerting, face, events_consumer,
-│   │   │                     #   recorder, retention
+│   │   │                     #   event_stats, recorder, retention
 │   │   └── ws/               # websocket hub
 │   └── tests/
 ├── vision/                   # vision-node (deployable ke Jetson, minimal deps)
@@ -186,6 +186,18 @@ badge di lonceng header (panel dua tab **Hari ini** / **Kemarin**, klik → deta
 lonceng atau toolbar mode TV; status dibaca & mute disimpan per browser). Di Live View, tile kamera yang kena event
 diberi outline warna severity selama 30 detik; bila tile sedang di luar layar muncul chip di kanan bawah. Absensi
 tidak memicu notifikasi. Notifikasi OS tidak tersedia karena app diakses lewat `http://` LAN.
+
+## Dashboard
+
+`/dashboard` satu layar status-first: **strip status** (summary Monitoring + health alert aktif, selalu
+berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → Events; Kehadiran hari
+ini → Attendance; Disk → Konfigurasi tab Storage) → **chart event per jam** hari ini → **8 event terbaru**
+(sumber realtime yang sama dengan lonceng: nama kamera, Tag severity dengan teks, thumbnail snapshot) →
+**masalah aktif** (maks 5, critical dulu) + **node ringkas** (GPU util/VRAM; detail di Monitoring).
+`GET /api/v1/events/stats/today` memperluas `total`/`by_type` dengan `by_severity`, `by_hour`,
+`critical_by_hour` dan **mengecualikan tipe `attendance`** — "Event hari ini" adalah angka keamanan, sejajar
+dengan isi lonceng. Data di-poll 15 detik per sumber; satu sumber gagal tidak mengosongkan blok lain
+(tampil "—"/"Gagal memuat", bukan 0 palsu) dan strip menandai data basi. Alur lengkap: `WORKFLOW.md §15`.
 
 ## User management
 

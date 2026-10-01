@@ -3,6 +3,89 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Dashboard status-first — deploy dan uji UI user (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`6e9f7f0`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
+- **Deploy `gspe-ai3`:** `git checkout feat/dashboard-revamp` (dari `main` @ `8e57d09`, tree bersih) → `6e9f7f0`;
+  tanpa migrasi; hanya API yang di-restart (cgroup kill); frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}`; `GET /events/stats/today` tanpa auth → 401 (rute hidup);
+  `openapi.json` memuat `EventStatsOut`; web `:5173` → 200; journal API 15 baris terakhir tanpa error/traceback.
+- **Uji UI user:** "sudah bagus dan sesuai" (konfirmasi di chat; tanpa screenshot). Angka "Event hari ini" yang turun
+  (D1, `attendance` tidak dihitung) diterima bersama uji ini. Item viewer-klik-tile-Disk (L1) dan `?.` urutan deploy (L2)
+  tidak dikerjakan.
+- **Rollback:** `git revert` commit di `feat/dashboard-revamp` (tanpa migrasi); server: `git checkout main && git pull` + restart API.
+
+### Perbaikan review Dashboard status-first (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `feat/dashboard-revamp` menemukan 4 hal sebelum deploy: (M1) panel
+  "Masalah aktif" menulis "Tidak ada masalah aktif" saat strip/tile menunjukkan masalah (alert baru menyala setelah
+  durasi rule); (M2) strip menulis "Semua sistem normal" saat sumber alert gagal/belum termuat dan catatan basi
+  memakai jam refresh sumber lain; (M3) tiap event realtime memicu satu scan penuh `stats/today`; (M4) batas bawah
+  filter hari (setelah normalisasi UTC) belum diuji. Sisanya: ROADMAP memakai `[x]` sebelum uji lapangan, komentar
+  eslint-disable tak perlu, typo "parsitas".
+- **Diubah:** `StatusStrip` — "normal" hanya bila monitoring **dan** alert termuat (loading → skeleton; alert gagal →
+  "Status alert tidak tersedia"; health ≠ ok → "Status sistem: {state}"); catatan basi memakai sukses terakhir sumber
+  yang gagal (`DashboardData.lastOk` per sumber). `useDashboardData` — refetch `statsKey` di-debounce 2 dtk
+  (`STATS_DEBOUNCE_MS`), burst event → satu refetch. Teks kosong ActiveIssues: "Tidak ada alert kesehatan aktif"
+  (id) / "No active health alerts" (en). Kunci baru `dash.status.health`, `dash.status.alertsUnavailable` (id+en,
+  paritas `dash.*` 36=36). `RecentEvents` — komentar eslint-disable dibuang. ROADMAP: `[x]` → `[ ]`.
+- **Uji:** backend `test_stats_today_excludes_yesterday` (diuji gagal bila filter batas bawah dibuang: `assert 2 == 1`);
+  frontend: strip (konteks health, alert gagal, alert loading, catatan basi per sumber), hook (debounce burst, `lastOk`
+  per sumber).
+- **File:** `frontend/src/features/dashboard/{StatusStrip.tsx,useDashboardData.ts,RecentEvents.tsx}`,
+  `frontend/src/app/i18n.tsx`, `frontend/src/__tests__/{dashboard-blocks,dashboard-data,dashboard,dashboardFixtures}`,
+  `backend/tests/test_events_api.py`, `ROADMAP.md`, `CHANGELOG.md`.
+- **Evidence (Mac lokal):** backend `622 passed, 463 warnings in 124.42s` (621 + 1); frontend `Test Files 30 passed (30)`
+  / `Tests 296 passed (296)` (292 + 4); `npm run build` exit 0; `npm run lint` 24 baris warning (sama; 0 di
+  `features/dashboard`); `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/dashboard` kosong.
+- **Dampak:** tampilan status lebih jujur (tidak ada "normal" palsu); stats Dashboard tertunda ≤ 2 dtk setelah event
+  (poll 15 dtk tetap berjalan). Belum diuji visual oleh user.
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi DB.
+
+### Revamp Dashboard status-first (2026-09-30)
+
+- **Konteks:** Dashboard lama (3 tile, tanpa link, "kamera online" = status row, event terbaru 3 baris
+  `cam {id}`, hex + inline style, polling terpisah) belum mengikuti fitur yang ada. Spec + plan:
+  `docs/superpowers/{specs,plans}/2026-09-30-dashboard-revamp-*.md`. Keputusan D1: `stats/today`
+  mengecualikan tipe `attendance` (menunggu konfirmasi eksplisit user).
+- **Backend:** baru `services/event_stats.py` (`today(db)`); `GET /api/v1/events/stats/today` kini
+  `EventStatsOut` (`total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`,
+  `critical_by_hour` 24 angka jam lokal; filter `ts_event >= tengah malam lokal` + `type != attendance`);
+  router tipis, kompatibel mundur untuk klien lama.
+- **Frontend:** `useDashboardData` (5 sumber, polling 15 dtk, kegagalan terisolasi per sumber — nilai
+  lama bertahan + strip menandai basi; refetch stats saat id event realtime terakhir berubah),
+  `summary.ts`, blok `StatusStrip`/`KpiTiles` (4 tile `<Link>`) /`EventsPerHour` (+ prop `digits` di
+  `LineChart`) /`RecentEvents` (thumbnail, Tag severity berteks, nama kamera via `useEventAlerts`,
+  tanpa langganan realtime kedua) /`ActiveIssues` /`NodeCompact`; `DashboardPage` ditulis ulang —
+  kartu GPU, badge detektor PIN/AUTO, `InlineNotification` bawah, dan semua `style={{}}`/hex hilang;
+  kelas `.dash-*` di `theme.scss` (token `var(--cds-*, fallback)`); kunci i18n `dash.*` baru (id+en),
+  kunci mati dihapus.
+- **File:** `backend/app/{services/event_stats.py,schemas/event.py,api/events.py}`,
+  `backend/tests/test_events_api.py`, `frontend/src/{api/events.ts,components/LineChart.tsx,
+  features/dashboard/**,app/theme.scss,app/i18n.tsx,__tests__/**}`, `WORKFLOW.md §15`, `README.md`,
+  `ARCHITECTURE.md`, `ROADMAP.md`. Commit per task `0f8b39a..ac83cc0` di `feat/dashboard-revamp`.
+- **Evidence (smoke test executor, Mac lokal, commit terakhir):**
+  - backend `pytest tests -q -m "not gpu"` → `621 passed, 461 warnings in 122.36s` (baseline 618 + 3 uji Task 1)
+  - frontend `npx vitest run` → `Test Files 30 passed (30)` / `Tests 292 passed (292)` (baseline 248 − 4 uji lama + 48 uji baru)
+  - `npm run build` → exit 0; `npm run lint` → `Found 24 warnings and 0 errors` (baseline 25 minus
+    warning `DashboardPage.tsx:151`; tanpa pasangan rule/file baru)
+  - S2 statis: `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/dashboard` → kosong;
+    `git diff --stat main...HEAD` hanya berkas yang diizinkan; kunci `dash.*` id=en=34 (paritas penuh)
+  - S3 render mock (`npm run dev` + Playwright, tanpa screenshot): 0 error konsol; strip
+    "2 peringatan aktif" + "Diperbarui 17.37"; 4 tile `<a>` href benar (`/monitoring`, `/events`,
+    `/attendance`, `/configuration?tab=storage`) dengan teks lengkap ("Kamera 5/7 · 2 bermasalah",
+    "Event hari ini 47 · 3 critical", "Kehadiran 3 · 1 telat · 1 perlu koreksi", "Disk 62% ·
+    353,9 GB kosong"); chart per jam ter-render; event terbaru "Intrusi Gate-A Critical" dengan
+    thumbnail (fallback OK) + tautan `/events?event=11`; masalah aktif 2 baris (critical dulu);
+    node ringkas 2 baris (GPU0 55% · VRAM 21%); warna titik dari token Carbon (bukan fallback, tidak
+    kosong); 390 px: `scrollWidth 375 <= innerWidth 390` → true, keempat blok tetap ada.
+  - Uji UI visual **menyusul oleh user setelah deploy** — belum ada klaim visual dari mata user.
+- **Dampak:** angka "Event hari ini" turun di pabrik ramai (lintasan wajah tak dihitung lagi — D1);
+  "kamera online" berganti makna jadi "sehat" (health rule); detektor/GPU detail hanya di Monitoring;
+  dashboard tak lagi membuat langganan WS kedua.
+- **Rollback:** `git revert` commit per task (`ac83cc0`, `a3d4c89`, `fe024e2`, `62d1f64`, `91aedd9`,
+  `0f8b39a`); tanpa migrasi DB; `stats/today` kompatibel mundur (satu filter D1 untuk dibalik).
+
 ### WORKFLOW.md jadi alur per fitur (2026-09-30)
 
 - **Konteks:** yang dimaksud WORKFLOW adalah alur kerja setiap fitur aplikasi, bukan siklus pengembangan.

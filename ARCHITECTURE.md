@@ -47,7 +47,7 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | Auth & user | `auth`, `users` | JWT HS256 di cookie httpOnly, `token_version` untuk cabut sesi, rate-limit login |
 | Kamera | `cameras`, `stream_sources`, `credential_profiles`, `location_groups`, `probe`, `live` | `probe`, `stream_endpoint`, `go2rtc`, `secret_store` |
 | Node & deteksi | `nodes`, `detector_settings` | `config_push`, `node_health`, `host_stats` |
-| Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate` |
+| Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka) |
 | Alert | `alerts`, `telegram` | `alerting`, `alert_dispatcher`, `telegram` |
 | Absensi | `employees`, `shifts`, `enrollment`, `attendance` | `face`, `attendance` |
 | Storage | `storage` | `retention`, `storage_settings`, `disk_alert` |
@@ -139,7 +139,10 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 ## 6. Frontend (`frontend/src/`)
 
 - `app/`: AppShell (header, side-nav, banner node offline), routing, `i18n.tsx` (id/en), `theme.scss`.
-- `features/`: `dashboard`, `live` (grid + mode TV kiosk), `events` (Inbox master-detail),
+- `features/`: `dashboard` (status-first: `useDashboardData` polling 15 dtk kegagalan-per-sumber dari
+  `/monitoring`, `/monitoring/alerts`, `/events/stats/today`, `/attendance`, `/storage/stats`; strip status,
+  4 tile tautan, chart per jam, event terbaru via `useEventAlerts` — tanpa langganan realtime kedua;
+  masalah aktif; node ringkas), `live` (grid + mode TV kiosk), `events` (Inbox master-detail),
   `attendance`, `enrollment`, `config` (kamera, zona, deteksi, node, storage, notifikasi, user),
   `monitoring` (kondisi, tren SVG, aturan & alert), `notifications` (`EventAlertsProvider`).
 - `api/`: satu klien REST per domain + `useWs.ts`. Komponen memakai Carbon; tidak ada akses

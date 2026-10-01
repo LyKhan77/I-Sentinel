@@ -1,19 +1,18 @@
 import logging
 import os
 import uuid
-from datetime import datetime, date, time, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from sqlalchemy import func
 from app.core.db import get_db
 from app.api.deps import COOKIE, get_current_user, session_user
 from app.core.security import decode_token
 from app.core.config import settings
 from app.models.event import Event
 from app.models.node import Node
-from app.schemas.event import EventIn, EventOut
-from app.services import node_health
+from app.schemas.event import EventIn, EventOut, EventStatsOut
+from app.services import event_stats, node_health
 from app.services.ingest import ingest_event, ALLOWED_TYPES, ALLOWED_SEVERITY
 from app.ws.hub import hub
 
@@ -105,16 +104,9 @@ def list_events(
     if since: q = q.filter(Event.ts_event >= since)
     return q.order_by(Event.ts_event.desc()).limit(limit).all()
 
-@router.get("/api/v1/events/stats/today")
+@router.get("/api/v1/events/stats/today", response_model=EventStatsOut)
 def stats_today(user=Depends(get_current_user), db=Depends(get_db)):
-    midnight = datetime.combine(date.today(), time.min).astimezone()
-    rows = (
-        db.query(Event.type, func.count(Event.id))
-        .filter(Event.ts_event >= midnight)
-        .group_by(Event.type)
-        .all()
-    )
-    return {"total": sum(c for _, c in rows), "by_type": {t: c for t, c in rows}}
+    return event_stats.today(db)
 
 @router.websocket("/api/v1/ws/events")
 async def ws_events(ws: WebSocket, db=Depends(get_db)):

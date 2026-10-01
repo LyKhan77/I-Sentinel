@@ -433,6 +433,25 @@ Spec: `docs/superpowers/specs/2026-09-23-enrollment-refining-design.md`
 
 ---
 
+## Dashboard Revamp (status-first) — **SELESAI (2026-10-01, uji UI user OK)**
+
+Plan: `docs/superpowers/plans/2026-09-30-dashboard-revamp.md`
+Spec: `docs/superpowers/specs/2026-09-30-dashboard-revamp-design.md`
+
+Layout baru `/dashboard`: strip status → 4 tile tautan (Kamera/Event/Kehadiran/Disk) → chart event per jam →
+event terbaru (sumber lonceng) | masalah aktif + node ringkas. Backend: `stats/today` diperluas
+(`by_severity`, `by_hour`, `critical_by_hour`; `attendance` dikecualikan — keputusan D1).
+
+- [x] Task 1–6 terimplementasi di `feat/dashboard-revamp` + perbaikan review (`6e9f7f0`) —
+      backend **622**, frontend **296** (30 file), build 0, lint 24 (baseline minus warning `DashboardPage.tsx`)
+- [x] Review sesi perencanaan (M1–M4 diperbaiki); D1 (`attendance` tidak dihitung) diterima user bersama uji UI
+- [x] Push + deploy ke gspe-ai3 (`6e9f7f0`, tanpa migrasi, API restart) + uji UI user: "sudah bagus dan sesuai"
+      (2026-10-01; tanpa screenshot)
+
+**Bukti:** keluaran suite + smoke deploy di `CHANGELOG.md` entri 2026-10-01 dan 2026-09-30.
+
+---
+
 ## Fase E — Edge Jetson (opsional/nanti)
 
 Plan: `docs/plans/07-edge-jetson.md`
