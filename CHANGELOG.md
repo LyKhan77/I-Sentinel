@@ -3,6 +3,20 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Filter Events + bukti event system — deploy dan uji UI user (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`d81d1d1`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
+- **Deploy `gspe-ai3`:** `git checkout feat/system-event-evidence` (dari `main` @ `b8c54db`, tree bersih) → `d81d1d1`;
+  tanpa migrasi; hanya API yang di-restart (cgroup kill, backend berubah); frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}`; `GET /events?severity=critical` dan
+  `GET /monitoring/history?from=…&to=…` tanpa auth → 401 (rute hidup); `openapi.json` memuat parameter `severity` dan
+  `from`/`to`/`node_id`; web `:5173` → 200; journal API 20 baris terakhir 0 error/traceback.
+- **Uji UI user:** "sudah sesuai hasilnya" (konfirmasi di chat, 2026-10-01; tanpa screenshot) atas daftar cek: "Semua" tiap
+  dropdown, Atur ulang filter, penanda `N+`, panel Bukti per jenis event system, event kamera tak berubah, 390 px.
+- **Catatan review:** satu uji flaky tak terkait (`zones.test.tsx > save calls createZone with normalized polygon`) gagal
+  sekali saat pytest dan vitest berjalan bersamaan; lulus 3/3 sendiri dan 2/2 suite penuh tanpa beban — belum diselidiki.
+- **Rollback:** `git revert` merge ini atau commit per task (tanpa migrasi); server: `git checkout main && git pull` + restart API.
+
 ### Perbaikan review filter Events + bukti event system (2026-10-01)
 
 - **Konteks:** review sesi perencanaan atas `feat/system-event-evidence` menemukan tiga hal kecil: (M1) event system
