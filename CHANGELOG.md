@@ -3,6 +3,62 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Filter Events di URL, "Muat lebih banyak", tab Konfigurasi viewer (2026-10-01)
+
+- **Konteks:** backlog penutupan siklus deep link (bagian 1 dari 2; bagian 2 = bukti permanen event system). Filter Events
+  hilang saat reload dan tak bisa dibagikan, daftar terkunci 200 baris tanpa jalan memuat lebih, tile "Event hari ini"
+  menaut ke `/events` polos yang angkanya tak sepadanan, dan viewer melihat ketujuh tab Konfigurasi.
+  Spec/plan `docs/superpowers/{specs,plans}/2026-10-01-events-list-url-paging*` (D1–D6).
+- **Diubah:** `backend/app/api/events.py` — `GET /api/v1/events` menerima `offset` (`Query(0, ge=0, le=10_000)`, di luar
+  rentang → 422) dan urutan `ts_event DESC, id DESC` (pemutus seri deterministik antar-halaman; tanpa `offset` identik).
+  `frontend/src/features/events/eventFilters.ts` (baru) — fungsi murni `parseFilters`/`writeFilters` (URL = sumber
+  kebenaran, nilai tak valid → default, default tidak ditulis, param lain termasuk `event` terjaga), `typesFor`
+  (grup `security` = semua tipe kecuali `attendance`), `sinceFor` (`today` = 00:00 lokal), `matchesFilters`,
+  `appendPage`, `mergeFirstPage`. `frontend/src/features/events/EventsPage.tsx` — filter diturunkan dari
+  `useSearchParams` (state lokal filter dihapus, penulisan `replace`); opsi Tipe "Keamanan (tanpa absensi)" +
+  rentang "Hari ini"; tombol **Muat lebih banyak** (`offset`, dedupe `id`, batas `MAX_EVENTS=1000` dengan
+  `event-cap-hint`, `event-limit-hint` memuat `{n}`); `refresh` dua mode (ganti + reset `hasMore` saat filter berubah,
+  `mergeFirstPage` saat interval klip tertunda); event live prepend dengan dedupe tanpa `slice(0, LIMIT)`;
+  pencarian `q` dari URL tetap klien. `frontend/src/api/events.ts` — `EventListParams.offset`.
+  `frontend/src/features/dashboard/KpiTiles.tsx` — tile Event hari ini → `/events?type=security&range=today`.
+  `frontend/src/features/config/ConfigurationPage.tsx` — viewer hanya tab Storage (`?tab=` di luar daftar → tab
+  terlihat pertama; panel dipetakan dari daftar terlihat). `frontend/src/app/i18n.tsx` — kunci baru
+  `events.range.today`, `events.type.security`, `events.loadMore`, `events.capHint` (id + en); teks
+  `events.limitHint` berubah di kedua bahasa. Dokumen: `WORKFLOW.md §8/§15`, `ARCHITECTURE.md`, `README.md`.
+- **Uji (ditulis gagal dulu; tidak ada uji dihapus kecuali satu ekspektasi `href` tile Event):** backend
+  `test_events_api.py` +3 (halaman tidak tumpang tindih, `ts_event` sama → id menurun, validasi `offset`);
+  frontend `event-filters.test.ts` +14 (fungsi murni), `events.test.tsx` +15 (filter hidup dari URL awal, penulisan
+  URL `replace`, reset menjaga `?event=`, Back memulihkan, `since` tengah malam lokal, `type=security` berisi 7 tipe
+  tanpa `attendance`, nilai URL tak valid jatuh default, `q` klien tanpa request baru, muat lebih banyak
+  `offset=200` + dedupe saat halaman bergeser, tombol hilang di halaman tak penuh, batas 1000 + `event-cap-hint`,
+  interval klip tidak membuang halaman, respons muat-lebih-banyak dibuang saat filter berubah, reset daftar +
+  `hasMore`), `dashboard-blocks.test.tsx` +1, `configuration.test.tsx` +4 (viewer 1 tab, `?tab=users` jatuh ke
+  Storage tanpa `/users`, admin 7 tab, `me` kosong 7 tab). Uji yang lulus sebelum implementasi dibuktikan bisa
+  gagal lewat mutasi sementara (validasi `parseFilters`, `setHasMore(true)`, `restricted=true`).
+- **Evidence (Mac lokal, smoke S1–S3 berurutan; uji UI user menyusul setelah deploy):** S1: backend
+  `640 passed, 487 warnings in 127.81s` (baseline 637 + 3); frontend `Test Files 33 passed (33)` /
+  `Tests 399 passed (399)` (baseline 365 + 34); `npm run build` exit 0; `npm run lint` 24 baris warning,
+  16 pasangan (rule, file) identik baseline. S2: grep `style=\{\{|#[0-9a-fA-F]{6}` di `features/events` +
+  `features/config` identik `main` (102 baris, 0 baris baru); `git diff --stat main...HEAD` hanya berkas task +
+  dokumen + spec/plan; paritas i18n id=en untuk kelima kunci. S3 (Playwright + mock `/api/v1/*`, sesi admin &
+  viewer, dev server): 0 error konsol di 1440 px dan 390 px; `/events?type=system&severity=critical&range=today`
+  → dropdown Sistem/critical + `range=today`, request `type=system&severity=critical&since=<00:00 lokal>&limit=200`;
+  ganti rentang → URL `range=7d` (replace) dan Back memulihkan filter; "Atur ulang filter" menghapus param;
+  "Muat lebih banyak" → request `offset=200`/`offset=400`, hitungan 200+ → 400+ → 455, tombol hilang di halaman
+  tak penuh; tile "Event hari ini" → `/events?type=security&range=today`; admin 7 tab; viewer hanya
+  "Retensi & Storage" dan `?tab=users` jatuh ke Storage (panel `storage-retention` tampil); 390 px
+  `scrollWidth 375 ≤ 390`.
+- **Dampak:** filter Events dapat dibagikan dan tahan reload/Back; riwayat di atas 200 baris terjangkau sampai
+  1000; angka tile Dashboard sepadanan dengan daftar yang dituju; viewer hanya melihat Storage di Konfigurasi
+  (backend tetap menegakkan role).
+- **Catatan:** (1) `filtered` tidak memfilter ulang di klien lewat `matchesFilters` (dipakai untuk event live saja)
+  karena uji lama `a stale response does not overwrite a newer one` mensyaratkan baris hasil stub tetap tampil;
+  server tetap otoritas filter. (2) Saat `me` belum termuat (`null`), Konfigurasi masih menampilkan tujuh tab
+  (perilaku yang dispesifikasikan untuk `me` null/undefined) sehingga viewer sempat memanggil `/users` sebelum
+  `me` turun — endpoint menolak non-admin; dibiarkan sesuai D6/spec §3.4. (3) `event-limit-hint` tetap tampil
+  pada batas 1000 bersama `event-cap-hint` (bacaan literal plan).
+- **Rollback:** `git revert` commit per task (`ea863cd`, `a7be5f1`, `587852a`, `cee0558`, `f58f4b8`); tanpa migrasi.
+
 ### Tautan event by id — deploy dan uji UI user (2026-10-01)
 
 - **Konteks:** setelah review dan perbaikan (`c776a0b`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
