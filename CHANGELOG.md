@@ -3,6 +3,18 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Dashboard status-first — deploy dan uji UI user (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`6e9f7f0`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
+- **Deploy `gspe-ai3`:** `git checkout feat/dashboard-revamp` (dari `main` @ `8e57d09`, tree bersih) → `6e9f7f0`;
+  tanpa migrasi; hanya API yang di-restart (cgroup kill); frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}`; `GET /events/stats/today` tanpa auth → 401 (rute hidup);
+  `openapi.json` memuat `EventStatsOut`; web `:5173` → 200; journal API 15 baris terakhir tanpa error/traceback.
+- **Uji UI user:** "sudah bagus dan sesuai" (konfirmasi di chat; tanpa screenshot). Angka "Event hari ini" yang turun
+  (D1, `attendance` tidak dihitung) diterima bersama uji ini. Item viewer-klik-tile-Disk (L1) dan `?.` urutan deploy (L2)
+  tidak dikerjakan.
+- **Rollback:** `git revert` commit di `feat/dashboard-revamp` (tanpa migrasi); server: `git checkout main && git pull` + restart API.
+
 ### Perbaikan review Dashboard status-first (2026-10-01)
 
 - **Konteks:** review sesi perencanaan atas `feat/dashboard-revamp` menemukan 4 hal sebelum deploy: (M1) panel

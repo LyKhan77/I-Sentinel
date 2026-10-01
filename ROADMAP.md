@@ -433,7 +433,7 @@ Spec: `docs/superpowers/specs/2026-09-23-enrollment-refining-design.md`
 
 ---
 
-## Dashboard Revamp (status-first) — **MENUNGGU UJI LAPANGAN (2026-09-30)**
+## Dashboard Revamp (status-first) — **SELESAI (2026-10-01, uji UI user OK)**
 
 Plan: `docs/superpowers/plans/2026-09-30-dashboard-revamp.md`
 Spec: `docs/superpowers/specs/2026-09-30-dashboard-revamp-design.md`
@@ -442,14 +442,13 @@ Layout baru `/dashboard`: strip status → 4 tile tautan (Kamera/Event/Kehadiran
 event terbaru (sumber lonceng) | masalah aktif + node ringkas. Backend: `stats/today` diperluas
 (`by_severity`, `by_hour`, `critical_by_hour`; `attendance` dikecualikan — keputusan D1).
 
-- [ ] Task 1–6 terimplementasi di `feat/dashboard-revamp` + perbaikan review (belum terverifikasi lapangan) —
+- [x] Task 1–6 terimplementasi di `feat/dashboard-revamp` + perbaikan review (`6e9f7f0`) —
       backend **622**, frontend **296** (30 file), build 0, lint 24 (baseline minus warning `DashboardPage.tsx`)
-- [ ] Konfirmasi D1 oleh user + review kode sesi perencanaan
-- [ ] Push + deploy ke gspe-ai3, uji UI user 1440 px & 390 px (nol overflow; tile dapat diklik; strip berteks;
-      chart saat sepi/ramai) → centang + merge `main` setelah OK
+- [x] Review sesi perencanaan (M1–M4 diperbaiki); D1 (`attendance` tidak dihitung) diterima user bersama uji UI
+- [x] Push + deploy ke gspe-ai3 (`6e9f7f0`, tanpa migrasi, API restart) + uji UI user: "sudah bagus dan sesuai"
+      (2026-10-01; tanpa screenshot)
 
-**Bukti sementara:** keluaran suite di `CHANGELOG.md` entri 2026-09-30; laporan executor
-`temp/prompt/dashboard-revamp-report.md` (lokal). Uji visual belum dilakukan.
+**Bukti:** keluaran suite + smoke deploy di `CHANGELOG.md` entri 2026-10-01 dan 2026-09-30.
 
 ---
 
