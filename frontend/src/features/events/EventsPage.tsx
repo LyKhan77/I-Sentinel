@@ -5,7 +5,7 @@ import { Download, Activity } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
 import { listZones } from '../../api/zones'
-import { listEvents, type EventOut } from '../../api/events'
+import { listEvents, getEvent, type EventOut } from '../../api/events'
 import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type TelegramStatus } from '../../api/alerts'
 import { useLiveEvents } from '../../api/useWs'
 import { eventTitle, eventWhere } from '../notifications/labels'
@@ -80,7 +80,7 @@ function Thumb({ path, alt }: { path: string | null; alt: string }) {
 export default function EventsPage() {
   const { t } = useT()
   // tautan dalam caption Telegram: /events?event=<id> → event itu terbuka di panel detail
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [events, setEvents] = useState<EventOut[]>([])
   const [cams, setCams] = useState<{ id: number; name: string }[]>([])
   const [zoneNames, setZoneNames] = useState<Record<number, string>>({})
@@ -89,12 +89,13 @@ export default function EventsPage() {
   const [sevFilter, setSevFilter] = useState<string | null>(null)
   const [range, setRange] = useState<RangeId>('all')
   const [query, setQuery] = useState('')
-  // `?event=<id>` (tautan caption) dibaca saat init; tanpa param → null → default event pertama
-  const [selectedId, setSelectedId] = useState<number | null>(() => {
-    const raw = searchParams.get('event')
-    const n = raw == null ? NaN : Number(raw)
-    return Number.isInteger(n) && n > 0 ? n : null
-  })
+  // `?event=<id>` = sumber kebenaran pemilihan (K1): dibaca tiap render, bukan hanya saat
+  // mount — klik lonceng/toast saat halaman sudah terbuka tetap berpindah. Tak valid → null.
+  const rawParam = searchParams.get('event')
+  const nParam = rawParam == null ? NaN : Number(rawParam)
+  const eventParam = Number.isInteger(nParam) && nParam > 0 ? nParam : null
+  // sematan (K3): event via URL yang tak tampil di daftar diambil sekali lewat id
+  const [pinned, setPinned] = useState<{ id: number; status: 'ok' | 'missing' | 'error'; event: EventOut | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   // nomor permintaan: respons lama yang tiba belakangan dibuang (filter berubah cepat)
@@ -216,8 +217,23 @@ export default function EventsPage() {
     return haystack.join(' ').toLowerCase().includes(needle)
   })
 
-  // pilihan ikut list ter-filter; default event pertama
-  const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
+  const inList = eventParam != null && filtered.some((e) => e.id === eventParam)
+  const pinnedEvent = pinned && pinned.id === eventParam && pinned.status === 'ok' ? pinned.event : null
+  // pilihan dari URL (K1); fallback: event tersemat, lalu event pertama daftar
+  const selected = filtered.find((e) => e.id === eventParam) ?? pinnedEvent ?? filtered[0] ?? null
+  const fromPinned = selected != null && selected === pinnedEvent
+
+  // sematan: fetch by-id tepat sekali per eventParam, hanya bila daftar selesai dimuat dan
+  // eventParam tidak ada di daftar (K3). Respons basi dibuang lewat alive + koreksi id.
+  useEffect(() => {
+    if (eventParam == null || loading || inList) return
+    const req = eventParam
+    let alive = true
+    getEvent(req)
+      .then((ev) => { if (alive) setPinned({ id: req, status: ev ? 'ok' : 'missing', event: ev }) })
+      .catch(() => { if (alive) setPinned({ id: req, status: 'error', event: null }) })
+    return () => { alive = false }
+  }, [eventParam, loading, inList])
   const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
   const isAttendance = selected?.type === 'attendance'
   // event system (node offline/pulih, health alert) tidak punya media: panel Bukti menggantikan tab
@@ -313,6 +329,15 @@ export default function EventsPage() {
         />
       )}
 
+      {eventParam != null && pinned?.id === eventParam && pinned.status === 'missing' && (
+        <InlineNotification kind="warning" lowContrast
+          title={t('events.deeplinkMissing').replace('{id}', String(eventParam))} />
+      )}
+      {eventParam != null && pinned?.id === eventParam && pinned.status === 'error' && (
+        <InlineNotification kind="error" lowContrast
+          title={t('events.deeplinkFailed').replace('{id}', String(eventParam))} />
+      )}
+
       <div className="ev-toolbar">
         <Dropdown<FilterItem>
           className="events-filter"
@@ -391,7 +416,7 @@ export default function EventsPage() {
 
       {loading ? (
         <InlineLoading description={t('common.loading')} />
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && !selected ? (
         <p className="ev-empty">{events.length === 0 ? t('events.empty') : t('events.emptyFiltered')}</p>
       ) : (
         <div className="events-split">
@@ -403,7 +428,11 @@ export default function EventsPage() {
                   type="button"
                   data-testid={`event-item-${e.id}`}
                   aria-current={selected?.id === e.id ? 'true' : undefined}
-                  onClick={() => setSelectedId(e.id)}
+                  onClick={() => setSearchParams((prev) => {
+                    const n = new URLSearchParams(prev)
+                    n.set('event', String(e.id))
+                    return n
+                  }, { replace: true })}
                   className={`ev-row${selected?.id === e.id ? ' ev-row--sel' : ''}`}
                 >
                   <span className={`ev-dot ${SEV_DOT[e.severity] ?? 'ev-dot--muted'}`} title={e.severity} aria-hidden="true" />
@@ -453,6 +482,9 @@ export default function EventsPage() {
                   <span data-testid="alert-badge" className={`ev-badge ${ALERT_BADGE[detailAlert]}`}>
                     {t(ALERT_KEY[detailAlert])}
                   </span>
+                )}
+                {fromPinned && (
+                  <span className="ev-detail__where" data-testid="event-pinned-note">{t('events.pinnedNote')}</span>
                 )}
               </div>
 
