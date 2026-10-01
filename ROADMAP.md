@@ -40,6 +40,7 @@
 | IA | Status alert Telegram realtime di Inbox + rapikan tabel aturan | [x] deploy + verifikasi user 2026-09-30 | — | desain di chat (bounded), eksekusi subagent; backend 597, frontend 232 | `830aad2..c7598d2` |
 | AD | Cleanup data absensi (rekap & riwayat) per karyawan & rentang | [x] deploy + verifikasi user 2026-09-30 | — | desain di chat (bounded), eksekusi subagent; pilihan karyawan wajib, maks kemarin, ketik HAPUS, audit ID saja; backend 606, frontend 237 | `6372f98..cc8a058` |
 | AR | Refining halaman Attendance (kolom Tanggal, status efektif, penutupan hari otomatis, koreksi) | [x] deploy + verifikasi user 2026-09-30 | — | spec + plan 2026-09-30; backend 617, vision 233 (3 deselected), frontend 248, build 0, lint set lama; tanpa migrasi — deploy = restart isentinel-api saja (catch-up 7 hari membuat baris "Tidak hadir" saat start); review independen 8/8 PASS, 0C/0I/2M (1 diperbaiki) | `ad23dea..HEAD` |
+| EV | Filter Events konsisten + bukti event system (fakta + grafik tren) | [ ] menunggu uji lapangan | — | spec + plan 2026-10-01; filter Tipe/Kamera/Severity/Rentang server-side + opsi "Semua" & reset + penanda 200+; event system memakai panel Bukti (`from/to/node_id` di `/monitoring/history`, maks 6 jam, retensi 7 hari); backend 631, frontend 349 (32 berkas), build 0, lint 24 baris (set sama); smoke render mock 1440/390 px 0 error konsol, `scrollWidth 375 ≤ 390`; **uji UI visual oleh user menyusul setelah deploy** | `6c4eae4..` |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton

@@ -187,6 +187,15 @@ lonceng atau toolbar mode TV; status dibaca & mute disimpan per browser). Di Liv
 diberi outline warna severity selama 30 detik; bila tile sedang di luar layar muncul chip di kanan bawah. Absensi
 tidak memicu notifikasi. Notifikasi OS tidak tersedia karena app diakses lewat `http://` LAN.
 
+**Inbox Events.** `/events` master-detail: filter **Tipe, Kamera, Severity, dan Rentang waktu difilter di server**
+(satu query; pencarian teks tetap di klien), tiap dropdown punya opsi **Semua** dan tombol **Atur ulang filter**
+muncul saat ada filter non-default. Opsi Tipe statis dan berlabel lokal. Daftar dibatasi 200 event terbaru →
+hitungan menjadi `N+ event` disertai petunjuk mempersempit filter. Event kamera tetap memakai tab clip/snapshot/crop;
+**event system** (node offline/pulih, health alert) memakai panel **Bukti**: fakta dari payload ditambah grafik tren
+(`/monitoring/history` mode `from`/`to`, jendela maks 6 jam) dengan garis ambang dan penanda waktu event — tanpa tab
+media dan tanpa menunggu klip. Tren hanya tersedia untuk event ≤ 7 hari (retensi `monitoring_sample`). Alur lengkap:
+`WORKFLOW.md §8`.
+
 ## Dashboard
 
 `/dashboard` satu layar status-first: **strip status** (summary Monitoring + health alert aktif, selalu

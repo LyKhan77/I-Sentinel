@@ -112,11 +112,23 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 
 **Pengguna:** semua · **Halaman:** `/events`
 
-1. Daftar kiri: filter jenis, rentang waktu, kamera, pencarian; data dari `GET /api/v1/events`
-   dan update realtime via WebSocket.
-2. Detail kanan: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah, metadata, status
-   alert Telegram (`queued/sent/failed/rate_limited/not_configured`, realtime).
-3. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan dari Telegram
+1. Daftar kiri: filter Tipe, Kamera, Severity, Rentang waktu, dan pencarian; data dari `GET /api/v1/events`
+   dan update realtime via WebSocket. Tipe/Kamera/Severity/Rentang difilter **di server** (lima sekaligus
+   jadi satu query), pencarian teks tetap di klien.
+2. Setiap dropdown punya opsi **Semua** (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul
+   begitu ada filter non-default — kembali ke daftar penuh tanpa reload. Opsi Tipe statis (daftar tipe ingest,
+   berlabel lokal), bukan turunan event yang sedang termuat. Daftar dibatasi 200 event terbaru: hitungan jadi
+   `N+ event` disertai petunjuk untuk mempersempit filter. Respons lama yang tiba belakangan dibuang.
+3. Detail kanan — **event kamera**: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah,
+   metadata, status alert Telegram (`queued/sent/failed/rate_limited/not_configured`, realtime).
+4. Detail kanan — **event system** (node offline/pulih, health alert): panel **Bukti** menggantikan tab media.
+   Fakta dari payload (aturan, target, nilai, ambang, durasi aturan, status) selalu tampil; grafik tren dari
+   `GET /api/v1/monitoring/history?from&to&node_id` menampilkan seri agregat yang sama dengan pengecekan alert
+   (mis. `camera_low_fps` dalam persen target FPS) beserta garis ambang dan penanda waktu event. Jendela tren
+   maksimum 6 jam; data lebih tua dari 7 hari hanya menampilkan fakta. Gagal memuat grafik tidak menyembunyikan
+   fakta. Event system memakai judul/lokasi terlokalisasi (bukan `system · cam null`) dan tidak pernah
+   menunggu klip.
+5. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan dari Telegram
    `…/events?event=<id>` membuka event langsung (LAN saja).
 
 ## 9. Notifikasi web
