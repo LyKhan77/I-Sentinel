@@ -42,6 +42,9 @@ function renderPage(entry = '/events') {
   )
 }
 
+// uji ber-fake-timer yang gagal sebelum `useRealTimers` akan meracuni uji berikutnya
+beforeEach(() => { vi.useRealTimers() })
+
 test('renders event list with camera names', async () => {
   vi.stubGlobal('fetch', stubFetch())
   renderPage()
@@ -715,4 +718,111 @@ test('a stale response does not overwrite a newer one', async () => {
   await waitFor(() => expect(call).toBeGreaterThanOrEqual(2))
   expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument()
   expect(screen.getByTestId('event-item-2')).toBeInTheDocument()
+})
+
+// --- Integrasi event system: panel Bukti menggantikan media -----------------
+
+const SYS_HEALTH: EventOut = {
+  id: 7, event_id: 'ev-sys-1', type: 'system', camera_id: 1, zone_id: null, severity: 'warning',
+  ts_event: new Date(Date.now() - 5 * 60_000).toISOString(), payload: { kind: 'health', rule: 'node_cpu', target: 'node:1', label: 'Server',
+    value: 91.5, threshold: 90, unit: '%', duration_min: 5, state: 'firing' },
+  clip_path: null, snapshot_path: null, node_id: 1,
+}
+const SYS_NODE: EventOut = {
+  id: 8, event_id: 'ev-sys-2', type: 'system', camera_id: null, zone_id: null, severity: 'warning',
+  ts_event: new Date(Date.now() - 10 * 60_000).toISOString(), payload: { node: 'edge-1', reason: 'timeout' },
+  clip_path: null, snapshot_path: null, node_id: 1,
+}
+
+function stubSystemFetch(rows: EventOut[]) {
+  return vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/monitoring/history')) {
+      // server nyata mengembalikan jendela yang diminta → stub menggemakan from/to
+      const q = new URLSearchParams(u.slice(u.indexOf('?') + 1))
+      const from = q.get('from') ?? ''
+      const to = q.get('to') ?? ''
+      const mid = new Date((Date.parse(from) + Date.parse(to)) / 2).toISOString()
+      return { ok: true, status: 200, json: () => Promise.resolve({ range: 'custom', bucket_s: 60, from, to,
+        nodes: [{ id: 1, name: 'server', cameras: [], offline: [],
+          series: { cpu_pct: [{ t: mid, avg: 91 }], ram_pct: [], ms_avg: [], ms_max: [],
+            infer_fps: [], mqtt_backlog: [], gpus: {} } }] }) }
+    }
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(rows) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }]) }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+}
+
+test('event system menyembunyikan tab media dan menampilkan panel Bukti', async () => {
+  vi.stubGlobal('fetch', stubSystemFetch([SYS_HEALTH, EVENTS[0]]))
+  renderPage()
+
+  const item = await screen.findByTestId('event-item-7')
+  await userEvent.click(item)
+  await waitFor(() => expect(screen.getByTestId('event-evidence')).toBeInTheDocument())
+  expect(screen.queryByTestId('event-tab-snapshot')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('event-tab-clip')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('event-tab-crop')).not.toBeInTheDocument()
+  // bukti health: fakta + grafik + marker waktu
+  expect(await screen.findByTestId('lc-line-cpu_pct')).toBeInTheDocument()
+  expect(screen.getAllByTestId('lc-marker')).toHaveLength(1)
+})
+
+test('event system tidak polling klip dan tidak menampilkan teks rekaman', async () => {
+  vi.useFakeTimers()
+  const rows = [{ ...SYS_HEALTH, ts_event: new Date().toISOString() }]
+  const fetchMock = stubSystemFetch(rows)
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+  const before = listCalls(fetchMock).length
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+  expect(screen.queryByText('Clip sedang direkam')).not.toBeInTheDocument()
+  expect(listCalls(fetchMock).length).toBe(before)
+  vi.useRealTimers()
+})
+
+test('baris event system memakai judul dan lokasi manusiawi, bukan teks mentah', async () => {
+  vi.stubGlobal('fetch', stubSystemFetch([SYS_NODE, EVENTS[0]]))
+  renderPage()
+
+  const row = await screen.findByTestId('event-item-8')
+  expect(row).toHaveTextContent('Node offline')
+  expect(row).toHaveTextContent('Node edge-1 offline')
+  expect(row).not.toHaveTextContent('cam null')
+})
+
+test('detail event system menyembunyikan meta Kamera dan Zona', async () => {
+  vi.stubGlobal('fetch', stubSystemFetch([SYS_HEALTH, EVENTS[0]]))
+  renderPage()
+
+  await userEvent.click(await screen.findByTestId('event-item-7'))
+  const detail = await screen.findByTestId('event-detail')
+  await waitFor(() => expect(detail).toHaveTextContent('CPU node tinggi'))
+  expect(detail).not.toHaveTextContent('Kamera')
+  expect(detail).not.toHaveTextContent('Zona')
+})
+
+test('pencarian menemukan event system lewat nama node', async () => {
+  vi.stubGlobal('fetch', stubSystemFetch([SYS_NODE, EVENTS[0]]))
+  renderPage()
+  await screen.findByTestId('event-item-8')
+
+  await userEvent.type(screen.getByLabelText('Cari'), 'edge-1')
+  await waitFor(() => expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument())
+  expect(screen.getByTestId('event-item-8')).toBeInTheDocument()
+})
+
+test('event non-system tetap memakai tab media (regresi)', async () => {
+  const clip: EventOut[] = [{ ...EVENTS[0], clip_path: 'clips/x.mp4', snapshot_path: 'snapshots/x.jpg' }]
+  vi.stubGlobal('fetch', stubSystemFetch(clip))
+  renderPage()
+
+  await screen.findByTestId('event-detail')
+  expect(screen.getByTestId('event-tab-snapshot')).toBeInTheDocument()
+  expect(screen.getByTestId('event-tab-clip')).toBeInTheDocument()
+  expect(screen.queryByTestId('event-evidence')).not.toBeInTheDocument()
 })

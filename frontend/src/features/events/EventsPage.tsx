@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Button, Dropdown, InlineLoading, InlineNotification, Select, SelectItem, Tag, TextInput } from '@carbon/react'
-import { Download } from '@carbon/icons-react'
+import { Download, Activity } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
 import { listZones } from '../../api/zones'
 import { listEvents, type EventOut } from '../../api/events'
 import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type TelegramStatus } from '../../api/alerts'
 import { useLiveEvents } from '../../api/useWs'
+import { eventTitle, eventWhere } from '../notifications/labels'
 import { EVENT_TYPES, eventTypeLabel } from './eventTypes'
+import EvidencePanel from './EvidencePanel'
 
 const SEV_VALUES = ['critical', 'warning', 'info']
 const SEV_DOT: Record<string, string> = { critical: 'ev-dot--critical', warning: 'ev-dot--warning', info: 'ev-dot--info' }
@@ -185,6 +187,8 @@ export default function EventsPage() {
   const selectedSevItem = sevItems.find((i) => i.value === sevFilter) ?? sevItems[0]
 
   const camName = (e: EventOut) => cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`
+  // eventWhere menerima nama dari id kamera (payload health sudah membawa labelnya sendiri)
+  const camNameById = (id: number | null) => (id == null ? '—' : (cams.find((c) => c.id === id)?.name ?? `cam ${id}`))
   // nama zona utk Inbox; zona yang sudah dihapus → #id (bukan crash)
   const zoneName = (id: number) => zoneNames[id] ?? `#${id}`
 
@@ -202,22 +206,26 @@ export default function EventsPage() {
   const needle = query.trim().toLowerCase()
   const filtered = events.filter((e) => {
     if (!needle) return true
-    return [e.type, e.event_id, e.severity, camName(e), e.payload ? JSON.stringify(e.payload) : '']
-      .join(' ')
-      .toLowerCase()
-      .includes(needle)
+    const haystack = e.type === 'system'
+      ? [eventTitle(e, t), eventWhere(e, t, camNameById), e.severity, e.event_id]
+      : [e.type, e.event_id, e.severity, camName(e), e.payload ? JSON.stringify(e.payload) : '']
+    return haystack.join(' ').toLowerCase().includes(needle)
   })
 
   // pilihan ikut list ter-filter; default event pertama
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
   const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
   const isAttendance = selected?.type === 'attendance'
+  // event system (node offline/pulih, health alert) tidak punya media: panel Bukti menggantikan tab
+  const isSystem = selected?.type === 'system'
+  const title = selected ? (isSystem ? eventTitle(selected, t) : selected.type) : ''
+  const where = selected ? eventWhere(selected, t, camNameById) : ''
 
   // klip insiden dipakai beberapa event: mulai putar di detik event ini (media fragment)
   const clipOffset = selected?.payload?.clip_offset_s
   const clipSeek = typeof clipOffset === 'number' && clipOffset > 0 ? `#t=${clipOffset}` : ''
   const clipPending =
-    !!selected && !selected.clip_path && !isAttendance &&
+    !!selected && !isSystem && !selected.clip_path && !isAttendance &&
     nowMs - new Date(selected.ts_event).getTime() < CLIP_PENDING_MS
 
   // jam ber-tick supaya event yang menua berhenti dianggap "sedang direkam"
@@ -404,8 +412,8 @@ export default function EventsPage() {
                     />
                   )}
                   <span className="ev-row__main">
-                    <span className="ev-row__title">{e.type}</span>
-                    <span className="ev-row__sub">{camName(e)}</span>
+                    <span className="ev-row__title">{e.type === 'system' ? eventTitle(e, t) : e.type}</span>
+                    <span className="ev-row__sub">{e.type === 'system' ? eventWhere(e, t, camNameById) : camName(e)}</span>
                     <span className="ev-row__tags">
                       <span className={`ev-tag ${SEV_TAG[e.severity] ?? 'ev-tag--muted'}`}>{e.severity}</span>
                       {alertMap[e.event_id] && (
@@ -418,7 +426,9 @@ export default function EventsPage() {
                     <span>{timeStr(e.ts_event)}</span>
                     <span>{new Date(e.ts_event).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
                   </span>
-                  <Thumb path={e.snapshot_path} alt={e.type} />
+                  {e.type === 'system'
+                    ? <span className="ev-thumb ev-thumb--icon" aria-hidden="true"><Activity size={20} /></span>
+                    : <Thumb path={e.snapshot_path} alt={e.type} />}
                 </button>
               </li>
             ))}
@@ -429,8 +439,9 @@ export default function EventsPage() {
             <div data-testid="event-detail" className="ev-detail">
               <div className="ev-detail__head">
                 <h2 className="ev-detail__title">
-                  {selected.type} · {camName(selected)}
+                  {isSystem ? title : `${title} · ${camName(selected)}`}
                 </h2>
+                {isSystem && <span className="ev-detail__where">{where}</span>}
                 <Tag type={selected.severity === 'critical' ? 'red' : 'warm-gray'} size="sm">
                   {selected.severity}
                 </Tag>
@@ -441,7 +452,11 @@ export default function EventsPage() {
                 )}
               </div>
 
-              <div className="ev-tabstrip" role="tablist">
+              {isSystem ? (
+                <EvidencePanel key={selected.id} event={selected} />
+              ) : (
+                <>
+                  <div className="ev-tabstrip" role="tablist">
                 {DETAIL_TABS.filter((tb) => (tb.id === 'crop' ? isAttendance : tb.id !== 'clip' || !isAttendance)).map((tb) => {
                   const off = tb.id === 'crop' && !cropPath
                   return (
@@ -506,20 +521,26 @@ export default function EventsPage() {
                     {t('events.cropUnavailable')}
                   </div>
                 ))}
+                </>
+              )}
 
               <dl className="ev-meta-grid">
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.time')}</dt>
                   <dd className="ev-meta__v">{new Date(selected.ts_event).toLocaleString()}</dd>
                 </div>
-                <div className="ev-meta">
-                  <dt className="ev-meta__k">{t('events.col.camera')}</dt>
-                  <dd className="ev-meta__v">{camName(selected)}</dd>
-                </div>
-                <div className="ev-meta">
-                  <dt className="ev-meta__k">{t('events.col.zone')}</dt>
-                  <dd className="ev-meta__v">{selected.zone_id != null ? zoneName(selected.zone_id) : '—'}</dd>
-                </div>
+                {!isSystem && (
+                  <div className="ev-meta">
+                    <dt className="ev-meta__k">{t('events.col.camera')}</dt>
+                    <dd className="ev-meta__v">{camName(selected)}</dd>
+                  </div>
+                )}
+                {!isSystem && (
+                  <div className="ev-meta">
+                    <dt className="ev-meta__k">{t('events.col.zone')}</dt>
+                    <dd className="ev-meta__v">{selected.zone_id != null ? zoneName(selected.zone_id) : '—'}</dd>
+                  </div>
+                )}
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.type')}</dt>
                   <dd className="ev-meta__v">{selected.type}</dd>

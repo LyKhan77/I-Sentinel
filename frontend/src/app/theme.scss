@@ -860,6 +860,15 @@ html {
   &--empty {
     background: #0d1117;
   }
+
+  /* event system tidak punya thumbnail: ikon di kotak yang sama supaya baris tetap sejajar */
+  &--icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cds-layer-accent);
+    color: var(--cds-icon-secondary);
+  }
 }
 
 /* Panel detail: heading + tag, media, grid metadata, aksi unduh. */
@@ -875,6 +884,12 @@ html {
   align-items: center;
   gap: 8px;
   margin-block-end: 12px;
+}
+
+.ev-detail__where {
+  flex: 1 1 100%;
+  font-size: 13px;
+  color: var(--cds-text-secondary);
 }
 
 .ev-detail__title {
