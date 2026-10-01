@@ -34,10 +34,21 @@ export type NodeHistory = { id: number; name: string
     infer_fps: HistPoint[]; mqtt_backlog: HistPoint[]; gpus: Record<string, GpuHistory> }
   cameras: { id: number; name: string; target_fps: number | null; fps: HistPoint[]; frame_age_s: HistPoint[] }[]
   offline: { from: string; to: string | null }[] }
-export type MonitoringHistory = { range: HistoryRange; bucket_s: number; from: string; to: string; nodes: NodeHistory[] }
+export type MonitoringHistory = { range: string; bucket_s: number; from: string; to: string; nodes: NodeHistory[] }
 
 export async function getMonitoringHistory(range: HistoryRange): Promise<MonitoringHistory> {
   const res = await apiFetch(`/monitoring/history?range=${range}`)
+  if (!res.ok) throw new Error(`monitoring history failed: ${res.status}`)
+  return res.json()
+}
+
+/** Jendela eksplisit (panel Bukti event system): batas ≤ 6 jam, bucket 60 dtk. */
+export async function getMonitoringHistoryWindow(
+  p: { from: Date; to: Date; nodeId?: number },
+): Promise<MonitoringHistory> {
+  const qs = new URLSearchParams({ from: p.from.toISOString(), to: p.to.toISOString() })
+  if (p.nodeId != null) qs.set('node_id', String(p.nodeId))
+  const res = await apiFetch(`/monitoring/history?${qs}`)
   if (!res.ok) throw new Error(`monitoring history failed: ${res.status}`)
   return res.json()
 }

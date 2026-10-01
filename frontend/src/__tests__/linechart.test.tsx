@@ -68,3 +68,16 @@ test('tanpa prop digits, nilai tetap satu desimal', () => {
   base([{ key: 'cpu', label: 'CPU', color: '#6929c4', points: pts([0], () => 3) }])
   expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('CPU 3.0 %'))
 })
+
+test('marker digambar di dalam rentang dan dilewati di luar', () => {
+  base([{ key: 'cpu', label: 'CPU', color: '#6929c4', points: pts([0, 30]) }],
+    { markers: [{ t: FROM + 10 * MIN, label: 'Event' }] })
+  expect(screen.getAllByTestId('lc-marker')).toHaveLength(1)
+  expect(screen.getByTestId('lc-marker')).toHaveTextContent('Event')
+})
+
+test('marker di luar [from, to] tidak digambar', () => {
+  base([{ key: 'cpu', label: 'CPU', color: '#6929c4', points: pts([0, 30]) }],
+    { markers: [{ t: FROM - MIN, label: 'Event' }, { t: TO + MIN, label: 'Event' }] })
+  expect(screen.queryAllByTestId('lc-marker')).toHaveLength(0)
+})

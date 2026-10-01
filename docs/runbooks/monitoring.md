@@ -84,6 +84,15 @@ Kamera nonaktif ditandai `disabled` dan dihitung terpisah dari ringkasan.
   `journalctl -u isentinel-api | grep "monitoring history"`.
 - Belum ada sampel sama sekali (baru deploy) → tab Tren menampilkan teks "Belum ada data riwayat …".
 - API: `curl -s -b <cookie> "localhost:8000/api/v1/monitoring/history?range=6h" | head -c 400`.
+- **Mode jendela** (dipakai panel Bukti event system): `…/monitoring/history?from=<iso>&to=<iso>&node_id=<id>`.
+  Bucket tetap 60 dtk dan `range` di respons = `"custom"`, tanpa downsample. Batas maksimum 6 jam; jendela di luar
+  retensi 7 hari mengembalikan seri kosong (bukan error). `range` **tidak boleh** digabung dengan `from`/`to`, `from`
+  dan `to` harus berpasangan, `to > from`, dan rentang ≤ 6 jam — pelanggaran → **422**. Naive = UTC.
+  Cek:
+  `curl -s -b <cookie> "localhost:8000/api/v1/monitoring/history?from=2026-10-01T07:00:00Z&to=2026-10-01T08:00:00Z&node_id=1" | head -c 400`.
+- Selisih jam server dan timestamp event: jendela memakai waktu **server**, jadi event dengan `ts_event` jauh di masa
+  depan/masa lalu (jam node salah) bisa jatuh di luar jendela dan panel Bukti menampilkan “Tidak ada data tren pada
+  jendela ini” — cek `date -u` di node saat kejadian seperti itu.
 - Migrasi: `0019_monitoring_sample` (FK `node` ON DELETE CASCADE). Rollback: `alembic downgrade 0018`
   (tabel di-drop; riwayat terkumpul hilang — data turunan, terkumpul ulang dalam 7 hari) + `git revert`
   rentang commit S2 + build frontend + restart API. Vision **tidak** berubah dan tidak perlu restart.

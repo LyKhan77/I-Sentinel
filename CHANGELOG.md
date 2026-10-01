@@ -3,6 +3,91 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Filter Events + bukti event system — deploy dan uji UI user (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`d81d1d1`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
+- **Deploy `gspe-ai3`:** `git checkout feat/system-event-evidence` (dari `main` @ `b8c54db`, tree bersih) → `d81d1d1`;
+  tanpa migrasi; hanya API yang di-restart (cgroup kill, backend berubah); frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}`; `GET /events?severity=critical` dan
+  `GET /monitoring/history?from=…&to=…` tanpa auth → 401 (rute hidup); `openapi.json` memuat parameter `severity` dan
+  `from`/`to`/`node_id`; web `:5173` → 200; journal API 20 baris terakhir 0 error/traceback.
+- **Uji UI user:** "sudah sesuai hasilnya" (konfirmasi di chat, 2026-10-01; tanpa screenshot) atas daftar cek: "Semua" tiap
+  dropdown, Atur ulang filter, penanda `N+`, panel Bukti per jenis event system, event kamera tak berubah, 390 px.
+- **Catatan review:** satu uji flaky tak terkait (`zones.test.tsx > save calls createZone with normalized polygon`) gagal
+  sekali saat pytest dan vitest berjalan bersamaan; lulus 3/3 sendiri dan 2/2 suite penuh tanpa beban — belum diselidiki.
+- **Rollback:** `git revert` merge ini atau commit per task (tanpa migrasi); server: `git checkout main && git pull` + restart API.
+
+### Perbaikan review filter Events + bukti event system (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `feat/system-event-evidence` menemukan tiga hal kecil: (M1) event system
+  dengan `ts_event` jauh di masa depan (jam node salah) menghasilkan jendela `from >= to` → API 422 → panel menulis
+  "Gagal memuat grafik", bukan "Tidak ada data tren"; (L1) efek `[refresh]` di `EventsPage` memanggil ulang
+  `listCameras()`/`listZones()` pada tiap perubahan filter; (L2) rule health yang belum diterjemahkan tampil sebagai
+  kunci i18n mentah (`health.rule.<rule>`).
+- **Diubah:** `features/events/systemEvidence.ts` — `window` null bila `from >= to` (panel menampilkan catatan tanpa data
+  dan tidak meminta history); fakta Aturan memakai nama rule bila terjemahan tidak ada. `features/events/EventsPage.tsx` —
+  kamera dan zona di-fetch sekali saat mount (efek terpisah dari `refresh`).
+- **Uji (ditulis gagal dulu):** `system-evidence.test.ts` (jendela masa depan, nama rule), `system-evidence-panel.test.tsx`
+  (event masa depan: `evidence-empty` tanpa request), `events.test.tsx` (ganti filter tidak mengulang `/cameras`/`/zones`).
+- **Evidence (Mac lokal):** frontend `Test Files 32 passed (32)` / `Tests 353 passed (353)` (349 + 4); `npm run build` exit 0;
+  `npm run lint` 24 baris, pasangan (file, rule) identik sebelum dan sesudah perbaikan; `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}"
+  -- frontend/src/features/events` kosong; backend tidak diubah (631 passed pada review).
+- **Dampak:** panel Bukti jujur untuk event berjam salah; tiap perubahan filter kini 1 request (bukan 3).
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi.
+
+### Filter Events konsisten + bukti event system (2026-10-01)
+
+- **Konteks:** dua permintaan user atas `/events`: (1) event `system` (node offline/pulih, health alert) hanya
+  menampilkan tab Snapshot/Clip yang selalu kosong dan teks mentah `system · cam null`; (2) filter belum konsisten —
+  Tipe/Kamera/Severity difilter di klien atas 200 event terbaru (event `attendance` memenuhi kuota, event keamanan
+  lama tak terjangkau), opsi Tipe mengikuti data yang termuat, dan Carbon `Dropdown` tak bisa membatalkan pilihan
+  sehingga tidak ada jalan kembali ke “Semua” tanpa reload. Event system juga memicu polling klip 5 detik dan teks
+  “Clip sedang direkam” yang tak pernah terpenuhi.
+- **Diubah — backend:** `app/api/events.py` — `list_events` mendapat `severity` berulang (`Event.severity.in_(...)`),
+  sama polanya dengan `type`. `app/services/monitoring_history.py` — badan `query` dipecah menjadi `_series(start, end,
+  bucket_s, node_id)`; `query_window` baru memakai bucket tetap 60 dtk, `range: "custom"`, batas naive = UTC, dan
+  `_offline(db, node, start, end)`. `app/api/monitoring.py` — `get_history` dua mode: `range` (default `6h`, perilaku
+  lama) atau jendela `from`/`to` + `node_id` opsional; `range` bersama `from`/`to`, hanya salah satu, `to <= from`,
+  atau rentang > 6 jam → 422.
+- **Diubah — frontend:** `features/events/eventTypes.ts` baru (daftar tipe ingest statis + label lokal).
+  `api/events.ts` (`severities`, `EventOut.node_id` opsional), `api/monitoring.ts` (`getMonitoringHistoryWindow`,
+  `MonitoringHistory.range` → `string`). `EventsPage.tsx` — tiga dropdown berbentuk item yang sama (`{value, label}`,
+  nilai primitif) dengan opsi **Semua** sebagai item pertama, tombol **Atur ulang filter**, `refresh` bergantung pada
+  nilai filter dan membuang respons basi lewat penghitung permintaan, hitungan `N+` + petunjuk batas 200, event live
+  yang tak cocok filter tidak ditambahkan, judul/lokasi event system terlokalisasi, sel ikon menggantikan thumbnail,
+  `clipPending` selalu false untuk event system. `features/events/systemEvidence.ts` baru (fungsi murni: jendela,
+  fakta, pemetaan grafik per rule termasuk `camera_low_fps` dalam persen target FPS; retensi 7 hari → `expired`).
+  `features/events/EvidencePanel.tsx` baru (panel Bukti, satu fetch per event, dependensi primitif).
+  `components/LineChart.tsx` — prop `markers` (penanda waktu event, di luar rentang tidak digambar) dan token SCSS
+  `.lc__marker`/`.ev-evidence*`/`.ev-thumb--icon` di `app/theme.scss`. Kunci i18n baru 42 (`events.type.*`,
+  `events.evidence.*`, `events.filterReset`, `events.limitHint`) — paritas id/en 86=86.
+- **File:** `backend/app/api/{events,monitoring}.py`, `backend/app/services/monitoring_history.py`,
+  `backend/tests/{test_events_api,test_monitoring_history}.py`,
+  `frontend/src/{api/{events,monitoring}.ts,app/{i18n.tsx,theme.scss},components/LineChart.tsx,
+  features/events/{EventsPage.tsx,eventTypes.ts,systemEvidence.ts,EvidencePanel.tsx},
+  __tests__/{events,alerts,linechart,system-evidence,system-evidence-panel}}`, `WORKFLOW.md`, `ARCHITECTURE.md`,
+  `README.md`, `ROADMAP.md`, `docs/runbooks/monitoring.md`, `CHANGELOG.md`.
+- **Evidence (Mac lokal, commit terakhir branch):** backend `631 passed, 471 warnings in 126.55s` (622 → 631: +1 uji
+  filter `severity`, +8 uji jendela history); frontend `Test Files 32 passed (32)` / `Tests 349 passed (349)`
+  (296 → 349; tidak ada uji yang dihapus, 1 uji lama disesuaikan karena Carbon `Dropdown` kini butuh
+  `Element.prototype.scrollIntoView` di jsdom dan stub fetch daftar event ikut memfilter seperti server nyata);
+  `npm run build` exit 0; `npm run lint` **24 baris warning** (0 error) — set pasangan (rule, file) identik baseline
+  (3× `react(set-state-in-effect)` di `EventsPage.tsx` sebelum dan sesudah). `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}"
+  -- frontend/src/features/events` kosong (sama dengan `main`). Uji mutasi dijalankan untuk penjaga respons basi,
+  filter event live, batas 6 jam, `node_id`, `camera_low_fps` persen, garis ambang, dan `markers` — semuanya gagal
+  saat penjaganya dilepas. **Smoke render mock** (Vite dev + Playwright, `/api/v1/**` di-mock, 1440 px dan 390 px):
+  0 error konsol (WebSocket juga di-mock); filter Sistem → 2 baris, Severity critical → 0 baris + pesan kosong,
+  “Semua” memulihkan masing-masing ke 3 baris, tombol reset muncul saat filter aktif dan hilang setelah ditekan
+  (pencarian kosong, rentang `all`, Tipe `Semua`); event health terpilih → 1 grafik + 1 garis ambang + 1 marker,
+  fakta `[CPU node tinggi, Server, 91.5%, 90%, 5 mnt, Menyala]`, 0 tab media; event node offline → 2 grafik
+  (`node_cpu_offline`, `node_fps_offline`) dengan 2 arsir offline; 390 px `scrollWidth 375 ≤ innerWidth 390`.
+  **Uji UI visual oleh user menyusul setelah deploy** — belum ada klaim visual di entri ini.
+- **Dampak:** filter Inbox akhirnya menjangkau seluruh riwayat (bukan 200 teratas) dan selalu bisa dikembalikan ke
+  “Semua”; event system menampilkan bukti yang relevan (fakta + tren per aturan) tanpa polling klip yang sia-sia.
+  Dua parameter API baru bersifat opsional → kompatibel mundur, tanpa migrasi DB.
+- **Rollback:** `git revert` per commit task (6 commit) di branch `feat/system-event-evidence`; tanpa migrasi.
+  Server: `git checkout main && git pull` + restart API; frontend lewat Vite dev.
+
 ### Dashboard status-first — deploy dan uji UI user (2026-10-01)
 
 - **Konteks:** setelah review dan perbaikan (`6e9f7f0`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.

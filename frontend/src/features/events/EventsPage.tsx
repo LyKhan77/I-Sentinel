@@ -1,17 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Dropdown, InlineLoading, InlineNotification, Select, SelectItem, Tag, TextInput } from '@carbon/react'
-import { Download } from '@carbon/icons-react'
+import { Button, Dropdown, InlineLoading, InlineNotification, Select, SelectItem, Tag, TextInput } from '@carbon/react'
+import { Download, Activity } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras } from '../../api/cameras'
 import { listZones } from '../../api/zones'
 import { listEvents, type EventOut } from '../../api/events'
 import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type TelegramStatus } from '../../api/alerts'
 import { useLiveEvents } from '../../api/useWs'
+import { eventTitle, eventWhere } from '../notifications/labels'
+import { EVENT_TYPES, eventTypeLabel } from './eventTypes'
+import EvidencePanel from './EvidencePanel'
 
-const SEV_OPTIONS = ['critical', 'warning', 'info'].map((label) => ({ label }))
+const SEV_VALUES = ['critical', 'warning', 'info']
 const SEV_DOT: Record<string, string> = { critical: 'ev-dot--critical', warning: 'ev-dot--warning', info: 'ev-dot--info' }
 const SEV_TAG: Record<string, string> = { critical: 'ev-tag--err', warning: 'ev-tag--warn', info: 'ev-tag--info' }
+
+// Dropdown filter: SATU bentuk item untuk ketiganya (Tipe/Kamera/Severity) supaya
+// "Semua" selalu item pertama dan nilai filter disimpan sebagai primitif
+// (`value: null` = tanpa filter) — dependensi `refresh` jadi stabil.
+type FilterItem = { value: string | number | null; label: string }
+const ALL_VALUE = null
 
 const ALERT_KEY: Record<AlertStatus, TKey> = {
   sent: 'events.alert.sent',
@@ -36,7 +45,8 @@ const ALERT_BADGE: Record<AlertStatus, string> = {
 }
 
 // Rentang waktu toolbar (mockup 03) → param `since`. `all` default: riwayat lama
-// tetap tampil, filter lain tetap murni client-side.
+// tetap tampil. Tipe/Kamera/Severity/Rentang semuanya difilter di server;
+// pencarian teks tetap murni client-side.
 const RANGE_IDS = ['all', '24h', '7d', '30d'] as const
 type RangeId = (typeof RANGE_IDS)[number]
 const RANGE_HOURS: Partial<Record<RangeId, number>> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
@@ -53,6 +63,9 @@ const DETAIL_TABS: { id: DetailTab; key: TKey }[] = [
 
 // Clip insiden baru ada ±post (default 8 s) setelah orang terakhir terlihat (maks 120 s) — tunggu 3 menit.
 const CLIP_PENDING_MS = 3 * 60_000
+
+// Batas API `GET /events` (le=200): daftar lebih panjang dari ini tidak terjangkau.
+const LIMIT = 200
 
 function timeStr(ts: string): string {
   return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
@@ -71,9 +84,9 @@ export default function EventsPage() {
   const [events, setEvents] = useState<EventOut[]>([])
   const [cams, setCams] = useState<{ id: number; name: string }[]>([])
   const [zoneNames, setZoneNames] = useState<Record<number, string>>({})
-  const [typeFilter, setTypeFilter] = useState<{ label: string } | null>(null)
-  const [camFilter, setCamFilter] = useState<{ id: number; label: string } | null>(null)
-  const [sevFilter, setSevFilter] = useState<{ label: string } | null>(null)
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const [camFilter, setCamFilter] = useState<number | null>(null)
+  const [sevFilter, setSevFilter] = useState<string | null>(null)
   const [range, setRange] = useState<RangeId>('all')
   const [query, setQuery] = useState('')
   // `?event=<id>` (tautan caption) dibaca saat init; tanpa param → null → default event pertama
@@ -84,6 +97,8 @@ export default function EventsPage() {
   })
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
+  // nomor permintaan: respons lama yang tiba belakangan dibuang (filter berubah cepat)
+  const reqRef = useRef(0)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
   const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
   const [tabState, setTabState] = useState<{ id: number; tab: DetailTab } | null>(null)
@@ -91,28 +106,51 @@ export default function EventsPage() {
   // jam 5 s untuk `clipPending`: Date.now() langsung di body render melanggar react/purity
   const [nowMs, setNowMs] = useState(() => Date.now())
 
+  const hasFilter = typeFilter != null || camFilter != null || sevFilter != null || range !== 'all' || query.trim() !== ''
+  const resetFilters = () => {
+    setTypeFilter(null)
+    setCamFilter(null)
+    setSevFilter(null)
+    setRange('all')
+    setQuery('')
+  }
+
   const refresh = useCallback(async () => {
     const hours = RANGE_HOURS[range]
     const since = hours ? new Date(Date.now() - hours * 3_600_000).toISOString() : undefined
+    const req = ++reqRef.current
     try {
-      setEvents(await listEvents({ limit: 200, since }))
+      const rows = await listEvents({
+        limit: LIMIT,
+        since,
+        types: typeFilter ? [typeFilter] : undefined,
+        camera_id: camFilter ?? undefined,
+        severities: sevFilter ? [sevFilter] : undefined,
+      })
+      if (req !== reqRef.current) return // respons basi: permintaan lebih baru sudah jalan
+      setEvents(rows)
       setLoadFailed(false)
     } catch {
+      if (req !== reqRef.current) return
       setLoadFailed(true) // jangan tampilkan "Belum ada event" saat requestnya yang gagal
     } finally {
-      setLoading(false)
+      if (req === reqRef.current) setLoading(false)
     }
-  }, [range])
+  }, [range, typeFilter, camFilter, sevFilter])
 
   useEffect(() => {
     refresh()
+  }, [refresh])
+
+  // kamera dan zona sekali saat mount — bukan tiap filter berubah (`refresh` ikut berubah)
+  useEffect(() => {
     listCameras()
       .then((cs) => setCams(cs.map((c) => ({ id: c.id, name: c.name }))))
       .catch(() => setCams([]))
     listZones()
       .then((zs) => setZoneNames(Object.fromEntries(zs.map((z) => [z.id, z.name]))))
       .catch(() => setZoneNames({}))
-  }, [refresh])
+  }, [])
 
   // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
   useLiveEvents((raw) => {
@@ -128,13 +166,33 @@ export default function EventsPage() {
     }
     const e = raw as EventOut
     if (typeof e?.id !== 'number') return // buang frame non-event lain
-    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, 200)))
+    // filter aktif dikirim ke server; event live dari tipe/kamera/severity lain tidak boleh ikut masuk
+    if (typeFilter && e.type !== typeFilter) return
+    if (camFilter != null && e.camera_id !== camFilter) return
+    if (sevFilter && e.severity !== sevFilter) return
+    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, LIMIT)))
   })
 
-  const typeOptions = useMemo(() => [...new Set(events.map((e) => e.type))].map((v) => ({ label: v })), [events])
-  const camOptions = useMemo(() => cams.map((c) => ({ id: c.id, label: c.name })), [cams])
+  // tiga dropdown memakai bentuk item yang sama: "Semua" + opsi; nilai = primitif
+  const typeItems = useMemo<FilterItem[]>(
+    () => [{ value: ALL_VALUE, label: t('events.filterAll') }, ...EVENT_TYPES.map((v) => ({ value: v, label: eventTypeLabel(v, t) }))],
+    [t],
+  )
+  const camItems = useMemo<FilterItem[]>(
+    () => [{ value: ALL_VALUE, label: t('events.filterAll') }, ...cams.map((c) => ({ value: c.id, label: c.name }))],
+    [cams, t],
+  )
+  const sevItems = useMemo<FilterItem[]>(
+    () => [{ value: ALL_VALUE, label: t('events.filterAll') }, ...SEV_VALUES.map((v) => ({ value: v, label: v }))],
+    [t],
+  )
+  const selectedTypeItem = typeItems.find((i) => i.value === typeFilter) ?? typeItems[0]
+  const selectedCamItem = camItems.find((i) => i.value === camFilter) ?? camItems[0]
+  const selectedSevItem = sevItems.find((i) => i.value === sevFilter) ?? sevItems[0]
 
   const camName = (e: EventOut) => cams.find((c) => c.id === e.camera_id)?.name ?? `cam ${e.camera_id}`
+  // eventWhere menerima nama dari id kamera (payload health sudah membawa labelnya sendiri)
+  const camNameById = (id: number | null) => (id == null ? '—' : (cams.find((c) => c.id === id)?.name ?? `cam ${id}`))
   // nama zona utk Inbox; zona yang sudah dihapus → #id (bukan crash)
   const zoneName = (id: number) => zoneNames[id] ?? `#${id}`
 
@@ -148,29 +206,30 @@ export default function EventsPage() {
     return '—'
   }
 
-  // semua filter (termasuk pencarian teks) client-side atas hasil listEvents
+  // pencarian teks tetap client-side atas hasil server yang sudah terfilter
   const needle = query.trim().toLowerCase()
   const filtered = events.filter((e) => {
-    if (typeFilter && e.type !== typeFilter.label) return false
-    if (camFilter && e.camera_id !== camFilter.id) return false
-    if (sevFilter && e.severity !== sevFilter.label) return false
     if (!needle) return true
-    return [e.type, e.event_id, e.severity, camName(e), e.payload ? JSON.stringify(e.payload) : '']
-      .join(' ')
-      .toLowerCase()
-      .includes(needle)
+    const haystack = e.type === 'system'
+      ? [eventTitle(e, t), eventWhere(e, t, camNameById), e.severity, e.event_id]
+      : [e.type, e.event_id, e.severity, camName(e), e.payload ? JSON.stringify(e.payload) : '']
+    return haystack.join(' ').toLowerCase().includes(needle)
   })
 
   // pilihan ikut list ter-filter; default event pertama
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
   const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
   const isAttendance = selected?.type === 'attendance'
+  // event system (node offline/pulih, health alert) tidak punya media: panel Bukti menggantikan tab
+  const isSystem = selected?.type === 'system'
+  const title = selected ? (isSystem ? eventTitle(selected, t) : selected.type) : ''
+  const where = selected ? eventWhere(selected, t, camNameById) : ''
 
   // klip insiden dipakai beberapa event: mulai putar di detik event ini (media fragment)
   const clipOffset = selected?.payload?.clip_offset_s
   const clipSeek = typeof clipOffset === 'number' && clipOffset > 0 ? `#t=${clipOffset}` : ''
   const clipPending =
-    !!selected && !selected.clip_path && !isAttendance &&
+    !!selected && !isSystem && !selected.clip_path && !isAttendance &&
     nowMs - new Date(selected.ts_event).getTime() < CLIP_PENDING_MS
 
   // jam ber-tick supaya event yang menua berhenti dianggap "sedang direkam"
@@ -255,32 +314,35 @@ export default function EventsPage() {
       )}
 
       <div className="ev-toolbar">
-        <Dropdown
+        <Dropdown<FilterItem>
           className="events-filter"
           id="filter-type"
           titleText={t('events.col.type')}
           label={t('events.filterAll')}
-          items={typeOptions}
-          selectedItem={typeFilter}
-          onChange={({ selectedItem }) => setTypeFilter(selectedItem)}
+          items={typeItems}
+          itemToString={(i) => i?.label ?? ''}
+          selectedItem={selectedTypeItem}
+          onChange={({ selectedItem }) => setTypeFilter((selectedItem?.value as string | null) ?? null)}
         />
-        <Dropdown
+        <Dropdown<FilterItem>
           className="events-filter"
           id="filter-camera"
           titleText={t('events.col.camera')}
           label={t('events.filterAll')}
-          items={camOptions}
-          selectedItem={camFilter}
-          onChange={({ selectedItem }) => setCamFilter(selectedItem)}
+          items={camItems}
+          itemToString={(i) => i?.label ?? ''}
+          selectedItem={selectedCamItem}
+          onChange={({ selectedItem }) => setCamFilter((selectedItem?.value as number | null) ?? null)}
         />
-        <Dropdown
+        <Dropdown<FilterItem>
           className="events-filter"
           id="filter-severity"
           titleText={t('events.col.severity')}
           label={t('events.filterAll')}
-          items={SEV_OPTIONS}
-          selectedItem={sevFilter}
-          onChange={({ selectedItem }) => setSevFilter(selectedItem)}
+          items={sevItems}
+          itemToString={(i) => i?.label ?? ''}
+          selectedItem={selectedSevItem}
+          onChange={({ selectedItem }) => setSevFilter((selectedItem?.value as string | null) ?? null)}
         />
         <Select
           className="events-filter"
@@ -302,12 +364,30 @@ export default function EventsPage() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {hasFilter && (
+          <Button
+            kind="ghost"
+            size="sm"
+            data-testid="filter-reset"
+            className="ev-toolbar__reset"
+            onClick={resetFilters}
+          >
+            {t('events.filterReset')}
+          </Button>
+        )}
         {!loading && (
           <span className="ev-count" data-testid="event-count">
-            {filtered.length} {t('events.countUnit')}
+            {filtered.length}
+            {events.length >= LIMIT && '+'} {t('events.countUnit')}
           </span>
         )}
       </div>
+
+      {events.length >= LIMIT && (
+        <p className="ev-limit-hint" data-testid="event-limit-hint">
+          {t('events.limitHint').replace('{n}', String(LIMIT))}
+        </p>
+      )}
 
       {loading ? (
         <InlineLoading description={t('common.loading')} />
@@ -336,8 +416,8 @@ export default function EventsPage() {
                     />
                   )}
                   <span className="ev-row__main">
-                    <span className="ev-row__title">{e.type}</span>
-                    <span className="ev-row__sub">{camName(e)}</span>
+                    <span className="ev-row__title">{e.type === 'system' ? eventTitle(e, t) : e.type}</span>
+                    <span className="ev-row__sub">{e.type === 'system' ? eventWhere(e, t, camNameById) : camName(e)}</span>
                     <span className="ev-row__tags">
                       <span className={`ev-tag ${SEV_TAG[e.severity] ?? 'ev-tag--muted'}`}>{e.severity}</span>
                       {alertMap[e.event_id] && (
@@ -350,7 +430,9 @@ export default function EventsPage() {
                     <span>{timeStr(e.ts_event)}</span>
                     <span>{new Date(e.ts_event).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
                   </span>
-                  <Thumb path={e.snapshot_path} alt={e.type} />
+                  {e.type === 'system'
+                    ? <span className="ev-thumb ev-thumb--icon" aria-hidden="true"><Activity size={20} /></span>
+                    : <Thumb path={e.snapshot_path} alt={e.type} />}
                 </button>
               </li>
             ))}
@@ -361,8 +443,9 @@ export default function EventsPage() {
             <div data-testid="event-detail" className="ev-detail">
               <div className="ev-detail__head">
                 <h2 className="ev-detail__title">
-                  {selected.type} · {camName(selected)}
+                  {isSystem ? title : `${title} · ${camName(selected)}`}
                 </h2>
+                {isSystem && <span className="ev-detail__where">{where}</span>}
                 <Tag type={selected.severity === 'critical' ? 'red' : 'warm-gray'} size="sm">
                   {selected.severity}
                 </Tag>
@@ -373,7 +456,11 @@ export default function EventsPage() {
                 )}
               </div>
 
-              <div className="ev-tabstrip" role="tablist">
+              {isSystem ? (
+                <EvidencePanel key={selected.id} event={selected} />
+              ) : (
+                <>
+                  <div className="ev-tabstrip" role="tablist">
                 {DETAIL_TABS.filter((tb) => (tb.id === 'crop' ? isAttendance : tb.id !== 'clip' || !isAttendance)).map((tb) => {
                   const off = tb.id === 'crop' && !cropPath
                   return (
@@ -438,20 +525,26 @@ export default function EventsPage() {
                     {t('events.cropUnavailable')}
                   </div>
                 ))}
+                </>
+              )}
 
               <dl className="ev-meta-grid">
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.time')}</dt>
                   <dd className="ev-meta__v">{new Date(selected.ts_event).toLocaleString()}</dd>
                 </div>
-                <div className="ev-meta">
-                  <dt className="ev-meta__k">{t('events.col.camera')}</dt>
-                  <dd className="ev-meta__v">{camName(selected)}</dd>
-                </div>
-                <div className="ev-meta">
-                  <dt className="ev-meta__k">{t('events.col.zone')}</dt>
-                  <dd className="ev-meta__v">{selected.zone_id != null ? zoneName(selected.zone_id) : '—'}</dd>
-                </div>
+                {!isSystem && (
+                  <div className="ev-meta">
+                    <dt className="ev-meta__k">{t('events.col.camera')}</dt>
+                    <dd className="ev-meta__v">{camName(selected)}</dd>
+                  </div>
+                )}
+                {!isSystem && (
+                  <div className="ev-meta">
+                    <dt className="ev-meta__k">{t('events.col.zone')}</dt>
+                    <dd className="ev-meta__v">{selected.zone_id != null ? zoneName(selected.zone_id) : '—'}</dd>
+                  </div>
+                )}
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.type')}</dt>
                   <dd className="ev-meta__v">{selected.type}</dd>

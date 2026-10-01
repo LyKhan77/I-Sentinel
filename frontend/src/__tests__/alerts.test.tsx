@@ -22,7 +22,20 @@ function stubFetch(opts: { alertMap?: Record<string, AlertStatus>; configured?: 
   const { alertMap = {}, configured = false } = opts
   return vi.fn(async (url: string) => {
     const u = String(url)
-    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(EVENTS) }
+    if (u.includes('/events?')) {
+      // backend nyata memfilter di server → server palsu ikut memfilter, bukan mengembalikan semua
+      const q = new URLSearchParams(u.slice(u.indexOf('?')))
+      const sevs = q.getAll('severity')
+      const types = q.getAll('type')
+      const cam = q.get('camera_id')
+      const rows = EVENTS.filter(
+        (e) =>
+          (sevs.length === 0 || sevs.includes(e.severity)) &&
+          (types.length === 0 || types.includes(e.type)) &&
+          (cam == null || e.camera_id === Number(cam)),
+      )
+      return { ok: true, status: 200, json: () => Promise.resolve(rows) }
+    }
     if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve(alertMap) }
     if (u.includes('/telegram/status')) return { ok: true, status: 200, json: () => Promise.resolve({ configured, active_chats: configured ? 2 : 0 }) }
     if (u.includes('/alerts?')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
@@ -101,6 +114,7 @@ test('WS alert frame with an id field does not add an event row', async () => {
 })
 
 test('severity filter offers critical option and filters the list', async () => {
+  Element.prototype.scrollIntoView = vi.fn() // Carbon Dropdown menggulir item tersorot
   vi.stubGlobal('fetch', stubFetch({ alertMap: {} }))
   renderPage()
   await screen.findByTestId('event-item-1')
@@ -116,4 +130,5 @@ test('severity filter offers critical option and filters the list', async () => 
   // hanya event critical (ev-1) yang tersisa
   await waitFor(() => expect(screen.queryByTestId('event-item-2')).not.toBeInTheDocument())
   expect(screen.getByTestId('event-item-1')).toBeInTheDocument()
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
 })

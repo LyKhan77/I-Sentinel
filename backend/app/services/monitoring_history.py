@@ -308,10 +308,31 @@ def query(db, range_key: str, now: datetime | None = None) -> dict:
     span, bucket_s = RANGES[range_key]
     now = _utc(now or datetime.now(timezone.utc))
     start = now - span
-    nodes = db.query(Node).order_by(Node.name).all()
+    out = _series(db, start, now, bucket_s)
+    return {"range": range_key, "bucket_s": bucket_s, "from": _z(start), "to": _z(now), "nodes": out}
+
+
+def query_window(db, start: datetime, end: datetime, node_id: int | None = None) -> dict:
+    """Deret tren pada jendela eksplisit (panel Bukti event system): bucket tetap 60 dtk.
+
+    Batas naive dibaca sebagai UTC (sama dengan `_offline`/`_floor`), supaya event bertimestamp
+    UTC naif dari payload health tetap cocok dengan kolom `monitoring_sample`.
+    """
+    start, end = _utc(start), _utc(end)
+    out = _series(db, start, end, SAMPLE_INTERVAL_S, node_id)
+    return {"range": "custom", "bucket_s": SAMPLE_INTERVAL_S, "from": _z(start), "to": _z(end), "nodes": out}
+
+
+def _series(db, start: datetime, end: datetime, bucket_s: int, node_id: int | None = None) -> list[dict]:
+    """Agregasi `monitoring_sample` dalam [start, end] → satu entri per node (dipakai mode range dan window)."""
+    nodes = db.query(Node)
+    if node_id is not None:
+        nodes = nodes.filter(Node.id == node_id)
+    nodes = nodes.order_by(Node.name).all()
     names = {cid: name for cid, name in db.query(Camera.id, Camera.name)}
     grouped: dict[int, dict[datetime, list[dict]]] = {}
-    for r in db.query(MonitoringSample).filter(MonitoringSample.ts >= start).order_by(MonitoringSample.ts):
+    rows = db.query(MonitoringSample).filter(MonitoringSample.ts >= start, MonitoringSample.ts <= end)
+    for r in rows.order_by(MonitoringSample.ts):
         grouped.setdefault(r.node_id, {}).setdefault(_floor(r.ts, bucket_s), []).append(_dict(r.data))
     out = []
     for n in nodes:
@@ -340,5 +361,5 @@ def query(db, range_key: str, now: datetime | None = None) -> dict:
         cam_rows = [{"id": int(ci), "name": names.get(int(ci), f"#{ci}"), **c} for ci, c in cams.items()]
         cam_rows.sort(key=lambda c: c["name"])
         out.append({"id": n.id, "name": n.name, "series": {**series, "gpus": gpus}, "cameras": cam_rows,
-                    "offline": _offline(db, n, start, now)})
-    return {"range": range_key, "bucket_s": bucket_s, "from": _z(start), "to": _z(now), "nodes": out}
+                    "offline": _offline(db, n, start, end)})
+    return out
