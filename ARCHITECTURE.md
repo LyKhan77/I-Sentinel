@@ -118,6 +118,17 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 - `{kind: "alert", event_id, status}`: status Telegram realtime di Inbox.
 - `{type: "detections", …}`: overlay debugger Live View.
 
+### `payload.evidence` pada event `system` (v1, permanen)
+
+Event system baru (health firing/resolved, node offline) membawa seri menit terkait di `payload.evidence`
+(frame WS `EventOut` ikut membesar ± 1–3 KB); panel Bukti Inbox menggambar langsung darinya tanpa fetch dan
+tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monitoring/history` (retensi 7 hari).
+
+- Skema: `{"v":1,"from":"<iso Z>","step_s":60,"series":{…}}` — titik ke-`i` berwaktu `from + i·step_s`, `null` = tanpa sampel.
+- Health: `series.value` = nilai metrik per menit (FPS dalam persen target), ≤ 360 titik.
+- Node offline: `series.cpu_pct` + `series.infer_fps` (rata-rata 30 menit terakhir); payload juga memuat
+  `last_seen`; event pulih memuat `down_s`.
+
 ## 5. Alur utama
 
 1. **Konfigurasi**: admin menambah kamera (probe RTSP) → API menulis konfigurasi go2rtc →

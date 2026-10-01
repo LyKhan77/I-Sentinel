@@ -16,6 +16,7 @@ from app.models.node import Node
 from app.schemas.event import EventOut
 from app.services import telegram
 from app.services.ingest import ingest_event
+from app.services.monitoring_history import _dict, _minute, _num, minute_samples
 from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
@@ -29,10 +30,12 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt.replace(tzinfo=timezone.utc) if dt is not None and dt.tzinfo is None else dt
 
 
-def _emit(db, node: Node, severity: str, reason: str, now: datetime) -> None:
+def _emit(db, node: Node, severity: str, reason: str, now: datetime,
+          extra: dict | None = None) -> None:
+    payload = {"node": node.name, "reason": reason, **(extra or {})}
     status, ev = ingest_event(db, {
         "event_id": str(uuid.uuid4()), "type": "system", "node_id": node.id, "severity": severity,
-        "ts_event": now.isoformat(), "payload": {"node": node.name, "reason": reason},
+        "ts_event": now.isoformat(), "payload": payload,
     })
     if status == "created" and ev is not None:
         try:
@@ -46,14 +49,43 @@ def _duration(delta: timedelta) -> str:
     return f"{minutes} menit" if minutes < 120 else f"{minutes // 60} jam {minutes % 60} menit"
 
 
+def _node_evidence(db, node_id: int, now: datetime) -> dict | None:
+    """Build the last 30 completed minute averages for CPU and inference FPS."""
+    end = _minute(now)
+    start = end - timedelta(minutes=30)
+    samples = minute_samples(db, node_id, start, end)
+    if not samples:
+        return None
+    cpu_values, fps_values = [], []
+    for offset in range(30):
+        data = _dict(samples.get(start + timedelta(minutes=offset)))
+        cpu = _num(_dict(data.get("cpu_pct")).get("avg"))
+        fps = _num(_dict(data.get("infer_fps")).get("avg"))
+        cpu_values.append(round(cpu, 1) if cpu is not None else None)
+        fps_values.append(round(fps, 1) if fps is not None else None)
+    return {"v": 1, "from": start.isoformat().replace("+00:00", "Z"), "step_s": 60,
+            "series": {"cpu_pct": cpu_values, "infer_fps": fps_values}}
+
+
 def mark_offline(db, node: Node, reason: str, now: datetime | None = None, send=None) -> bool:
     """online/unknown → offline: event warning + Telegram. False bila sudah offline."""
     if node.status == "offline":
         return False
     now = now or datetime.now(timezone.utc)
+    extra = {}
+    last_seen = _aware(node.last_seen)
+    if last_seen is not None:
+        extra["last_seen"] = last_seen.isoformat().replace("+00:00", "Z")
+    try:
+        evidence = _node_evidence(db, node.id, now)
+        if evidence is not None:
+            extra["evidence"] = evidence
+    except Exception:
+        logger.exception("node evidence build failed for %s", node.name)
+        db.rollback()
     node.status = "offline"
     db.commit()
-    _emit(db, node, "warning", reason, now)
+    _emit(db, node, "warning", reason, now, extra)
     (send or telegram.send_text)(db, f"⚠️ Node {node.name} offline ({reason}) — deteksi AI berhenti")
     return True
 
@@ -69,8 +101,11 @@ def mark_online(db, node: Node, now: datetime | None = None, since: datetime | N
     db.commit()
     if was != "offline":
         return False
-    _emit(db, node, "info", "online", now)
     since = _aware(since)
+    extra = {}
+    if since is not None and now > since:
+        extra["down_s"] = round((now - since).total_seconds())
+    _emit(db, node, "info", "online", now, extra)
     took = f" — offline {_duration(now - since)}" if since else ""
     (send or telegram.send_text)(db, f"✅ Node {node.name} pulih{took}")
     return True

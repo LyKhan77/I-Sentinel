@@ -196,8 +196,9 @@ Daftar memuat 200 event per halaman dan tombol **Muat lebih banyak** menggabung 
 sampai batas **1000 baris** → hitungan menjadi `N+ event` disertai petunjuk mempersempit filter. Event kamera
 tetap memakai tab clip/snapshot/crop;
 **event system** (node offline/pulih, health alert) memakai panel **Bukti**: fakta dari payload ditambah grafik tren
-(`/monitoring/history` mode `from`/`to`, jendela maks 6 jam) dengan garis ambang dan penanda waktu event — tanpa tab
-media dan tanpa menunggu klip. Tren hanya tersedia untuk event ≤ 7 hari (retensi `monitoring_sample`). Alur lengkap:
+dengan garis ambang dan penanda waktu event — tanpa tab media dan tanpa menunggu klip. Event baru membawa serinya di
+`payload.evidence` (digambar tanpa fetch, tetap ada walau retensi 7 hari terpangkas); event lama memakai
+`/monitoring/history` (mode `from`/`to`, jendela maks 6 jam) — trennya hanya tersedia ≤ 7 hari. Alur lengkap:
 `WORKFLOW.md §8`.
 
 ## Dashboard

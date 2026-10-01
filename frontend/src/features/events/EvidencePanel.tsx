@@ -4,7 +4,7 @@ import { useT } from '../../app/i18n'
 import type { EventOut } from '../../api/events'
 import { getMonitoringHistoryWindow, type NodeHistory } from '../../api/monitoring'
 import LineChart, { PALETTE } from '../../components/LineChart'
-import { systemEvidence, type ChartSpec } from './systemEvidence'
+import { systemEvidence, type ChartSpec, type Evidence } from './systemEvidence'
 
 type Load = { state: 'loading' | 'ok' | 'error'; node: NodeHistory | null }
 
@@ -42,6 +42,62 @@ function Chart({ spec, node, from, to, marker, locale }: {
   )
 }
 
+/** Grafik dari bukti tersimpan: titik dibaca dari `stored.series[storedKey]`, `null` dilewati. */
+function StoredChart({ spec, stored, from, to, marker, locale }: {
+  spec: ChartSpec
+  stored: NonNullable<Evidence['stored']>
+  from: number
+  to: number
+  marker: { t: number; label: string }
+  locale: string
+}) {
+  const { t } = useT()
+  const series = spec.series.map((s, i) => {
+    const values = stored.series[s.storedKey ?? ''] ?? []
+    const points = values.flatMap((v, j) => (v == null ? [] : [{ t: stored.fromMs + j * stored.stepMs, v }]))
+    return { key: s.key, label: t(s.labelKey), color: PALETTE[i % PALETTE.length], points }
+  })
+  return (
+    <section className="ev-evidence__chart" data-testid={`evidence-chart-${spec.key}`}>
+      <h4 className="ev-evidence__chart-title">{t(spec.titleKey)}</h4>
+      <LineChart
+        title={t(spec.titleKey)}
+        series={series}
+        from={from}
+        to={to}
+        bucketMs={60_000}
+        yMin={spec.yMin}
+        yMax={spec.unit === '%' ? 100 : undefined}
+        unit={spec.unit ? ` ${spec.unit}` : ''}
+        markers={[marker]}
+        refLine={spec.refLine ? { v: spec.refLine.v, label: t(spec.refLine.labelKey) } : undefined}
+        locale={locale}
+      />
+    </section>
+  )
+}
+
+/** Panel Bukti dari payload.evidence: tanpa fetch, tanpa status loading, tanpa arsir. */
+function StoredCharts({ ev, from, to, marker, locale }: {
+  ev: Evidence
+  from: number
+  to: number
+  marker: { t: number; label: string }
+  locale: string
+}) {
+  const { t } = useT()
+  const hasPoints = ev.charts.some((c) => c.series.some((s) => (ev.stored?.series[s.storedKey ?? ''] ?? []).some((v) => v != null)))
+  if (!hasPoints) return <p className="ev-evidence__note" data-testid="evidence-empty">{t('events.evidence.noData')}</p>
+  return (
+    <div className="ev-evidence__charts">
+      {ev.charts.map((c) => (
+        <StoredChart key={c.key} spec={c} stored={ev.stored as NonNullable<Evidence['stored']>}
+          from={from} to={to} marker={marker} locale={locale} />
+      ))}
+    </div>
+  )
+}
+
 /**
  * Panel Bukti untuk event `system`: fakta selalu tampil, grafik tren diambil sekali per
  * event terpilih (`key={event.id}` di induk) dari jendela yang diturunkan `systemEvidence`.
@@ -55,7 +111,7 @@ export default function SystemEvidence({ event }: { event: EventOut }) {
   const nodeId = ev.nodeId
   const from = window?.from
   const to = window?.to
-  const wants = from != null && to != null && nodeId != null && ev.charts.length > 0
+  const wants = !ev.stored && from != null && to != null && nodeId != null && ev.charts.length > 0
   // status awal diturunkan dari rencana fetch — bukan setState di badan efek
   const [load, setLoad] = useState<Load>(() => ({ state: wants ? 'loading' : 'ok', node: null }))
 
@@ -94,6 +150,8 @@ export default function SystemEvidence({ event }: { event: EventOut }) {
         <p className="ev-evidence__note" data-testid="evidence-expired">{t('events.evidence.expired')}</p>
       ) : ev.charts.length === 0 ? (
         <p className="ev-evidence__note">{t('events.evidence.unknown')}</p>
+      ) : ev.stored ? (
+        <StoredCharts ev={ev} from={from as number} to={to as number} marker={marker} locale={locale} />
       ) : load.state === 'loading' ? (
         <div data-testid="evidence-loading"><InlineLoading description={t('events.evidence.loading')} /></div>
       ) : load.state === 'error' ? (

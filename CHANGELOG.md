@@ -3,6 +3,51 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Bukti event system permanen — deploy dan merge (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`0514fcd`), user mengizinkan push, deploy, lalu merge.
+- **Deploy `gspe-ai3`:** `git checkout feat/events-permanent-evidence` (dari `main` @ `cf6f07e`, tree bersih) → `0514fcd`; tanpa migrasi; hanya API yang di-restart (cgroup kill, backend berubah);
+  frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}` (±10 dtk setelah restart); `openapi.json` terbaca; `GET /events` tanpa auth → 401; web `:5173` → 200; journal API 2 menit pertama 0 error/traceback.
+- **Uji UI user: BELUM dilakukan dengan event berbukti.** Event lama tidak memiliki `payload.evidence`, sehingga verifikasi hanya bisa dengan event **baru** (health alert menyala/pulih atau node offline sesudah deploy);
+  user menilai uji itu memerlukan pemasukan event dan menyetujui merge tanpa uji tersebut (keputusan 2026-10-01). Bukti yang ada: 653 uji backend (termasuk pembangunan bukti firing/resolved/node offline, batas 360 titik,
+  kegagalan bukti tidak menggagalkan event), 420 uji frontend, dan smoke render mock (event berbukti tersimpan bergrafik tanpa permintaan history, event 10 hari tetap bergrafik).
+- **Cara memverifikasi nanti (tanpa mengganggu layanan):** Monitoring → aturan `infer_latency` ambang 5 ms, durasi 5 menit (Telegram default mati) → ±6 menit → event `firing` baru di Events harus bergrafik langsung tanpa jeda fetch,
+  lalu kembalikan ke 50 ms → ±2 menit → event `resolved` berbukti. Atau tunggu health alert/node offline berikutnya. Jangan menghentikan vision node di produksi untuk uji ini.
+- **Rollback:** `git revert` merge ini atau commit per task (tanpa migrasi); event yang sudah memuat `evidence` tetap valid (field tambahan diabaikan klien lama); server: `git checkout main && git pull` + restart API.
+
+### Perbaikan review bukti event system permanen (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `feat/events-permanent-evidence` menemukan satu hal: `systemEvidence` masih mengosongkan `charts` bila `node_id` kosong
+  (`nodeId == null || …`), padahal spec/plan menyatakan bukti tersimpan tidak membutuhkan `node_id`. Event yang justru berbukti permanen (mis. node sudah dihapus)
+  kehilangan grafiknya dan menampilkan "Tidak ada rincian tambahan untuk event ini".
+- **Diubah:** `features/events/systemEvidence.ts` — `charts` hanya dikosongkan untuk jalur fetch (`nodeId == null` atau kedaluwarsa); bukti tersimpan selalu menghasilkan grafik.
+  Deviasi eksekutor `135118e` (jendela tersimpan `to = max(from + n·step, ts_event)` agar penanda waktu event tetap tampil) disetujui: waktu bukti dan `ts_event` sama-sama dari jam server.
+- **Uji (ditulis gagal dulu):** `system-evidence.test.ts` (bukti valid + `node_id` kosong/null → satu grafik, `stored` terisi; tanpa bukti dan tanpa `node_id` → tanpa grafik),
+  `system-evidence-panel.test.tsx` (event 10 hari, `node_id: null` → grafik tergambar, tanpa permintaan history).
+- **Evidence (Mac lokal, berurutan):** backend `653 passed, 489 warnings in 132.17s` (tidak berubah); frontend `Test Files 33 passed (33)` / `Tests 420 passed (420)` (417 + 3);
+  `npm run build` exit 0; `npm run lint` 24 baris, pasangan (file, rule) identik baseline; `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/events` kosong.
+- **Dampak:** event system berbukti tersimpan tetap bergrafik walau `node_id` kosong; jalur lama tidak berubah.
+- **Catatan:** `GET /events` kini membawa `payload.evidence` (±1–3 KB per event system) pada tiap baris dan frame WebSocket; event system jarang sehingga dapat diterima.
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi.
+
+### Bukti event system permanen (`payload.evidence`) (2026-10-01)
+
+- **Konteks:** panel Bukti event system dulu hanya bergrafik dari `GET /monitoring/history` (retensi 7 hari), sehingga event sistem yang usianya melewati 7 hari kehilangan grafik.
+  Kini seri menit disimpan di `payload.evidence` **saat event dibuat** (health firing/resolved, node offline; `closed` tanpa bukti); event lama tidak di-backfill dan tetap lewat jalur history.
+  Spec + plan 2026-10-01; eksekusi native TDD Task 1–5, commit lokal per task (belum push/deploy).
+- **Diubah:** backend `health_alerts.py` (bukti firing/resolved dibangun sebelum mutasi DB, batas 360 titik, gagal bukti tidak menggagalkan event), `monitoring_history.py` (`minute_samples`),
+  `node_health.py` (`last_seen`, `down_s`, seri `cpu_pct`/`infer_fps` 30 menit); frontend `systemEvidence.ts` (`parseStored` ketat), `EvidencePanel.tsx` (cabang tersimpan: tanpa fetch, tanpa batas 7 hari), `i18n.tsx` (5 kunci id/en). Tanpa migrasi.
+- **Perbaikan saat verifikasi:** `systemEvidence.ts` — jendela bukti tersimpan diperluas ke `ts_event` (`to = max(ujung seri, ts)`) agar penanda waktu event tetap tampil;
+  tanpa itu uji `stored evidence draws charts without any history request` merah di tree bersih (LineChart menjatuhkan marker di luar `[from,to]`, sedangkan seri tersimpan berakhir di awal menit).
+- **Uji (ditulis gagal dulu):** backend +12 (`test_health_alerts.py`, `test_monitoring_history.py`, `test_node_health.py`); frontend +13 (`system-evidence.test.ts`, `system-evidence-panel.test.tsx`).
+- **Evidence (Mac lokal, berurutan):** backend `653 passed, 489 warnings in 133.61s` (641+12); frontend `Test Files 33 passed` / `Tests 417 passed` (404+13); `npm run build` exit 0 (996 modules, warning chunk lama);
+  `npm run lint` 24 baris / 16 pasangan rule-file (set sama baseline); S2: `git diff --stat main...HEAD` 13 berkas = daftar task + spec/plan, `style={{`/hex di `features/events` 0 baris (= `main`), paritas i18n id = en (5 kunci), tanpa berkas Alembic;
+  S3 (mock `/api/v1/**`, Playwright, 1440 px + 390 px): 0 error konsol, event berbukti tersimpan bergrafik tanpa panggilan `/monitoring/history`, event berbukti 10 hari tetap bergrafik, node offline 2 grafik + "Heartbeat terakhir",
+  event tanpa bukti lewat fetch (usia 10 hari → catatan "Data tren hanya disimpan 7 hari"), `scrollWidth 375 ≤ 390`.
+- **Dampak:** payload event system membesar ≈ 1–3 KB per event (≤ 360 titik, 1 desimal; frame WS ikut membesar); satu query sampel tambahan hanya saat transisi. Kegagalan membangun bukti tidak menahan event (dicatat di log).
+- **Rollback:** `git revert` commit per task; tanpa migrasi; event ber-`evidence` tetap valid (field tambahan diabaikan klien lama). **Uji UI user menyusul setelah deploy.**
+
 ### Filter Events di URL, muat lebih banyak, tab Konfigurasi viewer — deploy dan uji UI user (2026-10-01)
 
 - **Konteks:** setelah review dan perbaikan (`c6be585`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
