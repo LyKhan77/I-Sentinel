@@ -106,6 +106,13 @@ def list_events(
     if since: q = q.filter(Event.ts_event >= since)
     return q.order_by(Event.ts_event.desc()).limit(limit).all()
 
+@router.get("/api/v1/events/{event_id}", response_model=EventOut)
+def get_event(event_id: int, user=Depends(get_current_user), db=Depends(get_db)):
+    ev = db.get(Event, event_id)
+    if not ev:
+        raise HTTPException(404, "event not found")
+    return ev
+
 @router.get("/api/v1/events/stats/today", response_model=EventStatsOut)
 def stats_today(user=Depends(get_current_user), db=Depends(get_db)):
     return event_stats.today(db)
