@@ -1,4 +1,5 @@
 import { Tab, TabList, TabPanel, TabPanels, Tabs } from '@carbon/react'
+import type { ReactNode } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { useT, type TKey } from '../../app/i18n'
 import type { Me } from '../../api/client'
@@ -26,10 +27,24 @@ const TAB_LABEL: Record<ConfigurationTab, TKey> = {
 export default function ConfigurationPage() {
   const { t } = useT()
   const [params, setParams] = useSearchParams()
-  const me = useOutletContext<Me | null>()
-  // ponytail: nilai `tab` di luar daftar → cameras; hanya panel terpilih yang di-mount agar panel non-aktif tidak memanggil API
+  const me = useOutletContext<Me | null | undefined>()
+  // viewer (D6): hanya Storage yang dirancang read-only untuk non-admin — tab admin disembunyikan
+  const restricted = me != null && me.role !== 'admin'
+  const tabs: readonly ConfigurationTab[] = restricted ? ['storage'] : TABS
+  // ponytail: nilai `tab` di luar daftar terlihat → tab terlihat pertama; hanya panel terpilih yang di-mount
+  // agar panel non-aktif tidak memanggil API
   const raw = params.get('tab')
-  const tab: ConfigurationTab = TABS.includes(raw as ConfigurationTab) ? (raw as ConfigurationTab) : 'cameras'
+  const tab: ConfigurationTab = tabs.includes(raw as ConfigurationTab) ? (raw as ConfigurationTab) : tabs[0]
+  // elemen panel dibuat per render, tetapi hanya yang aktif yang dipasang (lihat TabPanels di bawah)
+  const panels: Record<ConfigurationTab, ReactNode> = {
+    cameras: <CamerasPage />,
+    zones: <ZonesPage />,
+    detection: <DetectionPage />,
+    notifications: <NotificationsPage />,
+    storage: <StoragePage />,
+    nodes: <NodesPanel />,
+    users: <UsersPage meId={me?.id} />,
+  }
 
   return (
     <div className="app-page">
@@ -41,26 +56,22 @@ export default function ConfigurationPage() {
       </div>
 
       <Tabs
-        selectedIndex={TABS.indexOf(tab)}
+        selectedIndex={tabs.indexOf(tab)}
         onChange={({ selectedIndex }) => {
-          const next = TABS[selectedIndex]
+          const next = tabs[selectedIndex]
           // ponytail: Carbon tetap memanggil onChange saat tab aktif diklik → jangan push entri history duplikat
           if (next !== tab) setParams({ tab: next })
         }}
       >
         <TabList aria-label={t('nav.configuration')}>
-          {TABS.map((id) => (
+          {tabs.map((id) => (
             <Tab key={id}>{t(TAB_LABEL[id])}</Tab>
           ))}
         </TabList>
         <TabPanels>
-          <TabPanel>{tab === 'cameras' && <CamerasPage />}</TabPanel>
-          <TabPanel>{tab === 'zones' && <ZonesPage />}</TabPanel>
-          <TabPanel>{tab === 'detection' && <DetectionPage />}</TabPanel>
-          <TabPanel>{tab === 'notifications' && <NotificationsPage />}</TabPanel>
-          <TabPanel>{tab === 'storage' && <StoragePage />}</TabPanel>
-          <TabPanel>{tab === 'nodes' && <NodesPanel />}</TabPanel>
-          <TabPanel>{tab === 'users' && <UsersPage meId={me?.id} />}</TabPanel>
+          {tabs.map((id) => (
+            <TabPanel key={id}>{tab === id ? panels[id] : null}</TabPanel>
+          ))}
         </TabPanels>
       </Tabs>
     </div>

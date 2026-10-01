@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { MemoryRouter, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import ConfigurationPage from '../features/config/ConfigurationPage'
@@ -292,4 +292,60 @@ test('Nodes tab: face device dropdown terpisah dan simpan ke endpoint sendiri', 
   const put = calls.find((c) => c.url.endsWith('/nodes/1/face-device'))
   expect(put?.init?.method).toBe('PUT')
   expect(JSON.parse(put?.init?.body as string)).toEqual({ device: 'cuda:1' })
+})
+
+// --- Tab Konfigurasi untuk viewer (Task 5) ---------------------------------
+
+const VIEWER = { id: 2, username: 'viewer', role: 'viewer' }
+
+// halaman menerima `me` dari Outlet context (sama seperti di AppShell)
+function renderConfigurationAs(me: unknown, entry: string) {
+  return render(
+    <I18nProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route element={<Outlet context={me} />}>
+            <Route path="/configuration" element={<ConfigurationPage />} />
+          </Route>
+        </Routes>
+        <LocationProbe />
+        <NavigationProbe />
+      </MemoryRouter>
+    </I18nProvider>,
+  )
+}
+
+test('viewer sees only the Storage tab', async () => {
+  stubFetch()
+  renderConfigurationAs(VIEWER, '/configuration')
+
+  expect(await screen.findByRole('tab', { name: 'Retensi & Storage', selected: true })).toBeInTheDocument()
+  expect(screen.getAllByRole('tab')).toHaveLength(1)
+  expect(screen.queryByRole('tab', { name: 'Kamera' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('tab', { name: 'User' })).not.toBeInTheDocument()
+})
+
+test('viewer with ?tab=users falls back to Storage', async () => {
+  const calls = stubFetch()
+  renderConfigurationAs(VIEWER, '/configuration?tab=users')
+
+  expect(await screen.findByTestId('storage-retention')).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Retensi & Storage', selected: true })).toBeInTheDocument()
+  expect(calls.some((c) => c.url.includes('/users'))).toBe(false) // panel non-aktif tidak di-mount
+})
+
+test('admin sees all seven tabs', async () => {
+  stubFetch()
+  renderConfigurationAs(ME, '/configuration')
+
+  expect(await screen.findByRole('tab', { name: 'Kamera', selected: true })).toBeInTheDocument()
+  expect(screen.getAllByRole('tab')).toHaveLength(7)
+})
+
+test('without a session context all seven tabs are shown', async () => {
+  stubFetch()
+  renderConfigurationAs(undefined, '/configuration')
+
+  expect(await screen.findByRole('tab', { name: 'Kamera', selected: true })).toBeInTheDocument()
+  expect(screen.getAllByRole('tab')).toHaveLength(7)
 })
