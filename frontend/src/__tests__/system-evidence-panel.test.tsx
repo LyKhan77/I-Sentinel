@@ -44,16 +44,84 @@ const renderPanel = (e: EventOut) => render(
 
 afterEach(() => { vi.unstubAllGlobals() })
 
-test('event health menampilkan fakta, grafik, garis ambang, dan penanda waktu', async () => {
-  stubHistory(historyBody(node()))
+test('stored evidence draws charts without any history request', async () => {
+  const calls = stubHistory(historyBody(node()))
+  const from = NOW - 35 * MIN
   renderPanel(ev({ kind: 'health', rule: 'node_cpu', target: 'node:1', label: 'Server', value: 91.5,
-    threshold: 90, unit: '%', duration_min: 5, state: 'firing' }))
+    threshold: 90, unit: '%', duration_min: 5, state: 'firing',
+    evidence: { v: 1, from: T(from), step_s: 60, series: { value: [80, 90, 91.5] } } }))
 
-  expect(await screen.findByText('Aturan')).toBeInTheDocument()
-  expect(screen.getByText('CPU node tinggi')).toBeInTheDocument()
-  expect(await screen.findByTestId('lc-line-cpu_pct')).toBeInTheDocument()
+  expect(await screen.findByTestId('lc-line-value')).toBeInTheDocument()
   expect(screen.getByTestId('lc-ref')).toBeInTheDocument()
   expect(screen.getAllByTestId('lc-marker')).toHaveLength(1)
+  await new Promise((r) => setTimeout(r, 20))
+  expect(calls).toHaveLength(0)
+})
+
+test('event older than 7 days with stored evidence still shows charts, not the expired note', async () => {
+  const calls = stubHistory(historyBody(node()))
+  const from = NOW - 10 * 24 * 3_600_000 - 3 * MIN
+  renderPanel(ev({ kind: 'health', rule: 'node_cpu', label: 'Server', value: 91.5, threshold: 90, unit: '%',
+    duration_min: 5, state: 'firing',
+    evidence: { v: 1, from: T(from), step_s: 60, series: { value: [91, 91.5] } } }, NOW - 10 * 24 * 3_600_000))
+
+  expect(await screen.findByTestId('lc-line-value')).toBeInTheDocument()
+  expect(screen.queryByText('Data tren hanya disimpan 7 hari')).not.toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 20))
+  expect(calls).toHaveLength(0)
+})
+
+test('nulls in the stored series create gaps', async () => {
+  const from = NOW - 35 * MIN
+  renderPanel(ev({ kind: 'health', rule: 'node_cpu', label: 'Server', value: 91.5, threshold: 90, unit: '%',
+    duration_min: 5, state: 'firing',
+    evidence: { v: 1, from: T(from), step_s: 60, series: { value: [80, null, null, 91.5] } } }))
+
+  const line = await screen.findByTestId('lc-line-value')
+  expect(line.getAttribute('d')?.match(/M/gu)).toHaveLength(2)
+})
+
+test('node offline stored evidence shows cpu and fps charts and the last-seen fact', async () => {
+  const calls = stubHistory(historyBody(node()))
+  const from = NOW - 32 * MIN
+  renderPanel(ev({ node: 'edge-1', reason: 'timeout', last_seen: T(NOW - 5 * MIN),
+    evidence: { v: 1, from: T(from), step_s: 60, series: { cpu_pct: [40, null, 42], infer_fps: [30, null, 28] } } }))
+
+  expect(await screen.findByTestId('lc-line-cpu_pct')).toBeInTheDocument()
+  expect(screen.getByTestId('lc-line-infer_fps')).toBeInTheDocument()
+  expect(screen.getByText('Heartbeat terakhir')).toBeInTheDocument()
+  expect(screen.queryByTestId('lc-offline')).not.toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 20))
+  expect(calls).toHaveLength(0)
+})
+
+test('stored evidence with only nulls shows the no-data note', async () => {
+  const from = NOW - 35 * MIN
+  renderPanel(ev({ kind: 'health', rule: 'node_cpu', label: 'Server', value: 91.5, threshold: 90, unit: '%',
+    duration_min: 5, state: 'firing',
+    evidence: { v: 1, from: T(from), step_s: 60, series: { value: [null, null] } } }))
+
+  expect(await screen.findByTestId('evidence-empty')).toBeInTheDocument()
+  expect(screen.getByText('Tidak ada data tren pada jendela ini')).toBeInTheDocument()
+})
+
+test('malformed stored evidence falls back to the history fetch', async () => {
+  const calls = stubHistory(historyBody(node()))
+  renderPanel(ev({ kind: 'health', rule: 'node_cpu', label: 'Server', value: 91.5, threshold: 90, unit: '%',
+    duration_min: 5, state: 'firing',
+    evidence: { v: 2, from: T(NOW - 35 * MIN), step_s: 60, series: { value: [80, 91.5] } } }))
+
+  expect(await screen.findByTestId('lc-line-cpu_pct')).toBeInTheDocument()
+  await waitFor(() => expect(calls).toHaveLength(1))
+})
+
+test('event without evidence behaves as before', async () => {
+  const calls = stubHistory(historyBody(node()))
+  renderPanel(ev({ kind: 'health', rule: 'node_cpu', label: 'Server', value: 91.5, threshold: 90, unit: '%',
+    duration_min: 5, state: 'firing' }))
+
+  expect(await screen.findByTestId('lc-line-cpu_pct')).toBeInTheDocument()
+  await waitFor(() => expect(calls).toHaveLength(1))
 })
 
 test('event node offline menampilkan dua grafik dengan arsir periode offline', async () => {
