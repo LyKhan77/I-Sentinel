@@ -16,7 +16,10 @@ const CAUSES: Record<string, TKey> = {
   online: 'events.evidence.cause.online',
 }
 
-export type ChartSeriesSpec = { key: string; labelKey: TKey; pick: (n: NodeHistory) => { t: number; v: number }[] }
+export type ChartSeriesSpec = { key: string; labelKey: TKey; pick: (n: NodeHistory) => { t: number; v: number }[]; storedKey?: string }
+
+/** Bukti metrik tersimpan pada payload event (skema backend §3.1). */
+export type StoredEvidence = { fromMs: number; stepMs: number; series: Record<string, (number | null)[]> }
 export type ChartSpec = {
   key: string
   titleKey: TKey
@@ -32,6 +35,30 @@ export type Evidence = {
   window: { from: number; to: number } | null
   facts: { labelKey: TKey; value: string }[]
   charts: ChartSpec[]
+  stored: StoredEvidence | null
+}
+
+/** Validasi ketat payload.evidence (skema v1); payload rusak → jalur lama. */
+export function parseStored(payload: Record<string, unknown> | null): StoredEvidence | null {
+  const ev = (payload ?? {}).evidence
+  if (typeof ev !== 'object' || ev === null || Array.isArray(ev)) return null
+  const e = ev as Record<string, unknown>
+  if (e.v !== 1) return null
+  const fromMs = Date.parse(typeof e.from === 'string' ? e.from : '')
+  if (Number.isNaN(fromMs)) return null
+  const stepMs = num(e.step_s) !== null ? num(e.step_s)! * 1000 : null
+  if (stepMs == null || stepMs <= 0) return null
+  if (typeof e.series !== 'object' || e.series === null || Array.isArray(e.series)) return null
+  const series: Record<string, (number | null)[]> = {}
+  let total = 0
+  for (const [key, value] of Object.entries(e.series)) {
+    if (!Array.isArray(value)) return null
+    if (!value.every((v) => v === null || (typeof v === 'number' && Number.isFinite(v)))) return null
+    total += value.length
+    series[key] = value as (number | null)[]
+  }
+  if (total > 1000) return null
+  return { fromMs, stepMs, series }
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -95,11 +122,29 @@ function healthFacts(p: Record<string, unknown>, t: (k: TKey) => string): { labe
 
 function nodeFacts(p: Record<string, unknown>, t: (k: TKey) => string): { labelKey: TKey; value: string }[] {
   const cause = CAUSES[str(p.reason) ?? '']
-  return [
+  const out: { labelKey: TKey; value: string }[] = [
     { labelKey: 'events.evidence.node', value: str(p.node) ?? '—' },
     { labelKey: 'events.evidence.cause', value: cause ? t(cause) : '—' },
     { labelKey: 'events.evidence.status', value: t(p.reason === 'online' ? 'events.evidence.statusOnline' : 'events.evidence.statusOffline') },
   ]
+  const downS = num(p.down_s)
+  if (p.reason === 'online' && downS != null && downS > 0) {
+    const minutes = Math.floor(downS / 60)
+    const hours = Math.floor(minutes / 60)
+    const rest = minutes % 60
+    const value = hours > 0
+      ? t('events.evidence.hoursMinutes').replace('{h}', String(hours)).replace('{m}', String(rest))
+      : t('events.evidence.minutes').replace('{n}', String(minutes))
+    out.push({ labelKey: 'events.evidence.downFor', value })
+  }
+  const lastSeen = str(p.last_seen)
+  if (lastSeen != null) {
+    const parsed = Date.parse(lastSeen)
+    if (!Number.isNaN(parsed)) {
+      out.push({ labelKey: 'events.evidence.lastSeen', value: new Date(parsed).toLocaleString() })
+    }
+  }
+  return out
 }
 
 /** Peta rule → grafik: agregat harus sama dengan yang dipakai pengecekan alert di backend. */
@@ -166,6 +211,43 @@ const nodeCharts = (): ChartSpec[] => [
     series: [{ key: 'infer_fps', labelKey: 'events.evidence.series.avg', pick: (n) => pts(n.series.infer_fps, 'avg') }] },
 ]
 
+/** Peta rule → judul grafik; dipakai bersama jalur fetch dan jalur tersimpan. */
+function healthTitle(rule: string): TKey {
+  switch (rule) {
+    case 'node_cpu': return 'events.evidence.chart.cpu'
+    case 'node_ram': return 'events.evidence.chart.ram'
+    case 'infer_latency': return 'events.evidence.chart.latency'
+    case 'mqtt_backlog': return 'events.evidence.chart.backlog'
+    case 'gpu_temp': return 'events.evidence.chart.gpuTemp'
+    case 'gpu_vram': return 'events.evidence.chart.gpuVram'
+    case 'camera_no_frames': return 'events.evidence.chart.frameAge'
+    case 'camera_low_fps': return 'events.evidence.chart.lowFps'
+    default: return 'events.evidence.chart.generic'
+  }
+}
+
+/** Grafik dari bukti tersimpan: pick() tidak dipakai, titik dibaca panel dari `stored`. */
+function storedCharts(p: Record<string, unknown>, isHealth: boolean, isNode: boolean): ChartSpec[] {
+  const threshold = num(p.threshold)
+  const ref = threshold == null ? undefined : { v: threshold, labelKey: 'events.evidence.threshold' as TKey }
+  if (isHealth) {
+    const rule = str(p.rule) ?? ''
+    return [{
+      key: rule, titleKey: healthTitle(rule), unit: str(p.unit) ?? '', refLine: ref, yMin: 0,
+      series: [{ key: 'value', storedKey: 'value', labelKey: 'events.evidence.series.value', pick: () => [] }],
+    }]
+  }
+  if (isNode) {
+    return [
+      { key: 'node_cpu_offline', titleKey: 'events.evidence.chart.cpu', unit: '%', yMin: 0,
+        series: [{ key: 'cpu_pct', storedKey: 'cpu_pct', labelKey: 'events.evidence.series.avg', pick: () => [] }] },
+      { key: 'node_fps_offline', titleKey: 'events.evidence.chart.inferFps', unit: 'fps', yMin: 0,
+        series: [{ key: 'infer_fps', storedKey: 'infer_fps', labelKey: 'events.evidence.series.avg', pick: () => [] }] },
+    ]
+  }
+  return []
+}
+
 /**
  * Fakta, jendela, dan grafik dari payload event system. Fungsi murni: `now` dikirim pemanggil
  * supaya tidak ada `Date.now()` di badan render.
@@ -179,13 +261,18 @@ export function systemEvidence(e: EventOut, t: (k: TKey) => string, now: number)
   const facts = isHealth ? healthFacts(p, t)
     : isNode ? nodeFacts(p, t)
       : []
-  // rule tak dikenal tetap pegang fakta, hanya grafiknya yang tidak bisa dipetakan
-  const charts = isHealth && HEALTH_KEYS.includes(str(p.rule) as (typeof HEALTH_KEYS)[number]) ? healthCharts(p)
-    : isNode ? nodeCharts()
-      : []
-  const expired = now - ts > EVIDENCE_RETENTION_MS
+  const stored = parseStored(p)
+  const expired = stored == null && now - ts > EVIDENCE_RETENTION_MS
   const nodeId = typeof e.node_id === 'number' ? e.node_id : null
-  const win = kind === 'unknown' || expired ? null : evidenceWindow(e, now)
+  // rule tak dikenal tetap pegang fakta, hanya grafiknya yang tidak bisa dipetakan
+  const charts = stored != null ? storedCharts(p, isHealth, isNode)
+    : isHealth && HEALTH_KEYS.includes(str(p.rule) as (typeof HEALTH_KEYS)[number]) ? healthCharts(p)
+      : isNode ? nodeCharts()
+        : []
+  const win = kind === 'unknown' || expired ? null
+    : stored != null
+      ? { from: stored.fromMs, to: stored.fromMs + Math.max(0, ...Object.values(stored.series).map((s) => s.length)) * stored.stepMs }
+      : evidenceWindow(e, now)
   return {
     kind,
     expired,
@@ -194,6 +281,7 @@ export function systemEvidence(e: EventOut, t: (k: TKey) => string, now: number)
     window: win && win.from < win.to ? win : null,
     facts,
     // grafik butuh node konkret: tanpa node_id tidak ada deret yang bisa diambil
-    charts: expired || nodeId == null ? [] : charts,
+    charts: nodeId == null || (expired && stored == null) ? [] : charts,
+    stored,
   }
 }

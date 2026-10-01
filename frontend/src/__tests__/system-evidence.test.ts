@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import type { EventOut } from '../api/events'
 import type { NodeHistory } from '../api/monitoring'
-import { EVIDENCE_RETENTION_MS, MAX_WINDOW_MS, evidenceWindow, systemEvidence } from '../features/events/systemEvidence'
+import { EVIDENCE_RETENTION_MS, MAX_WINDOW_MS, evidenceWindow, systemEvidence, parseStored } from '../features/events/systemEvidence'
 import { I18nProvider, useT } from '../app/i18n'
 import { getMonitoringHistoryWindow } from '../api/monitoring'
 
@@ -22,7 +22,35 @@ function ev(tsMs: number, payload: Record<string, unknown>, extra: Partial<Event
   }
 }
 
-// --- jendela ---------------------------------------------------------------
+
+// --- parse stored evidence --------------------------------------------------
+
+describe('parseStored', () => {
+  test('valid payload returns fromMs, stepMs, and series', () => {
+    const payload = { evidence: { v: 1, from: '2026-10-01T07:40:00Z', step_s: 60,
+      series: { value: [91.2, null, 93.0], cpu_pct: [], infer_fps: [30] } } }
+    expect(parseStored(payload)).toEqual({
+      fromMs: Date.UTC(2026, 9, 1, 7, 40), stepMs: 60_000,
+      series: { value: [91.2, null, 93.0], cpu_pct: [], infer_fps: [30] },
+    })
+  })
+
+  test('malformed evidence falls back to null', () => {
+    expect(parseStored({ evidence: { v: 2, from: '2026-10-01T07:40:00Z', step_s: 60,
+      series: { value: [1] } } })).toBeNull()
+    expect(parseStored({ evidence: { v: 1, from: 'nope', step_s: 60, series: { value: [1] } } })).toBeNull()
+    expect(parseStored({ evidence: { v: 1, from: '2026-10-01T07:40:00Z', step_s: 0,
+      series: { value: [1] } } })).toBeNull()
+    expect(parseStored({ evidence: { v: 1, from: '2026-10-01T07:40:00Z', step_s: 60,
+      series: { value: 1 } } })).toBeNull()
+    expect(parseStored({ evidence: { v: 1, from: '2026-10-01T07:40:00Z', step_s: 60,
+      series: { value: ['x'] } } })).toBeNull()
+    expect(parseStored({ evidence: { v: 1, from: '2026-10-01T07:40:00Z', step_s: 60,
+      series: { value: Array(1001).fill(1) } } })).toBeNull()
+    expect(parseStored({})).toBeNull()
+    expect(parseStored(null)).toBeNull()
+  })
+})
 
 describe('evidenceWindow', () => {
   test('firing: 30 menit sebelum event sampai min(now, +30 menit)', () => {
@@ -239,7 +267,80 @@ describe('systemEvidence chart mapping', () => {
   })
 })
 
-// --- API -------------------------------------------------------------------
+// --- stored evidence --------------------------------------------------------
+
+describe('stored systemEvidence', () => {
+  test('10-day health event uses stored evidence without node id', () => {
+    const ts = NOW - 10 * 24 * 3_600_000
+    const from = Date.UTC(2026, 9, 1, 7, 40)
+    const e = systemEvidence(
+      ev(ts, { kind: 'health', rule: 'node_cpu', target: 'node:1', label: 'Server', value: 91.5,
+        threshold: 90, unit: '%', duration_min: 5, state: 'firing',
+        evidence: { v: 1, from: T(from), step_s: 60, series: { value: [90, null, 92] } } }, { node_id: 1 }),
+      t, NOW,
+    )
+    expect(e.stored).toEqual({ fromMs: from, stepMs: 60_000, series: { value: [90, null, 92] } })
+    expect(e.expired).toBe(false)
+    expect(e.window).toEqual({ from, to: from + 3 * 60_000 })
+    expect(e.charts).toHaveLength(1)
+    expect(e.charts[0].refLine?.v).toBe(90)
+    expect(e.charts[0].series[0].storedKey).toBe('value')
+    expect(e.charts[0].series[0].pick(node())).toEqual([])
+    expect(e.nodeId).toBe(1)
+  })
+
+  test('unknown health rule with stored evidence uses generic chart title', () => {
+    const from = Date.UTC(2026, 9, 1, 7, 40)
+    const e = systemEvidence(
+      ev(NOW - 10 * MIN, { kind: 'health', rule: 'weird_rule', label: 'x', unit: '%', threshold: 70,
+        evidence: { v: 1, from: T(from), step_s: 60, series: { value: [1] } } }, { node_id: 1 }),
+      t, NOW,
+    )
+    expect(e.charts).toHaveLength(1)
+    expect(e.charts[0].titleKey).toBe('events.evidence.chart.generic')
+    expect(e.stored?.fromMs).toBe(from)
+  })
+
+  test('offline node event adds heartbeat fact and stored series', () => {
+    const from = Date.UTC(2026, 9, 1, 7, 40)
+    const lastSeen = '2026-10-01T07:57:00Z'
+    const e = systemEvidence(
+      ev(NOW - 10 * MIN, { node: 'edge', reason: 'timeout', last_seen: lastSeen,
+        evidence: { v: 1, from: T(from), step_s: 60, series: { cpu_pct: [40], infer_fps: [30] } } },
+        { node_id: 1 }),
+      t, NOW,
+    )
+    expect(e.kind).toBe('node')
+    const vals = Object.fromEntries(e.facts.map((f) => [f.labelKey, f.value]))
+    expect(vals['events.evidence.lastSeen']).toBe(new Date(lastSeen).toLocaleString())
+    expect(e.charts.map((c) => c.key)).toEqual(['node_cpu_offline', 'node_fps_offline'])
+    expect(e.charts.every((c) => c.series.every((s) => s.storedKey != null))).toBe(true)
+  })
+
+  test('online node down_s gives offline-for fact', () => {
+    const downFor = (s: number) => {
+      const e = systemEvidence(ev(NOW - 10 * MIN, { node: 'edge', reason: 'online', down_s: s }), t, NOW)
+      return e.facts.find((f) => f.labelKey === 'events.evidence.downFor')?.value
+    }
+    expect(downFor(300)).toBe('5 mnt')
+    expect(downFor(7500)).toBe('2 jam 5 mnt')
+  })
+
+  test('malformed stored evidence falls back to old path', () => {
+    const ts = NOW - 10 * 24 * 3_600_000
+    const e = systemEvidence(
+      ev(ts, { kind: 'health', rule: 'node_cpu', target: 'node:1', label: 'CPU node', value: 91.5,
+        threshold: 90, unit: '%', duration_min: 5, state: 'firing',
+        evidence: { v: 2, from: T(NOW), step_s: 60, series: { value: [1] } } }, { node_id: 1 }),
+      t, NOW,
+    )
+    expect(e.expired).toBe(true)
+    expect(e.stored).toBeNull()
+  })
+})
+
+
+// --- jendela ---------------------------------------------------------------
 
 describe('getMonitoringHistoryWindow', () => {
   test('mengirim from/to/node_id dan mengembalikan body', async () => {
