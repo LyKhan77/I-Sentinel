@@ -22,11 +22,13 @@ type Props = {
   height?: number; refLine?: { v: number; label: string }; locale: string; testId?: string
   /** Desimal nilai di tooltip/aria (label sumbu Y tetap angka mentah); default 1. */
   digits?: number
+  /** Garis vertikal penanda waktu (mis. waktu event yang sedang dibuka). */
+  markers?: { t: number; label: string }[]
 }
 
 /** Grafik garis SVG ringan (tanpa dependensi): celah saat data kosong, arsir offline, tooltip hover. */
 export default function LineChart({ title, series, from, to, bucketMs, yMin, yMax, unit = '', shaded = [],
-  height = 180, refLine, locale, testId, digits = 1 }: Props) {
+  height = 180, refLine, locale, testId, digits = 1, markers = [] }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [width, setWidth] = useState(600)
   const [hover, setHover] = useState<number | null>(null)
@@ -121,6 +123,12 @@ export default function LineChart({ title, series, from, to, bucketMs, yMin, yMa
           <line data-testid="lc-ref" className="lc__ref" x1={PAD.l} x2={PAD.l + w} y1={y(refLine.v)} y2={y(refLine.v)}
             strokeDasharray="4 3" />
         )}
+        {markers.filter((m) => m.t >= from && m.t <= to).map((m, i) => (
+          <g key={i} data-testid="lc-marker">
+            <title>{m.label}</title>
+            <line className="lc__marker" x1={x(m.t)} x2={x(m.t)} y1={PAD.t} y2={PAD.t + h} />
+          </g>
+        ))}
         {hover !== null && <line className="lc__cursor" x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={PAD.t + h} />}
       </svg>
       {hover !== null && (
