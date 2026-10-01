@@ -271,7 +271,7 @@ export function systemEvidence(e: EventOut, t: (k: TKey) => string, now: number)
         : []
   const win = kind === 'unknown' || expired ? null
     : stored != null
-      ? { from: stored.fromMs, to: stored.fromMs + Math.max(0, ...Object.values(stored.series).map((s) => s.length)) * stored.stepMs }
+      ? { from: stored.fromMs, to: Math.max(stored.fromMs + Math.max(0, ...Object.values(stored.series).map((s) => s.length)) * stored.stepMs, ts) }
       : evidenceWindow(e, now)
   return {
     kind,
