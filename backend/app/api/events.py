@@ -91,7 +91,7 @@ def media(path: str, user=Depends(get_current_user)):
 
 @router.get("/api/v1/events", response_model=list[EventOut])
 def list_events(
-    camera_id: int | None = None,
+    camera_id: int | None = Query(None, le=2**31 - 1),  # int4 di Postgres: di atas ini query melempar → 422, bukan 500
     type: list[str] | None = Query(None),  # boleh berulang: ?type=a&type=b
     severity: list[str] | None = Query(None),  # boleh berulang: ?severity=a&severity=b
     since: datetime | None = None,

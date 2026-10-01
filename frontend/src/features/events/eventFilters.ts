@@ -14,6 +14,7 @@ const SEVERITIES = ['critical', 'warning', 'info']
 const RANGE_HOURS: Partial<Record<RangeId, number>> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 const DEFAULTS: Filters = { type: null, camera: null, severity: null, range: 'all', q: '' }
 const Q_MAX = 100
+const INT4_MAX = 2 ** 31 - 1 // id kolom int4: nilai di atas ini tak mungkin ada dan membuat query server melempar
 
 /** Baca filter dari query string; nilai tak valid → default (tanpa error). */
 export function parseFilters(params: URLSearchParams): Filters {
@@ -21,7 +22,7 @@ export function parseFilters(params: URLSearchParams): Filters {
   const rawCam = params.get('camera')
   const rawSev = params.get('severity')
   const rawRange = params.get('range')
-  const cam = rawCam != null && /^\d+$/.test(rawCam) && Number(rawCam) > 0 ? Number(rawCam) : null
+  const cam = rawCam != null && /^\d+$/.test(rawCam) && Number(rawCam) > 0 && Number(rawCam) <= INT4_MAX ? Number(rawCam) : null
   return {
     type: rawType === SECURITY || (EVENT_TYPES as readonly string[]).includes(rawType ?? '') ? rawType : null,
     camera: cam,

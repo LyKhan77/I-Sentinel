@@ -105,18 +105,10 @@ function NavigationProbe() {
   )
 }
 
+// seperti di aplikasi: halaman selalu hidup di dalam AppShell yang memberi `me` lewat Outlet context
+// (tanpa Outlet `useOutletContext()` bernilai null = "sesi belum termuat" → tab tidak dipasang)
 function renderConfiguration(entry: string) {
-  return render(
-    <I18nProvider>
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/configuration" element={<ConfigurationPage />} />
-        </Routes>
-        <LocationProbe />
-        <NavigationProbe />
-      </MemoryRouter>
-    </I18nProvider>,
-  )
+  return renderConfigurationAs(ME, entry)
 }
 
 test('renders one shared workbench heading instead of per-panel titles', async () => {
@@ -348,4 +340,15 @@ test('without a session context all seven tabs are shown', async () => {
 
   expect(await screen.findByRole('tab', { name: 'Kamera', selected: true })).toBeInTheDocument()
   expect(screen.getAllByRole('tab')).toHaveLength(7)
+})
+
+test('while the session is loading (context null) no tabs or panels are mounted', async () => {
+  const calls = stubFetch()
+  renderConfigurationAs(null, '/configuration?tab=users')
+
+  expect(screen.getByRole('heading', { name: 'Konfigurasi' })).toBeInTheDocument()
+  expect(screen.queryAllByRole('tab')).toHaveLength(0)
+  await new Promise((r) => setTimeout(r, 50))
+  // viewer yang `me`-nya belum tiba tidak boleh sempat memanggil API admin
+  expect(calls.some((c) => c.url.includes('/users') || c.url.includes('/cameras'))).toBe(false)
 })

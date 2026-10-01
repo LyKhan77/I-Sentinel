@@ -116,3 +116,11 @@ test('mergeFirstPage puts fresh rows first, keeps the rest in order and truncate
   expect(merged.find((e) => e.id === 2)?.severity).toBe('info') // isi baris ikut yang baru
   expect(mergeFirstPage(prev, rows, 2).map((e) => e.id)).toEqual([4, 2])
 })
+
+describe('parseFilters (perbaikan review)', () => {
+  test('camera di luar rentang int4 diabaikan (id raksasa tak boleh sampai ke server)', () => {
+    expect(parseFilters(new URLSearchParams('camera=2147483647')).camera).toBe(2147483647)
+    expect(parseFilters(new URLSearchParams('camera=2147483648')).camera).toBeNull()
+    expect(parseFilters(new URLSearchParams('camera=99999999999999999999')).camera).toBeNull()
+  })
+})

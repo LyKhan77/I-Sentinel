@@ -3,6 +3,27 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Perbaikan review filter di URL, muat lebih banyak, tab Konfigurasi viewer (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `feat/events-list-url-paging` menemukan lima hal: (R1) daftar tidak menyempit seketika saat filter diganti
+  (menunggu respons server; bila gagal, dropdown menunjukkan filter baru tetapi isi daftar milik filter lama); (R2) refresh interval klip tertunda (mode `merge`)
+  menaikkan token permintaan yang sama dengan "Muat lebih banyak" sehingga halaman yang sedang dimuat dibuang diam-diam; (R3) `?camera=<angka 20 digit>` lolos
+  validasi frontend dan di Postgres (`camera_id` int4) membuat `GET /events` melempar → 500; (R4) `event-limit-hint` dan `event-cap-hint` tampil bersamaan di batas 1000;
+  (R5) selama `me` belum termuat, `ConfigurationPage` memasang tujuh tab sehingga viewer sempat memanggil API admin (`/users`, `/cameras`).
+- **Diubah:** `EventsPage.tsx` — `filtered` ikut `matchesFilters` (spec §3.2); hanya refresh mode `replace` yang menaikkan `reqRef`, mode `merge` dan `loadMore` hanya membandingkan;
+  `event-limit-hint` hanya di bawah `MAX_EVENTS`. `eventFilters.ts` — `camera` dibatasi ≤ 2³¹−1. `backend/app/api/events.py` — `camera_id` `Query(None, le=2**31 − 1)` (422 bukan 500).
+  `ConfigurationPage.tsx` — `me === null` (shell sedang memuat) tidak memasang tab/panel; `me` undefined tetap tujuh tab.
+- **Uji (ditulis gagal dulu):** backend `test_list_events_camera_id_out_of_range_is_422` (gagal `OverflowError` SQLite); frontend `parseFilters` camera di luar int4, daftar menyempit seketika,
+  daftar sesuai filter setelah refetch gagal, merge refresh tidak membuang halaman load-more, `event-limit-hint` hilang di batas, tab/panel tidak dipasang saat `me` null.
+  Harness uji disesuaikan agar realistis: stub daftar menyaring tipe seperti server (tiga uji + stale test memakai baris cocok-filter), `renderConfiguration` serta uji `detection`/`notifications`
+  dipasang di bawah `Outlet context` admin seperti di `AppShell` (tanpa Outlet `useOutletContext()` bernilai null = sesi belum termuat).
+- **Evidence (Mac lokal, berurutan):** backend `641 passed, 489 warnings in 127.01s` (640 + 1); frontend `Test Files 33 passed (33)` / `Tests 404 passed (404)` (399 + 5);
+  `events.test.tsx` + `configuration.test.tsx` 5/5 percobaan hijau; `npm run build` exit 0; `npm run lint` 24 baris, pasangan (file, rule) identik baseline;
+  `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/events frontend/src/features/config` 102 baris (= `main`).
+- **Dampak:** perubahan filter terasa seketika dan konsisten walau server lambat/gagal; "Muat lebih banyak" tidak lagi tertelan interval klip; URL hasil sunting tangan tidak bisa membuat 500;
+  viewer tidak lagi memicu panggilan API admin saat sesi dimuat.
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi.
+
 ### Filter Events di URL, "Muat lebih banyak", tab Konfigurasi viewer (2026-10-01)
 
 - **Konteks:** backlog penutupan siklus deep link (bagian 1 dari 2; bagian 2 = bukti permanen event system). Filter Events

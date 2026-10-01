@@ -101,7 +101,9 @@ export default function EventsPage() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [hasMore, setHasMore] = useState(false) // halaman terakhir yang diambil penuh LIMIT
   const [loadingMore, setLoadingMore] = useState(false)
-  // nomor permintaan: respons lama yang tiba belakangan dibuang (filter berubah cepat)
+  // generasi daftar: hanya refresh mode 'replace' (filter berubah) yang menaikkannya; respons yang
+  // tiba setelah generasi berganti dibuang. Refresh 'merge' dan "Muat lebih banyak" hanya membandingkan,
+  // supaya interval klip tertunda tidak menelan halaman yang sedang dimuat.
   const reqRef = useRef(0)
   const [alertMap, setAlertMap] = useState<Record<string, AlertStatus>>({})
   const [detailAlert, setDetailAlert] = useState<AlertStatus | null>(null)
@@ -117,7 +119,7 @@ export default function EventsPage() {
   // mode 'merge' (interval klip tertunda) menggabung halaman pertama tanpa membuang yang termuat
   const refresh = useCallback(async (mode: 'replace' | 'merge' = 'replace') => {
     const since = sinceFor(range, new Date())
-    const req = ++reqRef.current
+    const req = mode === 'replace' ? ++reqRef.current : reqRef.current
     try {
       const rows = await listEvents({
         limit: LIMIT,
@@ -150,7 +152,7 @@ export default function EventsPage() {
   // respons yang tiba setelah filter berubah dibuang lewat token yang sama dengan `refresh`
   const loadMore = async () => {
     const offset = events.length
-    const req = ++reqRef.current
+    const req = reqRef.current
     setLoadingMore(true)
     try {
       const rows = await listEvents({
@@ -242,6 +244,7 @@ export default function EventsPage() {
   // pencarian teks tetap client-side atas hasil server yang sudah terfilter
   const needle = query.trim().toLowerCase()
   const filtered = events.filter((e) => {
+    if (!matchesFilters(e, filters)) return false // daftar langsung menyempit; server tetap otoritas data
     if (!needle) return true
     const haystack = e.type === 'system'
       ? [eventTitle(e, t), eventWhere(e, t, camNameById), e.severity, e.event_id]
@@ -443,7 +446,7 @@ export default function EventsPage() {
         )}
       </div>
 
-      {hasMore && (
+      {hasMore && events.length < MAX_EVENTS && (
         <p className="ev-limit-hint" data-testid="event-limit-hint">
           {t('events.limitHint').replace('{n}', String(events.length))}
         </p>

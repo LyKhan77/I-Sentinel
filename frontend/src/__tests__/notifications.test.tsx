@@ -1,9 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import ConfigurationPage from '../features/config/ConfigurationPage'
+
+// halaman hidup di dalam AppShell yang memberi sesi lewat Outlet context (null = sesi belum termuat)
+const ADMIN = { id: 1, username: 'admin', role: 'admin' }
 
 const EMPTY = { has_token: false, chat_id: null, chat_title: null, app_url: null, last_alert: null }
 type Call = { url: string; init?: RequestInit }
@@ -29,7 +32,7 @@ function stub(state: Record<string, unknown>) {
 }
 
 function renderTab() {
-  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=notifications']}><ConfigurationPage /></MemoryRouter></I18nProvider>)
+  render(<I18nProvider><MemoryRouter initialEntries={['/configuration?tab=notifications']}><Routes><Route element={<Outlet context={ADMIN} />}><Route path="/configuration" element={<ConfigurationPage />} /></Route></Routes></MemoryRouter></I18nProvider>)
 }
 
 test('setup flow: token, detect group, choose, test message', async () => {

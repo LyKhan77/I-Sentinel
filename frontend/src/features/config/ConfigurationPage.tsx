@@ -55,25 +55,29 @@ export default function ConfigurationPage() {
         </div>
       </div>
 
-      <Tabs
-        selectedIndex={tabs.indexOf(tab)}
-        onChange={({ selectedIndex }) => {
-          const next = tabs[selectedIndex]
-          // ponytail: Carbon tetap memanggil onChange saat tab aktif diklik → jangan push entri history duplikat
-          if (next !== tab) setParams({ tab: next })
-        }}
-      >
-        <TabList aria-label={t('nav.configuration')}>
-          {tabs.map((id) => (
-            <Tab key={id}>{t(TAB_LABEL[id])}</Tab>
-          ))}
-        </TabList>
-        <TabPanels>
-          {tabs.map((id) => (
-            <TabPanel key={id}>{tab === id ? panels[id] : null}</TabPanel>
-          ))}
-        </TabPanels>
-      </Tabs>
+      {/* sesi belum termuat (`me` null di AppShell): jangan pasang tab/panel — viewer tak boleh sempat memanggil API admin;
+          `me` undefined (tanpa shell, mis. uji) tetap menampilkan semua tab */}
+      {me !== null && (
+        <Tabs
+          selectedIndex={tabs.indexOf(tab)}
+          onChange={({ selectedIndex }) => {
+            const next = tabs[selectedIndex]
+            // ponytail: Carbon tetap memanggil onChange saat tab aktif diklik → jangan push entri history duplikat
+            if (next !== tab) setParams({ tab: next })
+          }}
+        >
+          <TabList aria-label={t('nav.configuration')}>
+            {tabs.map((id) => (
+              <Tab key={id}>{t(TAB_LABEL[id])}</Tab>
+            ))}
+          </TabList>
+          <TabPanels>
+            {tabs.map((id) => (
+              <TabPanel key={id}>{tab === id ? panels[id] : null}</TabPanel>
+            ))}
+          </TabPanels>
+        </Tabs>
+      )}
     </div>
   )
 }

@@ -287,3 +287,10 @@ def test_get_event_by_id_out_of_range_is_404(client):
     h = _admin_headers(client)
     for bad in ("99999999999999999999", "0", "-5"):
         assert client.get(f"/api/v1/events/{bad}", headers=h).status_code == 404
+
+def test_list_events_camera_id_out_of_range_is_422(client):
+    # Event.camera_id = INTEGER (int4 di Postgres): id di luar rentang kolom → 422, bukan 500 dari driver
+    h = _admin_headers(client)
+    for bad in ("99999999999999999999", "2147483648"):
+        assert client.get(f"/api/v1/events?camera_id={bad}", headers=h).status_code == 422
+    assert client.get("/api/v1/events?camera_id=1", headers=h).status_code == 200

@@ -710,13 +710,15 @@ test('a stale response does not overwrite a newer one', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderPage()
 
+  // server nyata hanya mengembalikan baris yang cocok filter: pilih Loitering (= tipe EVENTS[1]);
+  // baris basi juga bertipe loitering supaya hanya penjaga token yang menyembunyikannya
   await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
-  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Loitering' }))
   expect(await screen.findByTestId('event-item-2')).toBeInTheDocument()
 
-  await act(async () => { releaseFirst?.([EVENTS[0]]) })
+  await act(async () => { releaseFirst?.([{ ...EVENTS[1], id: 99, event_id: 'ev-99' }]) })
   await waitFor(() => expect(call).toBeGreaterThanOrEqual(2))
-  expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('event-item-99')).not.toBeInTheDocument()
   expect(screen.getByTestId('event-item-2')).toBeInTheDocument()
 })
 
@@ -1091,7 +1093,8 @@ test('while the by-id fetch is pending a loading placeholder is shown, not the f
 
 test('filters come alive from the initial URL', async () => {
   stubScrollIntoView()
-  const fetchMock = stubFetch()
+  // server nyata hanya mengembalikan baris yang cocok filter: sediakan event system critical
+  const fetchMock = stubFetch([{ ...EVENTS[0], type: 'system', camera_id: null, severity: 'critical', payload: { node: 'edge-1', reason: 'timeout' } }])
   vi.stubGlobal('fetch', fetchMock)
   renderPage('/events?type=system&severity=critical')
 
@@ -1119,7 +1122,7 @@ test('changing a filter writes the URL with replace', async () => {
 
 test('reset clears filters but keeps ?event=', async () => {
   stubScrollIntoView()
-  vi.stubGlobal('fetch', stubFetch())
+  vi.stubGlobal('fetch', stubFetch([{ ...EVENTS[1], type: 'system', camera_id: null, severity: 'critical', payload: { node: 'edge-1', reason: 'timeout' } }]))
   renderWithProbe('/events?event=2&type=system&severity=critical&range=24h')
 
   await screen.findByTestId('event-detail')
@@ -1217,7 +1220,7 @@ test('search box writes q to the URL and filters client-side without a new reque
 
 function genEvents(n: number, startId = 1): EventOut[] {
   return Array.from({ length: n }, (_, i) => ({
-    ...EVENTS[0], id: startId + i, event_id: `ev-g-${startId + i}`,
+    ...EVENTS[0], type: 'intrusion', id: startId + i, event_id: `ev-g-${startId + i}`,
     ts_event: new Date(Date.parse('2026-02-12T10:00:00Z') - i * 1000).toISOString(),
     clip_path: null, snapshot_path: null,
   }))
@@ -1233,7 +1236,9 @@ function stubPagedFetch(all: EventOut[], onRequest?: (offset: number) => void) {
       const offset = Number(q.get('offset') ?? 0)
       const limit = Number(q.get('limit') ?? 50)
       onRequest?.(offset)
-      return { ok: true, status: 200, json: () => Promise.resolve(all.slice(offset, offset + limit)) }
+      const types = q.getAll('type')
+      const rows = types.length ? all.filter((e) => types.includes(e.type)) : all // server menyaring tipe
+      return { ok: true, status: 200, json: () => Promise.resolve(rows.slice(offset, offset + limit)) }
     }
     if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
     if (u.endsWith('/cameras')) return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
@@ -1295,6 +1300,8 @@ test('load more stops at the cap and shows the cap hint', async () => {
   }
   expect(screen.queryByTestId('events-load-more')).not.toBeInTheDocument()
   expect(screen.getByTestId('event-cap-hint')).toHaveTextContent('1000')
+  // di batas, petunjuk "muat lebih banyak" tidak boleh tampil bersama petunjuk batas
+  expect(screen.queryByTestId('event-limit-hint')).not.toBeInTheDocument()
 }, 20000)
 
 test('interval refresh keeps already loaded pages', async () => {
@@ -1352,8 +1359,90 @@ test('filter change resets the list and hasMore', async () => {
   await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('205 event'))
 
   await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
-  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Intrusi' }))
   await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('200+'))
   expect(screen.queryByTestId('event-item-205')).not.toBeInTheDocument()
   expect(screen.getByTestId('events-load-more')).toBeInTheDocument()
 })
+
+// --- Perbaikan review: daftar menyempit seketika, token merge vs load-more ---
+
+function stubHoldableFetch(opts: { hold: () => boolean; fail?: () => boolean }) {
+  return vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve({}) }
+    if (u.includes('/events?') && u.includes('limit=200')) {
+      if (opts.hold()) await new Promise(() => {}) // respons filter baru ditahan selamanya
+      if (opts.fail?.()) return { ok: false, status: 500, json: () => Promise.resolve(null) }
+      return { ok: true, status: 200, json: () => Promise.resolve(EVENTS) }
+    }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+}
+
+test('the list narrows to a new filter immediately, before its response arrives', async () => {
+  stubScrollIntoView()
+  let hold = false
+  vi.stubGlobal('fetch', stubHoldableFetch({ hold: () => hold }))
+  renderPage()
+  await screen.findByTestId('event-item-2')
+  expect(screen.getByTestId('event-item-1')).toBeInTheDocument()
+
+  hold = true
+  await userEvent.click(screen.getByRole('combobox', { name: 'Severity' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'critical' }))
+
+  // EVENTS[1] bersifat warning: harus langsung hilang walau respons filter baru belum tiba
+  await waitFor(() => expect(screen.queryByTestId('event-item-2')).not.toBeInTheDocument())
+  expect(screen.getByTestId('event-item-1')).toBeInTheDocument()
+})
+
+test('a failed refetch still leaves a list that matches the selected filter', async () => {
+  stubScrollIntoView()
+  let fail = false
+  vi.stubGlobal('fetch', stubHoldableFetch({ hold: () => false, fail: () => fail }))
+  renderPage()
+  await screen.findByTestId('event-item-2')
+
+  fail = true
+  await userEvent.click(screen.getByRole('combobox', { name: 'Severity' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'critical' }))
+
+  await waitFor(() => expect(screen.queryByTestId('event-item-2')).not.toBeInTheDocument())
+  expect(screen.getByTestId('event-item-1')).toBeInTheDocument()
+})
+
+test('an interval merge refresh during load-more does not discard the loaded page', async () => {
+  const all = genEvents(205)
+  all[0] = { ...all[0], ts_event: new Date().toISOString() } // event segar tanpa klip → interval 5 dtk
+  let release: ((rows: EventOut[]) => void) | null = null
+  const base = stubPagedFetch(all)
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?') && u.includes('offset=200')) {
+      return { ok: true, status: 200, json: () => new Promise<EventOut[]>((res) => { release = res }) }
+    }
+    return base(u)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  await userEvent.click(screen.getByTestId('events-load-more'))
+  await waitFor(() => expect(release).not.toBeNull())
+
+  // interval klip (5 dtk) memicu refresh mode merge selagi halaman kedua masih diminta
+  const before = listCalls(fetchMock).filter((u) => !u.includes('offset=')).length
+  await waitFor(
+    () => expect(listCalls(fetchMock).filter((u) => !u.includes('offset=')).length).toBeGreaterThan(before),
+    { timeout: 7000 },
+  )
+  await act(async () => { release?.(all.slice(200, 205)) })
+
+  await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('205 event'))
+  expect(screen.getByTestId('event-item-205')).toBeInTheDocument()
+}, 15000)
