@@ -32,10 +32,9 @@ def _rewrite_host(url: str, host: str) -> str:
 def camera_snapshot(camera_id: int, user=Depends(get_current_user), db=Depends(get_db)):
     """Proxy frame JPEG go2rtc lewat API.
 
-    Klien LAN tidak bisa menjangkau port go2rtc (1984): firewall server hanya
-    membuka 8000/5173/1883, dan go2rtc tidak punya autentikasi sendiri. Karena
-    itu snapshot diambil dari sisi server dan diteruskan lewat port API yang
-    sudah terbuka DAN sudah di belakang `get_current_user`.
+    Snapshot diambil dari sisi server dan diteruskan lewat port API agar
+    same-origin dan tetap di belakang `get_current_user` — go2rtc tidak
+    punya autentikasi sendiri.
 
     Efek samping yang tidak diinginkan: tanpa proxy ini URL `snapshot` yang
     dikirim ke browser menunjuk ke host yang tak terjangkau, dan tiap tile

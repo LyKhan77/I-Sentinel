@@ -28,6 +28,6 @@ Bootstrap selesai. Checklist manual:
 2. Mosquitto: cp deploy/mosquitto/mosquitto.conf /etc/mosquitto/mosquitto.conf
    sudo mosquitto_passwd -c /etc/mosquitto/passwd <user>
 3. sudo systemctl start isentinel-api
-4. curl -s localhost:8000/api/v1/health
+4. curl -s localhost:7701/api/v1/health
 =====================================================
 EOF

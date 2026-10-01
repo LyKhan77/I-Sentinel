@@ -6,7 +6,7 @@ After=network.target postgresql.service
 User=gspe-ai3
 WorkingDirectory=/home/gspe-ai3/project_cv/I-Sentinel/backend
 EnvironmentFile=/home/gspe-ai3/project_cv/I-Sentinel/.env
-ExecStart=/home/gspe-ai3/isentinel-venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=/home/gspe-ai3/isentinel-venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 7701
 Restart=always
 
 [Install]
