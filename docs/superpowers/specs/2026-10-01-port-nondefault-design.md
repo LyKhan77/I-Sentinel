@@ -3,7 +3,7 @@
 Status: **menunggu review spec tertulis**.
 Branch: `feat/port-nondefault` (dari `main` @ `cc18cd2`).
 Plan: belum ada (ditulis setelah spec disetujui, `docs/superpowers/plans/2026-10-01-port-nondefault.md`).
-Konteks: tahap 1 dari dua tahap. Tahap 2 = migrasi Docker (siklus spec/plan tersendiri, memakai peta port yang sama).
+Konteks: tahap 1 dari dua tahap, **perubahan repo saja**. Tahap 2 = migrasi Docker (`2026-10-01-docker-deploy-design.md`) yang memakai peta port ini dan melakukan satu-satunya cutover server.
 
 ---
 
@@ -35,8 +35,8 @@ Peta yang sama dipakai tahap 2 (Docker), jadi pengguna dan firewall tidak bergan
 | K3 | **Kode berubah di dua titik saja:** `config_push.py` memakai setting baru `go2rtc_rtsp_url` (default `rtsp://localhost:8554`), dan `vite.config.ts` membaca target proxy dari env `API_URL` (default `http://localhost:8000`). |
 | K4 | **go2rtc RTSP diikat ke `127.0.0.1:7705`.** go2rtc tidak punya autentikasi, dan tidak ada pembaca RTSP dari luar host: vision node server membaca dari localhost, node edge (Fase E) menarik langsung dari kamera. |
 | K5 | **go2rtc API (`7702`) dan WebRTC (`7703`) tetap terbuka ke LAN** karena Live Wall memutar langsung dari browser (fakta 3). Pengetatan origin (`api.origin: "*"`) di luar cakupan. |
-| K6 | **Cutover sekali jalan** di server dev dengan backup `*.bak-pre-ports`, rollback = kembalikan file lalu restart. Tidak ada mode port ganda (lama + baru) karena unit systemd satu port per proses. |
-| K7 | Perubahan di server (file root-owned, restart layanan, firewall) **hanya dengan OK eksplisit** pengguna, dijalankan pengguna atau atas perintah per langkah. |
+| K6 | **Tidak ada cutover systemd di server dev.** Server pindah sekali langsung ke Docker (tahap 2), diuji paralel dengan systemd lama karena port `77xx` tidak bentrok. Alasan di 3.3. |
+| K7 | File unit dan template di repo tetap diperbarui ke port baru agar instalasi systemd baru konsisten, tetapi **tidak di-deploy** ke server dev. |
 
 ## 3. Desain
 
@@ -74,54 +74,35 @@ Deploy dan template (tidak berpengaruh ke dev lokal):
 
 Dokumen: `README.md` (diagram + baris "Port terbuka di LAN" dikoreksi sesuai K5), `ARCHITECTURE.md`, `docs/RUNBOOK.md` (tabel port, perintah health, checklist cutover + rollback root), `docs/DEVELOPMENT.md`, `ROADMAP.md`, `CHANGELOG.md`, catatan Fase E (`VISION_MQTT_URL=<host>:7704`).
 
-### 3.3 Perubahan server (cutover; K7)
+### 3.3 Server dev: tidak ada perubahan di tahap ini
 
-Prasyarat (non-root): branch `feat/port-nondefault` ter-checkout di server, `pytest -m "not gpu"` dan `npx vitest run` hijau, backup:
-`.env`, `vision.env`, `deploy/go2rtc/go2rtc.yaml` → `*.bak-pre-ports`; root: salinan dua unit dan `conf.d/default.conf`.
-
-Baseline sebelum cutover (dari klien LAN): `8000 5173 1883 1984` sudah terbukti terjangkau (probe 2026-10-01). Yang masih dicatat: apakah Live Wall memakai WebRTC/MSE atau jatuh ke snapshot, sebagai pembanding setelah cutover.
-
-Langkah, berurutan:
-1. **Root:** buka `7700:7704/tcp` dan `7703/udp` di firewall host (aktif, fakta 6). Aturan untuk port lama ditutup setelah cutover terverifikasi, bukan sebelumnya (rollback).
-2. **Non-root:** `.env` → `MQTT_URL=localhost:7704`, `GO2RTC_URL=http://localhost:7702`, tambah `GO2RTC_RTSP_URL=rtsp://localhost:7705`; `GO2RTC_PUBLIC_HOST` tidak berubah.
-   `vision.env` → `VISION_MQTT_URL=localhost:7704`, `VISION_API_URL=http://localhost:7701`, `rtsp://localhost:8554` → `rtsp://localhost:7705` di `VISION_CAMERAS_JSON`.
-   `go2rtc.yaml` → port sesuai 3.1 (bagian stream kamera tidak disentuh).
-   Nilai di `.env` ditulis tanpa komentar inline (`EnvironmentFile` systemd tidak mendukungnya).
-3. **Root:** salin dua unit dari repo ke `/etc/systemd/system/`, ubah `listener 1883` → `listener 7704` di `/etc/mosquitto/conf.d/default.conf`, `systemctl daemon-reload`.
-4. **Root:** restart berurutan `mosquitto` → `go2rtc` → `isentinel-api` → `vision-node` → `isentinel-web`. Downtime perkiraan 1–2 menit.
-5. **UI:** Konfigurasi → Notifikasi → `app_url` = `http://192.168.2.133:7700`. Tautan lama `:5173` di pesan Telegram yang sudah terkirim tidak akan terbuka lagi (diterima).
+Tahap 1 **tidak men-deploy apa pun** ke `gspe-ai3`. Cutover port dikerjakan sekali lewat Docker (spec tahap 2, `2026-10-01-docker-deploy-design.md`), yang memakai peta 3.1.
+Alasan: Docker tidak butuh root dan port yang dipublikasikannya melewati firewall host (probe LAN 2026-10-01: `5511 9400 8005` milik container terbuka, `3131` milik proses host tertutup),
+sedangkan cutover systemd butuh root untuk dua unit, `conf.d/default.conf`, dan firewall, lalu disusul cutover Docker kedua. Systemd dev lama (port default) tetap berjalan sampai Docker menggantikannya.
+File unit dan template di repo tetap diperbarui (3.2) supaya instalasi systemd baru konsisten dengan peta port.
 
 ### 3.4 Rollback
 
-Kembalikan tiga file non-root dan tiga file root dari `*.bak-pre-ports`, `daemon-reload`, restart urutan yang sama, `app_url` kembali ke `:5173`. Tutup aturan firewall baru bila dibuat. Tidak ada migrasi DB, jadi tidak ada langkah data.
+`git revert` commit tahap 1. Tidak ada perubahan server, DB, atau migrasi.
 
 ### 3.5 Pengujian dan verifikasi
 
 Backend (`test_config_push.py`): `source_url` node server memakai `settings.go2rtc_rtsp_url` (monkeypatch ke `rtsp://localhost:7705` → `rtsp://localhost:7705/cam_{id}`); default tanpa override tetap `rtsp://localhost:8554/cam_{id}` (uji lama dipertahankan); slash di akhir nilai tidak menggandakan `/`.
 Backend (`test_go2rtc.py`): dengan `go2rtc_url=http://localhost:7702` dan `go2rtc_public_host=192.168.2.133`, URL `webrtc`/`mse`/`hls` dari `/live` memakai `:7702` (regresi fakta 4).
-Frontend: tanpa uji baru (perubahan Vite proxy hanya konfigurasi); `npm run build` dan `npm run lint` tetap bersih.
-
-Bukti di server (ditempel di `CHANGELOG.md`/`ROADMAP.md`, `[x]` hanya dengan keluaran nyata):
-- `ss -ltn` menampilkan `7700 7701 7702 7703 7704` di `0.0.0.0`/`*` dan `7705` di `127.0.0.1`; tidak ada lagi listener I-Sentinel di `5173/8000/1984/8554/1883`; udp `7703` aktif, `8555` tidak.
-- `curl localhost:7701/api/v1/health` → `{"status":"ok"}`; UI `:7700` termuat, login berhasil, panggilan `/api` lewat proxy.
-- Klien LAN: Live Wall memutar (WebRTC atau MSE) dan snapshot berfungsi; hasil dibandingkan dengan baseline.
-- Vision node `online` di UI Node, heartbeat masuk lewat `:7704`; satu event uji tercatat end to end (klip + snapshot).
-- Port lama tidak lagi terjangkau dari klien LAN; `7700–7704` terjangkau.
+Frontend: tanpa uji baru; `vite.config.ts` hanya konfigurasi. Bukti: `pytest -m "not gpu"`, `npx vitest run`, `npm run build`, `npm run lint` ditempel di `CHANGELOG.md`; `vite` dijalankan lokal dengan `API_URL` dan tanpanya (proxy target benar di kedua kasus).
 
 ## 4. Di luar cakupan
 
-Migrasi Docker, nginx dan build statis menggantikan Vite dev (tahap 2), pemindahan Postgres, pengetatan `api.origin` go2rtc, TLS, perubahan port di Jetson/edge nyata (hanya dokumentasi Fase E), variabel `PORT_*` terpusat (tahap 2).
+Cutover server dev/prod, Docker, nginx dan build statis menggantikan Vite dev, pemindahan Postgres, pengetatan `api.origin` go2rtc, TLS, variabel `PORT_*` terpusat, perubahan port di Jetson/edge nyata (hanya dokumentasi Fase E). Semua dibahas di spec tahap 2.
 
 ## 5. Risiko
 
 | Risiko | Mitigasi |
 |---|---|
-| Firewall (aktif) belum membuka `7700:7704` saat restart → UI/MQTT/live tak terjangkau dari LAN | Langkah 1 sebelum restart; tes `nc -z` dari klien LAN ke tiap port; rollback 3.4 |
-| Lupa mengubah satu titik port (mis. `VISION_CAMERAS_JSON`, `GO2RTC_RTSP_URL`) → vision tak dapat stream | Daftar titik di 3.3 langkah 2; bukti `ss`, vision `online`, event end to end |
-| `EnvironmentFile` memuat komentar inline → nilai port rusak | Aturan di 3.3 langkah 2; `systemctl show -p Environment` dibaca setelah restart |
-| Dua Vite/`npm` bentrok port diam-diam pindah | `--strictPort` |
-| Proyek lain mengambil `7700–7705` kemudian | Blok diverifikasi kosong; daftar port dipakai dicatat di runbook |
+| Default kode berubah tak sengaja → dev lokal rusak | Default kode tetap port lama; uji default dipertahankan (3.5) |
+| Template (`go2rtc.example.yaml`, unit) dipakai apa adanya di server lama dan memutus port | Template hanya untuk instalasi baru; server dev lama tidak di-deploy di tahap 1 (3.3) |
+| Proyek lain mengambil `7700–7705` kemudian | Blok diverifikasi kosong 2026-10-01; daftar port dipakai dicatat di runbook |
 
 ## 6. Eksekusi
 
-Plan ditulis setelah spec disetujui (skill `writing-plans`). Sesi eksekusi berhenti di `git push`; deploy ke server dev, uji, dan merge dilakukan di sesi perencanaan.
+Plan ditulis setelah spec disetujui (skill `writing-plans`): tiga perubahan kode (TDD), pembaruan template dan dokumen. Tidak ada langkah deploy; sesi eksekusi berhenti di `git push`.
