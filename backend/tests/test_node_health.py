@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.models.event import Event
+from app.models.monitoring_sample import MonitoringSample
 from app.models.node import Node
 from app.services import node_health
 from app.ws.hub import hub
@@ -40,7 +41,9 @@ def test_timeout_marks_offline_once_with_event_ws_and_telegram(db, sent):
     assert node_health.check(db, now=T0 + timedelta(seconds=40), send=_send(sent)) == 1
     assert node_health.check(db, now=T0 + timedelta(seconds=60), send=_send(sent)) == 0  # sudah offline
     [ev] = _system(db)
-    assert ev.severity == "warning" and ev.payload == {"node": "server", "reason": "timeout"}
+    assert ev.severity == "warning" and ev.payload == {
+        "node": "server", "reason": "timeout", "last_seen": T0.isoformat().replace("+00:00", "Z"),
+    }
     assert len(sent["ws"]) == 1 and sent["ws"][0]["type"] == "system"
     assert len(sent["tg"]) == 1 and "server" in sent["tg"][0] and "offline" in sent["tg"][0]
 
@@ -58,7 +61,7 @@ def test_online_after_offline_emits_recovered(db, sent):
     assert node_health.mark_online(db, n, now=now, since=T0, send=_send(sent)) is True
     assert n.status == "online"
     [ev] = _system(db)
-    assert ev.severity == "info" and ev.payload == {"node": "server", "reason": "online"}
+    assert ev.severity == "info" and ev.payload == {"node": "server", "reason": "online", "down_s": 720}
     assert "pulih" in sent["tg"][0] and "12" in sent["tg"][0]  # durasi offline
     assert node_health.mark_online(db, n, now=now, send=_send(sent)) is False  # sudah online
 
@@ -119,3 +122,78 @@ def test_monitor_survives_session_close_error(monkeypatch):
         time.sleep(0.01)
     m.stop()
     assert calls and not m._thread.is_alive()
+
+
+def test_offline_event_carries_last_seen_and_cpu_fps_evidence(db, sent):
+    seen = T0 - timedelta(minutes=1)
+    n = _node(db, seen=seen)
+    now = T0 + timedelta(minutes=30)
+    for i in range(30):
+        db.add(MonitoringSample(
+            node_id=n.id,
+            ts=T0 + timedelta(minutes=i),
+            data={"cpu_pct": {"avg": 40.04}, "infer_fps": {"avg": 30.06}},
+        ))
+    db.commit()
+
+    assert node_health.mark_offline(db, n, "timeout", now=now, send=_send(sent)) is True
+
+    [event] = _system(db)
+    evidence = event.payload["evidence"]
+    start = now - timedelta(minutes=30)
+    assert event.payload["last_seen"] == seen.isoformat().replace("+00:00", "Z")
+    assert evidence["from"] == start.isoformat().replace("+00:00", "Z")
+    assert evidence["step_s"] == 60
+    assert evidence["series"]["cpu_pct"] == [40.0] * 30
+    assert evidence["series"]["infer_fps"] == [30.1] * 30
+
+
+def test_offline_event_without_samples_has_last_seen_but_no_evidence(db, sent):
+    seen = T0 - timedelta(minutes=3)
+    n = _node(db, seen=seen)
+
+    assert node_health.mark_offline(db, n, "timeout", now=T0 + timedelta(minutes=30),
+                                    send=_send(sent)) is True
+
+    [event] = _system(db)
+    assert event.payload["last_seen"] == seen.isoformat().replace("+00:00", "Z")
+    assert "evidence" not in event.payload
+
+
+def test_online_event_carries_down_s(db, sent):
+    n = _node(db, status="offline")
+    since = T0 - timedelta(minutes=5)
+
+    assert node_health.mark_online(db, n, now=T0, since=since, send=_send(sent)) is True
+
+    [event] = _system(db)
+    assert event.payload["down_s"] == 300
+
+
+def test_online_event_without_since_has_no_down_s(db, sent):
+    n = _node(db, status="offline")
+
+    assert node_health.mark_online(db, n, now=T0 + timedelta(minutes=5), send=_send(sent)) is True
+
+    [event] = _system(db)
+    assert "down_s" not in event.payload
+
+
+def test_node_evidence_failure_does_not_block_the_event(db, sent, monkeypatch):
+    seen = T0 - timedelta(minutes=1)
+    n = _node(db, seen=seen)
+    calls = []
+
+    def boom(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise RuntimeError("minute samples unavailable")
+
+    monkeypatch.setattr(node_health, "minute_samples", boom, raising=False)
+
+    assert node_health.mark_offline(db, n, "timeout", now=T0 + timedelta(minutes=30),
+                                    send=_send(sent)) is True
+
+    [event] = _system(db)
+    assert calls and n.status == "offline"
+    assert event.payload["last_seen"] == seen.isoformat().replace("+00:00", "Z")
+    assert "evidence" not in event.payload
