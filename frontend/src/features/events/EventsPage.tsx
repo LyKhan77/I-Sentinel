@@ -219,8 +219,11 @@ export default function EventsPage() {
 
   const inList = eventParam != null && filtered.some((e) => e.id === eventParam)
   const pinnedEvent = pinned && pinned.id === eventParam && pinned.status === 'ok' ? pinned.event : null
+  // event yang dituju belum ada di daftar dan fetch by-id-nya belum selesai: jangan tampilkan event lain
+  // sebagai penggantinya (K4) — panel detail menunggu; fallback event pertama hanya bila hasilnya missing/error
+  const resolving = eventParam != null && !loading && !inList && (pinned == null || pinned.id !== eventParam)
   // pilihan dari URL (K1); fallback: event tersemat, lalu event pertama daftar
-  const selected = filtered.find((e) => e.id === eventParam) ?? pinnedEvent ?? filtered[0] ?? null
+  const selected = resolving ? null : (filtered.find((e) => e.id === eventParam) ?? pinnedEvent ?? filtered[0] ?? null)
   const fromPinned = selected != null && selected === pinnedEvent
 
   // sematan: fetch by-id tepat sekali per eventParam, hanya bila daftar selesai dimuat dan
@@ -416,7 +419,7 @@ export default function EventsPage() {
 
       {loading ? (
         <InlineLoading description={t('common.loading')} />
-      ) : filtered.length === 0 && !selected ? (
+      ) : filtered.length === 0 && !selected && !resolving ? (
         <p className="ev-empty">{events.length === 0 ? t('events.empty') : t('events.emptyFiltered')}</p>
       ) : (
         <div className="events-split">
@@ -468,6 +471,11 @@ export default function EventsPage() {
           </ul>
 
           {/* kanan: detail panel */}
+          {resolving && (
+            <div data-testid="event-detail-loading" className="ev-detail">
+              <InlineLoading description={t('common.loading')} />
+            </div>
+          )}
           {selected && (
             <div data-testid="event-detail" className="ev-detail">
               <div className="ev-detail__head">

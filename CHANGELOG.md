@@ -3,6 +3,24 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Perbaikan review tautan event by id (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `fix/events-deeplink` menemukan dua hal: (M1) saat membuka `/events?event=<id luar daftar>`,
+  panel detail sempat menampilkan event pertama sebelum fetch by-id selesai (melanggar K4 "tidak pernah diam-diam menampilkan
+  event lain") dan membuat uji `?event beyond the loaded list…` flaky (gagal 1 dari 3 percobaan); (M2) id sangat besar di URL
+  (`/events?event=99999999999`) lolos validasi frontend dan di Postgres (`Event.id` INTEGER/int4) membuat `GET /events/{id}` melempar
+  `integer out of range` → 500, sehingga pengguna melihat "Gagal memuat" alih-alih "tidak ditemukan".
+- **Diubah:** `features/events/EventsPage.tsx` — `resolving` (event dituju belum di daftar dan fetch by-id belum selesai) → `selected`
+  kosong dan panel menampilkan `InlineLoading` (`data-testid="event-detail-loading"`); fallback ke event pertama hanya bila hasil
+  `missing`/`error`. `backend/app/api/events.py` — `get_event` menjawab 404 untuk id di luar `1…2³¹−1` (`MAX_EVENT_ID`).
+- **Uji (ditulis gagal dulu):** `test_get_event_by_id_out_of_range_is_404` (gagal dengan `OverflowError` SQLite sebelum perbaikan);
+  `while the by-id fetch is pending a loading placeholder is shown, not the first event` (gagal: detail event pertama tampil).
+- **Evidence (Mac lokal, berurutan):** backend `637 passed, 481 warnings in 127.89s` (636 + 1); frontend `Test Files 32 passed (32)` /
+  `Tests 365 passed (365)` (364 + 1); `events.test.tsx` 8/8 percobaan hijau (sebelumnya 1 dari 3 gagal); `npm run build` exit 0;
+  `npm run lint` 24 baris, pasangan (file, rule) identik baseline; `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/events` kosong.
+- **Dampak:** deep link ke event lama tidak lagi berkedip ke event yang salah; id ngawur → "tidak ditemukan", bukan error 500.
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi.
+
 ### Tautan `/events?event=<id>` yang andal (2026-10-01)
 
 - **Konteks:** tautan event (Telegram, lonceng/toast, Dashboard) punya tiga cacat: `?event=` hanya dibaca saat mount

@@ -241,3 +241,9 @@ def test_ingest_node_by_name(db, monkeypatch):
         "ts_event": "2026-09-11T09:00:00+07:00",
     })
     assert status == "created" and ev.node_id is not None and ev.node.name == "srv-test"
+
+def test_get_event_by_id_out_of_range_is_404(client):
+    # Event.id = INTEGER (int4 di Postgres): id raksasa dari URL ngawur harus 404, bukan 500
+    h = _admin_headers(client)
+    for bad in ("99999999999999999999", "0", "-5"):
+        assert client.get(f"/api/v1/events/{bad}", headers=h).status_code == 404

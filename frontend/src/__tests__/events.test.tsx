@@ -1053,3 +1053,34 @@ test('empty list with a pinned event still shows the detail', async () => {
   expect(detail).toHaveTextContent('ev-777')
   expect(screen.queryByText('Belum ada event')).not.toBeInTheDocument()
 })
+
+test('while the by-id fetch is pending a loading placeholder is shown, not the first event', async () => {
+  let release: ((body: EventOut) => void) = () => {}
+  const held = new Promise<EventOut>((res) => { release = res })
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (BY_ID_RE.test(u)) {
+      const body = await held
+      return { ok: true, status: 200, json: () => Promise.resolve(body) }
+    }
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve({}) }
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(EVENTS) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=777')
+
+  await screen.findByTestId('event-item-1')
+  await waitFor(() => expect(byIdCalls(fetchMock)).toBe(1))
+  // event yang dituju belum ada: jangan tampilkan event pertama sebagai penggantinya
+  expect(screen.queryByTestId('event-detail')).not.toBeInTheDocument()
+  expect(screen.getByTestId('event-detail-loading')).toBeInTheDocument()
+
+  await act(async () => { release(PINNED) })
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-777')
+  expect(screen.queryByTestId('event-detail-loading')).not.toBeInTheDocument()
+})
