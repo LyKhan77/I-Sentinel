@@ -31,7 +31,7 @@ Peta yang sama dipakai tahap 2 (Docker), jadi pengguna dan firewall tidak bergan
 | # | Keputusan |
 |---|---|
 | K1 | **Blok `7700–7705`.** LAN-facing berurutan `7700–7704`, RTSP terpisah di `7705` (hanya loopback). `7706–7709` dicadangkan, tidak dipakai. `7777` dihindari. |
-| K2 | **Angka baru ditulis di titik konfigurasi yang sudah ada** (`.env`, `vision.env`, unit, `go2rtc.yaml`, mosquitto), bukan lapisan `PORT_*` baru. Default di kode tetap port lama sehingga dev lokal (`uvicorn --port 8000`, `npm run dev`) tidak berubah. Variabel terpusat baru muncul di tahap 2, saat compose memang butuh. |
+| K2 | **Angka baru ditulis di titik konfigurasi yang sudah ada** (`.env`, `vision.env`, unit, `go2rtc.yaml`, mosquitto), bukan lapisan `PORT_*` baru. Default di kode tetap port lama sehingga dev lokal (`uvicorn --port 8000`, `npm run dev`) tidak berubah. Tidak ada variabel `PORT_*` terpusat di tahap mana pun: port tetap, karena `_rewrite_host` (fakta 4) mengambil port go2rtc untuk URL ke browser dari `GO2RTC_URL`, sehingga port internal dan port yang dipublikasikan harus sama. |
 | K3 | **Kode berubah di dua titik saja:** `config_push.py` memakai setting baru `go2rtc_rtsp_url` (default `rtsp://localhost:8554`), dan `vite.config.ts` membaca target proxy dari env `API_URL` (default `http://localhost:8000`). |
 | K4 | **go2rtc RTSP diikat ke `127.0.0.1:7705`.** go2rtc tidak punya autentikasi, dan tidak ada pembaca RTSP dari luar host: vision node server membaca dari localhost, node edge (Fase E) menarik langsung dari kamera. |
 | K5 | **go2rtc API (`7702`) dan WebRTC (`7703`) tetap terbuka ke LAN** karena Live Wall memutar langsung dari browser (fakta 3). Pengetatan origin (`api.origin: "*"`) di luar cakupan. |
@@ -93,7 +93,7 @@ Frontend: tanpa uji baru; `vite.config.ts` hanya konfigurasi. Bukti: `pytest -m 
 
 ## 4. Di luar cakupan
 
-Cutover server dev/prod, Docker, nginx dan build statis menggantikan Vite dev, pemindahan Postgres, pengetatan `api.origin` go2rtc, TLS, variabel `PORT_*` terpusat, perubahan port di Jetson/edge nyata (hanya dokumentasi Fase E). Semua dibahas di spec tahap 2.
+Cutover server dev/prod, Docker, nginx dan build statis menggantikan Vite dev, pemindahan Postgres, pengetatan `api.origin` go2rtc, TLS, perubahan port di Jetson/edge nyata (hanya dokumentasi Fase E). Semua dibahas di spec tahap 2.
 
 ## 5. Risiko
 
