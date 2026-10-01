@@ -19,10 +19,10 @@ Peta yang sama dipakai tahap 2 (Docker), jadi pengguna dan firewall tidak bergan
 |---|---|---|
 | 1 | Port tersebar di: unit systemd (`--port 8000`, `--port 5173`), `.env` (`MQTT_URL`, `GO2RTC_URL`), `vision.env` (`VISION_MQTT_URL`, `VISION_API_URL`, `VISION_CAMERAS_JSON`), `go2rtc.yaml`, konfigurasi mosquitto, proxy Vite. | `deploy/`, `.env.example`, `frontend/vite.config.ts:11` |
 | 2 | `config_push.py` menulis `rtsp://localhost:8554/cam_{id}` **langsung di kode** untuk node bertipe `server`; nilai ini dikirim ke vision node lewat MQTT. Tidak bisa diubah lewat konfigurasi. | `backend/app/services/config_push.py:84` |
-| 3 | Browser memutar live langsung ke go2rtc: `LiveWall.tsx` memasang `<video-stream src={live.webrtc}>` (`ws://<GO2RTC_PUBLIC_HOST>:<port go2rtc_url>/api/ws`). Port go2rtc API karenanya harus terjangkau klien LAN; bila tidak, tile jatuh ke snapshot lewat proxy API. `README.md:20` menulis go2rtc 1984 tertutup dari LAN, bertentangan dengan perilaku kode. | `backend/app/api/live.py:63-76`, `frontend/src/features/live/LiveWall.tsx:47-58` |
+| 3 | Browser memutar live langsung ke go2rtc: `LiveWall.tsx` memasang `<video-stream src={live.webrtc}>` (`ws://<GO2RTC_PUBLIC_HOST>:<port go2rtc_url>/api/ws`). Port go2rtc API karenanya harus terjangkau klien LAN; bila tidak, tile jatuh ke snapshot lewat proxy API. `README.md:20` menulis go2rtc 1984 tertutup dari LAN, bertentangan dengan perilaku kode; probe dari Mac di LAN (2026-10-01) menunjukkan `192.168.2.133:1984` **terbuka**, jadi README yang basi. | `backend/app/api/live.py:63-76`, `frontend/src/features/live/LiveWall.tsx:47-58` |
 | 4 | `_rewrite_host` mengambil port dari `GO2RTC_URL`, jadi URL live mengikuti port baru otomatis. | `backend/app/api/live.py:28-30` |
 | 5 | Mosquitto di server mendengarkan lewat `/etc/mosquitto/conf.d/default.conf` (`listener 1883` + `password_file`), bukan `mosquitto.conf` utama. File repo `deploy/mosquitto/mosquitto.conf` berbeda isi dengan yang berjalan. | server, root-owned |
-| 6 | Akun `gspe-ai3` bukan root dan `sudo` meminta password. File root-owned yang perlu diubah: `/etc/systemd/system/isentinel-api.service`, `isentinel-web.service`, `/etc/mosquitto/conf.d/default.conf`, plus firewall (status tidak diketahui). Akun ada di grup `docker`. | server |
+| 6 | Akun `gspe-ai3` bukan root dan `sudo` meminta password. File root-owned yang perlu diubah: `/etc/systemd/system/isentinel-api.service`, `isentinel-web.service`, `/etc/mosquitto/conf.d/default.conf`, plus firewall. Firewall host **aktif dengan whitelist per port**: probe dari LAN menunjukkan `8000 5173 1883 1984 8077 5151` terbuka, sedangkan `3131` tertutup walau listening di `0.0.0.0` (rincian aturan tidak terbaca tanpa root). Port baru karenanya pasti perlu dibuka. Akun ada di grup `docker`. | server |
 | 7 | `app_url` Telegram tersimpan di DB (setting notifikasi) dan memuat port web (`http://192.168.2.133:5173`). | `backend/app/services/telegram.py`, UI Notifikasi |
 | 8 | Port yang sudah dipakai proyek lain di server dev: `80 3131 4040 4096 5151 5345 5511 6379 6388 8005 8011 8077 8125 9400` dan UDP `7000–7019`. Rentang `7700–7799` kosong (TCP/UDP/Docker), di bawah ephemeral OS (`32768–60999`). | server |
 
@@ -79,10 +79,10 @@ Dokumen: `README.md` (diagram + baris "Port terbuka di LAN" dikoreksi sesuai K5)
 Prasyarat (non-root): branch `feat/port-nondefault` ter-checkout di server, `pytest -m "not gpu"` dan `npx vitest run` hijau, backup:
 `.env`, `vision.env`, `deploy/go2rtc/go2rtc.yaml` → `*.bak-pre-ports`; root: salinan dua unit dan `conf.d/default.conf`.
 
-Baseline sebelum cutover (dari klien LAN): catat apakah `1984`, `8000`, `5173`, `1883` terjangkau dan apakah Live Wall memakai WebRTC/MSE atau jatuh ke snapshot. Hasilnya menentukan apakah aturan firewall `7702/7703` memang diperlukan (fakta 3).
+Baseline sebelum cutover (dari klien LAN): `8000 5173 1883 1984` sudah terbukti terjangkau (probe 2026-10-01). Yang masih dicatat: apakah Live Wall memakai WebRTC/MSE atau jatuh ke snapshot, sebagai pembanding setelah cutover.
 
 Langkah, berurutan:
-1. **Root, bila firewall aktif:** buka `7700:7704/tcp` dan `7703/udp`.
+1. **Root:** buka `7700:7704/tcp` dan `7703/udp` di firewall host (aktif, fakta 6). Aturan untuk port lama ditutup setelah cutover terverifikasi, bukan sebelumnya (rollback).
 2. **Non-root:** `.env` → `MQTT_URL=localhost:7704`, `GO2RTC_URL=http://localhost:7702`, tambah `GO2RTC_RTSP_URL=rtsp://localhost:7705`; `GO2RTC_PUBLIC_HOST` tidak berubah.
    `vision.env` → `VISION_MQTT_URL=localhost:7704`, `VISION_API_URL=http://localhost:7701`, `rtsp://localhost:8554` → `rtsp://localhost:7705` di `VISION_CAMERAS_JSON`.
    `go2rtc.yaml` → port sesuai 3.1 (bagian stream kamera tidak disentuh).
@@ -116,7 +116,7 @@ Migrasi Docker, nginx dan build statis menggantikan Vite dev (tahap 2), pemindah
 
 | Risiko | Mitigasi |
 |---|---|
-| Firewall aktif dan tidak dibuka sebelum restart → UI/MQTT tak terjangkau dari LAN | Langkah 1 sebelum restart; baseline LAN dicatat; rollback 3.4 |
+| Firewall (aktif) belum membuka `7700:7704` saat restart → UI/MQTT/live tak terjangkau dari LAN | Langkah 1 sebelum restart; tes `nc -z` dari klien LAN ke tiap port; rollback 3.4 |
 | Lupa mengubah satu titik port (mis. `VISION_CAMERAS_JSON`, `GO2RTC_RTSP_URL`) → vision tak dapat stream | Daftar titik di 3.3 langkah 2; bukti `ss`, vision `online`, event end to end |
 | `EnvironmentFile` memuat komentar inline → nilai port rusak | Aturan di 3.3 langkah 2; `systemctl show -p Environment` dibaca setelah restart |
 | Dua Vite/`npm` bentrok port diam-diam pindah | `--strictPort` |
