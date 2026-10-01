@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { act } from 'react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import EventsPage from '../features/events/EventsPage'
@@ -846,4 +846,241 @@ test('changing a filter refetches the event list only, not cameras or zones', as
 
   expect(count('/cameras')).toBe(cams0)
   expect(count('/zones')).toBe(zones0)
+})
+
+// --- Deep link ?event=<id>: URL sumber kebenaran pemilihan -------------------
+
+const BY_ID_RE = /\/events\/(\d+)$/
+
+function stubDeeplinkFetch(
+  events: EventOut[],
+  byId: (id: number) => { status: number; body?: EventOut | null } = () => ({ status: 404 }),
+) {
+  return vi.fn(async (url: string) => {
+    const u = String(url)
+    const m = BY_ID_RE.exec(u) // cabang by-id SEBELUM cabang umum (jebakan prompt §7)
+    if (m) {
+      const res = byId(Number(m[1]))
+      return { ok: res.status === 200, status: res.status, json: () => Promise.resolve(res.body ?? null) }
+    }
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve({}) }
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(events) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+}
+
+const byIdCalls = (fetchMock: ReturnType<typeof vi.fn>) =>
+  fetchMock.mock.calls.filter(([u]) => BY_ID_RE.test(String(u))).length
+
+// probe kecil: lokasi + navigasi dari luar halaman (peran lonceng/toast, plan Task 2)
+function DeeplinkProbe() {
+  const loc = useLocation()
+  const nav = useNavigate()
+  const navType = useNavigationType()
+  return (
+    <>
+      <span data-testid="loc">{loc.pathname + loc.search}</span>
+      <span data-testid="nav-type">{navType}</span>
+      <button data-testid="nav-btn" onClick={() => nav('/events?event=2')}>go</button>
+    </>
+  )
+}
+
+function renderWithProbe(entry = '/events') {
+  return render(
+    <I18nProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <EventsPage />
+        <DeeplinkProbe />
+      </MemoryRouter>
+    </I18nProvider>,
+  )
+}
+
+const PINNED: EventOut = {
+  id: 777, event_id: 'ev-777', type: 'penyusup', camera_id: 1, zone_id: null, severity: 'critical',
+  ts_event: '2026-02-01T08:00:00Z', payload: null, clip_path: null, snapshot_path: null,
+}
+
+function byIdStub(body: EventOut | null, status = 200) {
+  return (id: number) => (id === (body?.id ?? -1) ? { status, body } : { status: 404 })
+}
+
+test('?event beyond the loaded list is fetched by id and pinned', async () => {
+  const fetchMock = stubDeeplinkFetch(EVENTS, byIdStub(PINNED))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=777')
+
+  const detail = await screen.findByTestId('event-detail')
+  expect(detail).toHaveTextContent('ev-777')
+  expect(screen.getByTestId('event-pinned-note')).toBeInTheDocument()
+  expect(byIdCalls(fetchMock)).toBe(1)
+})
+
+test('?event already in the list does not trigger a by-id fetch', async () => {
+  const fetchMock = stubDeeplinkFetch(EVENTS, byIdStub(PINNED))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=2')
+
+  await screen.findByTestId('event-detail')
+  expect(screen.getByTestId('event-detail')).toHaveTextContent('ev-2')
+  expect(screen.queryByTestId('event-pinned-note')).not.toBeInTheDocument()
+  expect(byIdCalls(fetchMock)).toBe(0)
+})
+
+test('?event with an invalid value is ignored without a fetch', async () => {
+  for (const raw of ['abc', '0', '-1', '1.5']) {
+    const fetchMock = stubDeeplinkFetch(EVENTS, byIdStub(PINNED))
+    vi.stubGlobal('fetch', fetchMock)
+    const { unmount } = renderPage(`/events?event=${raw}`)
+    const detail = await screen.findByTestId('event-detail')
+    expect(detail).toHaveTextContent('ev-1')
+    expect(byIdCalls(fetchMock)).toBe(0)
+    expect(screen.queryByText(/tidak ditemukan|Gagal memuat/)).not.toBeInTheDocument()
+    unmount()
+  }
+})
+
+test('missing event shows a warning and falls back to the first event', async () => {
+  const fetchMock = stubDeeplinkFetch(EVENTS)
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=777')
+
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-1')
+  expect(await screen.findByText(/Event #777 tidak ditemukan/)).toBeInTheDocument()
+  expect(screen.queryByTestId('event-pinned-note')).not.toBeInTheDocument()
+})
+
+test('by-id failure shows the failed message', async () => {
+  const fetchMock = stubDeeplinkFetch(EVENTS, () => ({ status: 500 }))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=777')
+
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-1')
+  expect(await screen.findByText(/Gagal memuat event #777/)).toBeInTheDocument()
+  expect(byIdCalls(fetchMock)).toBe(1)
+})
+
+test('changing ?event while mounted selects that event', async () => {
+  const fetchMock = stubDeeplinkFetch(EVENTS, byIdStub(PINNED))
+  vi.stubGlobal('fetch', fetchMock)
+  renderWithProbe('/events')
+
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-1')
+  await userEvent.click(screen.getByTestId('nav-btn')) // navigasi dari luar, seperti lonceng
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-2')
+  expect(screen.getByTestId('event-item-2')).toHaveAttribute('aria-current', 'true')
+  expect(screen.getByTestId('loc')).toHaveTextContent('/events?event=2')
+  expect(byIdCalls(fetchMock)).toBe(0) // id 2 ada di daftar
+})
+
+test('clicking a row writes ?event= to the URL without adding history', async () => {
+  vi.stubGlobal('fetch', stubDeeplinkFetch(EVENTS, byIdStub(PINNED)))
+  renderWithProbe('/events')
+
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-1')
+  await userEvent.click(screen.getByTestId('event-item-2'))
+  expect(screen.getByTestId('loc')).toHaveTextContent('/events?event=2')
+  expect(screen.getByTestId('nav-type')).toHaveTextContent('REPLACE') // riwayat tidak menumpuk
+  expect(screen.getByTestId('event-detail')).toHaveTextContent('ev-2')
+})
+
+test('no ?event keeps the first event selected and the URL untouched', async () => {
+  const fetchMock = stubDeeplinkFetch(EVENTS, byIdStub(PINNED))
+  vi.stubGlobal('fetch', fetchMock)
+  renderWithProbe('/events')
+
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-1')
+  expect(screen.getByTestId('loc').textContent).toBe('/events') // tanpa '?event'
+  expect(byIdCalls(fetchMock)).toBe(0)
+})
+
+test('a stale by-id response does not override a newer selection', async () => {
+  let release: ((body: EventOut) => void) = () => {}
+  const held = new Promise<EventOut>((res) => { release = res })
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (BY_ID_RE.test(u)) {
+      const body = await held
+      return { ok: true, status: 200, json: () => Promise.resolve(body) }
+    }
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve({}) }
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(EVENTS) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWithProbe('/events?event=777')
+
+  await screen.findByTestId('event-item-1')
+  await waitFor(() => expect(byIdCalls(fetchMock)).toBe(1))
+  // lonceng navigasi ke event 2 selama fetch by-id 777 masih di jalan
+  await userEvent.click(screen.getByTestId('nav-btn'))
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-2')
+  await act(async () => { release(PINNED) })
+  // respons basi 777 tidak boleh menimpa pilihan baru
+  expect(screen.getByTestId('event-detail')).toHaveTextContent('ev-2')
+  expect(screen.queryByTestId('event-pinned-note')).not.toBeInTheDocument()
+})
+
+test('pinned event survives a list refetch', async () => {
+  const fetchMock = stubDeeplinkFetch(EVENTS, byIdStub(PINNED))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=777')
+  await screen.findByTestId('event-pinned-note')
+  expect(screen.getByTestId('event-detail')).toHaveTextContent('ev-777')
+
+  await userEvent.selectOptions(screen.getByLabelText('Rentang'), '24h') // refetch daftar
+  await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(0))
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-777')
+  expect(screen.getByTestId('event-pinned-note')).toBeInTheDocument()
+  expect(byIdCalls(fetchMock)).toBe(1) // tidak diambil ulang
+})
+
+test('empty list with a pinned event still shows the detail', async () => {
+  const fetchMock = stubDeeplinkFetch([], byIdStub(PINNED))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=777')
+
+  const detail = await screen.findByTestId('event-detail')
+  expect(detail).toHaveTextContent('ev-777')
+  expect(screen.queryByText('Belum ada event')).not.toBeInTheDocument()
+})
+
+test('while the by-id fetch is pending a loading placeholder is shown, not the first event', async () => {
+  let release: ((body: EventOut) => void) = () => {}
+  const held = new Promise<EventOut>((res) => { release = res })
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (BY_ID_RE.test(u)) {
+      const body = await held
+      return { ok: true, status: 200, json: () => Promise.resolve(body) }
+    }
+    if (u.includes('/alerts/by-events')) return { ok: true, status: 200, json: () => Promise.resolve({}) }
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(EVENTS) }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?event=777')
+
+  await screen.findByTestId('event-item-1')
+  await waitFor(() => expect(byIdCalls(fetchMock)).toBe(1))
+  // event yang dituju belum ada: jangan tampilkan event pertama sebagai penggantinya
+  expect(screen.queryByTestId('event-detail')).not.toBeInTheDocument()
+  expect(screen.getByTestId('event-detail-loading')).toBeInTheDocument()
+
+  await act(async () => { release(PINNED) })
+  expect(await screen.findByTestId('event-detail')).toHaveTextContent('ev-777')
+  expect(screen.queryByTestId('event-detail-loading')).not.toBeInTheDocument()
 })

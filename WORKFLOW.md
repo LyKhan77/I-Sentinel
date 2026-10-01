@@ -128,8 +128,13 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
    maksimum 6 jam; data lebih tua dari 7 hari hanya menampilkan fakta. Gagal memuat grafik tidak menyembunyikan
    fakta. Event system memakai judul/lokasi terlokalisasi (bukan `system · cam null`) dan tidak pernah
    menunggu klip.
-5. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan dari Telegram
-   `…/events?event=<id>` membuka event langsung (LAN saja).
+5. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan `/events?event=<id>` (Telegram,
+   lonceng/toast, Dashboard) selalu membuka event yang dituju: bila halaman sudah terbuka pilihannya ikut pindah;
+   event di luar 200 terbaru (atau tersaring filter) diambil lewat `GET /api/v1/events/{id}` dan disematkan di
+   panel detail dengan catatan kecil; klik baris menulis `?event=<id>` ke URL (replace, riwayat tidak menumpuk);
+   tanpa parameter atau nilainya tak valid → event pertama dan URL tidak diubah; event tidak ditemukan (dihapus
+   retensi) atau gagal dimuat → peringatan dan panel jatuh ke event pertama — tidak pernah diam-diam menampilkan
+   event lain. Tautan tetap hanya bisa dibuka dari LAN.
 
 ## 9. Notifikasi web
 

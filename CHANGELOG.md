@@ -3,6 +3,65 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Tautan event by id — deploy dan uji UI user (2026-10-01)
+
+- **Konteks:** setelah review dan perbaikan (`c776a0b`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.
+- **Deploy `gspe-ai3`:** `git checkout fix/events-deeplink` (dari `main` @ `9c8b220`, tree bersih) → `c776a0b`; tanpa migrasi;
+  hanya API yang di-restart (cgroup kill, backend berubah); frontend lewat Vite dev server (`isentinel-web`).
+- **Smoke server:** `/api/v1/health` → `{"status":"ok"}`; `GET /events/<id>` dan `GET /events/99999999999999999999` tanpa auth → 401
+  (rute hidup); `openapi.json` memuat `/api/v1/events/{event_id}`; web `:5173` → 200; journal API 20 baris terakhir 0 error/traceback.
+- **Uji UI user:** "sudah sesuai" (konfirmasi di chat, 2026-10-01; tanpa screenshot) atas daftar cek: tautan event lama, klik lonceng/toast
+  saat sudah di `/events`, id terhapus/raksasa → peringatan, klik baris memperbarui URL tanpa menumpuk riwayat, salin URL ke tab baru,
+  tautan menang atas filter, 390 px.
+- **Catatan:** L1 (sematan tetap saat filter mengecualikan event yang diklik), L2 (kolom kiri kosong tanpa pesan bila daftar kosong dan ada event
+  tersemat), L3 (selisih deploy API lama → "tidak ditemukan") dinilai dapat diterima, tidak diubah.
+- **Rollback:** `git revert` merge ini atau commit per task (tanpa migrasi); server: `git checkout main && git pull` + restart API.
+
+### Perbaikan review tautan event by id (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `fix/events-deeplink` menemukan dua hal: (M1) saat membuka `/events?event=<id luar daftar>`,
+  panel detail sempat menampilkan event pertama sebelum fetch by-id selesai (melanggar K4 "tidak pernah diam-diam menampilkan
+  event lain") dan membuat uji `?event beyond the loaded list…` flaky (gagal 1 dari 3 percobaan); (M2) id sangat besar di URL
+  (`/events?event=99999999999`) lolos validasi frontend dan di Postgres (`Event.id` INTEGER/int4) membuat `GET /events/{id}` melempar
+  `integer out of range` → 500, sehingga pengguna melihat "Gagal memuat" alih-alih "tidak ditemukan".
+- **Diubah:** `features/events/EventsPage.tsx` — `resolving` (event dituju belum di daftar dan fetch by-id belum selesai) → `selected`
+  kosong dan panel menampilkan `InlineLoading` (`data-testid="event-detail-loading"`); fallback ke event pertama hanya bila hasil
+  `missing`/`error`. `backend/app/api/events.py` — `get_event` menjawab 404 untuk id di luar `1…2³¹−1` (`MAX_EVENT_ID`).
+- **Uji (ditulis gagal dulu):** `test_get_event_by_id_out_of_range_is_404` (gagal dengan `OverflowError` SQLite sebelum perbaikan);
+  `while the by-id fetch is pending a loading placeholder is shown, not the first event` (gagal: detail event pertama tampil).
+- **Evidence (Mac lokal, berurutan):** backend `637 passed, 481 warnings in 127.89s` (636 + 1); frontend `Test Files 32 passed (32)` /
+  `Tests 365 passed (365)` (364 + 1); `events.test.tsx` 8/8 percobaan hijau (sebelumnya 1 dari 3 gagal); `npm run build` exit 0;
+  `npm run lint` 24 baris, pasangan (file, rule) identik baseline; `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/events` kosong.
+- **Dampak:** deep link ke event lama tidak lagi berkedip ke event yang salah; id ngawur → "tidak ditemukan", bukan error 500.
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi.
+
+### Tautan `/events?event=<id>` yang andal (2026-10-01)
+
+- **Konteks:** tautan event (Telegram, lonceng/toast, Dashboard) punya tiga cacat: `?event=` hanya dibaca saat mount
+  (klik lonceng saat sudah di `/events` terasa tak berbuat apa-apa), event di luar 200 terbaru ditampilkan diam-diam
+  sebagai event pertama, dan klik baris tidak menulis URL. Spec/plan `docs/superpowers/{specs,plans}/2026-10-01-events-deeplink*`.
+- **Diubah:** `backend/app/api/events.py` — `GET /api/v1/events/{event_id}` → `EventOut`, 404 `"event not found"`, wajib
+  login (rute `stats/today` tidak berubah). `frontend/src/api/events.ts` — `getEvent(id)` (`null` pada 404, lempar
+  `Error` pada status lain). `frontend/src/features/events/EventsPage.tsx` — `?event=` jadi sumber kebenaran pemilihan
+  (state `selectedId` dihapus); event di luar daftar diambil sekali lewat id dan disematkan dengan catatan; klik baris
+  menulis `?event=<id>` (`replace`); 404 → peringatan + jatuh ke event pertama; 500 → pesan gagal. `frontend/src/app/i18n.tsx`
+  — kunci `events.pinnedNote`, `events.deeplinkMissing`, `events.deeplinkFailed` (id + en).
+- **Uji (ditulis gagal dulu):** backend `test_events_api.py` +5 (200 isi, 404, 401, 422 non-int, regresi `stats/today` —
+  3 fail dulu karena rute belum ada); frontend `events.test.tsx` +11 (sematan tepat 1 fetch, 0 fetch bila sudah di daftar,
+  param tak valid tanpa fetch, 404/500 berbeda pesan, pindah saat terpasang, klik baris = REPLACE, tanpa param URL utuh,
+  respons basi tidak menimpa, sematan bertahan saat refetch, daftar kosong + sematan tetap tampil); 3 guard perilaku lama
+  dibuktikan bisa gagal lewat mutasi sementara (inList=false, cek integer dibuang, fallback pertama dibuang).
+- **Evidence (Mac lokal):** backend `636 passed` (baseline 631); frontend `Test Files 32 passed (32)` / `Tests 364 passed
+  (364)`; `npm run build` exit 0; `npm run lint` 24 baris warning, pasangan (rule, file) identik baseline; smoke S3
+  (Playwright, mock `/api/v1/*`): sematan ev-777 + catatan, 404 #999 → peringatan + event pertama, pushState+popstate
+  memindahkan pilihan, klik baris → `?event=3`, 390 px `scrollWidth 375 ≤ 390`; konsol 0 error (satu log resource 404
+  yang diharapkan saat kasus 404). **Uji UI oleh user menyusul setelah deploy** (tautan Telegram lama, lonceng saat sudah
+  di `/events`, id terhapus, tombol Back, buka URL di tab baru).
+- **Dampak:** tautan lama Telegram tetap membuka event yang benar; klik lonceng/toast saat halaman terbuka langsung
+  berpindah; URL bilah alamat selalu menunjuk event yang tampil.
+- **Rollback:** `git revert` commit per task (`6e5edd6`, `518e2b0`); tanpa migrasi DB; frontend lama + backend baru aman
+  (`getEvent` 404/405 → pesan, tidak crash).
+
 ### Filter Events + bukti event system — deploy dan uji UI user (2026-10-01)
 
 - **Konteks:** setelah review dan perbaikan (`d81d1d1`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.

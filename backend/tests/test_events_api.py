@@ -206,6 +206,31 @@ def test_ws_receives_ingest_broadcast(client):
         msg = ws.receive_json()
         assert msg["type"] == "intrusion" and msg["event_id"]
 
+def test_get_event_by_id(client):
+    ingest = client.post("/internal/nodes/1/events", json=_payload(), headers=_ingest_headers()).json()
+    h = _admin_headers(client)
+    r = client.get(f"/api/v1/events/{ingest['id']}", headers=h)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == ingest["id"]
+    assert body["type"] == "intrusion" and body["severity"] == "info"
+
+def test_get_event_by_id_not_found(client):
+    h = _admin_headers(client)
+    assert client.get("/api/v1/events/999999", headers=h).status_code == 404
+
+def test_get_event_by_id_requires_auth(client):
+    assert client.get("/api/v1/events/1").status_code == 401
+
+def test_get_event_by_id_rejects_non_integer(client):
+    h = _admin_headers(client)
+    assert client.get("/api/v1/events/abc", headers=h).status_code == 422
+
+def test_stats_today_route_not_shadowed(client):
+    h = _admin_headers(client)
+    r = client.get("/api/v1/events/stats/today", headers=h)
+    assert r.status_code == 200 and "total" in r.json()
+
 def test_ingest_node_by_name(db, monkeypatch):
     from app.services.ingest import ingest_event
     from app.models.node import Node
@@ -216,3 +241,9 @@ def test_ingest_node_by_name(db, monkeypatch):
         "ts_event": "2026-09-11T09:00:00+07:00",
     })
     assert status == "created" and ev.node_id is not None and ev.node.name == "srv-test"
+
+def test_get_event_by_id_out_of_range_is_404(client):
+    # Event.id = INTEGER (int4 di Postgres): id raksasa dari URL ngawur harus 404, bukan 500
+    h = _admin_headers(client)
+    for bad in ("99999999999999999999", "0", "-5"):
+        assert client.get(f"/api/v1/events/{bad}", headers=h).status_code == 404

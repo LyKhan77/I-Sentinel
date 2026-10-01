@@ -37,6 +37,13 @@ export async function listEvents(params: EventListParams = {}): Promise<EventOut
   return res.json()
 }
 
+export async function getEvent(id: number): Promise<EventOut | null> {
+  const res = await apiFetch(`/events/${id}`)
+  if (res.status === 404) return null // event dihapus retensi → pesan, bukan error
+  if (!res.ok) throw new Error(`get event failed: ${res.status}`)
+  return res.json()
+}
+
 export async function eventStats(): Promise<EventStats> {
   const res = await apiFetch('/events/stats/today')
   if (!res.ok) throw new Error(`event stats failed: ${res.status}`)
