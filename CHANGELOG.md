@@ -3,6 +3,33 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Tautan `/events?event=<id>` yang andal (2026-10-01)
+
+- **Konteks:** tautan event (Telegram, lonceng/toast, Dashboard) punya tiga cacat: `?event=` hanya dibaca saat mount
+  (klik lonceng saat sudah di `/events` terasa tak berbuat apa-apa), event di luar 200 terbaru ditampilkan diam-diam
+  sebagai event pertama, dan klik baris tidak menulis URL. Spec/plan `docs/superpowers/{specs,plans}/2026-10-01-events-deeplink*`.
+- **Diubah:** `backend/app/api/events.py` — `GET /api/v1/events/{event_id}` → `EventOut`, 404 `"event not found"`, wajib
+  login (rute `stats/today` tidak berubah). `frontend/src/api/events.ts` — `getEvent(id)` (`null` pada 404, lempar
+  `Error` pada status lain). `frontend/src/features/events/EventsPage.tsx` — `?event=` jadi sumber kebenaran pemilihan
+  (state `selectedId` dihapus); event di luar daftar diambil sekali lewat id dan disematkan dengan catatan; klik baris
+  menulis `?event=<id>` (`replace`); 404 → peringatan + jatuh ke event pertama; 500 → pesan gagal. `frontend/src/app/i18n.tsx`
+  — kunci `events.pinnedNote`, `events.deeplinkMissing`, `events.deeplinkFailed` (id + en).
+- **Uji (ditulis gagal dulu):** backend `test_events_api.py` +5 (200 isi, 404, 401, 422 non-int, regresi `stats/today` —
+  3 fail dulu karena rute belum ada); frontend `events.test.tsx` +11 (sematan tepat 1 fetch, 0 fetch bila sudah di daftar,
+  param tak valid tanpa fetch, 404/500 berbeda pesan, pindah saat terpasang, klik baris = REPLACE, tanpa param URL utuh,
+  respons basi tidak menimpa, sematan bertahan saat refetch, daftar kosong + sematan tetap tampil); 3 guard perilaku lama
+  dibuktikan bisa gagal lewat mutasi sementara (inList=false, cek integer dibuang, fallback pertama dibuang).
+- **Evidence (Mac lokal):** backend `636 passed` (baseline 631); frontend `Test Files 32 passed (32)` / `Tests 364 passed
+  (364)`; `npm run build` exit 0; `npm run lint` 24 baris warning, pasangan (rule, file) identik baseline; smoke S3
+  (Playwright, mock `/api/v1/*`): sematan ev-777 + catatan, 404 #999 → peringatan + event pertama, pushState+popstate
+  memindahkan pilihan, klik baris → `?event=3`, 390 px `scrollWidth 375 ≤ 390`; konsol 0 error (satu log resource 404
+  yang diharapkan saat kasus 404). **Uji UI oleh user menyusul setelah deploy** (tautan Telegram lama, lonceng saat sudah
+  di `/events`, id terhapus, tombol Back, buka URL di tab baru).
+- **Dampak:** tautan lama Telegram tetap membuka event yang benar; klik lonceng/toast saat halaman terbuka langsung
+  berpindah; URL bilah alamat selalu menunjuk event yang tampil.
+- **Rollback:** `git revert` commit per task (`6e5edd6`, `518e2b0`); tanpa migrasi DB; frontend lama + backend baru aman
+  (`getEvent` 404/405 → pesan, tidak crash).
+
 ### Filter Events + bukti event system — deploy dan uji UI user (2026-10-01)
 
 - **Konteks:** setelah review dan perbaikan (`d81d1d1`), user mengizinkan push dan deploy; hasil uji UI dicatat di sini.

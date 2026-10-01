@@ -341,7 +341,8 @@ Yang perlu diketahui:
 
 - **Snapshot ikut terkirim keluar LAN** (foto kejadian diunggah ke Telegram). Tautan
   klip hanya menunjuk aplikasi (`.../events?event=<id>`) yang bisa dibuka **dari LAN
-  saja** — Telegram tidak membawa video.
+  saja** — Telegram tidak membawa video. Tautan lama tetap membuka event yang dituju
+  walau sudah di luar daftar terbaru (atau menampilkan peringatan bila sudah dihapus).
 - **Token disimpan di file rahasia server** `CAMERA_SECRETS_FILE` (key
   `telegram_bot_token`, izin `0600`, di luar `STORAGE_ROOT`) — bukan di DB dan tidak
   pernah tampil di UI/log/response. `TELEGRAM_BOT_TOKEN` di `.env` hanya fallback.

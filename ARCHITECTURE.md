@@ -47,7 +47,7 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | Auth & user | `auth`, `users` | JWT HS256 di cookie httpOnly, `token_version` untuk cabut sesi, rate-limit login |
 | Kamera | `cameras`, `stream_sources`, `credential_profiles`, `location_groups`, `probe`, `live` | `probe`, `stream_endpoint`, `go2rtc`, `secret_store` |
 | Node & deteksi | `nodes`, `detector_settings` | `config_push`, `node_health`, `host_stats` |
-| Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `limit` ≤ 200 — semuanya difilter di server; `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka) |
+| Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `limit` ≤ 200 — semuanya difilter di server; `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka; `GET /api/v1/events/{id}` → `EventOut` per id, 404 `"event not found"` untuk deep link `/events?event=<id>`) |
 | Alert | `alerts`, `telegram` | `alerting`, `alert_dispatcher`, `telegram` |
 | Absensi | `employees`, `shifts`, `enrollment`, `attendance` | `face`, `attendance` |
 | Storage | `storage` | `retention`, `storage_settings`, `disk_alert` |
