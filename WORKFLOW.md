@@ -133,12 +133,13 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 4. Detail kanan — **event kamera**: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah,
    metadata, status alert Telegram (`queued/sent/failed/rate_limited/not_configured`, realtime).
 5. Detail kanan — **event system** (node offline/pulih, health alert): panel **Bukti** menggantikan tab media.
-   Fakta dari payload (aturan, target, nilai, ambang, durasi aturan, status) selalu tampil; grafik tren dari
-   `GET /api/v1/monitoring/history?from&to&node_id` menampilkan seri agregat yang sama dengan pengecekan alert
-   (mis. `camera_low_fps` dalam persen target FPS) beserta garis ambang dan penanda waktu event. Jendela tren
-   maksimum 6 jam; data lebih tua dari 7 hari hanya menampilkan fakta. Gagal memuat grafik tidak menyembunyikan
-   fakta. Event system memakai judul/lokasi terlokalisasi (bukan `system · cam null`) dan tidak pernah
-   menunggu klip.
+   Fakta dari payload (aturan, target, nilai, ambang, durasi aturan, status) selalu tampil; grafik tren
+   menampilkan seri agregat yang sama dengan pengecekan alert (mis. `camera_low_fps` dalam persen target FPS)
+   beserta garis ambang dan penanda waktu event. Event baru membawa serinya di `payload.evidence` (disimpan saat
+   event dibuat): grafik digambar langsung dari situ — tanpa permintaan jaringan dan tanpa batas 7 hari. Event
+   lama tanpa `evidence` memakai `GET /api/v1/monitoring/history?from&to&node_id`; jendela tren maksimum 6 jam,
+   data lebih tua dari 7 hari hanya menampilkan fakta. Gagal memuat grafik tidak menyembunyikan fakta. Event
+   system memakai judul/lokasi terlokalisasi (bukan `system · cam null`) dan tidak pernah menunggu klip.
 6. Media diputar lewat `GET /api/v1/media/{path}` (wajib login). Tautan `/events?event=<id>` (Telegram,
    lonceng/toast, Dashboard) selalu membuka event yang dituju: bila halaman sudah terbuka pilihannya ikut pindah;
    event di luar 200 terbaru (atau tersaring filter) diambil lewat `GET /api/v1/events/{id}` dan disematkan di
@@ -237,6 +238,9 @@ Runbook: `docs/runbooks/storage-retention.md`.
 4. **Aturan & alert**: 8 aturan (kamera tanpa frame, FPS rendah, GPU panas, VRAM, RAM, CPU, latensi,
    backlog) dievaluasi tiap menit; menyala bila setiap menit dalam durasi melanggar, pulih setelah
    2 menit normal → `health_alert` + event web + Telegram bila toggle ON + badge tile kamera.
+5. **Bukti permanen**: event system baru (health firing/resolved, node offline) menyimpan seri menitnya di
+   `payload.evidence` saat dibuat → panel **Bukti** di Inbox tetap bergrafik walau retensi 7 hari terpangkas;
+   event lama tanpa `evidence` tetap lewat `/monitoring/history` (+ catatan > 7 hari).
 
 Runbook: `docs/runbooks/monitoring.md`.
 

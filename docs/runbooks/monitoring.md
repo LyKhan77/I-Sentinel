@@ -163,6 +163,23 @@ Batas ambang: tanpa frame 10–600 s, FPS 10–100 %, suhu GPU 50–110 °C, VRA
   riwayatnya secara permanen.** Setting `health_rules` diabaikan kode lama;
   default FPS halaman kembali 80 %. Sampel S2 tetap ada.
 
+## Bukti permanen event system (`payload.evidence`)
+
+Tiap event system **baru** (health firing/resolved, node offline) menyimpan seri menitnya di
+`payload.evidence` **saat event dibuat** — panel Bukti di Inbox (`/events`) menggambar langsung darinya tanpa
+memanggil `/monitoring/history`, dan grafiknya tetap ada walau retensi `monitoring_sample` (7 hari) sudah
+memangkas riwayat. Event **lama** tidak punya kunci itu (tidak di-backfill) dan tetap lewat jalur history;
+event lama > 7 hari hanya menampilkan fakta + catatan "Data tren hanya disimpan 7 hari".
+
+- Cek DB: `psql ... -c "SELECT id, payload->'evidence'->>'v' v, payload->'evidence'->>'from' frm, jsonb_array_length(payload->'evidence'->'series'->'value') n FROM event WHERE id = <id>;"` —
+  `v` harus `1`; `frm` + `step_s` (60) mengatur sumbu waktu; `null` di seri = menit tanpa sampel (celah garis).
+- Node offline: seri `cpu_pct` dan `infer_fps` (30 menit terakhir) + payload memuat `last_seen`; event pulih
+  memuat `down_s` (detik offline).
+- `evidence` tak muncul pada event **baru** → cek `journalctl -u isentinel-api | grep -i "evidence build failed"`.
+  Kegagalan membangun bukti hanya dicatat; event tetap dibuat (tanpa bukti). Tidak ada backfill event lama.
+- Rollback: `git revert` commit fitur (tanpa migrasi); event yang sudah memuat `evidence` tetap valid —
+  klien lama mengabaikan field tambahan.
+
 ## Operasi S1
 
 - Restart monitor menempel pada lifespan API; tidak ada unit terpisah, tidak ada migrasi DB.
