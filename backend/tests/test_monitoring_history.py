@@ -322,3 +322,20 @@ def test_history_window_default_range_unchanged(client):
     headers = viewer_headers(client)
     r = client.get("/api/v1/monitoring/history", headers=headers)
     assert r.status_code == 200 and r.json()["range"] == "6h" and r.json()["bucket_s"] == 60
+
+def test_minute_samples_returns_only_window_with_minute_keys(db):
+    n = _node(db)
+    start, end = T0 - timedelta(minutes=2), T0
+    db.add_all([
+        MonitoringSample(node_id=n.id, ts=_naive(start - timedelta(minutes=1)), data={"cpu_pct": {"avg": 1.0}}),
+        MonitoringSample(node_id=n.id, ts=_naive(start + timedelta(seconds=40)), data={"cpu_pct": {"avg": 2.0}}),
+        MonitoringSample(node_id=n.id, ts=_naive(end), data={"cpu_pct": {"avg": 3.0}}),
+    ])
+    db.commit()
+
+    samples = mh.minute_samples(db, n.id, start, end)
+
+    assert list(samples) == [start]
+    minute = next(iter(samples))
+    assert minute.tzinfo == timezone.utc and minute.second == 0
+    assert samples[minute] == {"cpu_pct": {"avg": 2.0}}

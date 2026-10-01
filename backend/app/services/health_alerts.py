@@ -21,7 +21,7 @@ from app.schemas.event import EventOut
 from app.services import health_rules, telegram
 from app.services.ingest import ingest_event
 from app.services.monitoring import analyzed_camera_ids
-from app.services.monitoring_history import _dict, _minute, _num, _utc
+from app.services.monitoring_history import _dict, _minute, _num, _utc, minute_samples
 from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,24 @@ def _check(rule: str, data: dict | None, key: str, threshold: float) -> tuple[bo
     if v is None:
         return None, None
     return (v > threshold if rule == "mqtt_backlog" else v >= threshold), v
+
+
+def _evidence(db, node_id: int, rule: str, key: str, threshold: float,
+              start: datetime, end: datetime) -> dict:
+    """Build one stored health metric series from per-minute samples."""
+    start, end = _minute(start), _minute(end)
+    count = max(0, int((end - start).total_seconds() // 60))
+    if count > 360:
+        start = end - timedelta(minutes=360)
+        count = 360
+    samples = minute_samples(db, node_id, start, end)
+    values = []
+    for offset in range(count):
+        minute = start + timedelta(minutes=offset)
+        value = _check(rule, samples.get(minute), key, threshold)[1]
+        values.append(round(value, 1) if value is not None else None)
+    return {"v": 1, "from": start.isoformat().replace("+00:00", "Z"), "step_s": 60,
+            "series": {"value": values}}
 
 
 def _targets(node: Node, by_min: dict, cams: list[Camera]) -> list[tuple[str, str, str, int | None, str]]:
@@ -155,6 +173,16 @@ def evaluate(db, now: datetime | None = None, send=None) -> dict:
             a = db.query(HealthAlert).filter_by(rule=rule, target=target, resolved_at=None).first()
             if a is None:
                 if all(v is True for v, _ in checks):
+                    try:
+                        evidence = _evidence(
+                            db, node.id, rule, key, th,
+                            cur - timedelta(minutes=r["duration_min"] + 30), cur,
+                        )
+                    except Exception:
+                        logger.exception("health evidence build failed")
+                        db.rollback()
+                        evidence = None
+
                     a = HealthAlert(rule=rule, target=target, node_id=node.id, camera_id=cam_id, label=label,
                                     severity=r["severity"], value=last_val, threshold=th, started_at=cur)
                     db.add(a)
@@ -165,7 +193,9 @@ def evaluate(db, now: datetime | None = None, send=None) -> dict:
                         if db.query(HealthAlert.id).filter_by(rule=rule, target=target, started_at=cur).first():
                             continue
                         raise
-                    _emit(db, node, cam_id, r["severity"], payload(rule, target, label, last_val, th, "firing"), now)
+                    _emit(db, node, cam_id, r["severity"],
+                          payload(rule, target, label, last_val, th, "firing",
+                                  {"evidence": evidence} if evidence is not None else None), now)
                     unit = health_rules.CATALOG[rule]["unit"]
                     if r["telegram"]:
                         _send(send, db, f"⚠️ {TITLES[rule]}: {label} — {_fmt(last_val)}{unit} "
@@ -178,16 +208,37 @@ def evaluate(db, now: datetime | None = None, send=None) -> dict:
                 a.value = last_val
                 db.commit()
             if all(v is False for v, _ in recent):
-                changed = db.query(HealthAlert).filter(HealthAlert.id == a.id, HealthAlert.resolved_at.is_(None)).update(
-                    {"resolved_at": now}, synchronize_session="fetch")
+                started_at = _utc(a.started_at)
+                alert_id = a.id
+                alert_camera_id, alert_label = a.camera_id, a.label
+                alert_threshold = a.threshold
+                evidence_start = max(
+                    started_at - timedelta(minutes=15),
+                    cur - timedelta(minutes=360),
+                )
+                try:
+                    evidence = _evidence(
+                        db, node.id, rule, key, alert_threshold, evidence_start, cur,
+                    )
+                except Exception:
+                    logger.exception("health evidence build failed")
+                    db.rollback()
+                    evidence = None
+                changed = db.query(HealthAlert).filter(
+                    HealthAlert.id == alert_id, HealthAlert.resolved_at.is_(None),
+                ).update({"resolved_at": now}, synchronize_session="fetch")
                 if not changed:
                     db.rollback()
                     continue
-                lasted = max(1, round((now - _utc(a.started_at)).total_seconds() / 60))
-                _emit(db, node, a.camera_id, "info",
-                      payload(rule, target, a.label, recent[-1][1], a.threshold, "resolved", {"lasted_min": lasted}), now)
+                lasted = max(1, round((now - started_at).total_seconds() / 60))
+                extra = {"lasted_min": lasted}
+                if evidence is not None:
+                    extra["evidence"] = evidence
+                _emit(db, node, alert_camera_id, "info",
+                      payload(rule, target, alert_label, recent[-1][1], alert_threshold,
+                              "resolved", extra), now)
                 if r["telegram"]:
-                    _send(send, db, f"✅ {TITLES[rule]} normal: {a.label} — {lasted} menit")
+                    _send(send, db, f"✅ {TITLES[rule]} normal: {alert_label} — {lasted} menit")
                 result["resolved"].append((rule, target))
 
     node_by_id = {n.id: n for n in nodes}

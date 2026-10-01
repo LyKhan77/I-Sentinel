@@ -381,3 +381,96 @@ def test_concurrent_independent_sessions_deliver_one_transition(tmp_path, sent, 
         assert len(sent["tg"]) == (0 if transition == "closed" else 1)
     finally:
         engine.dispose()
+
+
+def test_firing_event_carries_evidence_series(db, sent):
+    n = _node(db)
+    _samples(db, n, 5, lambda i: gpu(90))
+
+    ha.evaluate(db, now=NOW, send=_tg(sent))
+
+    [event] = _health_events(db)
+    evidence = event.payload["evidence"]
+    start = NOW.replace(second=0, microsecond=0) - timedelta(minutes=35)
+    assert evidence["v"] == 1 and evidence["step_s"] == 60
+    assert evidence["from"] == start.isoformat().replace("+00:00", "Z")
+    assert evidence["series"]["value"] == [None] * 30 + [90.0] * 5
+
+
+def test_low_fps_evidence_is_percent_of_target(db, sent):
+    n = _node(db)
+    _cam(db, n)
+    health_rules.put(db, {"camera_low_fps": {"duration_min": 2}})
+    _samples(db, n, 2, lambda i: {"cameras": {"3": {"fps": {"min": 1.0, "avg": 2.0},
+                                                       "target_fps": 5.0, "state": "streaming"}}})
+
+    ha.evaluate(db, now=NOW, send=_tg(sent))
+
+    [event] = _health_events(db)
+    assert event.payload["evidence"]["series"]["value"][-2:] == [20.0, 20.0]
+
+
+def test_resolved_event_evidence_starts_before_alert_start(db, sent):
+    n = _node(db)
+    _samples(db, n, 5, lambda i: gpu(90))
+    ha.evaluate(db, now=NOW, send=_tg(sent))
+    started_at = _active(db)[0].started_at.replace(tzinfo=timezone.utc)
+    resolved_at = NOW + 2 * MIN
+    _samples(db, n, 2, lambda i: gpu(60), end=resolved_at)
+
+    ha.evaluate(db, now=resolved_at, send=_tg(sent))
+
+    [event] = _health_events(db)[-1:]
+    evidence = event.payload["evidence"]
+    start = started_at - 15 * MIN
+    values = evidence["series"]["value"]
+    assert evidence["from"] == start.isoformat().replace("+00:00", "Z")
+    assert start + len(values) * MIN == resolved_at.replace(second=0, microsecond=0)
+
+
+def test_resolved_evidence_is_capped_at_360_points(db, sent):
+    n = _node(db)
+    firing_at = NOW - timedelta(hours=10)
+    _samples(db, n, 5, lambda i: gpu(90), end=firing_at)
+    ha.evaluate(db, now=firing_at, send=_tg(sent))
+    _samples(db, n, 2, lambda i: gpu(60), end=NOW)
+
+    ha.evaluate(db, now=NOW, send=_tg(sent))
+
+    [event] = _health_events(db)[-1:]
+    evidence = event.payload["evidence"]
+    start = NOW.replace(second=0, microsecond=0) - 360 * MIN
+    assert len(evidence["series"]["value"]) == 360
+    assert evidence["from"] == start.isoformat().replace("+00:00", "Z")
+
+
+def test_closed_event_has_no_evidence(db, sent):
+    n = _node(db)
+    _samples(db, n, 5, lambda i: gpu(90))
+    ha.evaluate(db, now=NOW, send=_tg(sent))
+    health_rules.put(db, {"gpu_temp": {"enabled": False}})
+
+    ha.evaluate(db, now=NOW + timedelta(seconds=5), send=_tg(sent))
+
+    closed = _health_events(db)[-1].payload
+    assert closed["closed"] is True
+    assert "evidence" not in closed
+
+
+def test_evidence_failure_does_not_block_the_event(db, sent, monkeypatch):
+    n = _node(db)
+    _samples(db, n, 5, lambda i: gpu(90))
+    calls = []
+
+    def boom(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise RuntimeError("evidence unavailable")
+
+    monkeypatch.setattr(ha, "_evidence", boom, raising=False)
+
+    result = ha.evaluate(db, now=NOW, send=_tg(sent))
+
+    [event] = _health_events(db)
+    assert result["fired"] == [("gpu_temp", f"gpu:{n.id}:0")]
+    assert calls and "evidence" not in event.payload
+    assert len(_active(db)) == 1

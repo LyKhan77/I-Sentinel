@@ -45,6 +45,16 @@ def _minute(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc).replace(second=0, microsecond=0)
 
 
+def minute_samples(db, node_id: int, start: datetime, end: datetime) -> dict[datetime, dict]:
+    """Return per-minute sample data for one node in the half-open UTC window."""
+    rows = db.query(MonitoringSample).filter(
+        MonitoringSample.node_id == node_id,
+        MonitoringSample.ts >= start,
+        MonitoringSample.ts < end,
+    ).order_by(MonitoringSample.ts).all()
+    return {_minute(_utc(row.ts)): _dict(row.data) for row in rows}
+
+
 class _Acc:
     """Akumulator satu metrik dalam satu bucket."""
     __slots__ = ("sum", "n", "max", "min")
