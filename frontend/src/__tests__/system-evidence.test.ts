@@ -264,3 +264,20 @@ describe('getMonitoringHistoryWindow', () => {
     vi.unstubAllGlobals()
   })
 })
+
+// --- perbaikan review: jendela terbalik dan rule tak dikenal ---------------
+
+describe('systemEvidence (perbaikan review)', () => {
+  test('event bertimestamp masa depan (jam node salah): jendela dianggap kosong, bukan terbalik', () => {
+    const e = systemEvidence(ev(NOW + 2 * HOUR, { kind: 'health', rule: 'node_cpu', state: 'firing' }, { node_id: 1 }), t, NOW)
+    expect(e.expired).toBe(false)
+    expect(e.window).toBeNull()
+    expect(e.facts.length).toBeGreaterThan(0)
+  })
+
+  test('rule tak dikenal: fakta Aturan memakai nama rule, bukan kunci i18n mentah', () => {
+    const e = systemEvidence(ev(NOW - MIN, { kind: 'health', rule: 'future_rule', label: 'X' }, { node_id: 1 }), t, NOW)
+    expect(e.facts.find((f) => f.labelKey === 'events.evidence.rule')?.value).toBe('future_rule')
+    expect(e.charts).toEqual([])
+  })
+})

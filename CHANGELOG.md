@@ -3,6 +3,24 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Perbaikan review filter Events + bukti event system (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `feat/system-event-evidence` menemukan tiga hal kecil: (M1) event system
+  dengan `ts_event` jauh di masa depan (jam node salah) menghasilkan jendela `from >= to` → API 422 → panel menulis
+  "Gagal memuat grafik", bukan "Tidak ada data tren"; (L1) efek `[refresh]` di `EventsPage` memanggil ulang
+  `listCameras()`/`listZones()` pada tiap perubahan filter; (L2) rule health yang belum diterjemahkan tampil sebagai
+  kunci i18n mentah (`health.rule.<rule>`).
+- **Diubah:** `features/events/systemEvidence.ts` — `window` null bila `from >= to` (panel menampilkan catatan tanpa data
+  dan tidak meminta history); fakta Aturan memakai nama rule bila terjemahan tidak ada. `features/events/EventsPage.tsx` —
+  kamera dan zona di-fetch sekali saat mount (efek terpisah dari `refresh`).
+- **Uji (ditulis gagal dulu):** `system-evidence.test.ts` (jendela masa depan, nama rule), `system-evidence-panel.test.tsx`
+  (event masa depan: `evidence-empty` tanpa request), `events.test.tsx` (ganti filter tidak mengulang `/cameras`/`/zones`).
+- **Evidence (Mac lokal):** frontend `Test Files 32 passed (32)` / `Tests 353 passed (353)` (349 + 4); `npm run build` exit 0;
+  `npm run lint` 24 baris, pasangan (file, rule) identik sebelum dan sesudah perbaikan; `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}"
+  -- frontend/src/features/events` kosong; backend tidak diubah (631 passed pada review).
+- **Dampak:** panel Bukti jujur untuk event berjam salah; tiap perubahan filter kini 1 request (bukan 3).
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi.
+
 ### Filter Events konsisten + bukti event system (2026-10-01)
 
 - **Konteks:** dua permintaan user atas `/events`: (1) event `system` (node offline/pulih, health alert) hanya

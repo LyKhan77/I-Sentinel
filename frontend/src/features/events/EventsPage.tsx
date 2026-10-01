@@ -140,13 +140,17 @@ export default function EventsPage() {
 
   useEffect(() => {
     refresh()
+  }, [refresh])
+
+  // kamera dan zona sekali saat mount — bukan tiap filter berubah (`refresh` ikut berubah)
+  useEffect(() => {
     listCameras()
       .then((cs) => setCams(cs.map((c) => ({ id: c.id, name: c.name }))))
       .catch(() => setCams([]))
     listZones()
       .then((zs) => setZoneNames(Object.fromEntries(zs.map((z) => [z.id, z.name]))))
       .catch(() => setZoneNames({}))
-  }, [refresh])
+  }, [])
 
   // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
   useLiveEvents((raw) => {

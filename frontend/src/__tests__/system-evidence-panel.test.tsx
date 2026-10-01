@@ -140,3 +140,13 @@ test('menampilkan skeleton sebelum grafik selesai dimuat', async () => {
   expect(await screen.findByTestId('lc-line-cpu_pct')).toBeInTheDocument()
   expect(screen.queryByTestId('evidence-loading')).not.toBeInTheDocument()
 })
+
+test('event bertimestamp masa depan menampilkan catatan tanpa data dan tanpa request history', async () => {
+  const calls = stubHistory(historyBody(node()))
+  renderPanel(ev({ kind: 'health', rule: 'node_cpu', target: 'node:1', label: 'Server', value: 91.5,
+    threshold: 90, unit: '%', duration_min: 5, state: 'firing' }, NOW + 2 * 3_600_000))
+
+  expect(await screen.findByTestId('evidence-empty')).toBeInTheDocument()
+  expect(screen.getByText('Aturan')).toBeInTheDocument()
+  expect(calls).toEqual([])
+})

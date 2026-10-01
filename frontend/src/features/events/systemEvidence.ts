@@ -75,13 +75,16 @@ export function evidenceWindow(e: EventOut, now: number): { from: number; to: nu
 
 function healthFacts(p: Record<string, unknown>, t: (k: TKey) => string): { labelKey: TKey; value: string }[] {
   const unit = str(p.unit) ?? ''
+  // rule yang belum punya terjemahan (versi backend lebih baru): tampilkan nama rule, bukan kunci i18n mentah
+  const ruleKey = `health.rule.${p.rule}` as TKey
+  const ruleLabel = t(ruleKey) === ruleKey ? String(p.rule) : t(ruleKey)
   const lasting = num(p.lasted_min)
   const status = p.closed ? t('events.evidence.closed')
     : lasting != null ? t('events.evidence.resolved').replace('{n}', String(Math.round(lasting)))
       : p.state === 'resolved' ? t('events.evidence.resolvedNoDuration') : t('events.evidence.firing')
   const duration = num(p.duration_min)
   return [
-    { labelKey: 'events.evidence.rule', value: t(`health.rule.${p.rule}` as TKey) },
+    { labelKey: 'events.evidence.rule', value: ruleLabel },
     { labelKey: 'events.evidence.target', value: str(p.label) ?? '—' },
     { labelKey: 'events.evidence.value', value: fmtNum(num(p.value), unit) },
     { labelKey: 'events.evidence.threshold', value: fmtNum(num(p.threshold), unit) },
@@ -182,11 +185,13 @@ export function systemEvidence(e: EventOut, t: (k: TKey) => string, now: number)
       : []
   const expired = now - ts > EVIDENCE_RETENTION_MS
   const nodeId = typeof e.node_id === 'number' ? e.node_id : null
+  const win = kind === 'unknown' || expired ? null : evidenceWindow(e, now)
   return {
     kind,
     expired,
     nodeId,
-    window: kind === 'unknown' || expired ? null : evidenceWindow(e, now),
+    // ts jauh di masa depan (jam node salah) → from >= to: API menolak (422); anggap tak ada jendela
+    window: win && win.from < win.to ? win : null,
     facts,
     // grafik butuh node konkret: tanpa node_id tidak ada deret yang bisa diambil
     charts: expired || nodeId == null ? [] : charts,

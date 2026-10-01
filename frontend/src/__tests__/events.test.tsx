@@ -826,3 +826,24 @@ test('event non-system tetap memakai tab media (regresi)', async () => {
   expect(screen.getByTestId('event-tab-clip')).toBeInTheDocument()
   expect(screen.queryByTestId('event-evidence')).not.toBeInTheDocument()
 })
+
+test('changing a filter refetches the event list only, not cameras or zones', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const count = (needle: string) => fetchMock.mock.calls.filter(([u]) => String(u).includes(needle)).length
+  const cams0 = count('/cameras')
+  const zones0 = count('/zones')
+  expect(cams0).toBeGreaterThan(0)
+
+  const before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  await waitNewListUrl(fetchMock, before, (u) => u.includes('type=system'))
+
+  expect(count('/cameras')).toBe(cams0)
+  expect(count('/zones')).toBe(zones0)
+})
