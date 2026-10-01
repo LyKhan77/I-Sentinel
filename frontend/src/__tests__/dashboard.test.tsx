@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import { EventAlertsProvider } from '../features/notifications/EventAlertsProvider'
 import DashboardPage from '../features/dashboard/DashboardPage'
+import { STATS_DEBOUNCE_MS } from '../features/dashboard/useDashboardData'
 import { mon, alert, att, stats, storage, ev, ok, fail } from './dashboardFixtures'
 
 vi.mock('../features/notifications/beep', () => ({ beep: vi.fn() }))
@@ -100,7 +101,8 @@ test('a new live event refetches today stats', async () => {
   act(() => {
     for (const s of sockets) s.onmessage?.({ data: JSON.stringify(ev(999)) })
   })
-  await waitFor(() => expect(calls.stats).toBe(2))
+  // refetch di-debounce STATS_DEBOUNCE_MS setelah event terakhir
+  await waitFor(() => expect(calls.stats).toBe(2), { timeout: STATS_DEBOUNCE_MS + 2000 })
   // event live tampil di daftar terbaru
   expect(await screen.findByRole('link', { name: /CAM-01/ })).toHaveAttribute('href', '/events?event=999')
 })

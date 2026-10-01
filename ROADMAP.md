@@ -442,8 +442,8 @@ Layout baru `/dashboard`: strip status → 4 tile tautan (Kamera/Event/Kehadiran
 event terbaru (sumber lonceng) | masalah aktif + node ringkas. Backend: `stats/today` diperluas
 (`by_severity`, `by_hour`, `critical_by_hour`; `attendance` dikecualikan — keputusan D1).
 
-- [x] Task 1–6 terimplementasi + commit per task di `feat/dashboard-revamp` (`0f8b39a..ac83cc0`) —
-      backend **621**, frontend **292** (30 file), build 0, lint 24 (baseline minus warning `DashboardPage.tsx`)
+- [ ] Task 1–6 terimplementasi di `feat/dashboard-revamp` + perbaikan review (belum terverifikasi lapangan) —
+      backend **622**, frontend **296** (30 file), build 0, lint 24 (baseline minus warning `DashboardPage.tsx`)
 - [ ] Konfirmasi D1 oleh user + review kode sesi perencanaan
 - [ ] Push + deploy ke gspe-ai3, uji UI user 1440 px & 390 px (nol overflow; tile dapat diklik; strip berteks;
       chart saat sepi/ramai) → centang + merge `main` setelah OK

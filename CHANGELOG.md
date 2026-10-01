@@ -3,6 +3,33 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Perbaikan review Dashboard status-first (2026-10-01)
+
+- **Konteks:** review sesi perencanaan atas `feat/dashboard-revamp` menemukan 4 hal sebelum deploy: (M1) panel
+  "Masalah aktif" menulis "Tidak ada masalah aktif" saat strip/tile menunjukkan masalah (alert baru menyala setelah
+  durasi rule); (M2) strip menulis "Semua sistem normal" saat sumber alert gagal/belum termuat dan catatan basi
+  memakai jam refresh sumber lain; (M3) tiap event realtime memicu satu scan penuh `stats/today`; (M4) batas bawah
+  filter hari (setelah normalisasi UTC) belum diuji. Sisanya: ROADMAP memakai `[x]` sebelum uji lapangan, komentar
+  eslint-disable tak perlu, typo "parsitas".
+- **Diubah:** `StatusStrip` — "normal" hanya bila monitoring **dan** alert termuat (loading → skeleton; alert gagal →
+  "Status alert tidak tersedia"; health ≠ ok → "Status sistem: {state}"); catatan basi memakai sukses terakhir sumber
+  yang gagal (`DashboardData.lastOk` per sumber). `useDashboardData` — refetch `statsKey` di-debounce 2 dtk
+  (`STATS_DEBOUNCE_MS`), burst event → satu refetch. Teks kosong ActiveIssues: "Tidak ada alert kesehatan aktif"
+  (id) / "No active health alerts" (en). Kunci baru `dash.status.health`, `dash.status.alertsUnavailable` (id+en,
+  paritas `dash.*` 36=36). `RecentEvents` — komentar eslint-disable dibuang. ROADMAP: `[x]` → `[ ]`.
+- **Uji:** backend `test_stats_today_excludes_yesterday` (diuji gagal bila filter batas bawah dibuang: `assert 2 == 1`);
+  frontend: strip (konteks health, alert gagal, alert loading, catatan basi per sumber), hook (debounce burst, `lastOk`
+  per sumber).
+- **File:** `frontend/src/features/dashboard/{StatusStrip.tsx,useDashboardData.ts,RecentEvents.tsx}`,
+  `frontend/src/app/i18n.tsx`, `frontend/src/__tests__/{dashboard-blocks,dashboard-data,dashboard,dashboardFixtures}`,
+  `backend/tests/test_events_api.py`, `ROADMAP.md`, `CHANGELOG.md`.
+- **Evidence (Mac lokal):** backend `622 passed, 463 warnings in 124.42s` (621 + 1); frontend `Test Files 30 passed (30)`
+  / `Tests 296 passed (296)` (292 + 4); `npm run build` exit 0; `npm run lint` 24 baris warning (sama; 0 di
+  `features/dashboard`); `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/dashboard` kosong.
+- **Dampak:** tampilan status lebih jujur (tidak ada "normal" palsu); stats Dashboard tertunda ≤ 2 dtk setelah event
+  (poll 15 dtk tetap berjalan). Belum diuji visual oleh user.
+- **Rollback:** `git revert` commit perbaikan ini; tanpa migrasi DB.
+
 ### Revamp Dashboard status-first (2026-09-30)
 
 - **Konteks:** Dashboard lama (3 tile, tanpa link, "kamera online" = status row, event terbaru 3 baris
@@ -31,7 +58,7 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   - `npm run build` → exit 0; `npm run lint` → `Found 24 warnings and 0 errors` (baseline 25 minus
     warning `DashboardPage.tsx:151`; tanpa pasangan rule/file baru)
   - S2 statis: `git grep -nE "style=\{\{|#[0-9a-fA-F]{6}" -- frontend/src/features/dashboard` → kosong;
-    `git diff --stat main...HEAD` hanya berkas yang diizinkan; kunci `dash.*` id=en=34 (parsitas penuh)
+    `git diff --stat main...HEAD` hanya berkas yang diizinkan; kunci `dash.*` id=en=34 (paritas penuh)
   - S3 render mock (`npm run dev` + Playwright, tanpa screenshot): 0 error konsol; strip
     "2 peringatan aktif" + "Diperbarui 17.37"; 4 tile `<a>` href benar (`/monitoring`, `/events`,
     `/attendance`, `/configuration?tab=storage`) dengan teks lengkap ("Kamera 5/7 · 2 bermasalah",

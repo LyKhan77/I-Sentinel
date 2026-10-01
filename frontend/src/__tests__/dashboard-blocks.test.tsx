@@ -20,11 +20,12 @@ const tiles = (data: DashboardData) => show(<KpiTiles data={data} />)
 
 const FAILED_MONITORING = { monitoring: true, alerts: false, stats: false, attendance: false, storage: false }
 const FAILED_STATS = { monitoring: false, alerts: false, stats: true, attendance: false, storage: false }
+const NO_OK = { monitoring: null, alerts: null, stats: null, attendance: null, storage: null }
 const FAILED_ATTENDANCE = { monitoring: false, alerts: false, stats: false, attendance: true, storage: false }
 
 describe('StatusStrip', () => {
   test('shows normal when healthy and no alerts', () => {
-    strip(emptyData({ monitoring: mon() }))
+    strip(emptyData({ monitoring: mon(), alerts: [] }))
     expect(screen.getByText('Semua sistem normal')).toBeInTheDocument()
     const link = screen.getByRole('link', { name: /Monitoring/ })
     expect(link).toHaveAttribute('href', '/monitoring')
@@ -48,10 +49,32 @@ describe('StatusStrip', () => {
     expect(screen.getByText(/Gagal memperbarui — data terakhir/)).toBeInTheDocument()
   })
 
-  test('shows health label when unhealthy and no alerts', () => {
-    strip(emptyData({ monitoring: mon({ summary: { health: 'critical' } }) }))
-    expect(screen.getByText('Kritis')).toBeInTheDocument()
+  test('shows health label with context when unhealthy and no alerts', () => {
+    strip(emptyData({ monitoring: mon({ summary: { health: 'critical' } }), alerts: [] }))
+    expect(screen.getByText('Status sistem: Kritis')).toBeInTheDocument()
     expect(screen.queryByText('Semua sistem normal')).toBeNull()
+  })
+
+  test('never claims normal when the alerts source failed', () => {
+    strip(emptyData({ monitoring: mon(), alerts: null, failed: FAILED_ALERTS }))
+    expect(screen.queryByText('Semua sistem normal')).toBeNull()
+    expect(screen.getByText('Status alert tidak tersedia')).toBeInTheDocument()
+  })
+
+  test('does not flash normal while alerts are still loading', () => {
+    strip(emptyData({ monitoring: mon(), alerts: null, loading: true }))
+    expect(screen.queryByText('Semua sistem normal')).toBeNull()
+  })
+
+  test('stale note shows the failed source last success time, not the latest refresh', () => {
+    const fresh = new Date(2026, 8, 30, 17, 37)
+    const old = new Date(2026, 8, 30, 8, 5)
+    strip(emptyData({
+      monitoring: mon(), alerts: [], attendance: [], failed: FAILED_ATTENDANCE, updatedAt: fresh,
+      lastOk: { ...NO_OK, monitoring: fresh, alerts: fresh, attendance: old },
+    }))
+    const hhmm = (d: Date) => d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    expect(screen.getByText(`Gagal memperbarui — data terakhir ${hhmm(old)}`)).toBeInTheDocument()
   })
 })
 
@@ -221,9 +244,9 @@ describe('ActiveIssues', () => {
     expect(screen.getByText('CAM-01')).toBeInTheDocument()
   })
 
-  test('empty shows Tidak ada masalah aktif', () => {
+  test('empty shows Tidak ada alert kesehatan aktif', () => {
     show(<ActiveIssues data={emptyData({ alerts: [] })} />)
-    expect(screen.getByText('Tidak ada masalah aktif')).toBeInTheDocument()
+    expect(screen.getByText('Tidak ada alert kesehatan aktif')).toBeInTheDocument()
   })
 
   test('failed and null shows Gagal memuat', () => {

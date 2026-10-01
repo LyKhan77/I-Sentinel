@@ -17,7 +17,6 @@ function isSameDay(ts: string, now: Date): boolean {
 function Thumb({ path }: { path: string | null }) {
   const [broken, setBroken] = useState(false)
   if (!path || broken) return <span className="ev-thumb ev-thumb--empty" aria-hidden="true" />
-  // eslint-disable-next-line jsx-a11y/alt-text -- dekoratif, detail ada di teks baris
   return <img className="ev-thumb" src={`/api/v1/media/${path}`} alt="" onError={() => setBroken(true)} />
 }
 

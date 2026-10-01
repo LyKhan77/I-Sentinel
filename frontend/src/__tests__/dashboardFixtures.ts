@@ -88,6 +88,7 @@ export function emptyData(over: Partial<DashboardData> = {}): DashboardData {
   return {
     monitoring: null, alerts: null, stats: null, attendance: null, storage: null,
     loading: false, updatedAt: null,
+    lastOk: { monitoring: null, alerts: null, stats: null, attendance: null, storage: null },
     failed: { monitoring: false, alerts: false, stats: false, attendance: false, storage: false },
     ...over,
   }

@@ -124,11 +124,12 @@ def test_stats_today(client):
     assert s["total"] >= 2
     assert s["by_type"]["intrusion"] >= 1 and s["by_type"]["loitering"] >= 1
 
-def _today_local_iso(h, m, s):
+def _today_local_iso(h, m, s, days_ago=0):
     # Momen lokal hari ini, dikirim sebagai ISO UTC: SQLite menyimpan wall UTC
     # (offset dibuang), jadi baca-balik naive = UTC — sama seperti asumsi event_stats.
-    from datetime import datetime, date, time, timezone
-    return datetime.combine(date.today(), time(h, m, s)).astimezone().astimezone(timezone.utc).isoformat()
+    from datetime import datetime, date, time, timedelta, timezone
+    day = date.today() - timedelta(days=days_ago)
+    return datetime.combine(day, time(h, m, s)).astimezone().astimezone(timezone.utc).isoformat()
 
 def test_stats_today_excludes_attendance(client):
     # D1: "Event hari ini" adalah angka keamanan — lintasan face gate tidak dihitung
@@ -147,6 +148,17 @@ def test_stats_today_by_severity_three_keys_sum_to_total(client):
     s = client.get("/api/v1/events/stats/today", headers=h).json()
     assert s["by_severity"] == {"critical": 1, "warning": 2, "info": 1}
     assert sum(s["by_severity"].values()) == sum(s["by_hour"]) == s["total"] == 4
+
+def test_stats_today_excludes_yesterday(client):
+    # batas bawah filter: 23:59:30 kemarin (lokal) tidak dihitung, event hari ini dihitung
+    h = _admin_headers(client)
+    client.post("/internal/nodes/1/events",
+                json=_payload(ts_event=_today_local_iso(23, 59, 30, days_ago=1)),
+                headers=_ingest_headers())
+    client.post("/internal/nodes/1/events", json=_payload(), headers=_ingest_headers())
+    s = client.get("/api/v1/events/stats/today", headers=h).json()
+    assert s["total"] == 1
+    assert sum(s["by_hour"]) == 1
 
 def test_stats_today_buckets_by_local_hour(client):
     # Review focus #1: event tepat di batas hari (00:00:30 dan 23:59:30 lokal)

@@ -1,7 +1,7 @@
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { summarizeCameras, summarizeAttendance } from '../features/dashboard/summary'
-import { useDashboardData, DASH_POLL_MS, type Source } from '../features/dashboard/useDashboardData'
+import { useDashboardData, DASH_POLL_MS, STATS_DEBOUNCE_MS, type Source } from '../features/dashboard/useDashboardData'
 import { mon, alert, stats, att, storage, ok, fail } from './dashboardFixtures'
 
 afterEach(() => {
@@ -93,7 +93,8 @@ describe('useDashboardData', () => {
     expect(result.current.stats).toBe(first)
   })
 
-  test('refetches stats only when statsKey changes, not on mount', async () => {
+  test('statsKey changes refetch stats once after a quiet period, never on mount', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     const { calls } = stubFetch()
     const { result, rerender } = renderHook(
       ({ key }: { key: number | null }) => useDashboardData(key),
@@ -101,9 +102,31 @@ describe('useDashboardData', () => {
     )
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(calls.stats).toBe(1)
-    expect(calls.monitoring).toBe(1)
+    // tiga event beruntun (burst) di dalam jendela debounce
     rerender({ key: 42 })
+    rerender({ key: 43 })
+    rerender({ key: 44 })
+    expect(calls.stats).toBe(1)
+    await act(async () => {
+      vi.advanceTimersByTime(STATS_DEBOUNCE_MS)
+    })
     await waitFor(() => expect(calls.stats).toBe(2))
     expect(calls.monitoring).toBe(1)
+  })
+
+  test('lastOk tracks each source independently', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { bodies } = stubFetch()
+    const { result } = renderHook(() => useDashboardData())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const first = result.current.lastOk.stats
+    expect(first).not.toBeNull()
+    bodies.stats = null
+    await act(async () => {
+      vi.advanceTimersByTime(DASH_POLL_MS)
+    })
+    await waitFor(() => expect(result.current.failed.stats).toBe(true))
+    expect(result.current.lastOk.stats).toBe(first)
+    await waitFor(() => expect(result.current.lastOk.monitoring!.getTime()).toBeGreaterThan(first!.getTime()))
   })
 })
