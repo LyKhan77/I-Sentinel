@@ -3,6 +3,45 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Port non-default blok 7700–7705 — repo saja, tanpa deploy (2026-10-01)
+
+- **Konteks:** semua port masih default (`5173/8000/1984/8554/1883`) dan rawan bentrok di server dev
+  bersama; port berpindah **sekali** lewat cutover Docker (tahap 2, spec `2026-10-01-docker-deploy-design.md`).
+  Tahap 1 ini perubahan repo: peta `7700` web · `7701` API · `7702` go2rtc API · `7703` WebRTC · `7704` MQTT ·
+  `7705` RTSP (hanya `127.0.0.1`) ditulis di template/unit/dokumen, dan dua nilai yang tertanam di kode menjadi
+  bisa dikonfigurasi. Default kode tetap port lama — dev lokal tidak berubah; tanpa variabel `PORT_*`.
+  Spec + plan 2026-10-01; eksekusi native TDD Task 1–4, commit lokal per task (belum push/deploy).
+- **Diubah:** backend `config.py` (setting baru `go2rtc_rtsp_url`, default `rtsp://localhost:8554`),
+  `config_push.py` (`source_url` node server dari setting + `rstrip('/')`), `live.py` (docstring saja);
+  frontend `vite.config.ts` (target proxy `/api` dari env `API_URL` dengan `||` agar nilai kosong jatuh ke
+  default), `i18n.tsx` (hint `notifications.appUrlHint` id/en 5173→7700); template `isentinel-api.service`
+  (`--port 7701`), `isentinel-web.service` (`--port 7700 --strictPort` + `Environment=API_URL=http://localhost:7701`),
+  `go2rtc.example.yaml` (api 7702, webrtc 7703, rtsp 127.0.0.1:7705), `mosquitto.conf` (`listener 7704 0.0.0.0`),
+  `bootstrap.sh` (health 7701), `.env.example` (`MQTT_URL=localhost:7704`, `GO2RTC_URL=http://localhost:7702`,
+  baris baru `GO2RTC_RTSP_URL=rtsp://127.0.0.1:7705`, komentar di baris sendiri), `vision.env.example`
+  (7704/7701, contoh `source_url` `rtsp://127.0.0.1:7705/cam_2`); dokumen README, ARCHITECTURE, RUNBOOK
+  (tabel peta port + status server dev), DEVELOPMENT (catatan port); koreksi satu baris spec 3.2
+  (nilai `127.0.0.1` + alasan `localhost` bisa me-resolve ke `::1`). Perintah operasional `gspe-ai3`
+  di RUNBOOK/DEVELOPMENT tidak diubah. Tanpa migrasi.
+- **Uji (ditulis gagal dulu):** backend +3 — `test_build_node_config_server_source_url_uses_go2rtc_rtsp_url`
+  dan `test_build_node_config_server_source_url_ignores_trailing_slash` (merah terverifikasi: `AttributeError`
+  field `go2rtc_rtsp_url` belum ada), `test_live_endpoint_urls_follow_go2rtc_url_port` (pin regresi fakta 4;
+  langsung lulus, dan terbukti bisa merah lewat mutasi sementara `_rewrite_host` lalu dikembalikan).
+  Uji default `rtsp://localhost:8554/cam_{id}` tidak diubah.
+- **Evidence (Mac lokal, berurutan):** backend `656 passed, 491 warnings in 127.26s` (653+3); frontend
+  `Test Files 33 passed (33)` / `Tests 420 passed (420)` (tetap); `npm run build` exit 0; `npm run lint`
+  24 warning / 0 error, 16 pasangan (rule, file) — set identik baseline. Verifikasi proxy 3 kasus
+  (http.server tiruan di 7701, vite `--port 5199`): `API_URL=http://localhost:7701` → `404` (dijawab server
+  tiruan); tanpa `API_URL` → `502`; `API_URL=` kosong → `502` (Vite 8 membalas 502 untuk upstream
+  ECONNREFUSED, bukan 500 seperti perkiraan plan; dua kasus terakhir identik = fallback `||` bekerja).
+  S2: diff `backend/app/core/config.py` hanya menambah field; grep `5173|8000|1984|8554|1883` di
+  `deploy/systemd`, `deploy/go2rtc`, `deploy/mosquitto`, `deploy/bootstrap.sh`, `deploy/vision.env.example`,
+  `.env.example` kosong; baris `GO2RTC_RTSP_URL/MQTT_URL/GO2RTC_URL=` bebas komentar inline; tanpa atribusi AI.
+- **Dampak:** tidak ada perubahan di server `gspe-ai3` (unit repo diperbarui, tidak di-deploy); dev lokal
+  (`uvicorn --port 8000`, `npm run dev`) tetap jalan tanpa env tambahan. Instalasi baru yang memakai template
+  butuh pembukaan firewall `7700:7704/tcp` + `7703` (tcp/udp); `7705` tidak dibuka.
+- **Rollback:** `git revert` rentang commit `f287689..`; tanpa migrasi, tanpa perubahan server/DB.
+
 ### Bukti event system permanen — deploy dan merge (2026-10-01)
 
 - **Konteks:** setelah review dan perbaikan (`0514fcd`), user mengizinkan push, deploy, lalu merge.

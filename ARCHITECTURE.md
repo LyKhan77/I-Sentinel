@@ -8,19 +8,24 @@ di `CHANGELOG.md`.
 
 ```
                          Browser (LAN) — React + Carbon
-                                  │  HTTP :5173 (Vite, proxy /api → :8000)
+                                  │  HTTP :7700 (Vite, proxy /api → :7701)
                                   │  WebSocket /api/v1/ws/events
                                   ▼
-   go2rtc :1984 ◄──── API FastAPI :8000 ────► PostgreSQL
-   (WebRTC/MSE/         │   ▲       ▲           (semua state)
-    snapshot)           │   │       │
-       ▲                │   │ MQTT  │ HTTP /internal/nodes/{id}/…
-       │ RTSP           │   │ :1883 │ (event, blob clip/snapshot/crop)
-   Kamera / NVR         ▼   │       │
-       │           Mosquitto ◄──────┤
-       └──────────► vision-node (GPU) ──► Telegram Bot API (via API, keluar LAN)
-                   YOLO26s TRT + ByteTrack + analyzer + face_worker
+   go2rtc :7702 ◄──── API FastAPI :7701 ────► PostgreSQL
+   (API/WebRTC :7703/     │   ▲       ▲           (semua state)
+    RTSP :7705 loopback)  │   │       │
+       ▲                  │   │ MQTT  │ HTTP /internal/nodes/{id}/…
+       │ RTSP             │   │ :7704 │ (event, blob clip/snapshot/crop)
+   Kamera / NVR           ▼   │       │
+        │           Mosquitto ◄──────┤
+        └──────────► vision-node (GPU) ──► Telegram Bot API (via API, keluar LAN)
+                    YOLO26s TRT + ByteTrack + analyzer + face_worker
 ```
+
+Peta port (referensi repo & instalasi baru): `7700` web · `7701` API · `7702` go2rtc API ·
+`7703` go2rtc WebRTC (tcp+udp, LAN) · `7704` MQTT · `7705` go2rtc RTSP (hanya `127.0.0.1`).
+Server dev `gspe-ai3` masih memakai port lama (`5173/8000/1984/8554/1883`) sampai cutover
+Docker (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
 
 Satu server (`gspe-ai3`) menjalankan semua komponen saat ini. Fase E memindahkan sebagian
 vision-node + go2rtc ke Jetson Orin Nano (`docs/plans/07-edge-jetson.md`); server tetap pusat
@@ -29,7 +34,7 @@ DB, alert, dan UI.
 | Komponen | Unit systemd | Peran |
 |---|---|---|
 | API | `isentinel-api.service` | REST + WebSocket, konsumen MQTT, thread latar, proxy snapshot |
-| Frontend | `isentinel-web.service` | Vite dev server `:5173` |
+| Frontend | `isentinel-web.service` | Vite dev server `:7700` (`API_URL=http://localhost:7701`, `--strictPort`) |
 | Vision node | `vision-node.service` | Decode stream, deteksi, tracking, analyzer, wajah, rekam klip |
 | Retensi | `isentinel-retention.timer` → `.service` | Sweep media harian 03:00 |
 | go2rtc | `go2rtc` | Bridge RTSP → WebRTC/MSE/snapshot untuk UI dan vision |
