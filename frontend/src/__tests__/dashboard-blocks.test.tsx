@@ -10,6 +10,7 @@ import RecentEvents from '../features/dashboard/RecentEvents'
 import ActiveIssues from '../features/dashboard/ActiveIssues'
 import NodeCompact from '../features/dashboard/NodeCompact'
 import type { DashboardData } from '../features/dashboard/useDashboardData'
+import { parseFilters } from '../features/events/eventFilters'
 import { emptyData, mon, monNode, alert, att, stats, storage, ev } from './dashboardFixtures'
 
 function show(ui: ReactElement) {
@@ -90,9 +91,17 @@ describe('KpiTiles', () => {
   test('event tile shows total and critical count', () => {
     tiles(emptyData({ stats: stats() }))
     const tile = screen.getByRole('link', { name: /^Event hari ini/ })
-    expect(tile).toHaveAttribute('href', '/events')
+    expect(tile).toHaveAttribute('href', '/events?type=security&range=today')
     expect(within(tile).getByText('47')).toBeInTheDocument()
     expect(within(tile).getByText('3 critical')).toBeInTheDocument()
+  })
+
+  test('event tile deep link yields the same filters the Events page reads', () => {
+    tiles(emptyData({ stats: stats() }))
+    const tile = screen.getByRole('link', { name: /^Event hari ini/ })
+    const href = tile.getAttribute('href')!
+    const params = new URLSearchParams(href.slice(href.indexOf('?') + 1))
+    expect(parseFilters(params)).toMatchObject({ type: 'security', range: 'today' })
   })
 
   test('attendance tile shows present, late and needs-correction', () => {

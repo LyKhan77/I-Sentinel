@@ -189,8 +189,12 @@ tidak memicu notifikasi. Notifikasi OS tidak tersedia karena app diakses lewat `
 
 **Inbox Events.** `/events` master-detail: filter **Tipe, Kamera, Severity, dan Rentang waktu difilter di server**
 (satu query; pencarian teks tetap di klien), tiap dropdown punya opsi **Semua** dan tombol **Atur ulang filter**
-muncul saat ada filter non-default. Opsi Tipe statis dan berlabel lokal. Daftar dibatasi 200 event terbaru →
-hitungan menjadi `N+ event` disertai petunjuk mempersempit filter. Event kamera tetap memakai tab clip/snapshot/crop;
+muncul saat ada filter non-default. Opsi Tipe statis dan berlabel lokal — termasuk grup **"Keamanan (tanpa
+absensi)"** — dan Rentang bertambah **Hari ini** (sejak 00:00 lokal). **Filter hidup di URL** (`?type=&camera=
+&severity=&range=&q=`): deep link, reload, dan Back/Forward memulihkannya; nilai tak valid jatuh ke default.
+Daftar memuat 200 event per halaman dan tombol **Muat lebih banyak** menggabung halaman berikutnya (dedupe id)
+sampai batas **1000 baris** → hitungan menjadi `N+ event` disertai petunjuk mempersempit filter. Event kamera
+tetap memakai tab clip/snapshot/crop;
 **event system** (node offline/pulih, health alert) memakai panel **Bukti**: fakta dari payload ditambah grafik tren
 (`/monitoring/history` mode `from`/`to`, jendela maks 6 jam) dengan garis ambang dan penanda waktu event — tanpa tab
 media dan tanpa menunggu klip. Tren hanya tersedia untuk event ≤ 7 hari (retensi `monitoring_sample`). Alur lengkap:
@@ -199,7 +203,8 @@ media dan tanpa menunggu klip. Tren hanya tersedia untuk event ≤ 7 hari (reten
 ## Dashboard
 
 `/dashboard` satu layar status-first: **strip status** (summary Monitoring + health alert aktif, selalu
-berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → Events; Kehadiran hari
+berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → `/events?type=security&range=today`
+(filter yang sama dengan angka tile); Kehadiran hari
 ini → Attendance; Disk → Konfigurasi tab Storage) → **chart event per jam** hari ini → **8 event terbaru**
 (sumber realtime yang sama dengan lonceng: nama kamera, Tag severity dengan teks, thumbnail snapshot) →
 **masalah aktif** (maks 5, critical dulu) + **node ringkas** (GPU util/VRAM; detail di Monitoring).
