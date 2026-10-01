@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { act } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -501,4 +501,218 @@ test('inbox shows zone names; deleted zone falls back to #id', async () => {
   expect((await screen.findAllByText(/Lorong-15/)).length).toBeGreaterThanOrEqual(1)
   expect(screen.getByText(/#99/)).toBeInTheDocument()
   expect(screen.getByTestId('event-detail')).toHaveTextContent('Lorong-15')
+})
+
+// --- Filter server-side: Semua, reset, penanda 200+ -----------------------
+
+function listCalls(fetchMock: ReturnType<typeof vi.fn>): string[] {
+  return fetchMock.mock.calls
+    .map(([u]) => String(u))
+    .filter((u) => u.includes('/events?') && u.includes('limit=200'))
+}
+
+/** Tunggu sampai request daftar ke-(before+1) datang, lalu cek URL terakhir. */
+async function waitNewListUrl(fetchMock: ReturnType<typeof vi.fn>, before: number, pred: (u: string) => boolean) {
+  await waitFor(() => {
+    const calls = listCalls(fetchMock)
+    expect(calls.length).toBeGreaterThan(before)
+    expect(pred(calls[calls.length - 1])).toBe(true)
+  })
+}
+
+// Carbon Dropdown menggulir item tersorot; jsdom tidak punya scrollIntoView
+function stubScrollIntoView() {
+  Element.prototype.scrollIntoView = vi.fn()
+}
+
+test('type dropdown sends type to the API and Semua restores the full list', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const beforePick = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  await waitNewListUrl(fetchMock, beforePick, (u) => u.includes('type=system'))
+
+  const beforeAll = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Semua' }))
+  await waitNewListUrl(fetchMock, beforeAll, (u) => !u.includes('type='))
+})
+
+test('camera and severity dropdowns also restore with Semua', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  let before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Kamera' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'CAM-01' }))
+  await waitNewListUrl(fetchMock, before, (u) => u.includes('camera_id=1'))
+
+  before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Kamera' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Semua' }))
+  await waitNewListUrl(fetchMock, before, (u) => !u.includes('camera_id='))
+
+  before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Severity' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'critical' }))
+  await waitNewListUrl(fetchMock, before, (u) => u.includes('severity=critical'))
+
+  before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Severity' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Semua' }))
+  await waitNewListUrl(fetchMock, before, (u) => !u.includes('severity='))
+})
+
+test('severity and camera filters are sent to the API', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  let before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Kamera' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'CAM-01' }))
+  await waitNewListUrl(fetchMock, before, (u) => u.includes('camera_id=1'))
+
+  before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Severity' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'critical' }))
+  await waitNewListUrl(fetchMock, before, (u) => u.includes('severity=critical') && u.includes('camera_id=1'))
+})
+
+test('type options are static, localized and independent of loaded events', async () => {
+  stubScrollIntoView()
+  vi.stubGlobal('fetch', stubFetch()) // fixture bertipe mentah 'intrusi' (bukan tipe ingest)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  expect(await screen.findByRole('option', { name: 'Sistem' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Absensi' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Deteksi orang (debug)' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Intrusi' })).toBeInTheDocument()
+})
+
+test('reset button is hidden by default and clears every filter, range and search', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+  expect(screen.queryByTestId('filter-reset')).not.toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  await userEvent.selectOptions(screen.getByLabelText('Rentang'), '24h')
+  await userEvent.type(screen.getByLabelText('Cari'), 'abc')
+  expect(await screen.findByTestId('filter-reset')).toBeInTheDocument()
+
+  const before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByTestId('filter-reset'))
+  await waitNewListUrl(fetchMock, before, (u) => !u.includes('type=') && !u.includes('since='))
+
+  expect(screen.queryByTestId('filter-reset')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Cari')).toHaveValue('')
+  expect(screen.getByLabelText('Rentang')).toHaveValue('all')
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+})
+
+test('full page shows N+ and the limit hint', async () => {
+  const many: EventOut[] = Array.from({ length: 200 }, (_, i) => ({
+    ...EVENTS[0], id: i + 1, event_id: `ev-${i + 1}`,
+  }))
+  vi.stubGlobal('fetch', stubFetch(many))
+  renderPage()
+  await screen.findByTestId('event-limit-hint')
+  expect(screen.getByTestId('event-count')).toHaveTextContent('200+')
+})
+
+test('short page shows no limit hint and no plus', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  await screen.findByTestId('event-item-1')
+  expect(screen.queryByTestId('event-limit-hint')).not.toBeInTheDocument()
+  expect(screen.getByTestId('event-count')).toHaveTextContent('2 event')
+  expect(screen.getByTestId('event-count')).not.toHaveTextContent('+')
+})
+
+test('live event that does not match the active filter is not prepended', async () => {
+  stubScrollIntoView()
+  vi.useFakeTimers()
+  let current = EVENTS
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(current) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const { container } = renderPage()
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+  // downshift/Carbon menjadwalkan timer saat membuka menu → pakai fireEvent, bukan userEvent
+  const before = listCalls(fetchMock).length
+  fireEvent.click(container.querySelector('#filter-severity .cds--list-box__field')!)
+  fireEvent.click(screen.getByRole('option', { name: 'critical' }))
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  expect(listCalls(fetchMock).length).toBeGreaterThan(before)
+  expect(listCalls(fetchMock).at(-1)).toContain('severity=critical')
+
+  // tick poll 5s berikutnya mengirim event warning yang tak cocok filter
+  const warn = { ...EVENTS[0], id: 9, event_id: 'ev-9', type: 'maling', severity: 'warning' }
+  current = [...EVENTS, warn]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.queryByTestId('event-item-9')).not.toBeInTheDocument()
+
+  const crit = { ...EVENTS[0], id: 10, event_id: 'ev-10', type: 'penyusup', severity: 'critical' }
+  current = [...current, crit]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.getAllByTestId('event-item-10')).toHaveLength(1)
+
+  vi.useRealTimers()
+})
+
+test('a stale response does not overwrite a newer one', async () => {
+  stubScrollIntoView()
+  let releaseFirst: ((rows: EventOut[]) => void) | null = null
+  let call = 0
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?')) {
+      if (!u.includes('limit=200')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+      call += 1
+      if (call === 1) {
+        const rows = await new Promise<EventOut[]>((res) => { releaseFirst = res })
+        return { ok: true, status: 200, json: () => Promise.resolve(rows) }
+      }
+      return { ok: true, status: 200, json: () => Promise.resolve([EVENTS[1]]) }
+    }
+    if (u.includes('/zones')) return { ok: true, status: 200, json: () => Promise.resolve([]) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Sistem' }))
+  expect(await screen.findByTestId('event-item-2')).toBeInTheDocument()
+
+  await act(async () => { releaseFirst?.([EVENTS[0]]) })
+  await waitFor(() => expect(call).toBeGreaterThanOrEqual(2))
+  expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument()
+  expect(screen.getByTestId('event-item-2')).toBeInTheDocument()
 })

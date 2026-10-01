@@ -5,6 +5,7 @@ export type EventOut = {
   event_id: string
   type: string
   camera_id: number | null // event system (node offline/LWT) tidak punya kamera
+  node_id?: number | null // node penulis event; opsional di tipe (fixture/frame lama), backend selalu kirim
   zone_id: number | null
   severity: string
   ts_event: string
@@ -21,13 +22,14 @@ export type EventStats = {
   critical_by_hour: number[]
 }
 
-export type EventListParams = { camera_id?: number; type?: string; types?: string[]; since?: string; limit?: number }
+export type EventListParams = { camera_id?: number; type?: string; types?: string[]; severities?: string[]; since?: string; limit?: number }
 
 export async function listEvents(params: EventListParams = {}): Promise<EventOut[]> {
   const qs = new URLSearchParams()
   if (params.camera_id != null) qs.set('camera_id', String(params.camera_id))
   if (params.type) qs.set('type', params.type)
   for (const t of params.types ?? []) qs.append('type', t) // backend: ?type=a&type=b = salah satu
+  for (const s of params.severities ?? []) qs.append('severity', s) // backend: ?severity=a&severity=b = salah satu
   if (params.since) qs.set('since', params.since)
   if (params.limit != null) qs.set('limit', String(params.limit))
   const res = await apiFetch(`/events${qs.toString() ? `?${qs}` : ''}`)
