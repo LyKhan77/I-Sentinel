@@ -27,7 +27,7 @@ def test_export_engine_dry_run_pins_gpu():
     assert result.returncode == 0, result.stderr
     assert "CUDA_VISIBLE_DEVICES=1" in result.stdout
     assert "--workdir /models" in result.stdout
-    assert "--profile vision run --rm --no-deps" in result.stdout
+    assert "--profile vision run --rm -T --no-deps" in result.stdout
     assert "python /app/vision/scripts/export_engine.py --model yolo26s.pt" in result.stdout
 
 
@@ -36,3 +36,10 @@ def test_export_engine_rejects_non_numeric_gpu():
                             capture_output=True, text=True)
     assert result.returncode != 0
     assert "GPU" in result.stderr
+
+
+def test_export_engine_run_is_non_interactive():
+    """Tanpa -T, `compose run` meminta TTY dan gagal bila dijalankan lewat ssh tanpa tty."""
+    result = subprocess.run(["bash", str(DOCKER / "scripts/export-engine.sh"), "--dry-run", "0"], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert " -T " in result.stdout

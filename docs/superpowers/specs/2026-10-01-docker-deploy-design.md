@@ -1,8 +1,8 @@
 # Spec — Migrasi Docker (deployment satu perintah)
 
-Status: **menunggu review spec tertulis**.
+Status: **disetujui user; implementasi tahap kode selesai dan direview (2026-10-02); Part B (server) menunggu**.
 Branch: `feat/docker-deploy` (di-rebase ke `main` @ `bb2f24c`; tahap 1 sudah ter-merge).
-Plan: belum ada (ditulis setelah spec disetujui, `docs/superpowers/plans/2026-10-01-docker-deploy.md`).
+Plan: `docs/superpowers/plans/2026-10-01-docker-deploy.md`.
 Konteks: tahap 2. Tahap 1 = `2026-10-01-port-nondefault-design.md` (peta port `7700–7705`, perubahan repo saja). Spec ini melakukan **satu-satunya cutover server**.
 
 ---
@@ -91,7 +91,7 @@ Semua layanan: `restart: unless-stopped`, `TZ=${TZ}` (default dari host, fallbac
 
 ### 3.4 Data dan rahasia
 
-`${DATA_DIR}` (default `<repo>/../I-Sentinel-docker-data`): `api` (`STORAGE_ROOT=/data/api`, `FACE_MODEL_DIR=/data/api/faces_models`), `vision` (`VISION_DATA_DIR=/data/vision`), `models` (dipasang `/models` di `vision`: `yolo26s.pt` dan `yolo26s.engine`, `VISION_DETECTOR_MODEL=/models/yolo26s.engine`; sesuai tata letak server dev), `go2rtc`, `mosquitto` (`passwd`, `data/`), `secrets` (dipasang `/secrets`, `CAMERA_SECRETS_FILE=/secrets/camera-secrets.json`, di luar `STORAGE_ROOT`).
+`${DATA_DIR}` (default `<repo>/../I-Sentinel-docker-data`): `api` (`STORAGE_ROOT=/data/api`, `FACE_MODEL_DIR=/data/api/faces_models`), `vision` (`VISION_DATA_DIR=/data/vision`), `models` (dipasang `/models` di `vision`: `yolo26s.pt` dan `yolo26s.engine`, `VISION_DETECTOR_MODEL=/models/yolo26s.engine`; sesuai tata letak server dev), `go2rtc`, `mosquitto` (`passwd`, `data/`), `secrets` (dipasang `/secrets`, `CAMERA_SECRETS_FILE=/secrets/camera-secrets.json`, di luar `STORAGE_ROOT`). Kode membaca kredensial kamera default dan profil `env:` dari environment (`CAM_USERNAME`, `CAM_PASSWORD`, `CAMERA_CREDENTIAL_*`; `probe.py`, `stream_endpoint._secret`), jadi `api` memuat `${DATA_DIR}/secrets/camera.env` lewat `env_file` opsional; `setup.sh` membuatnya kosong (0600) dan `migrate-from-host.sh` mengisinya dari `.env` host pada rehearsal maupun cutover (temuan review).
 `NODE_API_KEY`, `JWT_SECRET`, password DB/MQTT/admin dibuat `setup.sh` (`openssl rand`). `COOKIE_SECURE=false` (LAN HTTP). Bobot YOLO `yolo26s.pt` diunduh ultralytics saat ekspor engine; bila host offline, file diletakkan manual di `${DATA_DIR}/models` (dicetak `setup.sh`).
 
 ### 3.5 `setup.sh`

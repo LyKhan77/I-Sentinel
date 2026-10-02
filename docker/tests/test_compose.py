@@ -11,7 +11,7 @@ import pytest
 DOCKER = Path(__file__).resolve().parents[1]
 
 
-def config(vision=True):
+def config(vision=True, env=None):
     if not shutil.which("docker"):
         pytest.skip("Docker Compose CLI unavailable")
     if subprocess.run(["docker", "compose", "version"], capture_output=True).returncode:
@@ -21,7 +21,7 @@ def config(vision=True):
     if vision:
         args += ["--profile", "vision"]
     result = subprocess.run(args + ["config", "--format", "json"],
-                            env={**os.environ, "COMPOSE_PROFILES": ""}, capture_output=True, text=True)
+                            env={**os.environ, "COMPOSE_PROFILES": "", **(env or {})}, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
@@ -87,3 +87,23 @@ def test_uid_and_persistent_go2rtc(services):
     mount = next(v for v in services["go2rtc"]["volumes"] if v["target"] == "/config")
     assert mount["type"] == "bind"
     assert not mount.get("read_only", False)
+
+
+def test_api_receives_camera_credentials_from_optional_env_file(tmp_path):
+    """CAM_* dan CAMERA_CREDENTIAL_* dibaca kode dari environment (probe, stream_endpoint)."""
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets/camera.env").write_text(
+        "CAM_USERNAME=admin\nCAM_PASSWORD='p#ss1'\nCAMERA_CREDENTIAL_NVR_A='x1'\n")
+    environment = config(env={"DATA_DIR": str(tmp_path)})["services"]["api"]["environment"]
+    assert environment["CAM_USERNAME"] == "admin"
+    assert environment["CAM_PASSWORD"] == "p#ss1"
+    assert environment["CAMERA_CREDENTIAL_NVR_A"] == "x1"
+
+
+def test_camera_credentials_reach_only_api(tmp_path):
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets/camera.env").write_text("CAM_PASSWORD=secret-value\n")
+    services = config(env={"DATA_DIR": str(tmp_path)})["services"]
+    for name, service in services.items():
+        has = "CAM_PASSWORD" in service.get("environment", {})
+        assert has == (name == "api"), name

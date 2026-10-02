@@ -1,5 +1,7 @@
 # Migrasi Docker (deployment satu perintah) Implementation Plan
 
+> Status 2026-10-02: Task 1–7 selesai dan direview; perbaikan review (kredensial kamera `camera.env`, `-T`, model wajah non-fatal, peringatan IP) ada di commit berikutnya. Part B menunggu.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Folder `docker/` yang membangun dan menjalankan seluruh I-Sentinel (postgres, mosquitto, go2rtc, api, vision, web, retention) lewat `./docker/setup.sh`, plus skrip migrasi data dev.

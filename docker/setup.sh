@@ -90,7 +90,11 @@ if [[ ! -f "$ENV_FILE" ]]; then
             GO2RTC_PUBLIC_HOST="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
         fi
     fi
-    export GO2RTC_PUBLIC_HOST="${GO2RTC_PUBLIC_HOST:-127.0.0.1}"
+    if [[ -z "${GO2RTC_PUBLIC_HOST:-}" ]]; then
+        echo "Warning: LAN IP not detected; using 127.0.0.1, so WebRTC from other machines will not work. Set GO2RTC_PUBLIC_HOST before the first run." >&2
+        GO2RTC_PUBLIC_HOST=127.0.0.1
+    fi
+    export GO2RTC_PUBLIC_HOST
     if [[ -z "${TZ:-}" && -r /etc/timezone ]]; then
         TZ="$(cat /etc/timezone)"
     fi
@@ -126,9 +130,14 @@ export DATA_DIR
 if [[ "$rehearse" == 1 || "$has_nvidia" == 0 ]]; then
     export COMPOSE_PROFILES=
 fi
-mkdir -p "$DATA_DIR/api" "$DATA_DIR/vision" "$DATA_DIR/models" "$DATA_DIR/go2rtc" \
+mkdir -p "$DATA_DIR/api" "$DATA_DIR/api/faces_models" "$DATA_DIR/vision" "$DATA_DIR/models" "$DATA_DIR/go2rtc" \
     "$DATA_DIR/mosquitto/data" "$DATA_DIR/secrets"
 chmod 700 "$DATA_DIR/go2rtc" "$DATA_DIR/secrets"
+if [[ ! -f "$DATA_DIR/secrets/camera.env" ]]; then
+    printf '%s\n' "# Camera credentials for the API: CAM_USERNAME, CAM_PASSWORD, CAMERA_CREDENTIAL_* (env: profiles)." \
+        "# One KEY='value' per line; single quotes keep \$ and # literal." > "$DATA_DIR/secrets/camera.env"
+fi
+chmod 600 "$DATA_DIR/secrets/camera.env"
 if [[ ! -f "$DATA_DIR/go2rtc/go2rtc.yaml" ]]; then
     python3 - "$DOCKER_DIR/go2rtc/go2rtc.yaml.tmpl" "$DATA_DIR/go2rtc/go2rtc.yaml" <<'PY'
 import os
@@ -209,7 +218,8 @@ if after != before:
 PY
 export VISION_NODE_ID="$node_id"
 if [[ -z "$(find "$DATA_DIR/api/faces_models" -name '*.onnx' -print -quit 2>/dev/null || true)" ]]; then
-    compose run --rm --no-deps -e RUN_MIGRATIONS=0 api python scripts/download_face_models.py
+    compose run --rm -T --no-deps -e RUN_MIGRATIONS=0 api python scripts/download_face_models.py \
+        || echo "Warning: face model download failed; enrollment needs buffalo_l in $DATA_DIR/api/faces_models. Fix the network or copy the models, then rerun setup.sh." >&2
 fi
 if [[ -n "$COMPOSE_PROFILES" && "$no_engine" == 0 && ! -f "$DATA_DIR/models/yolo26s.engine" ]]; then
     ENV_FILE="$ENV_FILE" "$DOCKER_DIR/scripts/export-engine.sh" "$VISION_ENGINE_GPU"

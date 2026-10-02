@@ -93,6 +93,10 @@ dicetak pada run pembuat `docker/.env`; selanjutnya baca berkas itu secara lokal
 tidak ditimpa. `ENV_FILE`, `DATA_DIR`, dan `GO2RTC_PUBLIC_HOST` bisa dioverride saat
 setup pertama; `.env` existing menentukan DATA_DIR pada run berikutnya.
 
+Kredensial kamera berbasis environment (`CAM_USERNAME`, `CAM_PASSWORD`, `CAMERA_CREDENTIAL_*`)
+diisi di `${DATA_DIR}/secrets/camera.env` (dibuat kosong oleh `setup.sh`, mode `0600`); profil
+kredensial yang disimpan dari UI memakai `camera-secrets.json` di folder yang sama.
+
 Data default: direktori sibling `../I-Sentinel-docker-data` (`api`, `vision`,
 `models`, `go2rtc`, `mosquitto`, `secrets`); PostgreSQL memakai named volume `pgdata`.
 YAML go2rtc menyimpan kredensial kamera saat runtime: backup sebagai rahasia, bukan

@@ -136,3 +136,16 @@ def test_target_env_guard_before_destructive_plan(tmp_path):
     assert result.returncode != 0
     assert "Missing target environment keys" in result.stderr
     assert "DROP" not in result.stdout
+
+
+@pytest.mark.parametrize("mode", ["--rehearse", "--cutover"])
+def test_camera_credentials_copied_before_startup_in_both_modes(tmp_path, mode):
+    """Live view dan probe butuh CAM_*; rehearsal juga menguji Live View."""
+    env = fixture_env(tmp_path)
+    result = invoke(env, mode)
+    assert result.returncode == 0, result.stderr
+    text = result.stdout
+    assert "extract_camera_env.py" in text
+    assert str(Path(env["DATA_DIR"]) / "secrets/camera.env") in text
+    assert text.index("extract_camera_env.py") < text.index("up -d")
+    assert PASSWORD not in text + result.stderr

@@ -155,6 +155,13 @@ SOAK_PIN=cuda:1 SOAK_OUT=~/isentinel-data/loadtest/soak.csv ./deploy/loadtest/so
 prosedur untuk Part B, **belum dijalankan di server**. Bagian systemd di atas
 tidak berubah; jangan mematikan layanan lama hanya untuk mencoba container.
 
+### Retensi (container `retention`)
+
+Sweep berjalan sekali sehari pukul 03:00 waktu `TZ`. Berbeda dari timer systemd lama
+(`Persistent=true`), container yang restart **setelah** 03:00 melewatkan sweep hari itu
+dan baru berjalan besok. Jalankan manual bila perlu:
+`docker compose -f docker/compose.yml run --rm -T retention python scripts/retention_sweep.py`.
+
 ### Operasi setelah instalasi Docker
 
 Dari root checkout Docker (di server dev nanti gunakan checkout terpisah
@@ -191,7 +198,10 @@ atau engine di Mac arm64. Ukur shm ring klip untuk menentukan VISION_SHM_SIZE fi
    `/home/gspe-ai3/project_cv/I-Sentinel-data`. Build tiga image di server;
    verifikasi tag go2rtc/mosquitto, wheel CUDA, import API, dan `nginx -t`.
 2. Jalankan `DATA_DIR=/home/gspe-ai3/project_cv/I-Sentinel-docker-data ./docker/setup.sh --rehearse`.
-   Vision mati. Jangan menyalin secrets kamera/Telegram ke target rehearsal.
+   Vision mati. Jangan menyalin `camera-secrets.json` (berisi token Telegram) ke target rehearsal.
+   Kredensial kamera dari `.env` host (`CAM_USERNAME`, `CAM_PASSWORD`, `CAMERA_CREDENTIAL_*`)
+   disalin `migrate-from-host.sh` ke `${DATA_DIR}/secrets/camera.env` (0600, hanya dibaca API;
+   nilai tidak dicetak), supaya stream dan Live View bisa diuji tanpa alert ganda.
 3. Periksa rencana, lalu jalankan migrasi rehearsal hanya setelah disetujui:
 
    ```bash
@@ -225,7 +235,7 @@ atau engine di Mac arm64. Ukur shm ring klip untuk menentukan VISION_SHM_SIZE fi
    ```
 
    Cutover melakukan dump final, DROP/CREATE DB container, rsync `--delete` API
-   dan vision, copy secrets `0600`, profile vision, refresh node id, lalu up.
+   dan vision, copy secrets `0600` dan `camera.env`, profile vision, refresh node id, lalu up.
    **Data rehearsal di tujuan diganti; operasi ini destruktif.** Guard menolak
    unit lama aktif/tidak bisa diverifikasi, path sumber/tujuan overlap, dan marker
    `.cutover-done` existing. `--force` mengizinkan overwrite data setelah cutover:

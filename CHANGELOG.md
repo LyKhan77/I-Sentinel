@@ -53,6 +53,18 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   command/dry-run. Guard tambahan menolak overlap data, env tidak lengkap,
   systemctl tak dapat diverifikasi, secrets existing saat rehearsal, dan
   overwrite setelah marker tanpa force.
+- **Review sesi perencanaan (2026-10-02) dan perbaikan:** suite diulang berurutan di `a66945e`
+  (docker 48 passed; backend 656; frontend 33 file / 420; build 0; lint 24/16) — sama dengan laporan eksekutor.
+  Temuan dan perbaikan (TDD, merah dulu): **I1** kredensial kamera (`CAM_USERNAME`/`CAM_PASSWORD` di `.env` server dev,
+  dibaca kode dari environment) tidak diteruskan ke container API → `api` memuat `${DATA_DIR}/secrets/camera.env` lewat
+  `env_file` opsional, `setup.sh` membuatnya kosong 0600, `migrate-from-host.sh` mengisinya lewat
+  `scripts/extract_camera_env.py` (nilai dikutip tunggal agar `$` dan `#` tetap literal, tidak dicetak, tidak menyentuh
+  token Telegram); **I2** `compose run` tanpa `-T` di `setup.sh` dan `export-engine.sh`; **I3** unduh model wajah yang
+  gagal membatalkan setup (kini peringatan, dan `api/faces_models` dibuat lebih dulu agar bind mount `/faces` tidak
+  dimiliki root); **m1** peringatan bila IP LAN tak terdeteksi; **m3** catatan sweep retensi terlewat di RUNBOOK.
+  Tes baru: alur `setup.sh` penuh dengan docker palsu (urutan panggilan, node id, idempotensi), kontrak compose untuk
+  `camera.env`, ekstraktor kredensial, langkah kredensial di rencana migrasi. Belum terbukti: build image, healthcheck
+  nyata, TZ di image slim, resolusi lock vision — tetap Part B.
 - **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,

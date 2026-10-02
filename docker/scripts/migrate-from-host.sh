@@ -174,6 +174,9 @@ fi
 if [[ -f "$HOST_ENGINE" && ! -f "$DATA_DIR/models/yolo26s.engine" ]]; then
     execute cp "$HOST_ENGINE" "$DATA_DIR/models/yolo26s.engine"
 fi
+# Camera credentials (CAM_*, CAMERA_CREDENTIAL_*) are read from the environment by the API; the
+# Telegram token lives in camera-secrets.json and is withheld in rehearsal.
+execute python3 "$DOCKER_DIR/scripts/extract_camera_env.py" "$HOST_ENV_FILE" "$DATA_DIR/secrets/camera.env"
 if [[ "$mode" == cutover ]]; then
     execute cp "$HOST_SECRETS_FILE" "$DATA_DIR/secrets/camera-secrets.json"
     execute chmod 700 "$DATA_DIR/secrets"

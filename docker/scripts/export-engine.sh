@@ -24,7 +24,7 @@ if [[ ! "$gpu" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 command=(docker compose -f "$DOCKER_DIR/compose.yml" --env-file "$ENV_FILE"
-    --profile vision run --rm --no-deps --workdir /models
+    --profile vision run --rm -T --no-deps --workdir /models
     -e "CUDA_VISIBLE_DEVICES=$gpu" vision python /app/vision/scripts/export_engine.py --model yolo26s.pt)
 if [[ "$dry_run" == 1 ]]; then
     printf '+ '; printf '%q ' "${command[@]}"; printf '\n'
