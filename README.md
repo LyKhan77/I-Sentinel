@@ -22,9 +22,8 @@ API FastAPI :7701 ──── Postgres (isentinel) ─── go2rtc :7702 (API/
   memang harus terjangkau klien LAN (terbukti port lama 1984 terjangkau dari LAN, 2026-10-01) —
   dan **7704** (MQTT, untuk node edge Fase E). RTSP go2rtc **7705** hanya `127.0.0.1`
   (vision node server membaca dari localhost); snapshot browser lewat proxy API (auth-gated).
-- Status server dev `gspe-ai3`: masih memakai port lama (`5173/8000/1984/8554/1883`) sampai
-  cutover Docker (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`). Peta
-  `7700–7705` di atas adalah referensi repo dan instalasi baru.
+- Status server dev `gspe-ai3`: berjalan di Docker dengan peta di atas sejak cutover 2026-10-02 (unit systemd lama
+  dinonaktifkan dan hanya untuk rollback).
 - Vision node: satu worker per kamera; detektor pin GPU via UI (Konfigurasi → Node).
 
 ## Peta Folder
@@ -71,8 +70,7 @@ isentinel/
 
 ## Quick start Docker
 
-**Belum aktif di `gspe-ai3` sampai cutover.** Kode deployment tersedia di branch
-`feat/docker-deploy`; build/run container dan verifikasi server masih menunggu Part B.
+**Aktif di `gspe-ai3` sejak 2026-10-02** (cutover terverifikasi, bukti di `CHANGELOG.md`).
 Unit systemd di `deploy/` tetap tersedia sebagai jalur legacy/rollback.
 
 Prasyarat host Linux: Docker Engine + Compose v2, akses Docker tanpa sudo, Python 3,
@@ -134,20 +132,18 @@ npm test          # vitest run
 
 ## Run (server dev)
 
+Sejak 2026-10-02 server dev berjalan di Docker (clone `/home/gspe-ai3/project_cv/I-Sentinel-docker`):
+
 ```bash
 ssh gspe-ai3
-cd /home/gspe-ai3/project_cv/I-Sentinel && git pull
-./deploy/bootstrap.sh
-# isi .env di root project (DATABASE_URL postgres, JWT_SECRET, ADMIN_PASSWORD, CAM_USERNAME/PASSWORD)
-sudo systemctl start isentinel-api
-curl -s localhost:8000/api/v1/health
+cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git pull && ./docker/setup.sh   # build + up, idempoten
+docker compose -f docker/compose.yml ps
+curl -s localhost:7701/api/v1/health                                             # {"status":"ok"}
+docker compose -f docker/compose.yml logs --tail 50 api
 ```
 
-`bootstrap.sh` membuat venv, install `backend[dev]`, `alembic upgrade head`, menyalin unit systemd ke `/etc/systemd/system/`, lalu daemon-reload + enable (tidak start).
-
-Catatan port: perintah server di atas masih memakai port lama (`8000`) — server dev `gspe-ai3`
-baru berpindah ke blok `7700–7705` saat cutover Docker
-(`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
+Jalur legacy systemd (`./deploy/bootstrap.sh`, `isentinel-*.service`, port lama) dinonaktifkan sejak cutover dan hanya untuk
+rollback; lihat `docs/RUNBOOK.md`.
 
 ## Manajemen Kamera
 
@@ -210,7 +206,8 @@ sudah direkonsiliasi dengan yang berjalan di `gspe-ai3` (Fase 5 Task 12):
 `User=gspe-ai3` + path `/home/gspe-ai3/project_cv/I-Sentinel`. `sudo` tanpa
 password tidak tersedia di server, jadi restart service dilakukan lewat
 `kill $(cat /sys/fs/cgroup/system.slice/<unit>.service/cgroup.procs)` (unit
-memakai `Restart=always`).
+memakai `Restart=always`). Itu jalur legacy: sejak 2026-10-02 server dev memakai Docker
+(`docker compose restart <layanan>`).
 
 ## Live View & Mode TV
 

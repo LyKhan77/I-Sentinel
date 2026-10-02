@@ -3,12 +3,11 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Docker — kode deployment selesai, verifikasi server menunggu (2026-10-02)
+### Docker — kode, rehearsal, dan cutover di gspe-ai3 (2026-10-02)
 
 - **Konteks:** tahap 2 setelah port non-default, spec/plan `2026-10-01-docker-deploy`;
-  implementasi native Task 1–7, TDD dan commit lokal per task. **Belum aktif di
-  `gspe-ai3` sampai cutover.** Tidak ada SSH, deploy, push, merge, atau review
-  dalam sesi executor; server tetap systemd lama.
+  implementasi native Task 1–7, TDD dan commit lokal per task (sesi executor tanpa SSH/deploy/push). Rehearsal dan cutover dikerjakan
+  sesi perencanaan; **aktif di `gspe-ai3` sejak 2026-10-02 13:36 WIB**.
 - **File:** `docker/backend` (image editable CPU + entrypoint migrasi), `docker/web`
   (Vite build devDependencies + nginx resolver/proxy variabel tanpa URI),
   `docker/vision` (CUDA 13 + lock existing tidak diubah), `docker/compose.yml`,
@@ -103,14 +102,23 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   vision kosong. (c) `export-engine.sh 2`: unduh `yolo26s.pt`, ONNX FP16, engine TensorRT 21,3 MB dalam 18 dtk, smoke 5,1 ms/frame; engine
   baru dimuat vision di `cuda:1` (4,7 ms rata-rata). Semua zona live memang `active=false`; di salinan hanya diaktifkan sementara lalu
   dikembalikan. Tes: `docker/tests` 71 passed, vision 235 passed.
-- **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
+- **Cutover produksi dev (2026-10-02):** pra-cek bersih; user menjalankan `sudo systemctl disable --now isentinel-api isentinel-web
+  vision-node go2rtc isentinel-retention.timer`; kelima unit `inactive` diverifikasi; cadangan final `pg_dump` host
+  (`.../I-Sentinel-data/backups/isentinel-pre-docker-20261002-133603.sql`, 1,8 MB, mode 600); `migrate-from-host.sh --cutover` selesai 19 dtk
+  (exit 0, marker `.cutover-done`). Verifikasi: 7 container healthy (vision restart 0), health `ok` langsung dan lewat proxy web, node
+  `server` online (detektor `cuda:1`, face `cuda:2`), alembic `0020`, **25 tabel dibandingkan dengan DB host yang dibekukan, 0 selisih**,
+  14 stream go2rtc + frame kamera nyata HTTP 200, clips 76 / snapshots 81 / crops 345 / faces 10 identik, `camera-secrets.json` dan
+  `camera.env` mode 600, port lama (`5173/8000/1984/8554`) tertutup, `7700–7704` terbuka dari LAN dan `7705` tertutup, retensi terjadwal 03:00
+  WIB. Gap deteksi: heartbeat lama terakhir 13:35:25, baru 13:36:42 (±77 dtk). User memeriksa UI (login, Live View, dashboard) dan
+  mengubah `app_url` Telegram: OK. Catatan: semua 6 zona live `active=false` sejak 1 Okt (sebelum dan sesudah migrasi).
+- **Dampak:** server dev kini di Docker (blok port `7700–7705`, bind mount `I-Sentinel-docker-data`, Postgres named volume `pgdata`); unit
+  systemd lama dinonaktifkan (bukan dihapus); Postgres host, `I-Sentinel-data`, dan pohon `I-Sentinel` menjadi cadangan beku.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,
   engine 4090/5080, shm, metrik/enrollment CPU, atau reboot di server.
-- **Rollback:** sebelum deploy cukup `git revert` commit Task 1–7 dalam urutan
-  terbalik; tidak ada DB/server yang perlu dipulihkan. Setelah cutover gunakan
-  RUNBOOK Docker: down tanpa `-v`, pemulihan data bila sudah ada write baru,
-  lalu enable unit legacy dengan persetujuan operator.
+- **Rollback:** (kini berlaku) tanpa data baru yang perlu dipertahankan: `docker compose down` (tanpa `-v`) lalu `sudo systemctl enable --now
+  isentinel-api isentinel-web vision-node go2rtc isentinel-retention.timer`. Bila sudah ada data baru di Docker: dump balik `pg_dump` dari
+  container dan sinkron data sesuai RUNBOOK Docker sebelum menyalakan unit lama. Kode: `git revert` commit Task 1–7 dan perbaikannya.
 
 ### Port non-default blok 7700–7705 — repo saja, tanpa deploy (2026-10-01)
 

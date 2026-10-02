@@ -24,8 +24,8 @@ di `CHANGELOG.md`.
 
 Peta port (referensi repo & instalasi baru): `7700` web · `7701` API · `7702` go2rtc API ·
 `7703` go2rtc WebRTC (tcp+udp, LAN) · `7704` MQTT · `7705` go2rtc RTSP (hanya `127.0.0.1`).
-Server dev `gspe-ai3` masih memakai port lama (`5173/8000/1984/8554/1883`) sampai cutover
-Docker (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
+Sejak cutover 2026-10-02 server dev `gspe-ai3` menjalankan peta ini lewat Docker; tabel unit systemd di bawah adalah topologi
+legacy (dinonaktifkan, dipakai untuk rollback).
 
 Satu server (`gspe-ai3`) menjalankan semua komponen saat ini. Fase E memindahkan sebagian
 vision-node + go2rtc ke Jetson Orin Nano (`docs/plans/07-edge-jetson.md`); server tetap pusat
@@ -42,10 +42,9 @@ DB, alert, dan UI.
 
 `isentinel-recorder.service` masih stub; perekaman klip ada di vision-node (`recorder.py`).
 
-### Topologi Docker (pending cutover)
+### Topologi Docker (aktif di `gspe-ai3` sejak 2026-10-02)
 
-**Belum aktif di `gspe-ai3` sampai cutover.** Diagram dan tabel systemd di atas
-tetap menjadi referensi legacy. Stack `docker/compose.yml` (project `isentinel`)
+Diagram dan tabel systemd di atas adalah topologi legacy (rollback). Stack `docker/compose.yml` (project `isentinel`)
 menjalankan tujuh layanan pada jaringan internal Compose:
 
 ```text
@@ -71,7 +70,7 @@ Semua layanan memakai `restart: unless-stopped`, `TZ`, log json-file maksimum
 `10m` × 5. UID/GID host dipakai selain postgres dan web. API tidak mendapat GPU;
 vision memakai `shm_size=VISION_SHM_SIZE` (default sementara `2gb`) untuk ring klip.
 Healthcheck tersedia untuk postgres, mosquitto, go2rtc, API, dan web; status vision
-harus dibuktikan lewat heartbeat/event di Part B, bukan sekadar container running.
+dibuktikan lewat heartbeat node `online` dan event, bukan sekadar container running.
 
 `${DATA_DIR}/models` dipasang `/models` (bobot + engine YOLO); wajah API berada di
 `api/faces_models` dan dibaca vision read-only `/faces`. `${DATA_DIR}/secrets`

@@ -1,8 +1,10 @@
 # RUNBOOK — Operasional I-Sentinel di gspe-ai3
 
-Perintah systemd pada bagian bernomor di bawah **sudah diverifikasi jalan**.
-Host: `gspe-ai3` (LAN `192.168.2.133`), repo `/home/gspe-ai3/project_cv/I-Sentinel`.
-Bagian Docker di akhir adalah prosedur pending, belum diverifikasi di server.
+**Sejak 2026-10-02 13:36 WIB `gspe-ai3` berjalan di Docker**; operasi harian ada di bagian "Docker" di akhir.
+Bagian bernomor di bawah (systemd) adalah prosedur **legacy**: unit lama dinonaktifkan (bukan dihapus) dan hanya untuk rollback.
+Host: `gspe-ai3` (LAN `192.168.2.133`). Clone Docker `/home/gspe-ai3/project_cv/I-Sentinel-docker`, data
+`/home/gspe-ai3/project_cv/I-Sentinel-docker-data`. Pohon systemd lama `/home/gspe-ai3/project_cv/I-Sentinel` dan data lama
+`I-Sentinel-data` kini cadangan beku.
 
 ## 1. Service & restart
 
@@ -25,12 +27,9 @@ Bagian Docker di akhir adalah prosedur pending, belum diverifikasi di server.
 | 7704 | MQTT Mosquitto | LAN (node edge Fase E) |
 | 7705 | go2rtc RTSP | `127.0.0.1` saja |
 
-> **Status server dev:** `gspe-ai3` saat ini masih memakai port lama
-> (`8000/5173/1984/8554/1883`) dan seluruh perintah di runbook ini tetap
-> memakai port lama sampai cutover Docker
-> (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
-> Blok `7700–7705` berlaku untuk instalasi baru; firewall instalasi baru
-> membuka `7700:7704/tcp` + `7703/udp`, `7705` tidak dibuka.
+> **Status server dev:** sejak cutover 2026-10-02 `gspe-ai3` memakai blok `7700–7705` lewat Docker. Perintah systemd dan port lama di
+> bagian bernomor hanya berlaku untuk rollback. Port yang dipublikasikan Docker melewati firewall host; instalasi baru tanpa Docker
+> membuka `7700:7704/tcp` + `7703/udp` (`7705` tidak dibuka).
 
 Restart tanpa sudo (unit memakai `Restart=always`, jadi kill cgroup = restart):
 
@@ -91,6 +90,9 @@ ditolak (node tetap hidup, device lama).
 
 ## 5. Troubleshooting
 
+> Tabel gejala di bawah ditulis untuk sistem lama (systemd). Di Docker gunakan
+> `docker compose -f docker/compose.yml ps|logs --tail 100 <layanan>` (api, vision, go2rtc, mosquitto, postgres, web, retention).
+
 | Gejala | Cek |
 |---|---|
 | Live view 502/gambar hitam | `systemctl is-active go2rtc`; `curl -o /dev/null -w '%{http_code}' 'http://127.0.0.1:1984/api/frame.jpeg?src=cam_<id>'` |
@@ -149,11 +151,13 @@ SOAK_PIN=cuda:1 SOAK_OUT=~/isentinel-data/loadtest/soak.csv ./deploy/loadtest/so
 - **Disk 85%** — retensi `RETENTION_DAYS` memotong clip/crop/snapshot, bukan
   log/DB; pantau `df -h`.
 
-## Docker — prosedur pending cutover
+## Docker — operasi di `gspe-ai3` (aktif sejak 2026-10-02)
 
-**Belum aktif di `gspe-ai3` sampai cutover.** Perintah bagian ini merupakan
-prosedur untuk Part B, **belum dijalankan di server**. Bagian systemd di atas
-tidak berubah; jangan mematikan layanan lama hanya untuk mencoba container.
+Cutover dilakukan 2026-10-02: unit systemd lama dinonaktifkan sebelum 13:36, stack Docker naik 13:36:22, gap deteksi ±77 dtk (heartbeat
+lama terakhir 13:35:25, baru 13:36:42); 25 tabel DB cocok dengan DB host yang dibekukan; bukti di `CHANGELOG.md`. Cadangan DB terakhir sistem
+lama: `/home/gspe-ai3/project_cv/I-Sentinel-data/backups/isentinel-pre-docker-20261002-133603.sql` (mode 600). Data lama (Postgres host,
+`I-Sentinel-data`) kini **beku**: jangan menyalakan sistem lama tanpa sinkron balik. Prosedur "Rehearsal dan cutover" di bawah sudah
+dijalankan; dipertahankan sebagai referensi untuk instalasi atau migrasi berikutnya.
 
 ### Catatan dari rehearsal di `gspe-ai3` (2026-10-02)
 
@@ -176,8 +180,7 @@ dan baru berjalan besok. Jalankan manual bila perlu:
 
 ### Operasi setelah instalasi Docker
 
-Dari root checkout Docker (di server dev nanti gunakan checkout terpisah
-`/home/gspe-ai3/project_cv/I-Sentinel-docker`):
+Dari root checkout Docker (di server dev: `/home/gspe-ai3/project_cv/I-Sentinel-docker`):
 
 ```bash
 docker compose -f docker/compose.yml --env-file docker/.env ps
