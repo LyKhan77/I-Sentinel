@@ -1,7 +1,8 @@
 # RUNBOOK — Operasional I-Sentinel di gspe-ai3
 
-Semua perintah di bawah **sudah diverifikasi jalan**. Host: `gspe-ai3`
-(LAN `192.168.2.133`), repo `/home/gspe-ai3/project_cv/I-Sentinel`.
+Perintah systemd pada bagian bernomor di bawah **sudah diverifikasi jalan**.
+Host: `gspe-ai3` (LAN `192.168.2.133`), repo `/home/gspe-ai3/project_cv/I-Sentinel`.
+Bagian Docker di akhir adalah prosedur pending, belum diverifikasi di server.
 
 ## 1. Service & restart
 
@@ -147,3 +148,122 @@ SOAK_PIN=cuda:1 SOAK_OUT=~/isentinel-data/loadtest/soak.csv ./deploy/loadtest/so
   berjalan di dalam vision node.
 - **Disk 85%** — retensi `RETENTION_DAYS` memotong clip/crop/snapshot, bukan
   log/DB; pantau `df -h`.
+
+## Docker — prosedur pending cutover
+
+**Belum aktif di `gspe-ai3` sampai cutover.** Perintah bagian ini merupakan
+prosedur untuk Part B, **belum dijalankan di server**. Bagian systemd di atas
+tidak berubah; jangan mematikan layanan lama hanya untuk mencoba container.
+
+### Operasi setelah instalasi Docker
+
+Dari root checkout Docker (di server dev nanti gunakan checkout terpisah
+`/home/gspe-ai3/project_cv/I-Sentinel-docker`):
+
+```bash
+docker compose -f docker/compose.yml --env-file docker/.env ps
+docker compose -f docker/compose.yml --env-file docker/.env logs --tail 100 api
+docker compose -f docker/compose.yml --env-file docker/.env restart api
+git pull && ./docker/setup.sh
+curl -s localhost:7701/api/v1/health
+```
+
+Jangan menyalin keluaran `compose config` tanpa `-q` ke log publik karena env
+resolved memuat rahasia. Jangan mengubah password DB di `.env` tanpa rotasi DB.
+Setup menjaga `.env`, passwd MQTT, dan YAML go2rtc existing. Pada API recreation,
+nginx meresolve upstream melalui DNS Docker (proxy variabel tanpa URI).
+
+Ekspor engine di GPU target:
+
+```bash
+./docker/scripts/export-engine.sh --dry-run 1
+./docker/scripts/export-engine.sh 1
+```
+
+`CUDA_VISIBLE_DEVICES` membatasi GPU yang dilihat exporter (`device=0`).
+Hasil di `${DATA_DIR}/models/yolo26s.engine` hanya valid untuk arsitektur GPU
+pembuatnya. Cadangkan engine sebelum ekspor ulang; jangan membangun image vision
+atau engine di Mac arm64. Ukur shm ring klip untuk menentukan VISION_SHM_SIZE final.
+
+### Rehearsal dan cutover (memerlukan persetujuan operator)
+
+1. Siapkan clone terpisah dan DATA_DIR terpisah dari
+   `/home/gspe-ai3/project_cv/I-Sentinel-data`. Build tiga image di server;
+   verifikasi tag go2rtc/mosquitto, wheel CUDA, import API, dan `nginx -t`.
+2. Jalankan `DATA_DIR=/home/gspe-ai3/project_cv/I-Sentinel-docker-data ./docker/setup.sh --rehearse`.
+   Vision mati. Jangan menyalin secrets kamera/Telegram ke target rehearsal.
+3. Periksa rencana, lalu jalankan migrasi rehearsal hanya setelah disetujui:
+
+   ```bash
+   ./docker/scripts/migrate-from-host.sh --rehearse --dry-run
+   ./docker/scripts/migrate-from-host.sh --rehearse
+   ```
+
+   Override sumber dengan HOST_ENV_FILE, HOST_DATA_ROOT, HOST_SECRETS_FILE,
+   HOST_ENGINE bila berbeda; jangan cetak DATABASE_URL. Rehearsal menyalin API,
+   bukan data vision (detail Task 6); data vision disinkron saat cutover.
+   Skrip menghentikan container api/retention/vision sebelum dump, mengganti
+   **DB container**, restore dengan ON_ERROR_STOP, rsync data, memperbarui node id,
+   lalu menghidupkan stack tanpa vision. DB host tidak diubah. Periksa jumlah
+   employee/camera/zone/event, Alembic head, checksum klip, login, live dari LAN,
+   snapshot, enrollment CPU, metrik host, serta retensi pada salinan.
+4. Jadwalkan cutover pada jam sepi, bukan menjelang pergantian shift. Backup
+   kedua sisi. Pengguna menjalankan satu perintah root untuk disable layanan lama:
+
+   ```bash
+   sudo systemctl disable --now isentinel-api isentinel-web vision-node go2rtc isentinel-retention.timer
+   ```
+
+   Periksa `ss -tn state established '( sport = :1883 )'` sebelum memutuskan
+   Mosquitto host: jangan hentikan bila ada pengguna lain. Skrip tidak mematikan
+   Mosquitto host atau unit systemd apa pun.
+5. Setelah persetujuan eksplisit:
+
+   ```bash
+   ./docker/scripts/migrate-from-host.sh --cutover --dry-run
+   ./docker/scripts/migrate-from-host.sh --cutover
+   ```
+
+   Cutover melakukan dump final, DROP/CREATE DB container, rsync `--delete` API
+   dan vision, copy secrets `0600`, profile vision, refresh node id, lalu up.
+   **Data rehearsal di tujuan diganti; operasi ini destruktif.** Guard menolak
+   unit lama aktif/tidak bisa diverifikasi, path sumber/tujuan overlap, dan marker
+   `.cutover-done` existing. `--force` mengizinkan overwrite data setelah cutover:
+   jangan gunakan tanpa backup serta persetujuan eksplisit. OLD_UNITS_CHECK=skip
+   hanya untuk tes, bukan operasi produksi.
+6. Ubah app_url Telegram ke `http://<IP-LAN>:7700` melalui UI, ukur gap deteksi.
+   Verifikasi MQTT tanpa kredensial ditolak, semua layanan inti healthy, heartbeat
+   vision online, satu event + klip/snapshot end-to-end pada GPU yang dipin,
+   port lama tak lagi listening (kecuali Mosquitto bersama), dan reboot recovery.
+   Retention dan vision tidak memiliki healthcheck HTTP; periksa log/hasil kerja.
+
+### Backup manual dan rollback
+
+Backup SQL polos ke direktori privat (di luar repo), selain salinan DATA_DIR
+(termasuk go2rtc YAML, passwd, models, api, vision, secrets) dan `docker/.env`:
+
+```bash
+umask 077
+docker compose -f docker/compose.yml --env-file docker/.env exec -T postgres \
+  pg_dump -U isentinel --no-owner --no-privileges isentinel > /path/private/isentinel.sql
+```
+
+Untuk snapshot konsisten, hentikan writer api/vision/retention di jendela
+maintenance sebelum dump + salin media. Named volume pgdata memerlukan dump
+tersendiri; DATA_DIR saja bukan backup DB. Tidak ada backup otomatis pada siklus ini.
+
+- **Sebelum data Docker baru penting:** `docker compose -f docker/compose.yml --env-file docker/.env down`
+  (**tanpa `-v`**), lalu operator root `systemctl enable --now` unit lama yang
+  dinonaktifkan (termasuk timer retensi); kembalikan app_url Telegram bila diubah.
+- **Sesudah data baru terkumpul:** hentikan writer Docker, dump final seperti di
+  atas, cadangkan DB host, dan dengan persetujuan operator DROP/CREATE DB host
+  melalui `psql -d postgres` menggunakan koneksi privat. Restore SQL ke DB host:
+  `psql -v ON_ERROR_STOP=1 "$HOST_DATABASE_URL" < /path/private/isentinel.sql`
+  (gunakan URI PostgreSQL/libpq, bukan `postgresql+psycopg`, jangan log URI).
+  Sinkronkan API/vision/models/secrets dari DATA_DIR Docker kembali ke lokasi
+  legacy, periksa ownership/0600, pastikan kode legacy cocok dengan Alembic head,
+  baru `down` tanpa `-v` dan enable layanan lama. Pastikan go2rtc legacy mendapat
+  stream/config yang sesuai port lama; YAML Docker tidak bisa disalin mentah.
+  Jangan menjalankan dua vision atau dua dispatcher Telegram bersamaan.
+- **Rollback kode lokal sebelum deploy:** `git revert` commit Task 1–7
+  (urut terbalik). Tidak ada perubahan server atau DB dari sesi executor.

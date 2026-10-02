@@ -60,6 +60,41 @@ cd frontend && npx vitest run && npm run lint && npm run build
 - Migrasi dicek idempoten (upgrade → downgrade → upgrade).
 - `[x]` di ROADMAP hanya dengan angka/keluaran nyata.
 
+### Verifikasi deployment Docker
+
+**Belum aktif di `gspe-ai3` sampai cutover.** Siklus Docker memakai handoff
+khusus `temp/prompt/docker-deploy.md`: executor hanya Task 1–7 + smoke lokal,
+tanpa review/push/merge/server. Summary dibawa ke sesi perencanaan untuk review
+dan Part B. Ini pengecualian dari alur native generik §1.
+
+Artefak ada di `docker/`; kode aplikasi backend/frontend/vision tidak diubah,
+selain extra CPU `face` di backend/pyproject.toml. Dev lokal venv/Vite tetap
+seperti sebelumnya. Tes shell berjalan dengan Bash 3.2 maupun Bash 5:
+
+```bash
+backend/.venv/bin/python -m pytest docker/tests -q
+docker compose -f docker/compose.yml --env-file docker/.env.example config -q
+docker compose -f docker/compose.yml --env-file docker/.env.example --profile vision config -q
+```
+
+Ukur baseline dan suite akhir **berurutan** (docker, backend, frontend, build,
+lint); gunakan `env -u NODE_ENV` untuk backend/frontend/build/lint. Tidak perlu
+`uv sync`, `uv lock`, atau venv baru. Docker Compose config tidak membutuhkan
+daemon; build/run hanya bila `docker info` berhasil. Jangan menyalakan Docker
+Desktop otomatis; image vision hanya dibangun di server amd64/GPU.
+
+`./docker/setup.sh --env-only` bisa diuji tanpa Docker memakai ENV_FILE dan
+DATA_DIR sementara. Tes migrasi hanya `--dry-run` dengan env/data palsu,
+bukan `.env` server. `.env.example` berisi placeholder; `.env`, YAML go2rtc
+runtime (kredensial kamera), dan secrets tetap di luar git. Skrip menggunakan
+Python 3 stdlib di host untuk parsing/rendering/edit dotenv lintas platform.
+
+Verifikasi server (Part B) meliputi instalasi bersih, idempotensi, tag image,
+healthcheck, live LAN, auth MQTT, enrollment CPU, dump/restore, heartbeat/event
+vision, engine 4090/5080, shm, reboot, serta cutover/rollback. ROADMAP DK tetap
+`[~]` sampai bukti server tersedia; petunjuk operasi ada di bagian Docker RUNBOOK.
+
+
 ## 4. Deploy ke `gspe-ai3`
 
 Akses baca ke server bebas; **tulis, deploy, restart, dan push butuh izin eksplisit user.**

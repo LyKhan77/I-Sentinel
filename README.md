@@ -5,7 +5,7 @@ Sistem surveillance AI: FastAPI backend + vision-node + frontend.
 Dokumen inti: **`ARCHITECTURE.md`** (komponen, kontrak MQTT/HTTP/WS, alur data) ·
 **`WORKFLOW.md`** (alur per fitur) · `docs/DEVELOPMENT.md` (siklus pengembangan, deploy, rollback) · `ROADMAP.md` · `CHANGELOG.md`.
 
-## Arsitektur
+## Arsitektur (referensi systemd)
 
 ```
 Browser (LAN)
@@ -56,6 +56,7 @@ isentinel/
 │   │   ├── features/         # dashboard, live, events, attendance, enrollment, config
 │   │   ├── components/
 │   │   └── api/              # REST client + WS
+├── docker/                   # Compose, image, setup, migrasi host, dan tes infrastruktur
 ├── deploy/
 │   ├── go2rtc/go2rtc.example.yaml   # template; salin ke go2rtc.yaml (gitignored, isi kredensial RTSP)
 │   ├── mosquitto/mosquitto.conf
@@ -67,6 +68,43 @@ isentinel/
 ├── docs/runbooks/            # prosedur operasional per fitur
 ├── README.md  ARCHITECTURE.md  WORKFLOW.md  ROADMAP.md  CHANGELOG.md
 ```
+
+## Quick start Docker
+
+**Belum aktif di `gspe-ai3` sampai cutover.** Kode deployment tersedia di branch
+`feat/docker-deploy`; build/run container dan verifikasi server masih menunggu Part B.
+Unit systemd di `deploy/` tetap tersedia sebagai jalur legacy/rollback.
+
+Prasyarat host Linux: Docker Engine + Compose v2, akses Docker tanpa sudo, Python 3,
+openssl, internet untuk build/model, serta NVIDIA Container Toolkit untuk vision.
+Tanpa runtime NVIDIA, setup memberi peringatan dan menjalankan stack tanpa vision.
+Pastikan `docker.service` enabled dan port `7700–7704` TCP serta `7703` UDP kosong.
+
+```bash
+git clone <URL_REPO> I-Sentinel
+cd I-Sentinel
+./docker/setup.sh
+```
+
+Web tersedia di `http://<IP-LAN>:7700`. `ADMIN_USERNAME` dan `ADMIN_PASSWORD` hanya
+dicetak pada run pembuat `docker/.env`; selanjutnya baca berkas itu secara lokal
+(mode `0600`, jangan salin ke log/git). `setup.sh` juga menjadi jalur update:
+`git pull && ./docker/setup.sh`. Rahasia, password broker, dan YAML go2rtc existing
+tidak ditimpa. `ENV_FILE`, `DATA_DIR`, dan `GO2RTC_PUBLIC_HOST` bisa dioverride saat
+setup pertama; `.env` existing menentukan DATA_DIR pada run berikutnya.
+
+Data default: direktori sibling `../I-Sentinel-docker-data` (`api`, `vision`,
+`models`, `go2rtc`, `mosquitto`, `secrets`); PostgreSQL memakai named volume `pgdata`.
+YAML go2rtc menyimpan kredensial kamera saat runtime: backup sebagai rahasia, bukan
+config publik. PostgreSQL `5432` dan RTSP go2rtc `7705` hanya internal jaringan
+Compose, **bukan** loopback/publish host. API dan enrollment wajah memakai CPU;
+hanya vision memakai GPU. Engine TensorRT harus dibuat pada arsitektur GPU target.
+
+Mode persiapan: `./docker/setup.sh --env-only` tidak memanggil Docker;
+`./docker/setup.sh --rehearse --no-engine` tidak menjalankan vision. Jangan memakai
+DATA_DIR produksi untuk rehearsal. Default `VISION_SHM_SIZE=2gb` masih sementara;
+ukur ring klip sebelum cutover. Prosedur migrasi, backup, dan rollback:
+[`docs/RUNBOOK.md`](docs/RUNBOOK.md#docker--prosedur-pending-cutover).
 
 ## Run (dev lokal)
 

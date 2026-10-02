@@ -3,6 +3,65 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Docker — kode deployment selesai, verifikasi server menunggu (2026-10-02)
+
+- **Konteks:** tahap 2 setelah port non-default, spec/plan `2026-10-01-docker-deploy`;
+  implementasi native Task 1–7, TDD dan commit lokal per task. **Belum aktif di
+  `gspe-ai3` sampai cutover.** Tidak ada SSH, deploy, push, merge, atau review
+  dalam sesi executor; server tetap systemd lama.
+- **File:** `docker/backend` (image editable CPU + entrypoint migrasi), `docker/web`
+  (Vite build devDependencies + nginx resolver/proxy variabel tanpa URI),
+  `docker/vision` (CUDA 13 + lock existing tidak diubah), `docker/compose.yml`,
+  `.env.example`, template go2rtc/mosquitto, `setup.sh`, export/migrasi/retention
+  scripts, tujuh berkas tes; backend/pyproject.toml hanya extra
+  `face = ["insightface>=0.7", "onnxruntime>=1.19"]`; `.gitignore`; README,
+  ARCHITECTURE, RUNBOOK, DEVELOPMENT, ROADMAP, CHANGELOG. `backend/app`, `vision/`,
+  `frontend/`, dan `deploy/` tidak diubah.
+- **Komit implementasi:** `75e0cdf` backend; `c725b50` web; `bb7096b` vision/export;
+  `48ea9e5` compose/retention; `3b3ef75` setup; `c7e6df2` migrasi. Commit ketujuh
+  mencatat dokumen ini. Tidak ada atribusi tambahan pada commit.
+- **Tes merah→hijau:** T1 4 gagal karena entrypoint/extra belum ada; T2 5 gagal
+  karena nginx.conf belum ada; T3 export 2 gagal dan pin lock dibuktikan merah
+  dengan `foo>=1` sementara lalu dikembalikan identik; T4 loop/env belum ada
+  (5 gagal + 9 fixture errors); T5 9 gagal karena setup belum ada, ditambah
+  guard env literal; T6 9 tes dry-run/guard, ditambah guard env target/secrets.
+  Fixture yang semula lulus karena exit nonzero generik diperketat dan diuji
+  merah sebelum implementasi guard.
+- **Baseline ulang sebelum T1 (Mac lokal, berurutan):** backend
+  `656 passed, 491 warnings in 131.17s`; frontend `Test Files 33 passed (33)` /
+  `Tests 420 passed (420)`; build exit 0; lint exit 0, 24 warning / 16 pasangan
+  rule-file. Peringatan backend, HTMLMediaElement load(), serta chunk >500 kB
+  sudah ada pada baseline.
+- **Verifikasi sebelum commit dokumen (berurutan):** docker `48 passed in 3.89s`
+  (0 skipped); backend `656 passed, 491 warnings in 130.53s`; frontend
+  `Test Files 33 passed (33)` / `Tests 420 passed (420)`; build exit 0
+  (`996 modules transformed`, `built in 2.93s`); lint
+  `Found 24 warnings and 0 errors.`, 16 pasangan rule-file, sama dengan baseline.
+  Compose config dengan/tanpa flag `--profile vision` exit 0 tanpa daemon.
+  Skrip setup/migrasi `bash -n` exit 0. Build API/web, import, nginx -t,
+  rehearsal container, login/proxy/health nyata, dan shellcheck container:
+  **tidak dijalankan: daemon mati** (`Cannot connect to the Docker daemon ...`).
+  Image vision tidak dibangun di Mac arm64. Smoke akhir di commit ketujuh
+  dicatat terpisah dalam `temp/prompt/docker-deploy-report.md` (lokal, gitignored).
+- **Keputusan/ketidakcocokan:** contoh plan 23:30→03:00 dikoreksi 43200→12600
+  detik sesuai jadwal spec; default shm `2gb` sementara sampai pengukuran Part B;
+  Python stdlib untuk dotenv/rendering (bukan sed); env tidak dieksekusi sebagai
+  shell; rehearsal/no-NVIDIA membatasi profile proses tanpa menimpa env existing.
+  Task 6 hanya rsync API saat rehearsal, berbeda dari ringkasan spec yang
+  menyebut API+vision; vision disinkron saat cutover. Node id diperbarui lagi
+  setelah restore. Password DB host dipisah ke PGPASSWORD dan tidak masuk
+  command/dry-run. Guard tambahan menolak overlap data, env tidak lengkap,
+  systemctl tak dapat diverifikasi, secrets existing saat rehearsal, dan
+  overwrite setelah marker tanpa force.
+- **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
+  Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
+  vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,
+  engine 4090/5080, shm, metrik/enrollment CPU, atau reboot di server.
+- **Rollback:** sebelum deploy cukup `git revert` commit Task 1–7 dalam urutan
+  terbalik; tidak ada DB/server yang perlu dipulihkan. Setelah cutover gunakan
+  RUNBOOK Docker: down tanpa `-v`, pemulihan data bila sudah ada write baru,
+  lalu enable unit legacy dengan persetujuan operator.
+
 ### Port non-default blok 7700–7705 — repo saja, tanpa deploy (2026-10-01)
 
 - **Konteks:** semua port masih default (`5173/8000/1984/8554/1883`) dan rawan bentrok di server dev
