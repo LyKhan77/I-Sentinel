@@ -23,7 +23,7 @@ dev = ["pytest>=8", "numpy"]  # numpy: tes attendance (dulu hanya terbawa lewat 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["gpu: requires CUDA/RTSP (run on dev server)"]
+markers = ["gpu: requires CUDA/RTSP (run on dev server)", "llm: requires LAN and explicit LLM environment"]
 
 [build-system]
 requires = ["setuptools>=68"]
