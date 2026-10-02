@@ -95,7 +95,14 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   1014 MiB (GPU 2, face), pola yang sama dengan node systemd; CPU container sekitar 35% (sebelum perbaikan 977%), load server 1,4-2,1;
   ring klip `/dev/shm/isentinel/cam363` sekitar 1 MB per kamera (default `VISION_SHM_SIZE=2gb` memadai); 1 embedding wajah. Zona diaktifkan
   hanya di salinan lalu dikembalikan `false`. **Belum teruji:** event nyata sampai klip terunggah (tidak ada orang di zona saat uji) dan
-  `export-engine.sh` (engine dipakai dari salinan host). Tes: `docker/tests` 71 passed, vision 235 passed.
+  **Uji lanjutan di rehearsal (2026-10-02):** (a) pindah pin detektor `cuda:1` -> `cuda:2` -> `cuda:1` lewat DB salinan + config push, tanpa
+  restart vision (restarts 0): heartbeat mengikuti pin, VRAM berpindah, pekerja dan engine dimuat ulang; efek samping: konteks CUDA ~386 MiB
+  muncul di GPU 0 (4090 bersama vLLM) dan menetap — perilaku muat-ulang engine di GPU non-0, bukan khas Docker. (b) event nyata: orang berdiri
+  di zona 15 (kamera Lorong Server, loitering 15 dtk) -> event 4777, snapshot JPEG 70 KB, klip MP4 2,6 MB (h264 1920x1080, 29,996 dtk,
+  `ffprobe`), `POST /internal/nodes/server/blobs` kind=snapshot dan kind=clip keduanya 200, alert `not_configured` (tanpa token), antrean
+  vision kosong. (c) `export-engine.sh 2`: unduh `yolo26s.pt`, ONNX FP16, engine TensorRT 21,3 MB dalam 18 dtk, smoke 5,1 ms/frame; engine
+  baru dimuat vision di `cuda:1` (4,7 ms rata-rata). Semua zona live memang `active=false`; di salinan hanya diaktifkan sementara lalu
+  dikembalikan. Tes: `docker/tests` 71 passed, vision 235 passed.
 - **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,

@@ -155,6 +155,18 @@ SOAK_PIN=cuda:1 SOAK_OUT=~/isentinel-data/loadtest/soak.csv ./deploy/loadtest/so
 prosedur untuk Part B, **belum dijalankan di server**. Bagian systemd di atas
 tidak berubah; jangan mematikan layanan lama hanya untuk mencoba container.
 
+### Catatan dari rehearsal di `gspe-ai3` (2026-10-02)
+
+- `VISION_NODE_ID` adalah **nama** node (`server`), bukan id numerik: MQTT memakai `isentinel/nodes/<name>/heartbeat` dan
+  `isentinel/config/<name>`. Gejala nama salah: container hidup tapi idle, log API `heartbeat for unknown node`.
+- Node tanpa zona aktif tidak membuat pekerja (`started 0 worker(s) for N camera(s)`) dan tidak memakai GPU. Itu normal; di server dev
+  semua zona memang `active=false` sejak 1 Okt. Container tanpa kamera statis butuh `VISION_AWAIT_CONFIG=true` (sudah di compose).
+- `onnxruntime-gpu` dari PyPI adalah build CUDA 12: image membawa library CUDA 12.8 lewat apt dan lock dipasang `--no-deps`. Bila
+  log vision memuat `CUDAExecutionProvider is not in available provider names` atau CPU container melonjak, face embedder jatuh ke CPU.
+- Memindah pin GPU detektor di UI berlaku tanpa restart vision (config push), tetapi meninggalkan konteks CUDA ~386 MiB di GPU 0.
+  Satu berkas `yolo26s.engine` hanya valid untuk jenis GPU pembuatnya (5080 <-> 5080 aman, ke 4090 tidak).
+- Ring klip memakai ~1 MB per kamera pada stream uji; `VISION_SHM_SIZE=2gb` memadai untuk puluhan kamera.
+
 ### Retensi (container `retention`)
 
 Sweep berjalan sekali sehari pukul 03:00 waktu `TZ`. Berbeda dari timer systemd lama
