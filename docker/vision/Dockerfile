@@ -7,6 +7,12 @@ ENV NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=compute,utility,video 
     HOME=/tmp PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1
 COPY docker/vision/requirements.lock /tmp/requirements.lock
 RUN pip install --no-cache-dir -r /tmp/requirements.lock
+# onnxruntime-gpu (pinned in the lock) is a CUDA 12 build, while torch/TensorRT use the cu13 wheels from pip.
+# The dev server resolves cuBLAS/cuFFT/cuRAND/cudart 12 from /usr/local/cuda-12.8; without them the ORT CUDA
+# provider fails to load and the face embedder silently falls back to CPU.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cuda-cudart-12-8 libcublas-12-8 libcufft-12-8 libcurand-12-8 libcudnn9-cuda-12 \
+    && rm -rf /var/lib/apt/lists/*
 COPY vision/ /app/vision/
 RUN pip install --no-cache-dir --no-deps -e /app/vision
 WORKDIR /app/vision

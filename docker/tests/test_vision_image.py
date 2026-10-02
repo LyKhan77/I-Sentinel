@@ -43,3 +43,15 @@ def test_export_engine_run_is_non_interactive():
     result = subprocess.run(["bash", str(DOCKER / "scripts/export-engine.sh"), "--dry-run", "0"], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert " -T " in result.stdout
+
+
+def test_image_ships_cuda12_runtime_for_onnxruntime_gpu():
+    """onnxruntime-gpu dari PyPI adalah build CUDA 12 (di server dev ia memakai /usr/local/cuda-12.8),
+    sedangkan base image dan wheel torch/TensorRT adalah CUDA 13. Tanpa library CUDA 12, provider CUDA
+    tidak termuat dan face embedder diam-diam jatuh ke CPU (CPU container 977%)."""
+    lock = (DOCKER / "vision/requirements.lock").read_text()
+    assert re.search(r"^onnxruntime-gpu==", lock, re.M)
+    dockerfile = (DOCKER / "vision/Dockerfile").read_text()
+    for package in ["cuda-cudart-12-8", "libcublas-12-8", "libcufft-12-8", "libcurand-12-8", "libcudnn9-cuda-12"]:
+        assert package in dockerfile, package
+

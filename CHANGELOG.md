@@ -79,6 +79,12 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   memang `VISION_NODE_ID=server`. `setup.sh`, `migrate-from-host.sh`, `.env.example` (dan komentar menyesatkan di
   `deploy/vision.env.example`) mengasumsikan id numerik, dan fixture tes (docker palsu mengembalikan `7`) ikut mengunci asumsi
   itu. Kini `select name from node`, divalidasi `^[A-Za-z0-9._-]+$`; tes setup membedakan query nama dari id; docker tests 65 -> 68.
+  **Temuan ketiga (vision dengan zona aktif di salinan):** engine TensorRT dimuat di container dan proses container tampil di
+  `nvidia-smi`, tetapi log memuat `CUDAExecutionProvider is not in available provider names` dan CPU container melonjak ke 977%
+  (load server 9,6): `onnxruntime-gpu 1.24.4` adalah build CUDA 12 yang di server dev memakai `/usr/local/cuda-12.8`, sedangkan image
+  berbasis CUDA 13 sehingga face embedder jatuh ke CPU. Perbaikan: lapisan apt `cuda-cudart-12-8 libcublas-12-8 libcufft-12-8
+  libcurand-12-8 libcudnn9-cuda-12` setelah instal pip (cache pip tetap). Catatan: semua 6 zona di DB host live memang `active=false`
+  (event deteksi terakhir 1 Okt 10:02), jadi tanpa mengaktifkan zona di salinan tidak ada pekerja yang berjalan.
 - **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,
