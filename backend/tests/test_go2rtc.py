@@ -165,7 +165,7 @@ def test_live_endpoint_public_host_blank_falls_back_to_request(client, monkeypat
 
 
 def test_snapshot_proxies_go2rtc_and_requires_auth(client, monkeypatch):
-    """Port go2rtc (1984) diblokir firewall server, jadi snapshot harus lewat API."""
+    """Snapshot harus lewat API (same-origin + auth); go2rtc tidak punya autentikasi sendiri."""
     import httpx
     from app.api import live as live_mod
 

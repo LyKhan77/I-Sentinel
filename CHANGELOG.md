@@ -19,7 +19,7 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `go2rtc.example.yaml` (api 7702, webrtc 7703, rtsp 127.0.0.1:7705), `mosquitto.conf` (`listener 7704 0.0.0.0`),
   `bootstrap.sh` (health 7701), `.env.example` (`MQTT_URL=localhost:7704`, `GO2RTC_URL=http://localhost:7702`,
   baris baru `GO2RTC_RTSP_URL=rtsp://127.0.0.1:7705`, komentar di baris sendiri), `vision.env.example`
-  (7704/7701, contoh `source_url` `rtsp://127.0.0.1:7705/cam_2`); dokumen README, ARCHITECTURE, RUNBOOK
+  (7704/7701, `VISION_GO2RTC_URL=http://localhost:7702`, contoh `source_url` `rtsp://127.0.0.1:7705/cam_2`); dokumen README, ARCHITECTURE, RUNBOOK
   (tabel peta port + status server dev), DEVELOPMENT (catatan port); koreksi satu baris spec 3.2
   (nilai `127.0.0.1` + alasan `localhost` bisa me-resolve ke `::1`). Perintah operasional `gspe-ai3`
   di RUNBOOK/DEVELOPMENT tidak diubah. Tanpa migrasi.
@@ -37,9 +37,14 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   S2: diff `backend/app/core/config.py` hanya menambah field; grep `5173|8000|1984|8554|1883` di
   `deploy/systemd`, `deploy/go2rtc`, `deploy/mosquitto`, `deploy/bootstrap.sh`, `deploy/vision.env.example`,
   `.env.example` kosong; baris `GO2RTC_RTSP_URL/MQTT_URL/GO2RTC_URL=` bebas komentar inline; tanpa atribusi AI.
+- **Review (sesi perencanaan, 2026-10-02):** suite diulang berurutan di `2a2ed8e` dengan `env -u NODE_ENV`: backend 656 passed,
+  frontend 33 file / 420 passed, build 0, lint 24 baris / 16 pasangan — sama dengan laporan eksekutor. Satu temuan Important
+  diperbaiki: `VISION_GO2RTC_URL` (setting vision sendiri, default port lama, dipakai `recorder._save_clip`) terlewat di spec/plan
+  → ditambahkan ke `vision.env.example` dan spec 3.2; tiga temuan Minor/Nit (docstring uji snapshot basi, redaksi firewall
+  `7703/udp`, komentar `vite.config.ts`). Deviasi `rtsp://127.0.0.1:7705` disetujui user.
 - **Dampak:** tidak ada perubahan di server `gspe-ai3` (unit repo diperbarui, tidak di-deploy); dev lokal
   (`uvicorn --port 8000`, `npm run dev`) tetap jalan tanpa env tambahan. Instalasi baru yang memakai template
-  butuh pembukaan firewall `7700:7704/tcp` + `7703` (tcp/udp); `7705` tidak dibuka.
+  butuh pembukaan firewall `7700:7704/tcp` + `7703/udp`; `7705` tidak dibuka.
 - **Rollback:** `git revert` rentang commit `f287689..`; tanpa migrasi, tanpa perubahan server/DB.
 
 ### Bukti event system permanen — deploy dan merge (2026-10-01)

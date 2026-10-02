@@ -67,7 +67,7 @@ Deploy dan template (tidak berpengaruh ke dev lokal):
 - `deploy/go2rtc/go2rtc.example.yaml`: `api: { listen: ":7702", origin: "*" }`, `webrtc: { listen: ":7703" }`, `rtsp: { listen: "127.0.0.1:7705" }`.
 - `deploy/mosquitto/mosquitto.conf`: `listener 7704 0.0.0.0` (file template; di server nilai ini ada di `conf.d/default.conf`, lihat 3.3).
 - `.env.example`: `MQTT_URL=localhost:7704`, `GO2RTC_URL=http://localhost:7702`, `GO2RTC_RTSP_URL=rtsp://127.0.0.1:7705` (nilai memakai `127.0.0.1` literal, bukan `localhost`, karena listener RTSP hanya terikat `127.0.0.1` dan `localhost` bisa me-resolve ke `::1`).
-- `deploy/vision.env.example`: `VISION_MQTT_URL=...:7704`, `VISION_API_URL=http://localhost:7701`, `source_url` contoh `rtsp://127.0.0.1:7705/cam_2`.
+- `deploy/vision.env.example`: `VISION_MQTT_URL=...:7704`, `VISION_API_URL=http://localhost:7701`, `VISION_GO2RTC_URL=http://localhost:7702` (setting vision sendiri, default `1984`, dipakai `recorder._save_clip` untuk menarik klip dari go2rtc; terlewat di draf awal, ditemukan di review), `source_url` contoh `rtsp://127.0.0.1:7705/cam_2`.
 - `deploy/bootstrap.sh`: `curl localhost:7701`. Skrip `deploy/loadtest/*` tetap memakai env override (`ISENTINEL_API`, `GO2RTC_API`); runbook mencatat nilai barunya.
 - `frontend/src/app/i18n.tsx`: contoh hint `notifications.appUrlHint` (id dan en) `:5173` → `:7700`.
 - `backend/app/api/live.py` docstring `camera_snapshot`: hapus klaim "firewall hanya membuka 8000/5173/1883" yang basi (komentar saja).

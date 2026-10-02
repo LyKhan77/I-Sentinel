@@ -29,7 +29,7 @@ Semua perintah di bawah **sudah diverifikasi jalan**. Host: `gspe-ai3`
 > memakai port lama sampai cutover Docker
 > (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
 > Blok `7700–7705` berlaku untuk instalasi baru; firewall instalasi baru
-> membuka `7700:7704/tcp` + `7703` (tcp/udp), `7705` tidak dibuka.
+> membuka `7700:7704/tcp` + `7703/udp`, `7705` tidak dibuka.
 
 Restart tanpa sudo (unit memakai `Restart=always`, jadi kill cgroup = restart):
 
