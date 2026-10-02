@@ -36,9 +36,9 @@ Tujuan: server baru (production) cukup `git clone` lalu `./docker/setup.sh`; ser
 | K1 | **Folder `docker/` di root repo** memuat semua artefak Docker. `deploy/systemd/` tetap sebagai alternatif/rollback, tidak dihapus di siklus ini. |
 | K2 | **Port tetap** `7700–7704` dipublikasikan, `7705` (go2rtc RTSP) hanya internal; nomor di dalam container **sama** dengan nomor di host (fakta 11). Tidak ada variabel `PORT_*`. Port bentrok di host lain = ubah `compose.yml` dan `GO2RTC_URL` bersama. Postgres internal `postgres:5432`, tidak dipublikasikan. |
 | K3 | **API tanpa GPU** (onnxruntime CPU, fakta 5). Menghindari rebutan GPU 0 dengan vLLM dan image API tetap kecil. Hanya `vision` memakai GPU. |
-| K4 | **`vision` melihat semua GPU** (`count: all`); pin per node tetap lewat UI. Image berbasis CUDA 13 (Python 3.12), versi paket dikunci dari `pip freeze` venv vision dev yang teruji (fakta 3). `.engine` tidak di-bake ke image; dibuat di host lewat `docker/scripts/export-engine.sh` ke `${DATA_DIR}/api/models`. |
+| K4 | **`vision` melihat semua GPU** (`count: all`); pin per node tetap lewat UI. Image berbasis CUDA 13 (Python 3.12), versi paket dikunci dari `pip freeze` venv vision dev yang teruji (fakta 3). `.engine` tidak di-bake ke image; dibuat di host lewat `docker/scripts/export-engine.sh [GPU]` ke `${DATA_DIR}/models` (`CUDA_VISIBLE_DEVICES=<GPU>` membatasi GPU yang terlihat, karena `export_engine.py` memakai `device=0` dan engine hanya valid untuk arsitektur GPU pembuatnya). |
 | K5 | **Web = build statis + nginx** menggantikan Vite dev; nginx memproksi `/api` (termasuk WebSocket) ke `api:7701`. |
-| K6 | **Retensi = container `retention`** (image API) yang menjalankan sweep harian jam 03:00 waktu `TZ`; menggantikan timer systemd tanpa butuh host cron/root. |
+| K6 | **Retensi = container `retention`** (image API) menjalankan `docker/scripts/retention_loop.py` (Python, fungsi murni teruji) yang menyapu harian jam 03:00 waktu `TZ`; menggantikan timer systemd tanpa butuh host cron/root. |
 | K7 | **Bind mount di `${DATA_DIR}`** (bukan named volume) agar data mudah di-backup dan dipindah; container berjalan sebagai UID/GID host sehingga file tidak jadi milik root. |
 | K8 | **Satu `docker/.env`** (0600, gitignored) dihasilkan `setup.sh`; rahasia dibuat acak, tidak pernah dicetak kecuali kredensial admin sekali di akhir setup. Zero-secret: image tidak memuat rahasia. |
 | K9 | **`setup.sh` idempoten** dan sekaligus jalur update (`git pull && ./docker/setup.sh`): `.env` yang ada dipertahankan, image dibangun ulang, `up -d`. |
@@ -55,26 +55,28 @@ docker/
 ├── compose.yml
 ├── .env.example
 ├── setup.sh
-├── backend/Dockerfile        # API + retention (satu image)
-├── vision/Dockerfile         # CUDA 13 + TensorRT + ffmpeg
-├── web/{Dockerfile,nginx.conf}
-├── go2rtc/go2rtc.yaml.tmpl   # dirender setup.sh (envsubst)
+├── backend/{Dockerfile,Dockerfile.dockerignore,entrypoint.sh}   # API + retention (satu image)
+├── vision/{Dockerfile,Dockerfile.dockerignore,requirements.lock}   # CUDA 13 + TensorRT + ffmpeg
+├── web/{Dockerfile,Dockerfile.dockerignore,nginx.conf}
+├── go2rtc/go2rtc.yaml.tmpl   # dirender setup.sh (sed)
 ├── mosquitto/mosquitto.conf
-└── scripts/{export-engine.sh, migrate-from-host.sh, retention-loop.sh}
+├── scripts/{export-engine.sh, migrate-from-host.sh, retention_loop.py}
+└── tests/                    # pytest: compose, setup --env-only, retention, migrate --dry-run, nginx
 ```
+Konteks build semua image = root repo (`context: ..`); berkas abaikan per-Dockerfile (`Dockerfile.dockerignore`, BuildKit) agar semuanya tetap di dalam `docker/`.
 `docker/.env` dan `${DATA_DIR}` masuk `.gitignore`.
 
 ### 3.2 Layanan compose (`name: isentinel`)
 
 | Layanan | Image | Publish | Catatan |
 |---|---|---|---|
-| `postgres` | `postgres:16-alpine` | — | `${DATA_DIR}/pg`; healthcheck `pg_isready` |
-| `mosquitto` | `eclipse-mosquitto:2` | `7704` | `allow_anonymous false`, `password_file` dibuat `setup.sh`; persistence di `${DATA_DIR}/mosquitto` |
-| `go2rtc` | `alexxit/go2rtc` (tag dikunci) | `7702`, `7703/tcp+udp` | `api.listen :7702`, `webrtc.listen :7703` + `candidates: ["${GO2RTC_PUBLIC_HOST}:7703"]`, `rtsp.listen :7705` (tidak dipublikasikan); stream kamera ditambahkan API saat runtime (rekonsiliasi), jadi yaml tidak memuat kredensial kamera |
+| `postgres` | `postgres:16-alpine` | — | **named volume** `pgdata` (pengecualian K7: image postgres tidak andal dijalankan sebagai UID host arbitrer); healthcheck `pg_isready` |
+| `mosquitto` | `eclipse-mosquitto:2` | `7704` | `allow_anonymous false`, `password_file` dibuat `setup.sh` (satu pengguna `MQTT_USERNAME` dipakai API dan vision); berjalan sebagai UID host; persistence di `${DATA_DIR}/mosquitto/data` |
+| `go2rtc` | `alexxit/go2rtc` (tag dikunci) | `7702`, `7703/tcp+udp` | `api.listen :7702`, `webrtc.listen :7703` + `candidates: ["${GO2RTC_PUBLIC_HOST}:7703"]`, `rtsp.listen :7705` (tidak dipublikasikan); stream kamera ditambahkan API saat runtime dan go2rtc **menulisnya ke yaml** (berisi kredensial RTSP kamera, lihat komentar `go2rtc.example.yaml`), jadi `${DATA_DIR}/go2rtc/go2rtc.yaml` di-mount rw ke `/config`, bermode 0600, di luar repo, dirender `setup.sh` hanya bila belum ada |
 | `api` | build `docker/backend` | `7701` | entrypoint `alembic upgrade head` lalu `uvicorn`; healthcheck `/api/v1/health`; `depends_on` postgres, mosquitto, go2rtc (healthy) |
 | `vision` | build `docker/vision` | — | profile `vision`; `deploy.resources.reservations.devices` nvidia `count: all`; `shm_size` dari `VISION_SHM_SIZE` (fakta 8); `VISION_API_URL=http://api:7701`, `VISION_MQTT_URL=mosquitto:7704`, `VISION_GO2RTC_URL=http://go2rtc:7702` (default kode `1984`; dipakai `recorder._save_clip`, temuan review tahap 1), `VISION_API_KEY=${NODE_API_KEY}`; model wajah dibaca read-only dari `${DATA_DIR}/api/faces_models`; `depends_on` api healthy |
 | `web` | build `docker/web` | `7700` | multi-stage: `npm ci && npm run build` → nginx; SPA fallback `try_files`; `/api/` ke `api:7701` dengan header `Upgrade` dan `proxy_read_timeout` panjang; `client_max_body_size` cukup untuk foto enrollment dan impor CSV |
-| `retention` | image `api` | — | `retention-loop.sh`: tidur sampai 03:00 `TZ`, jalankan `scripts/retention_sweep.py`, ulang |
+| `retention` | image `api` | — | `retention_loop.py` (di-mount ro): tidur sampai 03:00 `TZ`, jalankan `scripts/retention_sweep.py`, ulang |
 
 Semua URL layanan di compose menyebut **port eksplisit** (`MQTT_URL=mosquitto:7704`, `GO2RTC_URL=http://go2rtc:7702`, `GO2RTC_RTSP_URL=rtsp://go2rtc:7705`, `VISION_*` di atas): `config_push.py:128`, `events_consumer.py:167`, dan `vision/transport/mqtt.py:35` jatuh ke `1883` bila URL tanpa port.
 RTSP `7705` tidak dipublikasikan tetapi harus terjangkau dari container `vision` lewat jaringan compose, jadi `rtsp.listen` di `go2rtc.yaml` untuk Docker adalah `:7705` (bukan `127.0.0.1:7705` seperti template systemd).
@@ -84,13 +86,13 @@ Semua layanan: `restart: unless-stopped`, `TZ=${TZ}` (default dari host, fallbac
 ### 3.3 Image
 
 - **backend**: `python:3.12-slim`; `pip install` dari `backend/` + extra baru `face` di `backend/pyproject.toml` (`insightface`, `onnxruntime` CPU); alat build hanya bila wheel `insightface` tidak tersedia; non-root.
-- **vision**: `nvidia/cuda:13.0.*-cudnn-runtime-ubuntu24.04` + Python 3.12; paket dikunci dari `pip freeze` venv vision dev (`docker/vision/requirements.lock`); `ffmpeg`, `libgl1`, `libglib2.0-0`; memuat `vision/scripts/export_engine.py`.
+- **vision**: `nvidia/cuda:13.0.3-base-ubuntu24.04` (library CUDA/cuDNN/TensorRT datang dari wheel pip yang dikunci, bukan dari image) + Python 3.12; paket dikunci dari `pip freeze` venv vision dev (`docker/vision/requirements.lock`); `ffmpeg`, `libgl1`, `libglib2.0-0`; memuat `vision/scripts/export_engine.py`.
 - **web**: `node:22` build → `nginx:alpine`. Tahap build memakai `npm ci` **termasuk devDependencies** dan tidak men-set `NODE_ENV=production` sebelum `npm run build` (vite dan tsc ada di devDependencies; `NODE_ENV=production` juga merusak suite frontend: React ter-resolve ke build production tanpa `act`, tercatat di review tahap 1).
 
 ### 3.4 Data dan rahasia
 
-`${DATA_DIR}` (default `<repo>/../I-Sentinel-docker-data`): `api` (`STORAGE_ROOT=/data/api`, `FACE_MODEL_DIR=/data/api/faces_models`, `models/`), `vision` (`VISION_DATA_DIR=/data/vision`), `pg`, `mosquitto`, `secrets` (dipasang `/secrets`, `CAMERA_SECRETS_FILE=/secrets/camera-secrets.json`, di luar `STORAGE_ROOT`).
-`NODE_API_KEY`, `JWT_SECRET`, password DB/MQTT/admin dibuat `setup.sh` (`openssl rand`). `COOKIE_SECURE=false` (LAN HTTP). Bobot YOLO `yolo26s.pt` diunduh ultralytics saat ekspor engine; bila host offline, file diletakkan manual di `${DATA_DIR}/api/models` (dicetak `setup.sh`).
+`${DATA_DIR}` (default `<repo>/../I-Sentinel-docker-data`): `api` (`STORAGE_ROOT=/data/api`, `FACE_MODEL_DIR=/data/api/faces_models`), `vision` (`VISION_DATA_DIR=/data/vision`), `models` (dipasang `/models` di `vision`: `yolo26s.pt` dan `yolo26s.engine`, `VISION_DETECTOR_MODEL=/models/yolo26s.engine`; sesuai tata letak server dev), `go2rtc`, `mosquitto` (`passwd`, `data/`), `secrets` (dipasang `/secrets`, `CAMERA_SECRETS_FILE=/secrets/camera-secrets.json`, di luar `STORAGE_ROOT`).
+`NODE_API_KEY`, `JWT_SECRET`, password DB/MQTT/admin dibuat `setup.sh` (`openssl rand`). `COOKIE_SECURE=false` (LAN HTTP). Bobot YOLO `yolo26s.pt` diunduh ultralytics saat ekspor engine; bila host offline, file diletakkan manual di `${DATA_DIR}/models` (dicetak `setup.sh`).
 
 ### 3.5 `setup.sh`
 
