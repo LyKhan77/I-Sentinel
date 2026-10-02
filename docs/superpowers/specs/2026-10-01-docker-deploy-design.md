@@ -1,7 +1,7 @@
 # Spec — Migrasi Docker (deployment satu perintah)
 
 Status: **menunggu review spec tertulis**.
-Branch: `feat/docker-deploy` (dari `feat/port-nondefault` @ `f6f7013`; di-merge setelah tahap 1).
+Branch: `feat/docker-deploy` (di-rebase ke `main` @ `bb2f24c`; tahap 1 sudah ter-merge).
 Plan: belum ada (ditulis setelah spec disetujui, `docs/superpowers/plans/2026-10-01-docker-deploy.md`).
 Konteks: tahap 2. Tahap 1 = `2026-10-01-port-nondefault-design.md` (peta port `7700–7705`, perubahan repo saja). Spec ini melakukan **satu-satunya cutover server**.
 
@@ -72,9 +72,12 @@ docker/
 | `mosquitto` | `eclipse-mosquitto:2` | `7704` | `allow_anonymous false`, `password_file` dibuat `setup.sh`; persistence di `${DATA_DIR}/mosquitto` |
 | `go2rtc` | `alexxit/go2rtc` (tag dikunci) | `7702`, `7703/tcp+udp` | `api.listen :7702`, `webrtc.listen :7703` + `candidates: ["${GO2RTC_PUBLIC_HOST}:7703"]`, `rtsp.listen :7705` (tidak dipublikasikan); stream kamera ditambahkan API saat runtime (rekonsiliasi), jadi yaml tidak memuat kredensial kamera |
 | `api` | build `docker/backend` | `7701` | entrypoint `alembic upgrade head` lalu `uvicorn`; healthcheck `/api/v1/health`; `depends_on` postgres, mosquitto, go2rtc (healthy) |
-| `vision` | build `docker/vision` | — | profile `vision`; `deploy.resources.reservations.devices` nvidia `count: all`; `shm_size` dari `VISION_SHM_SIZE` (fakta 8); `VISION_API_URL=http://api:7701`, `VISION_MQTT_URL=mosquitto:7704`, `VISION_API_KEY=${NODE_API_KEY}`; model wajah dibaca read-only dari `${DATA_DIR}/api/faces_models`; `depends_on` api healthy |
+| `vision` | build `docker/vision` | — | profile `vision`; `deploy.resources.reservations.devices` nvidia `count: all`; `shm_size` dari `VISION_SHM_SIZE` (fakta 8); `VISION_API_URL=http://api:7701`, `VISION_MQTT_URL=mosquitto:7704`, `VISION_GO2RTC_URL=http://go2rtc:7702` (default kode `1984`; dipakai `recorder._save_clip`, temuan review tahap 1), `VISION_API_KEY=${NODE_API_KEY}`; model wajah dibaca read-only dari `${DATA_DIR}/api/faces_models`; `depends_on` api healthy |
 | `web` | build `docker/web` | `7700` | multi-stage: `npm ci && npm run build` → nginx; SPA fallback `try_files`; `/api/` ke `api:7701` dengan header `Upgrade` dan `proxy_read_timeout` panjang; `client_max_body_size` cukup untuk foto enrollment dan impor CSV |
 | `retention` | image `api` | — | `retention-loop.sh`: tidur sampai 03:00 `TZ`, jalankan `scripts/retention_sweep.py`, ulang |
+
+Semua URL layanan di compose menyebut **port eksplisit** (`MQTT_URL=mosquitto:7704`, `GO2RTC_URL=http://go2rtc:7702`, `GO2RTC_RTSP_URL=rtsp://go2rtc:7705`, `VISION_*` di atas): `config_push.py:128`, `events_consumer.py:167`, dan `vision/transport/mqtt.py:35` jatuh ke `1883` bila URL tanpa port.
+RTSP `7705` tidak dipublikasikan tetapi harus terjangkau dari container `vision` lewat jaringan compose, jadi `rtsp.listen` di `go2rtc.yaml` untuk Docker adalah `:7705` (bukan `127.0.0.1:7705` seperti template systemd).
 
 Semua layanan: `restart: unless-stopped`, `TZ=${TZ}` (default dari host, fallback `Asia/Jakarta`), logging `json-file` `max-size 10m` `max-file 5` (pengganti journald, mencegah disk penuh).
 
@@ -82,7 +85,7 @@ Semua layanan: `restart: unless-stopped`, `TZ=${TZ}` (default dari host, fallbac
 
 - **backend**: `python:3.12-slim`; `pip install` dari `backend/` + extra baru `face` di `backend/pyproject.toml` (`insightface`, `onnxruntime` CPU); alat build hanya bila wheel `insightface` tidak tersedia; non-root.
 - **vision**: `nvidia/cuda:13.0.*-cudnn-runtime-ubuntu24.04` + Python 3.12; paket dikunci dari `pip freeze` venv vision dev (`docker/vision/requirements.lock`); `ffmpeg`, `libgl1`, `libglib2.0-0`; memuat `vision/scripts/export_engine.py`.
-- **web**: `node:22` build → `nginx:alpine`.
+- **web**: `node:22` build → `nginx:alpine`. Tahap build memakai `npm ci` **termasuk devDependencies** dan tidak men-set `NODE_ENV=production` sebelum `npm run build` (vite dan tsc ada di devDependencies; `NODE_ENV=production` juga merusak suite frontend: React ter-resolve ke build production tanpa `act`, tercatat di review tahap 1).
 
 ### 3.4 Data dan rahasia
 
