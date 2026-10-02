@@ -55,3 +55,19 @@ def test_image_ships_cuda12_runtime_for_onnxruntime_gpu():
     for package in ["cuda-cudart-12-8", "libcublas-12-8", "libcufft-12-8", "libcurand-12-8", "libcudnn9-cuda-12"]:
         assert package in dockerfile, package
 
+
+def test_lock_is_installed_as_an_exact_freeze():
+    """Lock = freeze lengkap. Tanpa --no-deps, insightface (Requires: onnxruntime) menarik onnxruntime CPU
+    yang berbagi folder dengan onnxruntime-gpu dan menimpa modul GPU-nya."""
+    dockerfile = (DOCKER / "vision/Dockerfile").read_text()
+    assert re.search(r"pip install[^\n]*--no-deps[^\n]*-r /tmp/requirements\.lock", dockerfile)
+    packages = {line.split("==")[0].lower() for line in (DOCKER / "vision/requirements.lock").read_text().splitlines()
+                if line and not line.startswith("#")}
+    assert "onnxruntime" not in packages and "onnxruntime-gpu" in packages
+
+
+def test_image_build_fails_when_onnxruntime_cuda_provider_is_missing():
+    """Regresi 'diam-diam jatuh ke CPU': build harus gagal bila CUDAExecutionProvider tidak tersedia."""
+    dockerfile = (DOCKER / "vision/Dockerfile").read_text()
+    assert re.search(r"RUN python -c .*CUDAExecutionProvider.*get_available_providers", dockerfile)
+

@@ -85,6 +85,10 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   berbasis CUDA 13 sehingga face embedder jatuh ke CPU. Perbaikan: lapisan apt `cuda-cudart-12-8 libcublas-12-8 libcufft-12-8
   libcurand-12-8 libcudnn9-cuda-12` setelah instal pip (cache pip tetap). Catatan: semua 6 zona di DB host live memang `active=false`
   (event deteksi terakhir 1 Okt 10:02), jadi tanpa mengaktifkan zona di salinan tidak ada pekerja yang berjalan.
+  **Temuan keempat:** setelah library CUDA 12 ditambahkan, `get_available_providers()` di image tetap hanya `Azure`/`CPU`: image berisi
+  `onnxruntime 1.30.0` (CPU, ditarik `insightface` yang `Requires: onnxruntime`) di samping `onnxruntime-gpu 1.24.4`, keduanya berbagi
+  `site-packages/onnxruntime` sehingga modul CPU menimpa modul GPU (venv server hanya punya `onnxruntime-gpu`). Perbaikan: lock dipasang
+  `pip install --no-deps -r` (freeze lengkap) dan build gagal bila `CUDAExecutionProvider` tidak tersedia.
 - **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,
