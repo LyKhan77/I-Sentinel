@@ -89,6 +89,13 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   `onnxruntime 1.30.0` (CPU, ditarik `insightface` yang `Requires: onnxruntime`) di samping `onnxruntime-gpu 1.24.4`, keduanya berbagi
   `site-packages/onnxruntime` sehingga modul CPU menimpa modul GPU (venv server hanya punya `onnxruntime-gpu`). Perbaikan: lock dipasang
   `pip install --no-deps -r` (freeze lengkap) dan build gagal bila `CUDAExecutionProvider` tidak tersedia.
+  **Hasil akhir uji vision di rehearsal (image `isentinel-vision:local` 15,4 GB):** paket ORT hanya `onnxruntime-gpu 1.24.4`;
+  providers `Tensorrt`/`CUDA`/`CPU`; sesi ORT di GPU 2 memakai `CUDAExecutionProvider`; `started 2 worker(s) for 7 camera(s)`, restart 0;
+  engine TensorRT hasil salinan host dimuat (21 MiB, detektor `cuda:1`, rata-rata 4,4 ms); container memakai 412 MiB (GPU 1) dan
+  1014 MiB (GPU 2, face), pola yang sama dengan node systemd; CPU container sekitar 35% (sebelum perbaikan 977%), load server 1,4-2,1;
+  ring klip `/dev/shm/isentinel/cam363` sekitar 1 MB per kamera (default `VISION_SHM_SIZE=2gb` memadai); 1 embedding wajah. Zona diaktifkan
+  hanya di salinan lalu dikembalikan `false`. **Belum teruji:** event nyata sampai klip terunggah (tidak ada orang di zona saat uji) dan
+  `export-engine.sh` (engine dipakai dari salinan host). Tes: `docker/tests` 71 passed, vision 235 passed.
 - **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,
