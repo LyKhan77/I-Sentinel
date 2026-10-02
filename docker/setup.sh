@@ -138,6 +138,25 @@ if [[ ! -f "$DATA_DIR/secrets/camera.env" ]]; then
         "# One KEY='value' per line; single quotes keep \$ and # literal." > "$DATA_DIR/secrets/camera.env"
 fi
 chmod 600 "$DATA_DIR/secrets/camera.env"
+if [[ ! -f "$DATA_DIR/secrets/llm.env" ]]; then
+    cat > "$DATA_DIR/secrets/llm.env" <<'LLM'
+# Optional on-premise LLM settings for the API only. Uncomment and configure to enable.
+# Keep credentials here, not in docker/.env. One KEY='value' per line.
+# LLM_ENABLED=false
+# LLM_API_URL=''
+# LLM_API_KEY=''
+# LLM_MODEL=''
+# LLM_EXTRA_BODY='{"chat_template_kwargs":{"enable_thinking":false}}'
+# LLM_MAX_TOKENS=1000
+# LLM_TIMEOUT_CAPTION_S=60
+# LLM_TIMEOUT_ASK_S=120
+# LLM_CONCURRENCY=2
+# LLM_ASK_RATE_PER_MIN=6
+# LLM_CAPTION_MIN_INTERVAL_S=60
+# AI_QUEUE_MAX=100
+LLM
+fi
+chmod 600 "$DATA_DIR/secrets/llm.env"
 if [[ ! -f "$DATA_DIR/go2rtc/go2rtc.yaml" ]]; then
     python3 - "$DOCKER_DIR/go2rtc/go2rtc.yaml.tmpl" "$DATA_DIR/go2rtc/go2rtc.yaml" <<'PY'
 import os

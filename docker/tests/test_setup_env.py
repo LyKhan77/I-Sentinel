@@ -226,3 +226,14 @@ def test_node_name_must_be_safe_for_mqtt_topics(tmp_path):
     assert "node name" in result.stderr.lower()
     assert values(tmp_path / "stack.env")["VISION_NODE_ID"] == "server"
 
+
+
+def test_llm_env_created_0600_and_never_overwritten(tmp_path):
+    invoke(tmp_path)
+    path = tmp_path / "data with spaces/secrets/llm.env"
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert "# LLM_ENABLED=false" in path.read_text()
+    assert not [line for line in path.read_text().splitlines() if line and not line.startswith("#")]
+    path.write_text("LLM_ENABLED=true\nLLM_API_KEY='k#1'\n")
+    invoke(tmp_path)
+    assert path.read_text() == "LLM_ENABLED=true\nLLM_API_KEY='k#1'\n"
