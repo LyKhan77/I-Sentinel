@@ -15,6 +15,8 @@ import {
   appendPage, mergeFirstPage, type Filters, type RangeId,
 } from './eventFilters'
 import EvidencePanel from './EvidencePanel'
+import AskAiPanel from './AskAiPanel'
+import { getAiStatus, type AiStatus } from '../../api/ai'
 
 const SEV_VALUES = ['critical', 'warning', 'info']
 const SEV_DOT: Record<string, string> = { critical: 'ev-dot--critical', warning: 'ev-dot--warning', info: 'ev-dot--info' }
@@ -111,6 +113,14 @@ export default function EventsPage() {
   const [tg, setTg] = useState<TelegramStatus | null>(null)
   // jam 5 s untuk `clipPending`: Date.now() langsung di body render melanggar react/purity
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null)
+  const [aiTick, setAiTick] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    getAiStatus().then((value) => { if (alive) setAiStatus(value) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   const hasFilter = typeFilter != null || camFilter != null || sevFilter != null || range !== 'all' || query.trim() !== ''
   const resetFilters = () => setFilter({ type: null, camera: null, severity: null, range: 'all', q: '' })
@@ -188,6 +198,10 @@ export default function EventsPage() {
   // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
   useLiveEvents((raw) => {
     const msg = raw as { kind?: string; event_id?: number; status?: AlertStatus }
+    if (msg?.kind === 'ai') {
+      if (typeof msg.event_id === 'number' && selected?.id === msg.event_id) setAiTick((value) => value + 1)
+      return
+    }
     if (msg?.kind === 'alert') {
       // broadcast status akhir alert (alert_dispatcher) → update chip tanpa reload
       const status = msg.status
@@ -614,6 +628,10 @@ export default function EventsPage() {
                   </div>
                 ))}
                 </>
+              )}
+
+              {aiStatus?.enabled && selected.type !== 'attendance' && !isSystem && (
+                <AskAiPanel key={selected.id} event={selected} status={aiStatus} tick={aiTick} />
               )}
 
               <dl className="ev-meta-grid">
