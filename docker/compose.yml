@@ -131,6 +131,7 @@ services:
       VISION_GO2RTC_URL: http://go2rtc:7702
       VISION_DATA_DIR: /data/vision
       VISION_DETECTOR_MODEL: /models/yolo26s.engine
+      VISION_AWAIT_CONFIG: "true"
       VISION_FACE_MODEL_DIR: /faces
     volumes:
       - ${DATA_DIR}/vision:/data/vision

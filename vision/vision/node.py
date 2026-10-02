@@ -254,7 +254,9 @@ class VisionNode:
         self._workers: list[CameraWorker | FaceGateWorker] = []
         # (camera_id, kind) -> (frames, motion_skipped, monotonic) heartbeat sebelumnya
         self._cam_prev: dict[tuple[int, str], tuple[int, int, float]] = {}
-        self._await_config = False  # a configured node must not exit with zero workers
+        # a configured node must not exit with zero workers; VISION_AWAIT_CONFIG=true makes a node
+        # without static cameras wait for the MQTT config instead of exiting at once
+        self._await_config = self.cfg.await_config
         self._face_settings = FaceSettings()
         self._det_prev: tuple[float, int, float] | None = None  # (ms_total, n, monotonic) heartbeat lalu
         self.events: list[dict] = []  # test hook: all worker events

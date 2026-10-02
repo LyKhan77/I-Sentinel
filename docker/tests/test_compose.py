@@ -107,3 +107,10 @@ def test_camera_credentials_reach_only_api(tmp_path):
     for name, service in services.items():
         has = "CAM_PASSWORD" in service.get("environment", {})
         assert has == (name == "api"), name
+
+
+def test_vision_waits_for_mqtt_config_instead_of_exiting(services):
+    """Tanpa kamera statis, node yang tidak menunggu config keluar dan restart-loop."""
+    assert services["vision"]["environment"]["VISION_AWAIT_CONFIG"] == "true"
+    assert not services["vision"]["environment"].get("VISION_CAMERAS_JSON")
+

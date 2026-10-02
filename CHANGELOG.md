@@ -65,6 +65,15 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   Tes baru: alur `setup.sh` penuh dengan docker palsu (urutan panggilan, node id, idempotensi), kontrak compose untuk
   `camera.env`, ekstraktor kredensial, langkah kredensial di rencana migrasi. Belum terbukti: build image, healthcheck
   nyata, TZ di image slim, resolusi lock vision — tetap Part B.
+- **Rehearsal di `gspe-ai3` (2026-10-02, clone `I-Sentinel-docker`, DATA_DIR terpisah):** build `api` (1,04 GB), `web` (50,4 MB),
+  `vision` (13 GB, pin `requirements.lock` ter-resolve) exit 0; `setup.sh --rehearse --no-engine` semua `healthy`, run kedua idempoten
+  (hash `.env`/`go2rtc.yaml`/`camera.env`/`passwd` dan umur container identik); LAN: `7700–7704` terbuka, `7705` dan `5432` tertutup;
+  login lewat proxy 200 dan proxy tetap 200 setelah `api` dibuat ulang; `migrate-from-host.sh --rehearse`: alembic `0020`, tabel statis
+  cocok persis, checksum klip dan jumlah file cocok, 14 stream go2rtc terdaftar dan satu frame kamera nyata (JPEG 640x360) lewat go2rtc
+  Docker; log API tanpa error; TZ container `WIB`. **Temuan dari uji vision:** container `vision` restart-loop (`started 0 worker(s) for
+  0 camera(s)`, exit 0): `VisionNode.run()` keluar bila tanpa worker dan `_await_config` False, sedangkan systemd selalu memberi
+  `VISION_CAMERAS_JSON` statis. Perbaikan: setting `VISION_AWAIT_CONFIG` (`NodeSettings.await_config`, default False, tidak mengubah
+  systemd/mode uji) dan compose mengaktifkannya; tes vision +2 (233 -> 235 passed, 3 deselected) dan tes compose +1.
 - **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,

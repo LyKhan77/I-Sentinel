@@ -496,3 +496,42 @@ def test_camera_stats_motion_skip_pct(tmp_path):
     node._camera_stats(0.0)
     det.frames, det.motion_skipped = 40, 30
     assert node._camera_stats(10.0)[0]["motion_skip_pct"] == 75.0
+
+
+def _idle_node(await_config):
+    cfg = NodeSettings(node_id="n", await_config=await_config)
+    return VisionNode(cfg=cfg, transport=FakeTransport(), source_factory=lambda c: None)
+
+
+def _run_in_thread(node):
+    thread = threading.Thread(target=node.run, daemon=True)
+    thread.start()
+    return thread
+
+
+def test_node_without_cameras_exits_by_default():
+    """Mode uji dan instalasi lama: tanpa kamera dan tanpa config, run() selesai sendiri."""
+    thread = _run_in_thread(_idle_node(False))
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+
+
+def test_node_awaiting_config_stays_alive_and_applies_config_that_arrives_late():
+    """Docker: tidak ada kamera statis, config MQTT tiba belakangan. Node tidak boleh keluar
+    (restart-loop) sebelum config sempat diproses."""
+    node = _idle_node(True)
+    applied = []
+    node.apply_config = applied.append
+    thread = _run_in_thread(node)
+    time.sleep(1.0)
+    assert thread.is_alive()
+    node._config_q.put({"cameras": []})
+    deadline = time.time() + 5
+    while not applied and time.time() < deadline:
+        time.sleep(0.05)
+    assert applied == [{"cameras": []}]
+    assert thread.is_alive()
+    node.stop_event.set()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+
