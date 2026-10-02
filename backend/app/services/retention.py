@@ -24,6 +24,7 @@ from app.models.alert import Alert
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
 from app.models.event import Event
+from app.models.event_ai import EventAi
 from app.services import storage_settings
 
 logger = logging.getLogger(__name__)
@@ -177,8 +178,9 @@ def _media_fields(ev: Event) -> set[str]:
 
 
 def _delete_events(db: Session, ids: list[int]) -> None:
-    """Hapus alert lalu event (FK alert.event_id), per batch; tanpa commit."""
+    """Hapus hasil AI, alert, lalu event sesuai urutan FK, per batch; tanpa commit."""
     for chunk in _chunks(ids):
+        db.query(EventAi).filter(EventAi.event_id.in_(chunk)).delete(synchronize_session="fetch")
         db.query(Alert).filter(Alert.event_id.in_(chunk)).delete(synchronize_session="fetch")
         db.query(Event).filter(Event.id.in_(chunk)).delete(synchronize_session="fetch")
 

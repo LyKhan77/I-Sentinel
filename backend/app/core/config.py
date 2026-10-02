@@ -58,6 +58,20 @@ class Settings(BaseSettings):
     no_exit_grace_min: int = 60  # toleransi setelah jam shift usai sebelum status jadi no_exit
     # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)
 
+    # Optional on-premise multimodal captioning and event questions.
+    llm_enabled: bool = False
+    llm_api_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_extra_body: dict = {"chat_template_kwargs": {"enable_thinking": False}}
+    llm_max_tokens: int = 1000
+    llm_timeout_caption_s: float = 60
+    llm_timeout_ask_s: float = 120
+    llm_concurrency: int = 2
+    llm_ask_rate_per_min: int = 6
+    llm_caption_min_interval_s: float = 60
+    ai_queue_max: int = 100
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 settings = Settings()

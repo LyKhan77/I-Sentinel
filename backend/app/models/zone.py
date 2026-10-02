@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, JSON, ForeignKey, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 
@@ -26,6 +26,8 @@ class Zone(Base):
     snapshot: Mapped[bool] = mapped_column(Boolean, default=True)
     clip: Mapped[bool] = mapped_column(Boolean, default=True)  # toggle rekam clip per zona
     telegram: Mapped[bool] = mapped_column(Boolean, default=False)
+    ai_caption: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    ai_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
