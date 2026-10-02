@@ -132,6 +132,8 @@ def health(): return {"status": "ok"}
 from app.api.events import router as events_router
 from app.models import event as _e  # noqa: F401 — register table
 app.include_router(events_router)
+from app.api.ai import router as ai_router
+app.include_router(ai_router)
 from app.api.zones import router as zones_router
 app.include_router(zones_router)
 from app.api.alerts import router as alerts_router
