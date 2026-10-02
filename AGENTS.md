@@ -16,8 +16,8 @@ It does two jobs:
 
 Status: pre-release `0.x`, Fase 0–5 done plus the feature cycles in `ROADMAP.md`; the only
 remaining milestone is Fase E (Jetson edge).
-Deployment target today is one dev/prod server (`gspe-ai3`); Jetson Orin Nano edge
-split is planned (Fase E).
+Deployment target today is one dev/prod server (`gspe-ai3`), running on Docker Compose since the
+2026-10-02 cutover (legacy systemd units disabled, rollback only); Jetson Orin Nano edge split is planned (Fase E).
 
 ## 2. Tech Stack
 
@@ -28,7 +28,7 @@ split is planned (Fase E).
 | Frontend | React 19, TypeScript, Vite 8, React Router 7, IBM Carbon (`@carbon/react`), SCSS, Vitest + Testing Library, oxlint |
 | Media | `go2rtc` (WebRTC/MSE/HLS/snapshot), ffmpeg-based recorder |
 | Messaging | Mosquitto MQTT (events, heartbeat, config push, LWT) |
-| Ops | systemd units, `deploy/bootstrap.sh`, retention timer, `.env`-only secrets |
+| Ops | Docker Compose (`docker/`, `docker/setup.sh`, retention container), `.env`-only secrets; legacy systemd units in `deploy/` |
 
 ## 3. Key Features
 
@@ -48,7 +48,7 @@ split is planned (Fase E).
 - **Attendance**: employee records, 3-photo enrollment, face embeddings + match
   threshold/quality gates, shifts, attendance events/days incl. `no_exit` grace.
 - **Storage & retention**: `STORAGE_ROOT` layout (`clips/crops/faces/faces_models/
-  models/snapshots`), retention sweep service + systemd timer (`RETENTION_DAYS`).
+  models/snapshots`), retention sweep (`retention` container; legacy systemd timer) (`RETENTION_DAYS`).
 - **Realtime UI**: WebSocket hub (`app/ws/hub.py`) + `src/api/useWs.ts`.
 
 ## 4. Project Structure
@@ -86,7 +86,9 @@ I-Sentinel/
 │   ├── components/              # shared (e.g. ZoneEditor)
 │   ├── api/                     # REST clients + useWs
 │   └── __tests__/               # vitest
-├── deploy/                      # go2rtc, mosquitto, systemd units, bootstrap.sh,
+├── docker/                      # compose.yml, setup.sh, Dockerfiles (backend/vision/web),
+│                                #   scripts/{migrate-from-host,export-engine,retention_loop}, tests/
+├── deploy/                      # legacy: go2rtc, mosquitto, systemd units, bootstrap.sh,
 │                                #   loadtest/resilience.sh, vision.env.example
 ├── docs/
 │   ├── plans/                   # original design spec + remaining milestone (07-edge-jetson)
@@ -126,25 +128,25 @@ npm run lint           # oxlint
 npm run build          # tsc -b && vite build
 ```
 
-Server (dev/prod, SSH):
+Server (dev/prod, SSH) — Docker since 2026-10-02:
 ```bash
 ssh gspe-ai3
-cd /home/gspe-ai3/project_cv/I-Sentinel && git pull
-./deploy/bootstrap.sh                 # venv + install + alembic + systemd install (no start)
-# NOTE: no passwordless sudo on gspe-ai3. Restart a service by killing its
-# cgroup procs; units use Restart=always:
-kill $(cat /sys/fs/cgroup/system.slice/isentinel-api.service/cgroup.procs)
-curl -s localhost:8000/api/v1/health  # expect {"status":"ok"}
-journalctl -u isentinel-api -n 50 --no-pager
-bash deploy/loadtest/resilience.sh    # 30+ camera load / resilience check
+cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git pull
+./docker/setup.sh                     # build + up, idempotent (never overwrites .env/passwd/go2rtc.yaml)
+docker compose -f docker/compose.yml ps
+curl -s localhost:7701/api/v1/health  # expect {"status":"ok"}
+docker compose -f docker/compose.yml logs --tail 50 api
+docker compose -f docker/compose.yml restart api   # restart one service (user is in the docker group; no sudo needed)
+bash deploy/loadtest/resilience.sh    # 30+ camera load / resilience check (ISENTINEL_API=http://127.0.0.1:7701)
 ```
 
-Server facts: host `gspe-ai3`, LAN `192.168.2.133`, VPN `10.8.0.162`, project
-`/home/gspe-ai3/project_cv/I-Sentinel`, runtime data in the sibling
-`I-Sentinel-data/{api,vision}`. Credentials live in `temp/data/server-info.txt`
-(gitignored) and the server `.env` — never commit them, never paste them into
-docs, commits, or code. Units in `deploy/systemd/` were reconciled with the running ones
-(`project_cv` path + `User=gspe-ai3`) in Fase 5 Task 12; operations: `docs/RUNBOOK.md`.
+Server facts: host `gspe-ai3`, LAN `192.168.2.133`, VPN `10.8.0.162`. Docker clone
+`/home/gspe-ai3/project_cv/I-Sentinel-docker`, runtime data `/home/gspe-ai3/project_cv/I-Sentinel-docker-data`
+(`api`, `vision`, `models`, `go2rtc`, `mosquitto`, `secrets`; Postgres in the `pgdata` named volume). Ports 7700–7704
+are published (7705 internal). `VISION_NODE_ID` is the node NAME (`server`). The old systemd tree
+`/home/gspe-ai3/project_cv/I-Sentinel`, `I-Sentinel-data` and the host Postgres are a frozen backup after the cutover; legacy
+units are disabled (rollback only, see `docs/RUNBOOK.md`). Credentials live in `temp/data/server-info.txt` (gitignored) and
+`docker/.env` on the server — never commit them, never paste them into docs, commits, or code.
 
 ## 6. Coding Conventions
 

@@ -3,6 +3,123 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Docker — kode, rehearsal, dan cutover di gspe-ai3 (2026-10-02)
+
+- **Konteks:** tahap 2 setelah port non-default, spec/plan `2026-10-01-docker-deploy`;
+  implementasi native Task 1–7, TDD dan commit lokal per task (sesi executor tanpa SSH/deploy/push). Rehearsal dan cutover dikerjakan
+  sesi perencanaan; **aktif di `gspe-ai3` sejak 2026-10-02 13:36 WIB**.
+- **File:** `docker/backend` (image editable CPU + entrypoint migrasi), `docker/web`
+  (Vite build devDependencies + nginx resolver/proxy variabel tanpa URI),
+  `docker/vision` (CUDA 13 + lock existing tidak diubah), `docker/compose.yml`,
+  `.env.example`, template go2rtc/mosquitto, `setup.sh`, export/migrasi/retention
+  scripts, tujuh berkas tes; backend/pyproject.toml hanya extra
+  `face = ["insightface>=0.7", "onnxruntime>=1.19"]`; `.gitignore`; README,
+  ARCHITECTURE, RUNBOOK, DEVELOPMENT, ROADMAP, CHANGELOG. `backend/app`, `vision/`,
+  `frontend/`, dan `deploy/` tidak diubah.
+- **Komit implementasi:** `75e0cdf` backend; `c725b50` web; `bb7096b` vision/export;
+  `48ea9e5` compose/retention; `3b3ef75` setup; `c7e6df2` migrasi. Commit ketujuh
+  mencatat dokumen ini. Tidak ada atribusi tambahan pada commit.
+- **Tes merah→hijau:** T1 4 gagal karena entrypoint/extra belum ada; T2 5 gagal
+  karena nginx.conf belum ada; T3 export 2 gagal dan pin lock dibuktikan merah
+  dengan `foo>=1` sementara lalu dikembalikan identik; T4 loop/env belum ada
+  (5 gagal + 9 fixture errors); T5 9 gagal karena setup belum ada, ditambah
+  guard env literal; T6 9 tes dry-run/guard, ditambah guard env target/secrets.
+  Fixture yang semula lulus karena exit nonzero generik diperketat dan diuji
+  merah sebelum implementasi guard.
+- **Baseline ulang sebelum T1 (Mac lokal, berurutan):** backend
+  `656 passed, 491 warnings in 131.17s`; frontend `Test Files 33 passed (33)` /
+  `Tests 420 passed (420)`; build exit 0; lint exit 0, 24 warning / 16 pasangan
+  rule-file. Peringatan backend, HTMLMediaElement load(), serta chunk >500 kB
+  sudah ada pada baseline.
+- **Verifikasi sebelum commit dokumen (berurutan):** docker `48 passed in 3.89s`
+  (0 skipped); backend `656 passed, 491 warnings in 130.53s`; frontend
+  `Test Files 33 passed (33)` / `Tests 420 passed (420)`; build exit 0
+  (`996 modules transformed`, `built in 2.93s`); lint
+  `Found 24 warnings and 0 errors.`, 16 pasangan rule-file, sama dengan baseline.
+  Compose config dengan/tanpa flag `--profile vision` exit 0 tanpa daemon.
+  Skrip setup/migrasi `bash -n` exit 0. Build API/web, import, nginx -t,
+  rehearsal container, login/proxy/health nyata, dan shellcheck container:
+  **tidak dijalankan: daemon mati** (`Cannot connect to the Docker daemon ...`).
+  Image vision tidak dibangun di Mac arm64. Smoke akhir di commit ketujuh
+  dicatat terpisah dalam `temp/prompt/docker-deploy-report.md` (lokal, gitignored).
+- **Keputusan/ketidakcocokan:** contoh plan 23:30→03:00 dikoreksi 43200→12600
+  detik sesuai jadwal spec; default shm `2gb` sementara sampai pengukuran Part B;
+  Python stdlib untuk dotenv/rendering (bukan sed); env tidak dieksekusi sebagai
+  shell; rehearsal/no-NVIDIA membatasi profile proses tanpa menimpa env existing.
+  Task 6 hanya rsync API saat rehearsal, berbeda dari ringkasan spec yang
+  menyebut API+vision; vision disinkron saat cutover. Node id diperbarui lagi
+  setelah restore. Password DB host dipisah ke PGPASSWORD dan tidak masuk
+  command/dry-run. Guard tambahan menolak overlap data, env tidak lengkap,
+  systemctl tak dapat diverifikasi, secrets existing saat rehearsal, dan
+  overwrite setelah marker tanpa force.
+- **Review sesi perencanaan (2026-10-02) dan perbaikan:** suite diulang berurutan di `a66945e`
+  (docker 48 passed; backend 656; frontend 33 file / 420; build 0; lint 24/16) — sama dengan laporan eksekutor.
+  Temuan dan perbaikan (TDD, merah dulu): **I1** kredensial kamera (`CAM_USERNAME`/`CAM_PASSWORD` di `.env` server dev,
+  dibaca kode dari environment) tidak diteruskan ke container API → `api` memuat `${DATA_DIR}/secrets/camera.env` lewat
+  `env_file` opsional, `setup.sh` membuatnya kosong 0600, `migrate-from-host.sh` mengisinya lewat
+  `scripts/extract_camera_env.py` (nilai dikutip tunggal agar `$` dan `#` tetap literal, tidak dicetak, tidak menyentuh
+  token Telegram); **I2** `compose run` tanpa `-T` di `setup.sh` dan `export-engine.sh`; **I3** unduh model wajah yang
+  gagal membatalkan setup (kini peringatan, dan `api/faces_models` dibuat lebih dulu agar bind mount `/faces` tidak
+  dimiliki root); **m1** peringatan bila IP LAN tak terdeteksi; **m3** catatan sweep retensi terlewat di RUNBOOK.
+  Tes baru: alur `setup.sh` penuh dengan docker palsu (urutan panggilan, node id, idempotensi), kontrak compose untuk
+  `camera.env`, ekstraktor kredensial, langkah kredensial di rencana migrasi. Belum terbukti: build image, healthcheck
+  nyata, TZ di image slim, resolusi lock vision — tetap Part B.
+- **Rehearsal di `gspe-ai3` (2026-10-02, clone `I-Sentinel-docker`, DATA_DIR terpisah):** build `api` (1,04 GB), `web` (50,4 MB),
+  `vision` (13 GB, pin `requirements.lock` ter-resolve) exit 0; `setup.sh --rehearse --no-engine` semua `healthy`, run kedua idempoten
+  (hash `.env`/`go2rtc.yaml`/`camera.env`/`passwd` dan umur container identik); LAN: `7700–7704` terbuka, `7705` dan `5432` tertutup;
+  login lewat proxy 200 dan proxy tetap 200 setelah `api` dibuat ulang; `migrate-from-host.sh --rehearse`: alembic `0020`, tabel statis
+  cocok persis, checksum klip dan jumlah file cocok, 14 stream go2rtc terdaftar dan satu frame kamera nyata (JPEG 640x360) lewat go2rtc
+  Docker; log API tanpa error; TZ container `WIB`. **Temuan dari uji vision:** container `vision` restart-loop (`started 0 worker(s) for
+  0 camera(s)`, exit 0): `VisionNode.run()` keluar bila tanpa worker dan `_await_config` False, sedangkan systemd selalu memberi
+  `VISION_CAMERAS_JSON` statis. Perbaikan: setting `VISION_AWAIT_CONFIG` (`NodeSettings.await_config`, default False, tidak mengubah
+  systemd/mode uji) dan compose mengaktifkannya; tes vision +2 (233 -> 235 passed, 3 deselected) dan tes compose +1.
+  **Temuan kedua dari uji vision:** container hidup tapi idle, log API `heartbeat for unknown node '1'`. Node dikenali lewat
+  **nama** di bidang MQTT (`isentinel/nodes/<name>/heartbeat`, `isentinel/config/<name>`), bukan id numerik; `vision.env` host
+  memang `VISION_NODE_ID=server`. `setup.sh`, `migrate-from-host.sh`, `.env.example` (dan komentar menyesatkan di
+  `deploy/vision.env.example`) mengasumsikan id numerik, dan fixture tes (docker palsu mengembalikan `7`) ikut mengunci asumsi
+  itu. Kini `select name from node`, divalidasi `^[A-Za-z0-9._-]+$`; tes setup membedakan query nama dari id; docker tests 65 -> 68.
+  **Temuan ketiga (vision dengan zona aktif di salinan):** engine TensorRT dimuat di container dan proses container tampil di
+  `nvidia-smi`, tetapi log memuat `CUDAExecutionProvider is not in available provider names` dan CPU container melonjak ke 977%
+  (load server 9,6): `onnxruntime-gpu 1.24.4` adalah build CUDA 12 yang di server dev memakai `/usr/local/cuda-12.8`, sedangkan image
+  berbasis CUDA 13 sehingga face embedder jatuh ke CPU. Perbaikan: lapisan apt `cuda-cudart-12-8 libcublas-12-8 libcufft-12-8
+  libcurand-12-8 libcudnn9-cuda-12` setelah instal pip (cache pip tetap). Catatan: semua 6 zona di DB host live memang `active=false`
+  (event deteksi terakhir 1 Okt 10:02), jadi tanpa mengaktifkan zona di salinan tidak ada pekerja yang berjalan.
+  **Temuan keempat:** setelah library CUDA 12 ditambahkan, `get_available_providers()` di image tetap hanya `Azure`/`CPU`: image berisi
+  `onnxruntime 1.30.0` (CPU, ditarik `insightface` yang `Requires: onnxruntime`) di samping `onnxruntime-gpu 1.24.4`, keduanya berbagi
+  `site-packages/onnxruntime` sehingga modul CPU menimpa modul GPU (venv server hanya punya `onnxruntime-gpu`). Perbaikan: lock dipasang
+  `pip install --no-deps -r` (freeze lengkap) dan build gagal bila `CUDAExecutionProvider` tidak tersedia.
+  **Hasil akhir uji vision di rehearsal (image `isentinel-vision:local` 15,4 GB):** paket ORT hanya `onnxruntime-gpu 1.24.4`;
+  providers `Tensorrt`/`CUDA`/`CPU`; sesi ORT di GPU 2 memakai `CUDAExecutionProvider`; `started 2 worker(s) for 7 camera(s)`, restart 0;
+  engine TensorRT hasil salinan host dimuat (21 MiB, detektor `cuda:1`, rata-rata 4,4 ms); container memakai 412 MiB (GPU 1) dan
+  1014 MiB (GPU 2, face), pola yang sama dengan node systemd; CPU container sekitar 35% (sebelum perbaikan 977%), load server 1,4-2,1;
+  ring klip `/dev/shm/isentinel/cam363` sekitar 1 MB per kamera (default `VISION_SHM_SIZE=2gb` memadai); 1 embedding wajah. Zona diaktifkan
+  hanya di salinan lalu dikembalikan `false`. **Belum teruji:** event nyata sampai klip terunggah (tidak ada orang di zona saat uji) dan
+  **Uji lanjutan di rehearsal (2026-10-02):** (a) pindah pin detektor `cuda:1` -> `cuda:2` -> `cuda:1` lewat DB salinan + config push, tanpa
+  restart vision (restarts 0): heartbeat mengikuti pin, VRAM berpindah, pekerja dan engine dimuat ulang; efek samping: konteks CUDA ~386 MiB
+  muncul di GPU 0 (4090 bersama vLLM) dan menetap — perilaku muat-ulang engine di GPU non-0, bukan khas Docker. (b) event nyata: orang berdiri
+  di zona 15 (kamera Lorong Server, loitering 15 dtk) -> event 4777, snapshot JPEG 70 KB, klip MP4 2,6 MB (h264 1920x1080, 29,996 dtk,
+  `ffprobe`), `POST /internal/nodes/server/blobs` kind=snapshot dan kind=clip keduanya 200, alert `not_configured` (tanpa token), antrean
+  vision kosong. (c) `export-engine.sh 2`: unduh `yolo26s.pt`, ONNX FP16, engine TensorRT 21,3 MB dalam 18 dtk, smoke 5,1 ms/frame; engine
+  baru dimuat vision di `cuda:1` (4,7 ms rata-rata). Semua zona live memang `active=false`; di salinan hanya diaktifkan sementara lalu
+  dikembalikan. Tes: `docker/tests` 71 passed, vision 235 passed.
+- **Cutover produksi dev (2026-10-02):** pra-cek bersih; user menjalankan `sudo systemctl disable --now isentinel-api isentinel-web
+  vision-node go2rtc isentinel-retention.timer`; kelima unit `inactive` diverifikasi; cadangan final `pg_dump` host
+  (`.../I-Sentinel-data/backups/isentinel-pre-docker-20261002-133603.sql`, 1,8 MB, mode 600); `migrate-from-host.sh --cutover` selesai 19 dtk
+  (exit 0, marker `.cutover-done`). Verifikasi: 7 container healthy (vision restart 0), health `ok` langsung dan lewat proxy web, node
+  `server` online (detektor `cuda:1`, face `cuda:2`), alembic `0020`, **25 tabel dibandingkan dengan DB host yang dibekukan, 0 selisih**,
+  14 stream go2rtc + frame kamera nyata HTTP 200, clips 76 / snapshots 81 / crops 345 / faces 10 identik, `camera-secrets.json` dan
+  `camera.env` mode 600, port lama (`5173/8000/1984/8554`) tertutup, `7700–7704` terbuka dari LAN dan `7705` tertutup, retensi terjadwal 03:00
+  WIB. Gap deteksi: heartbeat lama terakhir 13:35:25, baru 13:36:42 (±77 dtk). User memeriksa UI (login, Live View, dashboard) dan
+  mengubah `app_url` Telegram: OK. Catatan: semua 6 zona live `active=false` sejak 1 Okt (sebelum dan sesudah migrasi).
+- **Dampak:** server dev kini di Docker (blok port `7700–7705`, bind mount `I-Sentinel-docker-data`, Postgres named volume `pgdata`); unit
+  systemd lama dinonaktifkan (bukan dihapus); Postgres host, `I-Sentinel-data`, dan pohon `I-Sentinel` menjadi cadangan beku.
+  Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
+  vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,
+  engine 4090/5080, shm, metrik/enrollment CPU, atau reboot di server.
+- **Rollback:** (kini berlaku) tanpa data baru yang perlu dipertahankan: `docker compose down` (tanpa `-v`) lalu `sudo systemctl enable --now
+  isentinel-api isentinel-web vision-node go2rtc isentinel-retention.timer`. Bila sudah ada data baru di Docker: dump balik `pg_dump` dari
+  container dan sinkron data sesuai RUNBOOK Docker sebelum menyalakan unit lama. Kode: `git revert` commit Task 1–7 dan perbaikannya.
+
 ### Port non-default blok 7700–7705 — repo saja, tanpa deploy (2026-10-01)
 
 - **Konteks:** semua port masih default (`5173/8000/1984/8554/1883`) dan rawan bentrok di server dev

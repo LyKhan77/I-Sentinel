@@ -1,0 +1,186 @@
+name: isentinel
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+x-api-environment: &api-environment
+  TZ: ${TZ}
+  DATABASE_URL: postgresql+psycopg://isentinel:${POSTGRES_PASSWORD}@postgres:5432/isentinel
+  JWT_SECRET: ${JWT_SECRET}
+  NODE_API_KEY: ${NODE_API_KEY}
+  ADMIN_USERNAME: ${ADMIN_USERNAME}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  MQTT_URL: mosquitto:7704
+  MQTT_USERNAME: ${MQTT_USERNAME}
+  MQTT_PASSWORD: ${MQTT_PASSWORD}
+  GO2RTC_URL: http://go2rtc:7702
+  GO2RTC_RTSP_URL: rtsp://go2rtc:7705
+  GO2RTC_PUBLIC_HOST: ${GO2RTC_PUBLIC_HOST}
+  STORAGE_ROOT: /data/api
+  FACE_MODEL_DIR: /data/api/faces_models
+  CAMERA_SECRETS_FILE: /secrets/camera-secrets.json
+  COOKIE_SECURE: "false"
+  RETENTION_DAYS: ${RETENTION_DAYS}
+
+services:
+  postgres:
+    <<: *common
+    image: postgres:16-alpine
+    environment:
+      TZ: ${TZ}
+      POSTGRES_USER: isentinel
+      POSTGRES_DB: isentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isentinel -d isentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  mosquitto:
+    <<: *common
+    image: eclipse-mosquitto:2.0.22
+    user: ${HOST_UID}:${HOST_GID}
+    environment:
+      TZ: ${TZ}
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    ports:
+      - "7704:7704"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ${DATA_DIR}/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ${DATA_DIR}/mosquitto/data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 7704 -u \"$$MQTT_USERNAME\" -P \"$$MQTT_PASSWORD\" -t isentinel/health -m ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  go2rtc:
+    <<: *common
+    image: alexxit/go2rtc:1.9.9
+    user: ${HOST_UID}:${HOST_GID}
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "7702:7702"
+      - "7703:7703/tcp"
+      - "7703:7703/udp"
+    volumes:
+      - ${DATA_DIR}/go2rtc:/config
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7702/api/streams"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api:
+    <<: *common
+    image: isentinel-api:local
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    user: ${HOST_UID}:${HOST_GID}
+    env_file:
+      - path: ${DATA_DIR}/secrets/camera.env
+        required: false
+    environment:
+      <<: *api-environment
+      RUN_MIGRATIONS: "1"
+    ports:
+      - "7701:7701"
+    volumes:
+      - ${DATA_DIR}/api:/data/api
+      - ${DATA_DIR}/secrets:/secrets
+    depends_on:
+      postgres: {condition: service_healthy}
+      mosquitto: {condition: service_healthy}
+      go2rtc: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7701/api/v1/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      start_period: 40s
+      retries: 24
+
+  vision:
+    <<: *common
+    image: isentinel-vision:local
+    build:
+      context: ..
+      dockerfile: docker/vision/Dockerfile
+    profiles: [vision]
+    user: ${HOST_UID}:${HOST_GID}
+    shm_size: ${VISION_SHM_SIZE}
+    environment:
+      TZ: ${TZ}
+      VISION_NODE_ID: ${VISION_NODE_ID}
+      VISION_API_KEY: ${NODE_API_KEY}
+      VISION_API_URL: http://api:7701
+      VISION_MQTT_URL: mosquitto:7704
+      VISION_MQTT_USERNAME: ${MQTT_USERNAME}
+      VISION_MQTT_PASSWORD: ${MQTT_PASSWORD}
+      VISION_GO2RTC_URL: http://go2rtc:7702
+      VISION_DATA_DIR: /data/vision
+      VISION_DETECTOR_MODEL: /models/yolo26s.engine
+      VISION_AWAIT_CONFIG: "true"
+      VISION_FACE_MODEL_DIR: /faces
+    volumes:
+      - ${DATA_DIR}/vision:/data/vision
+      - ${DATA_DIR}/models:/models
+      - ${DATA_DIR}/api/faces_models:/faces:ro
+    depends_on:
+      api: {condition: service_healthy}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  web:
+    <<: *common
+    image: isentinel-web:local
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "7700:7700"
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7700/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  retention:
+    <<: *common
+    image: isentinel-api:local
+    pull_policy: never
+    user: ${HOST_UID}:${HOST_GID}
+    environment:
+      <<: *api-environment
+      RUN_MIGRATIONS: "0"
+    working_dir: /app
+    command: ["python", "/retention_loop.py"]
+    volumes:
+      - ${DATA_DIR}/api:/data/api
+      - ${DATA_DIR}/secrets:/secrets
+      - ./scripts/retention_loop.py:/retention_loop.py:ro
+    depends_on:
+      api: {condition: service_healthy}
+
+volumes:
+  pgdata:

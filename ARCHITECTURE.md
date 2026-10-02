@@ -24,8 +24,8 @@ di `CHANGELOG.md`.
 
 Peta port (referensi repo & instalasi baru): `7700` web · `7701` API · `7702` go2rtc API ·
 `7703` go2rtc WebRTC (tcp+udp, LAN) · `7704` MQTT · `7705` go2rtc RTSP (hanya `127.0.0.1`).
-Server dev `gspe-ai3` masih memakai port lama (`5173/8000/1984/8554/1883`) sampai cutover
-Docker (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
+Sejak cutover 2026-10-02 server dev `gspe-ai3` menjalankan peta ini lewat Docker; tabel unit systemd di bawah adalah topologi
+legacy (dinonaktifkan, dipakai untuk rollback).
 
 Satu server (`gspe-ai3`) menjalankan semua komponen saat ini. Fase E memindahkan sebagian
 vision-node + go2rtc ke Jetson Orin Nano (`docs/plans/07-edge-jetson.md`); server tetap pusat
@@ -41,6 +41,44 @@ DB, alert, dan UI.
 | Mosquitto | `mosquitto` | Event, heartbeat, config push, LWT |
 
 `isentinel-recorder.service` masih stub; perekaman klip ada di vision-node (`recorder.py`).
+
+### Topologi Docker (aktif di `gspe-ai3` sejak 2026-10-02)
+
+Diagram dan tabel systemd di atas adalah topologi legacy (rollback). Stack `docker/compose.yml` (project `isentinel`)
+menjalankan tujuh layanan pada jaringan internal Compose:
+
+```text
+Browser → web:7700 (nginx static SPA) → api:7701 (HTTP + WebSocket)
+Browser → go2rtc:7702 / :7703 TCP+UDP
+Kamera/NVR → go2rtc → vision (RTSP go2rtc:7705, internal)
+vision → mosquitto:7704 → api → postgres:5432 (internal)
+vision → api (media) → DATA_DIR/api
+retention (image API) → postgres + DATA_DIR/api, sweep 03:00 TZ
+```
+
+| Layanan | Image | Host port / data |
+|---|---|---|
+| `postgres` | `postgres:16-alpine` | Tidak dipublikasikan; named volume `pgdata` |
+| `mosquitto` | `eclipse-mosquitto:2.0.22` | `7704`; passwd + persistence di DATA_DIR |
+| `go2rtc` | `alexxit/go2rtc:1.9.9` | `7702`, `7703` TCP/UDP; `/config` bind rw, YAML `0600` |
+| `api` | `isentinel-api:local`, Python 3.12 + face CPU | `7701`; migrasi sebelum uvicorn; API/secrets bind |
+| `vision` | `isentinel-vision:local`, CUDA 13 + lock | Profile `vision`; semua GPU terlihat, pin per node di UI |
+| `web` | `isentinel-web:local`, Node build → nginx | `7700`; proxy `/api/` variabel + resolver `127.0.0.11` |
+| `retention` | Image API | Loop Python harian; tidak menjalankan migrasi |
+
+Semua layanan memakai `restart: unless-stopped`, `TZ`, log json-file maksimum
+`10m` × 5. UID/GID host dipakai selain postgres dan web. API tidak mendapat GPU;
+vision memakai `shm_size=VISION_SHM_SIZE` (default sementara `2gb`) untuk ring klip.
+Healthcheck tersedia untuk postgres, mosquitto, go2rtc, API, dan web; status vision
+dibuktikan lewat heartbeat node `online` dan event, bukan sekadar container running.
+
+`${DATA_DIR}/models` dipasang `/models` (bobot + engine YOLO); wajah API berada di
+`api/faces_models` dan dibaca vision read-only `/faces`. `${DATA_DIR}/secrets`
+dipasang `/secrets`, di luar STORAGE_ROOT. YAML runtime go2rtc berisi kredensial
+RTSP dan dipertahankan antarrun. PostgreSQL named volume adalah pengecualian dari
+bind mount UID host. Nomor port internal sama dengan publish; `7705` dan `5432`
+tidak dipublikasikan. Browser tetap mendapat hostname LAN melalui GO2RTC_PUBLIC_HOST.
+
 
 ## 2. Backend (`backend/app/`)
 

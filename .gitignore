@@ -33,3 +33,9 @@ nul
 
 # config go2rtc hasil generate berisi kredensial RTSP kamera
 deploy/go2rtc/go2rtc.yaml
+
+# Docker private environment and optional local runtime artifacts
+docker/.env
+docker/*.local
+docker/go2rtc/go2rtc.yaml
+I-Sentinel-docker-data/

@@ -60,13 +60,64 @@ cd frontend && npx vitest run && npm run lint && npm run build
 - Migrasi dicek idempoten (upgrade → downgrade → upgrade).
 - `[x]` di ROADMAP hanya dengan angka/keluaran nyata.
 
+### Verifikasi deployment Docker
+
+Siklus Docker (aktif di `gspe-ai3` sejak 2026-10-02) memakai handoff
+khusus `temp/prompt/docker-deploy.md`: executor hanya Task 1–7 + smoke lokal,
+tanpa review/push/merge/server. Summary dibawa ke sesi perencanaan untuk review
+dan Part B (rehearsal/cutover). Ini pengecualian dari alur native generik §1.
+
+Artefak ada di `docker/`; kode aplikasi backend/frontend/vision tidak diubah,
+selain extra CPU `face` di backend/pyproject.toml. Dev lokal venv/Vite tetap
+seperti sebelumnya. Tes shell berjalan dengan Bash 3.2 maupun Bash 5:
+
+```bash
+backend/.venv/bin/python -m pytest docker/tests -q
+docker compose -f docker/compose.yml --env-file docker/.env.example config -q
+docker compose -f docker/compose.yml --env-file docker/.env.example --profile vision config -q
+```
+
+Ukur baseline dan suite akhir **berurutan** (docker, backend, frontend, build,
+lint); gunakan `env -u NODE_ENV` untuk backend/frontend/build/lint. Tidak perlu
+`uv sync`, `uv lock`, atau venv baru. Docker Compose config tidak membutuhkan
+daemon; build/run hanya bila `docker info` berhasil. Jangan menyalakan Docker
+Desktop otomatis; image vision hanya dibangun di server amd64/GPU.
+
+`./docker/setup.sh --env-only` bisa diuji tanpa Docker memakai ENV_FILE dan
+DATA_DIR sementara. Tes migrasi hanya `--dry-run` dengan env/data palsu,
+bukan `.env` server. `.env.example` berisi placeholder; `.env`, YAML go2rtc
+runtime (kredensial kamera), dan secrets tetap di luar git. Skrip menggunakan
+Python 3 stdlib di host untuk parsing/rendering/edit dotenv lintas platform.
+
+Verifikasi server (Part B) sudah dijalankan pada 2026-10-02: instalasi bersih dan idempotensi, tag image,
+healthcheck, akses LAN, auth MQTT, dump/restore, heartbeat dan event vision (event nyata sampai klip), pin GPU
+hot-reload, `export-engine.sh`, `shm`, cutover (bukti di `CHANGELOG.md`). Belum diuji: enrollment CPU dan reboot host
+(`docker.service` enabled). Petunjuk operasi ada di bagian Docker RUNBOOK.
+
+
 ## 4. Deploy ke `gspe-ai3`
 
 Akses baca ke server bebas; **tulis, deploy, restart, dan push butuh izin eksplisit user.**
 
-> **Catatan port:** peta port baru blok `7700–7705` (lihat README/ARCHITECTURE/RUNBOOK) baru
-> berlaku setelah cutover Docker (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
-> Sampai saat itu server masih memakai port lama; semua perintah di bagian ini tidak berubah.
+> Sejak 2026-10-02 server dev berjalan di Docker (blok port `7700–7705`). Deploy Docker di bawah; blok systemd sesudahnya adalah
+> jalur **legacy** (unit dinonaktifkan, hanya untuk rollback).
+
+```bash
+ssh gspe-ai3
+cd /home/gspe-ai3/project_cv/I-Sentinel-docker
+git fetch && git checkout feat/<slug> && git pull        # setelah merge: git checkout main && git pull
+./docker/setup.sh                                         # build + up, idempoten; migrasi alembic jalan di entrypoint API
+docker compose -f docker/compose.yml ps                   # semua healthy
+curl -s localhost:7701/api/v1/health                      # {"status":"ok"}
+docker compose -f docker/compose.yml logs --tail 50 api
+```
+
+- `setup.sh` membangun ulang image yang berubah dan hanya me-recreate container yang konfigurasinya berubah; `.env`, `passwd`,
+  `go2rtc.yaml` tidak pernah ditimpa. Pin GPU, zona, dan kamera tetap diatur lewat UI.
+- Frontend adalah build statis nginx (bukan Vite dev): perubahan frontend butuh `./docker/setup.sh` (rebuild image `web`).
+- Backup DB: `docker compose -f docker/compose.yml exec -T postgres pg_dump -U isentinel isentinel > cadangan.sql`.
+
+### Legacy systemd (hanya rollback)
 
 ```bash
 ssh gspe-ai3

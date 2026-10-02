@@ -43,6 +43,7 @@ class NodeSettings(BaseSettings):
     face_device: str = ""     # ""=auto, "cpu", "cuda:N"
     face_model_dir: str = ""  # default: <data_dir>/faces_models
     cameras_json: str = ""  # JSON: [{"camera_id": int, "source_url": str, "ai_fps": float}]
+    await_config: bool = False  # tanpa kamera statis: tunggu config MQTT, jangan keluar (Docker)
 
     model_config = SettingsConfigDict(env_prefix="VISION_", env_file=".env", extra="ignore")
 
