@@ -14,12 +14,15 @@ import {
   Tag,
   TextInput,
   ToastNotification,
+  TextArea,
   Toggle,
 } from '@carbon/react'
 import { Delete, Save } from '@carbon/icons-react'
 import { useT, type TKey } from '../../app/i18n'
 import { listCameras, type Camera } from '../../api/cameras'
 import { listShifts, type Shift } from '../../api/employees'
+import { getAiStatus, type AiStatus } from '../../api/ai'
+import { eventTypeLabel } from '../events/eventTypes'
 import {
   createZone,
   deleteZone,
@@ -66,6 +69,14 @@ export default function ZonesPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null)
+  const [showAiDefaults, setShowAiDefaults] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    getAiStatus().then((value) => { if (active) setAiStatus(value) }).catch(() => {})
+    return () => { active = false }
+  }, [])
 
   // toast hilang sendiri; tanpa ini notifikasi menumpuk sampai halaman di-reload
   useEffect(() => {
@@ -137,13 +148,17 @@ export default function ZonesPage() {
     setError(null)
     setBusy('save')
     const { id, camera_id, camera_name, ...payload } = selected
+    const aiFields = selected.type === 'attendance' ? {} : {
+      ai_caption: selected.ai_caption ?? false,
+      ai_prompt: selected.ai_prompt?.trim() || null,
+    }
     try {
       if (id < 0) {
-        const created = await createZone(cam.id, payload)
+        const created = await createZone(cam.id, { ...payload, ...aiFields })
         setZones(zones.map((z) => (z.id === id ? created : z)))
         setSelectedId(created.id)
       } else {
-        await updateZone(id, payload)
+        await updateZone(id, { ...payload, ...aiFields })
       }
       setAllZones((prev) => [...prev.filter((z) => z.camera_id !== cam.id), ...zones.filter((z) => z.id > 0)])
       setToast(t('zones.saved'))
@@ -516,7 +531,47 @@ export default function ZonesPage() {
                         </div>
                       )
                     })}
+                    <Toggle
+                      id="zone-ai-caption" size="sm"
+                      labelText={t('zones.aiCaption')}
+                      labelA={t('common.off')} labelB={t('common.on')}
+                      toggled={selected.ai_caption ?? false}
+                      onToggle={(value) => patchSelected({ ai_caption: value })}
+                    />
+                    {selected.ai_caption && (
+                      <>
+                        <RadioButtonGroup
+                          name="zone-ai-mode" legendText={t('zones.aiPrompt.mode')}
+                          valueSelected={selected.ai_prompt == null ? 'default' : 'custom'}
+                          onChange={(value) => patchSelected({ ai_prompt: value === 'default' ? null : '' })}
+                        >
+                          <RadioButton id="zone-ai-default" value="default" labelText={t('zones.aiPrompt.default')} />
+                          <RadioButton id="zone-ai-custom" value="custom" labelText={t('zones.aiPrompt.custom')} />
+                        </RadioButtonGroup>
+                        {selected.ai_prompt != null && (
+                          <TextArea
+                            id="zone-ai-prompt" labelText={t('zones.aiPrompt.label')}
+                            placeholder={t('zones.aiPrompt.placeholder')} maxLength={600}
+                            helperText={`${selected.ai_prompt.length}/600`}
+                            value={selected.ai_prompt}
+                            onChange={(e) => patchSelected({ ai_prompt: e.target.value })}
+                          />
+                        )}
+                        {aiStatus && (
+                          <Button kind="ghost" size="sm" onClick={() => setShowAiDefaults(true)}>
+                            {t('zones.aiPrompt.defaults')}
+                          </Button>
+                        )}
+                      </>
+                    )}
                   </div>
+                )}
+                {showAiDefaults && aiStatus && (
+                  <Modal open passiveModal modalHeading={t('zones.aiPrompt.defaults')} onRequestClose={() => setShowAiDefaults(false)}>
+                    {Object.entries(aiStatus.caption_prompts).map(([kind, prompt]) => (
+                      <p key={kind}><strong>{eventTypeLabel(kind, t)}</strong><br /><span>{prompt}</span></p>
+                    ))}
+                  </Modal>
                 )}
                 <Checkbox
                   id="zone-active"

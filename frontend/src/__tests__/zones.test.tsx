@@ -403,3 +403,60 @@ test('behavior aktif tanpa Snapshot & Clip: peringatan + Simpan diblokir sampai 
   await waitFor(() => expect(screen.queryByTestId('zone-media-warning-intrusion')).not.toBeInTheDocument())
   expect(screen.getByTestId('zone-save')).toBeEnabled()
 })
+
+
+async function selectAiZone(zone: Zone, statusOk = true) {
+  const fallback = stubFetch({ zones: [zone] })
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (String(url).endsWith('/ai/status')) return {
+      ok: statusOk, status: statusOk ? 200 : 503,
+      json: async () => ({ enabled: true, presets: {}, caption_prompts: { idle_zone: 'Cari orang jongkok.' } }),
+    }
+    return fallback(url, init)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  render(<I18nProvider><ZonesPage /></I18nProvider>)
+  fireEvent.click(await screen.findByTestId('zone-item-10'))
+  return fetchMock
+}
+
+test('Caption AI otomatis disimpan per zona', async () => {
+  const f = await selectAiZone(zoneFix())
+  fireEvent.click(screen.getByRole('switch', { name: 'Caption AI otomatis' }))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(f).ai_caption).toBe(true))
+})
+
+test('mode Kustom mengirim instruksi dan Bawaan mengirim null', async () => {
+  const f = await selectAiZone(zoneFix({ ai_caption: true, ai_prompt: null }))
+  expect(screen.getByRole('radio', { name: 'Bawaan' })).toBeChecked()
+  fireEvent.click(screen.getByRole('radio', { name: 'Kustom' }))
+  const input = screen.getByLabelText('Prompt caption kustom')
+  expect(input).toHaveAttribute('maxLength', '600')
+  fireEvent.change(input, { target: { value: 'Fokus helm' } })
+  expect(screen.getByText('10/600')).toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(f).ai_prompt).toBe('Fokus helm'))
+  await waitFor(() => expect(screen.getByTestId('zone-save')).toBeEnabled())
+  f.mockClear()
+  fireEvent.click(screen.getByRole('radio', { name: 'Bawaan' }))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(f).ai_prompt).toBeNull())
+})
+
+test('Lihat prompt bawaan menampilkan instruksi dari API', async () => {
+  await selectAiZone(zoneFix({ ai_caption: true }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Lihat prompt bawaan' }))
+  expect(await screen.findByText('Cari orang jongkok.')).toBeInTheDocument()
+})
+
+test('API status gagal tidak merusak editor dan tidak menampilkan tautan prompt', async () => {
+  await selectAiZone(zoneFix({ ai_caption: true }), false)
+  expect(screen.getByTestId('zone-save')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Lihat prompt bawaan' })).not.toBeInTheDocument()
+})
+
+test('zona attendance tanpa blok AI', async () => {
+  await selectAiZone(zoneFix({ type: 'attendance', direction: 'entry', ai_caption: true }))
+  expect(screen.queryByRole('switch', { name: 'Caption AI otomatis' })).not.toBeInTheDocument()
+})

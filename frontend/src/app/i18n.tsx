@@ -4,6 +4,15 @@ const STORAGE_KEY = 'isentinel_locale'
 
 const dicts = {
   id: {
+    'zones.aiCaption': 'Caption AI otomatis',
+    'zones.aiPrompt.mode': 'Mode prompt caption',
+    'zones.aiPrompt.default': 'Bawaan',
+    'zones.aiPrompt.custom': 'Kustom',
+    'zones.aiPrompt.label': 'Prompt caption kustom',
+    'zones.aiPrompt.placeholder': 'Contoh: Fokus pada aktivitas di area kerja.',
+    'zones.aiPrompt.defaults': 'Lihat prompt bawaan',
+    'common.off': 'Nonaktif',
+    'common.on': 'Aktif',
     'nav.dashboard': 'Dashboard',
     'nav.live': 'Live View',
     'nav.events': 'Events',
@@ -828,6 +837,15 @@ const dicts = {
     'trend.s.target': 'target',
   },
   en: {
+    'zones.aiCaption': 'Automatic AI caption',
+    'zones.aiPrompt.mode': 'Caption prompt mode',
+    'zones.aiPrompt.default': 'Default',
+    'zones.aiPrompt.custom': 'Custom',
+    'zones.aiPrompt.label': 'Custom caption prompt',
+    'zones.aiPrompt.placeholder': 'Example: Focus on activity in the work area.',
+    'zones.aiPrompt.defaults': 'View default prompts',
+    'common.off': 'Off',
+    'common.on': 'On',
     'nav.dashboard': 'Dashboard',
     'nav.live': 'Live View',
     'nav.events': 'Events',
