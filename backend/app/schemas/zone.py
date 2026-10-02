@@ -74,6 +74,16 @@ def _validate_schedule(v: dict | None) -> dict | None:
     return v
 
 
+def _clean_ai_prompt(v: str | None) -> str | None:
+    """Normalize the optional caption instruction before storing a zone."""
+    if v is None:
+        return None
+    v = v.strip()
+    if len(v) > 600:
+        raise ValueError("ai_prompt must be at most 600 characters")
+    return v or None
+
+
 class ZoneIn(BaseModel):
     camera_id: int
     name: str
@@ -92,6 +102,9 @@ class ZoneIn(BaseModel):
     clip: bool = True
     telegram: bool = False
     active: bool = True
+    ai_caption: bool = False
+    ai_prompt: str | None = None
+    _clean_ai_prompt = field_validator("ai_prompt")(_clean_ai_prompt)
 
     _validate_polygon = field_validator("polygon")(_validate_polygon)
     _validate_schedule = field_validator("schedule")(_validate_schedule)
@@ -136,6 +149,9 @@ class ZonePatch(BaseModel):
     clip: bool | None = None
     telegram: bool | None = None
     active: bool | None = None
+    ai_caption: bool | None = None
+    ai_prompt: str | None = None
+    _clean_ai_prompt = field_validator("ai_prompt")(_clean_ai_prompt)
 
     _validate_polygon = field_validator("polygon")(_validate_polygon)
     _validate_schedule = field_validator("schedule")(_validate_schedule)
@@ -175,5 +191,8 @@ class ZoneOut(BaseModel):
     clip: bool
     telegram: bool
     active: bool
+    ai_caption: bool
+    ai_prompt: str | None
+    _clean_ai_prompt = field_validator("ai_prompt")(_clean_ai_prompt)
     camera_name: str | None = None
     model_config = {"from_attributes": True}

@@ -380,3 +380,14 @@ def test_config_push_missing_shift_sends_null(db, caplog):
     db.commit()
     assert config_push.build_node_config(db, n)["cameras"][0]["zones"][0]["schedule"] is None
     assert "424242" in caplog.text
+
+
+def test_zone_payload_excludes_ai_fields(db):
+    node = _node(db)
+    cam = _cam(db, node.id)
+    zone = _zone(db, cam.id)
+    zone.ai_caption = True
+    zone.ai_prompt = "Fokus helm"
+    db.commit()
+    payload = config_push.build_node_config(db, node)["cameras"][0]["zones"][0]
+    assert "ai_caption" not in payload and "ai_prompt" not in payload
