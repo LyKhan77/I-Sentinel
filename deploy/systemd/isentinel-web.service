@@ -5,7 +5,8 @@ After=network.target
 [Service]
 User=gspe-ai3
 WorkingDirectory=/home/gspe-ai3/project_cv/I-Sentinel/frontend
-ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 5173
+Environment=API_URL=http://localhost:7701
+ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 7700 --strictPort
 Restart=always
 
 [Install]

@@ -9,16 +9,22 @@ Dokumen inti: **`ARCHITECTURE.md`** (komponen, kontrak MQTT/HTTP/WS, alur data) 
 
 ```
 Browser (LAN)
-   │  :5173 (Vite dev — isentinel-web.service)
+   │  :7700 (Vite dev — isentinel-web.service)
    ▼
-API FastAPI :8000 ──── Postgres (isentinel) ─── go2rtc :1984 (API/snapshot, proxy same-origin)
-   ▲  ▲                                    └── go2rtc :8554 RTSP (LAN, tertutup firewall)
-   │  └── MQTT Mosquitto :1883 ◄── vision-node (heartbeat + event + config push + LWT)
+API FastAPI :7701 ──── Postgres (isentinel) ─── go2rtc :7702 (API/snapshot, proxy same-origin)
+   ▲  ▲                                    └── go2rtc :7703 WebRTC (LAN) · :7705 RTSP (127.0.0.1 saja)
+   │  └── MQTT Mosquitto :7704 ◄── vision-node (heartbeat + event + config push + LWT)
    └──── blob upload (clip/snapshot/crop) ─── vision-node (YOLO26s TensorRT + ByteTrack)
 ```
 
-- Port terbuka di LAN: **8000** (API), **5173** (UI dev). go2rtc 1984/8554 hanya
-  localhost/LAN-internal — snapshot browser lewat proxy API (auth-gated).
+- Port terbuka di LAN: **7700** (UI dev), **7701** (API), **7702** (go2rtc API) dan **7703**
+  (go2rtc WebRTC) — Live Wall memutar stream langsung dari browser, jadi kedua port go2rtc
+  memang harus terjangkau klien LAN (terbukti port lama 1984 terjangkau dari LAN, 2026-10-01) —
+  dan **7704** (MQTT, untuk node edge Fase E). RTSP go2rtc **7705** hanya `127.0.0.1`
+  (vision node server membaca dari localhost); snapshot browser lewat proxy API (auth-gated).
+- Status server dev `gspe-ai3`: masih memakai port lama (`5173/8000/1984/8554/1883`) sampai
+  cutover Docker (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`). Peta
+  `7700–7705` di atas adalah referensi repo dan instalasi baru.
 - Vision node: satu worker per kamera; detektor pin GPU via UI (Konfigurasi → Node).
 
 ## Peta Folder
@@ -96,6 +102,10 @@ curl -s localhost:8000/api/v1/health
 ```
 
 `bootstrap.sh` membuat venv, install `backend[dev]`, `alembic upgrade head`, menyalin unit systemd ke `/etc/systemd/system/`, lalu daemon-reload + enable (tidak start).
+
+Catatan port: perintah server di atas masih memakai port lama (`8000`) — server dev `gspe-ai3`
+baru berpindah ke blok `7700–7705` saat cutover Docker
+(`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
 
 ## Manajemen Kamera
 

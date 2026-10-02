@@ -64,6 +64,10 @@ cd frontend && npx vitest run && npm run lint && npm run build
 
 Akses baca ke server bebas; **tulis, deploy, restart, dan push butuh izin eksplisit user.**
 
+> **Catatan port:** peta port baru blok `7700–7705` (lihat README/ARCHITECTURE/RUNBOOK) baru
+> berlaku setelah cutover Docker (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
+> Sampai saat itu server masih memakai port lama; semua perintah di bagian ini tidak berubah.
+
 ```bash
 ssh gspe-ai3
 cd /home/gspe-ai3/project_cv/I-Sentinel

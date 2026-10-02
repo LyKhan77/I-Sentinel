@@ -13,6 +13,24 @@ Semua perintah di bawah **sudah diverifikasi jalan**. Host: `gspe-ai3`
 | `go2rtc` | RTSP bridge/snapshot, port 1984 (API) + 8554 (RTSP) |
 | `isentinel-retention.timer` | Sweep retensi harian 03:00 |
 
+**Peta port** (referensi repo & instalasi baru; blok `7700–7705`):
+
+| Port | Fungsi | Akses |
+|---|---|---|
+| 7700 | Web UI (Vite dev) | LAN |
+| 7701 | API FastAPI | LAN |
+| 7702 | go2rtc API (WS/MSE/HLS/snapshot) | LAN |
+| 7703 | go2rtc WebRTC (tcp+udp) | LAN |
+| 7704 | MQTT Mosquitto | LAN (node edge Fase E) |
+| 7705 | go2rtc RTSP | `127.0.0.1` saja |
+
+> **Status server dev:** `gspe-ai3` saat ini masih memakai port lama
+> (`8000/5173/1984/8554/1883`) dan seluruh perintah di runbook ini tetap
+> memakai port lama sampai cutover Docker
+> (`docs/superpowers/specs/2026-10-01-docker-deploy-design.md`).
+> Blok `7700–7705` berlaku untuk instalasi baru; firewall instalasi baru
+> membuka `7700:7704/tcp` + `7703/udp`, `7705` tidak dibuka.
+
 Restart tanpa sudo (unit memakai `Restart=always`, jadi kill cgroup = restart):
 
 ```bash

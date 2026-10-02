@@ -81,7 +81,7 @@ def build_node_config(db: Session, node: Node) -> dict:
             .order_by(Zone.id)
         ]
         if node.type == "server":
-            source_url = f"rtsp://localhost:8554/cam_{cam.id}"
+            source_url = f"{settings.go2rtc_rtsp_url.rstrip('/')}/cam_{cam.id}"
         else:
             try:
                 stream = resolve_camera_stream(cam)
