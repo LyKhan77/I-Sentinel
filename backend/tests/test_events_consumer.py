@@ -207,3 +207,36 @@ def test_attendance_embedding_never_persisted_or_broadcast_when_matching_fails(d
     row = db.query(Event).filter_by(event_id=ev["event_id"]).one()
     assert "embedding" not in (row.payload or {})
     assert all("embedding" not in (m.get("payload") or {}) for m in broadcast)
+
+
+def test_caption_hook_new_snapshot_and_media(db, broadcast, monkeypatch):
+    from app.services.ai_worker import worker
+    calls = []
+    monkeypatch.setattr(worker, "maybe_enqueue_caption", lambda session, ev: calls.append(ev.id))
+    data = _event(snapshot_path="snapshots/synthetic.jpg")
+    handle_message(db, ec.EVENTS_TOPIC, json.dumps(data).encode())
+    ev = db.query(ec.Event).one()
+    assert calls == [ev.id] and len(broadcast) == 1
+    handle_message(db, ec.MEDIA_TOPIC, json.dumps({"event_id": ev.event_id, "snapshot_path": "snapshots/next.jpg"}).encode())
+    assert calls == [ev.id, ev.id] and ev.snapshot_path == "snapshots/next.jpg"
+
+
+def test_caption_hook_failure_does_not_stop_alerting_or_broadcast(db, broadcast, monkeypatch):
+    from app.services.ai_worker import worker
+    from app.models.alert import Alert
+    from app.models import Camera, Zone
+    from app.services.alert_dispatcher import dispatcher
+    cam = Camera(name="CAM-hook", host="camera.test")
+    db.add(cam); db.commit()
+    zone = Zone(camera_id=cam.id, name="Area", type="behavior", polygon=[],
+                behaviors=[{"kind": "intrusion", "telegram": True}])
+    db.add(zone); db.commit()
+    monkeypatch.setattr(dispatcher, "enqueue", lambda aid: True)
+    def fail(*args, **kwargs):
+        raise RuntimeError("synthetic worker failure")
+    monkeypatch.setattr(worker, "maybe_enqueue_caption", fail)
+    handle_message(db, ec.EVENTS_TOPIC, json.dumps(_event(camera_id=cam.id, zone_id=zone.id,
+                                                       snapshot_path="snapshots/test.jpg")).encode())
+    assert db.query(ec.Event).count() == 1
+    assert db.query(Alert).count() == 1
+    assert broadcast[-1]["type"] == "intrusion" and broadcast[0]["kind"] == "alert"

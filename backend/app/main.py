@@ -67,6 +67,11 @@ async def lifespan(app: FastAPI):
             logger.info("alert recover at startup: %s requeued", _dispatcher.recover(db))
         except Exception:
             logger.warning("alert recover at startup failed", exc_info=True)
+        try:
+            from app.services.ai_worker import worker as _ai_worker
+            logger.info("AI caption recover at startup: %s requeued", _ai_worker.recover(db))
+        except Exception:
+            logger.warning("AI caption recover at startup failed", exc_info=True)
     except Exception:
         logger.warning("republish_all at startup failed", exc_info=True)
     finally:
@@ -76,6 +81,8 @@ async def lifespan(app: FastAPI):
     consumer.start()
     from app.services.alert_dispatcher import dispatcher
     dispatcher.start()
+    from app.services.ai_worker import worker
+    worker.start()
     from app.services.disk_alert import monitor as disk_monitor
     disk_monitor.start()
     from app.services.node_health import monitor as node_monitor
@@ -87,6 +94,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        worker.stop()
         attendance_closer.stop()
         history_sampler.stop()
         node_monitor.stop()
