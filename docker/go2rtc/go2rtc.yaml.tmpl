@@ -1,0 +1,11 @@
+# Render only for first setup. Runtime streams may contain camera credentials.
+api:
+  listen: ":7702"
+  origin: "*"
+webrtc:
+  listen: ":7703"
+  candidates: ["${GO2RTC_PUBLIC_HOST}:7703"]
+rtsp:
+  listen: ":7705"
+log:
+  level: info
