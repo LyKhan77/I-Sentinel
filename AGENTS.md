@@ -28,7 +28,7 @@ Deployment target today is one dev/prod server (`gspe-ai3`), running on Docker C
 | Frontend | React 19, TypeScript, Vite 8, React Router 7, IBM Carbon (`@carbon/react`), SCSS, Vitest + Testing Library, oxlint |
 | Media | `go2rtc` (WebRTC/MSE/HLS/snapshot), ffmpeg-based recorder |
 | Messaging | Mosquitto MQTT (events, heartbeat, config push, LWT) |
-| Ops | Docker Compose (`docker/`, `docker/setup.sh`, retention container), `.env`-only secrets; legacy systemd units in `deploy/` |
+| Ops | Docker Compose (`docker/`, `docker/setup.sh`, retention container), env/secret-file settings; legacy systemd units in `deploy/` |
 
 ## 3. Key Features
 
@@ -50,6 +50,10 @@ Deployment target today is one dev/prod server (`gspe-ai3`), running on Docker C
 - **Storage & retention**: `STORAGE_ROOT` layout (`clips/crops/faces/faces_models/
   models/snapshots`), retention sweep (`retention` container; legacy systemd timer) (`RETENTION_DAYS`).
 - **Realtime UI**: WebSocket hub (`app/ws/hub.py`) + `src/api/useWs.ts`.
+- **AI advisory (MVP, default off)**: per-zone automatic caption (default/custom prompt), snapshot
+  plus clip-keyframe questions for all logged-in roles, preset cache, actor audit in `event_ai`.
+  `LLM_*` and `AI_QUEUE_MAX` only in `${DATA_DIR}/secrets/llm.env`, API only. One API process;
+  no severity gate, no alert suppression, no attendance/system analysis. Real rollout remains pending.
 
 ## 4. Project Structure
 
@@ -60,18 +64,19 @@ I-Sentinel/
 │   │   ├── main.py              # app factory, lifespan, router wiring, admin bootstrap
 │   │   ├── api/                 # routers: auth, users, cameras, stream_sources,
 │   │   │                        #   credential_profiles, location_groups, probe, live,
-│   │   │                        #   nodes, zones, events, alerts, telegram, storage,
+│   │   │                        #   nodes, zones, events, ai, alerts, telegram, storage,
 │   │   │                        #   employees, shifts, enrollment, attendance, deps
 │   │   ├── core/                # config (env), security (jwt/bcrypt), db session
 │   │   ├── models/              # SQLAlchemy models
 │   │   ├── schemas/             # Pydantic contracts
 │   │   ├── services/            # probe, stream_endpoint, go2rtc, config_push, ingest,
 │   │   │                        #   events_consumer, face, attendance, alerting, retention
+│   │   │                        #   ai_worker, ask_ai, llm_client, ai_media, ai_prompts
 │   │   └── ws/hub.py            # websocket fan-out
-│   ├── alembic/versions/        # migrations (latest: 0020_health_alert)
+│   ├── alembic/versions/        # migrations (latest: 0021_ai_caption)
 │   ├── scripts/                 # camera_management_migrate, retention_sweep,
 │   │                            #   download_face_models
-│   └── tests/                   # pytest (marker `gpu` = needs CUDA/RTSP)
+│   └── tests/                   # pytest (`gpu` = CUDA/RTSP; `llm` = explicit real endpoint opt-in)
 ├── vision/vision/               # deployable vision node (minimal deps)
 │   ├── node.py                  # main loop + config apply
 │   ├── recorder.py              # clip/snapshot recording
@@ -109,6 +114,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 pytest tests -q -m "not gpu"                      # Windows / no GPU
 pytest tests -q                                   # dev server (CUDA + RTSP available)
+pytest tests -q -m "not gpu and not llm"           # exclude real LLM contract explicitly
 ```
 
 Vision node (from `vision/`):
@@ -169,6 +175,10 @@ Concretely in this repo:
   not pin implementation details.
 - **Zero-secret**: DB and API responses carry references and paths, never camera
   credentials, tokens, or passwords.
+- **LLM privacy**: no endpoint/key literals in code or logs. Confirm with the endpoint owner
+  that employee images are neither retained nor used for training before real production tests.
+  `LLM_ENABLED=false` means no calls, status false, and ask 503. Changes to `llm.env` require
+  API container recreation, not just `docker compose restart api`.
 
 ## 7. Workflow
 

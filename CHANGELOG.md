@@ -3,6 +3,74 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Caption AI per zona dan Tanya AI — MVP lokal (2026-10-02)
+
+- **Konteks:** spec/plan `2026-10-02-ai-event-caption-ask`; Task 1–12 native dengan TDD
+  dan commit lokal per task. **BELUM diuji di server/UI/LLM nyata**. ROADMAP tetap `[~]`;
+  review, push, deploy, tes kontrak endpoint, penerimaan user, dan merge dikerjakan sesi berikutnya.
+- **Berkas:** backend Settings, model `event_ai`/Zone, migrasi `0021_ai_caption`, retensi,
+  skema zona, `llm_client`, `ai_prompts`, `ai_media`, `ai_worker`, `ask_ai`, router/skema `ai`,
+  lifespan, dua hook tambahan pada `events_consumer`, marker dan tes baru. Docker runtime API
+  mendapat ffmpeg, compose env_file API-only, setup template komentar llm.env (0600);
+  `.env.example` root hanya komentar. Frontend klien AI, editor zona, AskAiPanel, EventsPage,
+  id/en, theme, tes. Dokumen inti/RUNBOOK/AGENTS dan dua klausul lokasi env spec diperbarui.
+  Vision, alerting, dispatcher, telegram, deploy, lock, dan `docker/.env.example` tidak diubah.
+- **Commit implementasi:** `8fc67eb` data/migrasi; `2dbf332` API zona; `a8dfce2` klien LLM;
+  `3bca991` prompt; `be4eb07` media; `199ab86` worker/hook; `32de5d9` Tanya AI;
+  `70a56c9` API AI; `e661687` Docker/env; `aea8dbb` editor; `0bb7b8a` panel.
+  Commit kedua belas mencatat dokumen dan bukti ini.
+- **RED → GREEN:** T1 4 failed; T2 2 failed; T3 8 errors; T4 10 failed; T5 4 failed;
+  T6 2 failed/14 errors; T7 18 errors; T8 13 failed; T9 4 failed; T10 3 failed;
+  T11 15 failed, ditambah mutation RED event key sebelum restore GREEN.
+  Tes existing tidak diubah/dihapus. Tes viewer/config push T2 serta attendance/status failure
+  T10 langsung lulus karena perilaku lama, dicatat tanpa klaim RED.
+- **Baseline ulang lokal, berurutan:** backend `656 passed, 491 warnings in 129.76s`;
+  Docker `71 passed in 7.58s`; vision `235 passed, 3 deselected, 2 warnings in 13.47s`;
+  frontend `Test Files 33 passed (33)` / `Tests 420 passed (420)`; build/lint exit 0,
+  lint 24 warning / 16 pasangan (rule,file).
+- **Keluaran nyata verifikasi T12 sebelum commit (urutan S1, kontrak nyata dikecualikan):**
+
+  ```text
+  backend: 733 passed, 1 deselected, 517 warnings in 147.96s (0:02:27)
+  docker: 75 passed in 8.54s
+  frontend: Test Files 34 passed (34)
+            Tests 441 passed (441)
+            Duration 21.76s
+  lint: exit 0; 24 warnings; 16 pairs; new pairs 0; count changes 0
+  build: 998 modules transformed.
+         built in 2.82s
+         exit 0
+  tests/test_migration_0021.py::test_upgrade_downgrade PASSED
+  1 passed in 0.31s
+  ```
+
+  Backend memakai `-m "not gpu and not llm"`, Docker dan frontend berjalan berurutan.
+  S1 lengkap termasuk backend `not gpu`/vision diulang pada commit terakhir; hasil final
+  diserahkan dalam `temp/prompt/ai-event-caption-report.md` (lokal, gitignored).
+  Peringatan JWT test key, Starlette, Pillow, HTMLMediaElement load(), dan chunk >500 kB
+  berasal dari pola baseline. Lint dibanding per pasangan, bukan jumlah saja.
+- **Migrasi:** percobaan rantai SQLite sementara berhenti pada migrasi lama 0007:
+  `NotImplementedError: No support for ALTER of constraints in SQLite dialect.`
+  Karena itu upgrade head ×2/downgrade -1/upgrade head tidak dapat dibuktikan lewat rantai penuh.
+  Tes mandiri 0021 membuktikan default false/NULL, index, upgrade/downgrade dua siklus;
+  SQLite sementara dibersihkan. Rantai PostgreSQL/idempotensi head tetap tugas deploy.
+- **Smoke UI sintetis:** browser dengan API stub 390×844; Events dan editor kustom memiliki
+  page scrollWidth 390, panel 292/292 setelah jawaban panjang tanpa spasi, input prompt maxLength 600.
+  Bukti lokal `docs/evidence/ai-event-caption-390.png` dan `ai-event-zone-390.png`.
+  Dev server dan Chromium yang dibuat untuk smoke sudah dihentikan; layanan user tidak disentuh.
+- **Dampak/keputusan:** default off, tanpa panggilan LLM, panel tersembunyi, ask 503.
+  Caption per zona tanpa severity gate; manual ask tidak mengisi caption. Semua `LLM_*`
+  dan `AI_QUEUE_MAX` di `secrets/llm.env`, API-only; audit mengikuti retensi event.
+  JPEG sintetis menggantikan PNG contoh tes; scale ffmpeg 960×960 menjaga batas sisi portrait;
+  field Zone frontend opsional untuk zona draft/fixture lama, payload menormalisasi false/null.
+  Satu proses API; kuota/cache/admission lokal proses.
+- **Rollout/rollback:** rebuild API (ffmpeg) dan web, migrasi 0021, isi llm.env,
+  **recreate API** agar env_file terbaca (restart pada plan/spec saja tidak cukup), kemudian
+  aktifkan satu zona uji. Konfirmasikan privasi pemilik endpoint sebelum mengirim gambar.
+  Rollback aman: `LLM_ENABLED=false` + recreate. Downgrade 0020 bersifat destruktif terhadap
+  seluruh audit/prompt AI: backup, hentikan writer, downgrade dengan image migrasi 0021,
+  baru jalankan kode lama. Tanpa deploy pada sesi ini, rollback lokal cukup revert task urut terbalik.
+
 ### README siap produksi: alur instalasi sampai penyiapan pertama (2026-10-02)
 
 - **Konteks:** README lama memuat ±150 baris sebelum cara pakai, diagram dan peta folder usang ("referensi systemd", `deploy/sql`, "9 halaman"), tautan rusak ke `docs/RUNBOOK.md#docker--prosedur-pending-cutover` (judul sudah diganti), dan instruksi umum bercampur path khusus `gspe-ai3`.

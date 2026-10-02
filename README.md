@@ -1,7 +1,7 @@
 # I-Sentinel
 
 Sistem surveillance AI **on-premise** untuk jaringan LAN/pabrik. Kamera RTSP (umumnya di balik NVR) diproses di server GPU
-lokal: deteksi orang berbasis zona untuk keamanan, dan pengenalan wajah untuk absensi. Tanpa cloud; data tetap di server Anda.
+lokal: deteksi orang berbasis zona untuk keamanan, dan pengenalan wajah untuk absensi. Data disimpan lokal; fitur LLM opsional mengirim snapshot/keyframe ke endpoint yang dipilih operator.
 
 | | |
 |---|---|
@@ -89,7 +89,7 @@ letakkan `yolo26s.pt` di `<DATA_DIR>/models/` dan folder `models/buffalo_l` di `
 
 **Lokasi data** (`../I-Sentinel-docker-data/`): `api/` (media: clips, snapshots, crops, faces, faces_models), `vision/`, `models/`,
 `go2rtc/` (`go2rtc.yaml` berisi kredensial RTSP kamera, perlakukan sebagai rahasia), `mosquitto/`, `secrets/`
-(`camera.env`, `camera-secrets.json`). Database ada di named volume `pgdata`.
+(`camera.env`, `camera-secrets.json`, `llm.env`). Database ada di named volume `pgdata`.
 
 ## Penyiapan pertama
 
@@ -248,6 +248,35 @@ dengan garis ambang dan penanda waktu event — tanpa tab media dan tanpa menung
 `payload.evidence` (digambar tanpa fetch, tetap ada walau retensi 7 hari terpangkas); event lama memakai
 `/monitoring/history` (mode `from`/`to`, jendela maks 6 jam) — trennya hanya tersedia ≤ 7 hari. Alur lengkap:
 `WORKFLOW.md §8`.
+
+## Caption AI dan Tanya AI (opsional)
+
+Fitur MVP tersedia di kode, **belum diuji di server/UI/LLM nyata**. Default `LLM_ENABLED=false`:
+tidak ada panggilan LLM, panel disembunyikan, dan endpoint Tanya AI memberi 503 `disabled`.
+
+- Admin mengaktifkan **Caption AI otomatis** per zona non-attendance, terpisah dari severity dan Telegram.
+  Mode **Bawaan** memakai prompt per tipe; **Kustom** mengganti instruksi tipe saja (maksimal 600 karakter,
+  spasi tepi dibuang, kosong menjadi bawaan). Pesan sistem dan batas tiga kalimat selalu dipertahankan.
+- Caption diproses di latar setelah snapshot tersedia, dengan throttle per zona. Detail event menampilkan
+  lencana **Dibuat AI** dan status menunggu/berhasil/gagal. AI tidak mengubah severity atau menekan alert.
+- Semua user login, termasuk viewer, dapat memakai **Tanya AI**: preset atau pertanyaan maksimal 500 karakter.
+  Snapshot disertai 6 keyframe klip ≤30 detik, atau 12 untuk klip lebih panjang. Klip gagal/hilang memberi
+  jawaban snapshot saja (`frames_used=0`); preset temporal memerlukan klip. Cache preset tidak menghabiskan kuota.
+  Riwayat browser maksimal enam giliran dikirim, direset saat event berganti; audit server tetap tersimpan.
+- Attendance dan event system tidak dilayani AI. Hasil manual tidak mengisi kotak caption.
+  Hasil berupa saran, bukan bukti pasti; benda kecil dan gambar malam bisa salah dikenali.
+  `event_ai` mengikuti umur event dan dihapus oleh retensi/cleanup.
+
+Semua `LLM_*` dan `AI_QUEUE_MAX` hanya di `${DATA_DIR}/secrets/llm.env` (mode `0600`, hanya container `api`).
+Isi `LLM_API_URL` (base URL berakhiran `/v1`), `LLM_API_KEY`, `LLM_MODEL`, lalu `LLM_ENABLED=true`.
+`setup.sh` membuat template komentar tanpa menimpa konfigurasi. Default: concurrency 2, antrean 100,
+throttle caption 60 detik/zona, kuota Tanya AI 6/menit/user, timeout caption/ask 60/120 detik,
+`LLM_MAX_TOKENS=1000`, `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`.
+Rebuild image API untuk `ffmpeg`, lalu **buat ulang** container API agar perubahan `env_file` terbaca;
+`docker compose restart api` saja tidak memuat env baru. Panduan rollout/rollback: [`docs/RUNBOOK.md`](docs/RUNBOOK.md#caption-ai-dan-tanya-ai--rollout-terpisah).
+
+**Sebelum produksi, konfirmasi kepada pemilik endpoint bahwa gambar tidak disimpan atau dipakai melatih model.
+Snapshot dapat memuat wajah karyawan.** Jalankan satu proses API; semaphore, throttle, dan rate limit bersifat lokal proses.
 
 ## Dashboard
 

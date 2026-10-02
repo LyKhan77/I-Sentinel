@@ -9,7 +9,7 @@ Urutan penyiapan sistem baru: **§1 Login → §3 Kamera → §5 Deteksi & node 
 §11 Enrollment & shift**. Setelah itu fitur lain berjalan otomatis.
 
 Role: **admin** = semua konfigurasi, enrollment, koreksi, cleanup. **viewer** = read-only semua menu
-(akun TV sebaiknya viewer khusus).
+(akun TV sebaiknya viewer khusus). Pengecualian read-only: viewer boleh meminta analisis advisory Tanya AI.
 
 ---
 
@@ -92,6 +92,9 @@ menghapus riwayat event.
 4. **Simpan** → `zone` → config push → node memulai worker untuk kamera itu.
 5. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
 
+6. Opsional **Caption AI otomatis** per zona non-attendance: pilih **Bawaan** (instruksi per tipe)
+   atau **Kustom** (maksimal 600 karakter). Lihat prompt bawaan melalui tautan di editor.
+   AI hanya backend; field ini tidak dikirim ke vision melalui config push.
 Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam belum didukung.
 
 ## 7. Event behavior (deteksi → Inbox)
@@ -107,6 +110,9 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 3. Recorder node menyusun **klip pra-buffer** dari ring mainstream + snapshot beranotasi → upload blob
    → `isentinel/events/media` → path media diisi ke event.
 4. Paralel: notifikasi web (§9) dan alert Telegram (§10).
+5. Opsional AI: setelah snapshot tersedia, hook mengantre caption tanpa gerbang severity.
+   Worker menyimpan `event_ai` pending → ok/failed, mengirim WS `kind: "ai"`.
+   Kegagalan AI tidak mengubah event atau pengiriman alert.
 
 ## 8. Event Inbox
 
@@ -147,6 +153,26 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
    tanpa parameter atau nilainya tak valid → event pertama dan URL tidak diubah; event tidak ditemukan (dihapus
    retensi) atau gagal dimuat → peringatan dan panel jatuh ke event pertama — tidak pernah diam-diam menampilkan
    event lain. Tautan tetap hanya bisa dibuka dari LAN.
+
+### 8.1 Caption AI dan Tanya AI
+
+**Pengguna:** semua user login (admin mengatur zona) · **Halaman:** detail `/events`
+
+1. `GET /ai/status` sekali saat halaman dipasang. Global off → panel tidak ada, ask 503;
+   attendance dan system selalu tanpa panel.
+2. Caption otomatis ditampilkan dengan lencana **Dibuat AI** dan status. `kind: "ai"` untuk event
+   terpilih memuat ulang `GET /events/{id}/ai` (caption + 20 ask terbaru).
+3. Pilih preset sesuai tipe atau tulis pertanyaan ≤500 karakter. Riwayat percakapan browser dikirim
+   ulang (enam giliran terakhir, q/a ≤2000); memilih event lain meresetnya.
+4. API memakai cache preset sukses sebelum kuota (6/menit/user). Permintaan baru mengirim snapshot
+   dan keyframe ke LLM; timeout/LLM mati → failed pada audit dan pesan ramah, tidak menghentikan alert.
+5. Jawaban tampil sebagai teks literal, dengan jumlah frame dan catatan cache/snapshot saja.
+   Media habis/hilang → input nonaktif; tanpa klip preset temporal ditolak. Busy/429 dapat dicoba lagi.
+6. Jawaban manual tetap ask, tidak mengisi kotak caption. AI hanya saran; konfirmasi dengan media asli.
+   Audit menyimpan actor user; caption/ask ikut dihapus bersama event oleh retensi/cleanup.
+
+Konfigurasi global melalui `secrets/llm.env`, bukan UI. Rollout hanya setelah konfirmasi privasi
+pemilik endpoint; lihat `docs/RUNBOOK.md`. Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
 
 ## 9. Notifikasi web
 

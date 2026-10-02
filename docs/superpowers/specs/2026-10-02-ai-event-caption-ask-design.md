@@ -143,9 +143,9 @@ Web: AskAiPanel → POST /api/v1/events/{id}/ask ─► ask_ai (semaphore + rate
 | `llm_caption_min_interval_s` | `60` | per zona |
 | `ai_queue_max` | `100` | |
 
-Docker: `x-api-environment` meneruskan `LLM_*` non-rahasia dari `docker/.env`; `LLM_API_KEY`
-dari `${DATA_DIR}/secrets/llm.env` (`env_file`, `required: false`, pola `camera.env`);
-`setup.sh` tidak menimpanya. `.env.example` dan `docker/.env.example` didokumentasikan.
+Docker: semua `LLM_*` (rahasia dan non-rahasia) serta `AI_QUEUE_MAX` berada di
+`${DATA_DIR}/secrets/llm.env` (`env_file`, `required: false`, hanya `api`, pola `camera.env`);
+`setup.sh` tidak menimpanya. `.env.example` root hanya memberi komentar lokasi; `docker/.env.example` tidak diubah.
 
 ### 6.2 Data (migrasi `0021`, aditif)
 - `zone.ai_caption` Boolean, `server_default` 0.
@@ -203,9 +203,9 @@ Jawaban terlihat seluruh grup. Plan terpisah setelah MVP web stabil.
 
 ### 6.7 Docker dan rollout
 `docker/backend/Dockerfile` stage runtime: tambah `ffmpeg` ke baris `apt-get`. Butuh rebuild image
-`api` (`./docker/setup.sh`). Langkah: set `LLM_*` + `secrets/llm.env` → `LLM_ENABLED=true` →
-restart `api` → aktifkan toggle pada zona terpilih. Rollback: `LLM_ENABLED=false` + restart, atau
-`alembic downgrade 0020` (aditif).
+`api` (`./docker/setup.sh`). Langkah: isi semua `LLM_*` di `${DATA_DIR}/secrets/llm.env` →
+`LLM_ENABLED=true` di file itu → restart `api` → aktifkan toggle pada zona terpilih.
+Rollback: `LLM_ENABLED=false` di file itu + restart, atau `alembic downgrade 0020` (aditif).
 
 ## 7. Penanganan galat
 
