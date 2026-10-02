@@ -3,6 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### README siap produksi: alur instalasi sampai penyiapan pertama (2026-10-02)
+
+- **Konteks:** README lama memuat ±150 baris sebelum cara pakai, diagram dan peta folder usang ("referensi systemd", `deploy/sql`, "9 halaman"), tautan rusak ke `docs/RUNBOOK.md#docker--prosedur-pending-cutover` (judul sudah diganti), dan instruksi umum bercampur path khusus `gspe-ai3`.
+- **Diubah:** `README.md` — bagian depan ditulis ulang menjadi Arsitektur (diagram Docker + tabel layanan/port/akses), Instalasi (persyaratan, 3 langkah, apa yang dilakukan `setup.sh`, asal model YOLO/`buffalo_l`, opsi, lokasi data), **Penyiapan pertama** (8 langkah dari login sampai deteksi aktif, dengan nama menu UI yang sebenarnya), Operasi harian (perintah dari `docker/`, update, backup, tabel masalah umum), Panduan fitur (isi lama dipertahankan, dikoreksi untuk Docker: kredensial di `secrets/camera.env`, retensi oleh container `retention`, token Telegram lewat UI), Pengembangan (peta folder baru) dan Peta dokumen. `docs/RUNBOOK.md` §3 (tab Gate Absensi sudah tidak ada); `.gitignore` +`*.pt` `*.onnx` (tidak ada model ter-track).
+- **Verifikasi:** semua tautan berkas dan anchor README valid (skrip), variabel/flag yang disebut ada di `docker/.env.example` dan `docker/setup.sh`, `cd docker && docker compose config` memakai `docker/.env` otomatis, alur sinkron kamera→go2rtc dibaca dari kode (`create_camera` → `sync_camera` + `_config_push`). Tanpa perubahan kode, tanpa dampak ke server.
+- **Rollback:** `git revert` commit ini.
+
 ### Docker — kode, rehearsal, dan cutover di gspe-ai3 (2026-10-02)
 
 - **Konteks:** tahap 2 setelah port non-default, spec/plan `2026-10-01-docker-deploy`;

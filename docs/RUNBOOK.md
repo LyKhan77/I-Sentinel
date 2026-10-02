@@ -74,7 +74,8 @@ UI: **Konfigurasi → Kamera → Tambah** — isi Nama/Lokasi/IP → **Deteksi o
 
 - `go2rtc.yaml` ditulis otomatis (stream `cam_<id>` via API go2rtc).
 - Node membaca kamera setelah config push MQTT (otomatis, tanpa restart).
-- Zona dibuat di tab **Zona**; gate absensi di **Gate Absensi**.
+- Deteksi baru berjalan setelah ada zona aktif: zona behavior dan absensi dibuat di tab **Zona Deteksi** (tab Gate Absensi sudah tidak ada).
+- Kamera yang baru ditambahkan di instalasi Docker memakai kredensial dari **Kelola kredensial** (UI) atau `<DATA_DIR>/secrets/camera.env`.
 
 ## 4. GPU detektor (pin/unpin)
 
