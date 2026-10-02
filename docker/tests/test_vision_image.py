@@ -69,5 +69,5 @@ def test_lock_is_installed_as_an_exact_freeze():
 def test_image_build_fails_when_onnxruntime_cuda_provider_is_missing():
     """Regresi 'diam-diam jatuh ke CPU': build harus gagal bila CUDAExecutionProvider tidak tersedia."""
     dockerfile = (DOCKER / "vision/Dockerfile").read_text()
-    assert re.search(r"RUN python -c .*CUDAExecutionProvider.*get_available_providers", dockerfile)
+    assert re.search(r"RUN python -c .*get_available_providers.*CUDAExecutionProvider", dockerfile)
 
