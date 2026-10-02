@@ -194,15 +194,15 @@ if not any(line.startswith('COMPOSE_PROFILES=') for line in lines):
 path.write_text(''.join('COMPOSE_PROFILES=' + sys.argv[2] + '\n' if line.startswith('COMPOSE_PROFILES=') else line for line in lines))
 PY
 fi
-# Refresh the node id from the restored DB, not from the clean bootstrap database.
-printf '+ refresh VISION_NODE_ID in %q from restored server node\n' "$ENV_FILE"
+# Refresh the node NAME (MQTT identity) from the restored DB, not from the clean bootstrap database.
+printf '+ refresh VISION_NODE_ID (node name) in %q from restored server node\n' "$ENV_FILE"
 if [[ "$dry_run" == 0 ]]; then
-    node_id="$("${compose[@]}" exec -T postgres psql -U isentinel -d isentinel -tAc "select id from node where type='server' order by id limit 1" | tr -d '[:space:]')"
-    if [[ ! "$node_id" =~ ^[0-9]+$ ]]; then
-        echo "Restored server node id missing; migration stopped before startup." >&2
+    node_name="$("${compose[@]}" exec -T postgres psql -U isentinel -d isentinel -tAc "select name from node where type='server' order by id limit 1" | tr -d '[:space:]')"
+    if [[ ! "$node_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo "Restored server node name missing or not safe for MQTT topics; migration stopped before startup." >&2
         exit 1
     fi
-    python3 - "$ENV_FILE" "$node_id" <<'PY'
+    python3 - "$ENV_FILE" "$node_name" <<'PY'
 from pathlib import Path
 import sys
 path = Path(sys.argv[1])
@@ -211,7 +211,7 @@ if not any(line.startswith('VISION_NODE_ID=') for line in lines):
     sys.exit('Target environment requires VISION_NODE_ID')
 path.write_text(''.join('VISION_NODE_ID=' + sys.argv[2] + '\n' if line.startswith('VISION_NODE_ID=') else line for line in lines))
 PY
-    export VISION_NODE_ID="$node_id"
+    export VISION_NODE_ID="$node_name"
 fi
 if [[ "$mode" == cutover ]]; then
     execute "${compose[@]}" up -d

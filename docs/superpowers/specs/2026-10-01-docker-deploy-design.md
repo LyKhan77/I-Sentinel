@@ -21,7 +21,7 @@ Tujuan: server baru (production) cukup `git clone` lalu `./docker/setup.sh`; ser
 | 3 | 3 GPU: RTX 4090 (dipakai bersama vLLM), 2× RTX 5080 (Blackwell); driver 580.178.04, CUDA 13.0. Venv vision: Python 3.12.3, `torch 2.14`, `tensorrt_cu13 11.3`, `onnxruntime-gpu 1.24.4`, `ultralytics 8.4.146`, `insightface 2.0`, `nvidia-cudnn-cu13 9.24`. | `vision-venv` |
 | 4 | Engine TensorRT (`.engine`) spesifik per arsitektur GPU; dibuat `vision/scripts/export_engine.py` di mesin target. Pin GPU dilakukan di aplikasi (UI Konfigurasi → Node, field `device`), jadi container harus melihat semua GPU. | `export_engine.py`, `nodes.py` |
 | 5 | API memakai `insightface` + `onnxruntime`, terpasang manual di venv server tetapi **tidak ada di `backend/pyproject.toml`**. Enrollment di CPU terukur 200 ms (ROADMAP Fase 4); `download_face_models.py` memakai `CPUExecutionProvider`. | `backend/pyproject.toml`, ROADMAP |
-| 6 | Baris node `server` dibuat API saat startup (`main.py:37`); `VISION_NODE_ID` harus sama dengan id baris itu, dan heartbeat 404 bila tidak ada. | `main.py`, `vision.env.example` |
+| 6 | Baris node `server` dibuat API saat startup (`main.py:37`). Node dikenali di bidang MQTT lewat **nama** (`isentinel/nodes/<name>/heartbeat`, `isentinel/config/<name>`; `events_consumer.py` dan `config_push.py` memakai `filter_by(name=...)`), jadi `VISION_NODE_ID` harus sama dengan `node.name` (`server`), bukan id numerik; nama yang salah diabaikan diam-diam (log API: `heartbeat for unknown node`). `vision.env` host: `VISION_NODE_ID=server`. | `main.py`, `events_consumer.py`, `config_push.py` |
 | 7 | Data: `STORAGE_ROOT` (API, 878 MB), `VISION_DATA_DIR` (168 KB), file rahasia kamera `~/.isentinel/camera-secrets.json` (wajib di luar `STORAGE_ROOT`; juga menyimpan token Telegram), model wajah `buffalo_l` di `FACE_MODEL_DIR`. | `.env`, `config.py` |
 | 8 | Ring klip memakai segmen ffmpeg per kamera di `/dev/shm/isentinel`. `/dev/shm` bawaan container hanya 64 MB. | `vision.env.example` |
 | 9 | Retensi = unit oneshot harian 03:00 (`isentinel-retention.timer`), memanggil `scripts/retention_sweep.py`. | `deploy/systemd/` |
@@ -100,7 +100,7 @@ Semua layanan: `restart: unless-stopped`, `TZ=${TZ}` (default dari host, fallbac
 2. Deteksi IP LAN (→ `GO2RTC_PUBLIC_HOST`, bisa dioverride), `TZ`, `DATA_DIR`, UID/GID.
 3. Buat `docker/.env` bila belum ada (rahasia acak, `COMPOSE_PROFILES=vision`; `--rehearse` mengosongkannya); render `go2rtc.yaml`, buat `password_file` Mosquitto.
 4. `docker compose build`; `up -d postgres mosquitto go2rtc api`; tunggu `api` healthy (batas ±60 detik; restart/shutdown API bisa 10–40 detik).
-5. Baca id baris node `server` dari DB, tulis `VISION_NODE_ID` ke `.env`; unduh model wajah ke `faces_models` bila kosong.
+5. Baca **nama** node `server` dari DB (tervalidasi aman untuk topik MQTT), tulis `VISION_NODE_ID` ke `.env`; unduh model wajah ke `faces_models` bila kosong.
 6. `export-engine.sh` bila `vision` aktif dan `.engine` belum ada; `up -d` sisanya.
 7. Cetak URL (`http://<ip>:7700`), username dan password admin (sekali), peta port, dan langkah berikut (pendaftaran kamera lewat UI).
 
@@ -154,7 +154,7 @@ Lihat K12. Tambahan: penghapusan unit systemd lama dan `bootstrap.sh`, pengetata
 | Alert Telegram ganda saat rehearsal | `camera-secrets.json` tidak disalin, `vision` mati |
 | Metrik host (CPU/RAM/disk) di dashboard salah dibaca dari dalam container | Diperiksa saat rehearsal (3.6); `/proc` memperlihatkan host, disk dari bind mount |
 | Konflik port dengan proyek lain di host production | Blok `7700–7705` diperiksa kosong di setiap host sebelum setup; `setup.sh` menolak jalan bila port terpakai |
-| `VISION_NODE_ID` salah → heartbeat 404 | Diambil dari DB oleh `setup.sh` (fakta 6) |
+| `VISION_NODE_ID` salah → node idle, API mencatat `heartbeat for unknown node` | Nama node diambil dari DB oleh `setup.sh` dan `migrate-from-host.sh`, divalidasi `^[A-Za-z0-9._-]+$` (fakta 6) |
 | Bobot YOLO tak bisa diunduh di jaringan tertutup | `setup.sh` mencetak instruksi penempatan manual |
 | Image di-build per host, versi dependensi bisa bergeser | `requirements.lock` untuk vision, versi minor base image dikunci |
 

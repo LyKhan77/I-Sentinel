@@ -102,7 +102,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
     export POSTGRES_PASSWORD="$(openssl rand -hex 24)" JWT_SECRET="$(openssl rand -hex 32)"
     export NODE_API_KEY="$(openssl rand -hex 32)" MQTT_PASSWORD="$(openssl rand -hex 24)"
     export ADMIN_PASSWORD="$(openssl rand -hex 24)"
-    export MQTT_USERNAME=isentinel ADMIN_USERNAME=admin VISION_NODE_ID=1
+    export MQTT_USERNAME=isentinel ADMIN_USERNAME=admin VISION_NODE_ID=server
     export VISION_SHM_SIZE="${VISION_SHM_SIZE:-2gb}" VISION_ENGINE_GPU="${VISION_ENGINE_GPU:-0}"
     export RETENTION_DAYS="${RETENTION_DAYS:-30}" COMPOSE_PROFILES=vision
     if [[ "$rehearse" == 1 || "$has_nvidia" == 0 ]]; then
@@ -201,12 +201,13 @@ if [[ "$healthy" != 1 ]]; then
     echo "API did not become healthy within 120 seconds; inspect compose logs api." >&2
     exit 1
 fi
-node_id="$(compose exec -T postgres psql -U isentinel -d isentinel -tAc "select id from node where type='server' order by id limit 1" | tr -d '[:space:]')"
-if [[ ! "$node_id" =~ ^[0-9]+$ ]]; then
-    echo "Server node id missing or invalid" >&2
+# MQTT identifies a node by NAME (isentinel/nodes/<name>/heartbeat), not by its numeric id.
+node_name="$(compose exec -T postgres psql -U isentinel -d isentinel -tAc "select name from node where type='server' order by id limit 1" | tr -d '[:space:]')"
+if [[ ! "$node_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "Server node name missing or not safe for MQTT topics: '$node_name'" >&2
     exit 1
 fi
-python3 - "$ENV_FILE" "$node_id" <<'PY'
+python3 - "$ENV_FILE" "$node_name" <<'PY'
 from pathlib import Path
 import sys
 path = Path(sys.argv[1])
@@ -216,7 +217,7 @@ after = ''.join('VISION_NODE_ID=' + sys.argv[2] + '\n' if line.startswith('VISIO
 if after != before:
     path.write_text(after)
 PY
-export VISION_NODE_ID="$node_id"
+export VISION_NODE_ID="$node_name"
 if [[ -z "$(find "$DATA_DIR/api/faces_models" -name '*.onnx' -print -quit 2>/dev/null || true)" ]]; then
     compose run --rm -T --no-deps -e RUN_MIGRATIONS=0 api python scripts/download_face_models.py \
         || echo "Warning: face model download failed; enrollment needs buffalo_l in $DATA_DIR/api/faces_models. Fix the network or copy the models, then rerun setup.sh." >&2

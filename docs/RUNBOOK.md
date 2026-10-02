@@ -213,7 +213,7 @@ atau engine di Mac arm64. Ukur shm ring klip untuk menentukan VISION_SHM_SIZE fi
    HOST_ENGINE bila berbeda; jangan cetak DATABASE_URL. Rehearsal menyalin API,
    bukan data vision (detail Task 6); data vision disinkron saat cutover.
    Skrip menghentikan container api/retention/vision sebelum dump, mengganti
-   **DB container**, restore dengan ON_ERROR_STOP, rsync data, memperbarui node id,
+   **DB container**, restore dengan ON_ERROR_STOP, rsync data, memperbarui nama node (`VISION_NODE_ID`),
    lalu menghidupkan stack tanpa vision. DB host tidak diubah. Periksa jumlah
    employee/camera/zone/event, Alembic head, checksum klip, login, live dari LAN,
    snapshot, enrollment CPU, metrik host, serta retensi pada salinan.
@@ -235,7 +235,7 @@ atau engine di Mac arm64. Ukur shm ring klip untuk menentukan VISION_SHM_SIZE fi
    ```
 
    Cutover melakukan dump final, DROP/CREATE DB container, rsync `--delete` API
-   dan vision, copy secrets `0600` dan `camera.env`, profile vision, refresh node id, lalu up.
+   dan vision, copy secrets `0600` dan `camera.env`, profile vision, refresh nama node, lalu up.
    **Data rehearsal di tujuan diganti; operasi ini destruktif.** Guard menolak
    unit lama aktif/tidak bisa diverifikasi, path sumber/tujuan overlap, dan marker
    `.cutover-done` existing. `--force` mengizinkan overwrite data setelah cutover:

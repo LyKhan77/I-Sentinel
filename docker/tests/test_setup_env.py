@@ -148,6 +148,7 @@ echo "$*" >> "$DOCKER_CALLS"
 case "$*" in
   "info --format"*) echo '{"runc":{"path":"runc"}}' ;;
   *download_face_models*) exit "${FAKE_DOWNLOAD_EXIT:-0}" ;;
+  *" exec -T postgres psql"*"select name from node"*) echo "${FAKE_NODE_NAME:-server}" ;;
   *" exec -T postgres psql"*) echo 7 ;;
   *" ps -q"*) echo fakecontainer ;;
   "inspect "*) echo healthy ;;
@@ -162,14 +163,14 @@ exit 0
 """
 
 
-def run_full(tmp_path, *args, download_exit=1):
+def run_full(tmp_path, *args, download_exit=1, node_name="server"):
     """Jalankan setup.sh penuh dengan docker palsu yang mencatat setiap panggilan."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     (bin_dir / "docker").write_text(FAKE_DOCKER)
     (bin_dir / "docker").chmod(0o755)
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "DOCKER_CALLS": str(tmp_path / "calls.log"),
-           "FAKE_DOWNLOAD_EXIT": str(download_exit), "DATA_DIR": str(tmp_path / "data"),
+           "FAKE_DOWNLOAD_EXIT": str(download_exit), "FAKE_NODE_NAME": node_name, "DATA_DIR": str(tmp_path / "data"),
            "ENV_FILE": str(tmp_path / "stack.env"), "GO2RTC_PUBLIC_HOST": "192.0.2.10"}
     return subprocess.run(["bash", str(DOCKER / "setup.sh"), *args], env=env, text=True, capture_output=True)
 
@@ -192,7 +193,7 @@ def test_full_flow_survives_face_model_download_failure(tmp_path):
              first(lines, "download_face_models"), len(lines) - 1]
     assert order == sorted(order)
     assert "up -d postgres mosquitto go2rtc api web retention" in lines[-1]
-    assert values(tmp_path / "stack.env")["VISION_NODE_ID"] == "7"
+    assert values(tmp_path / "stack.env")["VISION_NODE_ID"] == "server"
     assert (tmp_path / "data/api/faces_models").is_dir()
 
 
@@ -209,3 +210,19 @@ def test_full_flow_rerun_is_idempotent(tmp_path):
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "stack.env").read_bytes() == before
     assert sum("mosquitto_passwd" in line for line in calls(tmp_path)) == 1
+
+
+def test_vision_node_id_is_the_node_name_from_the_start(tmp_path):
+    """MQTT mengenali node lewat NAMA (isentinel/nodes/<name>/heartbeat), bukan id numerik tabel."""
+    assert values(DOCKER / ".env.example")["VISION_NODE_ID"] == "server"
+    invoke(tmp_path)
+    assert values(tmp_path / "stack.env")["VISION_NODE_ID"] == "server"
+
+
+def test_node_name_must_be_safe_for_mqtt_topics(tmp_path):
+    """Nama dengan / + # spasi merusak topik MQTT; setup berhenti, bukan menulisnya ke .env."""
+    result = run_full(tmp_path, "--rehearse", "--no-engine", node_name="bad/name")
+    assert result.returncode != 0
+    assert "node name" in result.stderr.lower()
+    assert values(tmp_path / "stack.env")["VISION_NODE_ID"] == "server"
+

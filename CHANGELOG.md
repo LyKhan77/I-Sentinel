@@ -74,6 +74,11 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   0 camera(s)`, exit 0): `VisionNode.run()` keluar bila tanpa worker dan `_await_config` False, sedangkan systemd selalu memberi
   `VISION_CAMERAS_JSON` statis. Perbaikan: setting `VISION_AWAIT_CONFIG` (`NodeSettings.await_config`, default False, tidak mengubah
   systemd/mode uji) dan compose mengaktifkannya; tes vision +2 (233 -> 235 passed, 3 deselected) dan tes compose +1.
+  **Temuan kedua dari uji vision:** container hidup tapi idle, log API `heartbeat for unknown node '1'`. Node dikenali lewat
+  **nama** di bidang MQTT (`isentinel/nodes/<name>/heartbeat`, `isentinel/config/<name>`), bukan id numerik; `vision.env` host
+  memang `VISION_NODE_ID=server`. `setup.sh`, `migrate-from-host.sh`, `.env.example` (dan komentar menyesatkan di
+  `deploy/vision.env.example`) mengasumsikan id numerik, dan fixture tes (docker palsu mengembalikan `7`) ikut mengunci asumsi
+  itu. Kini `select name from node`, divalidasi `^[A-Za-z0-9._-]+$`; tes setup membedakan query nama dari id; docker tests 65 -> 68.
 - **Dampak:** hanya tambahan infrastruktur; operasi systemd lama tetap utuh.
   Rahasia/YAML runtime di luar repo, Postgres named volume, API face CPU,
   vision profile/GPU all, log dibatasi. Belum ada bukti build image, live LAN,

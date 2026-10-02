@@ -149,3 +149,11 @@ def test_camera_credentials_copied_before_startup_in_both_modes(tmp_path, mode):
     assert str(Path(env["DATA_DIR"]) / "secrets/camera.env") in text
     assert text.index("extract_camera_env.py") < text.index("up -d")
     assert PASSWORD not in text + result.stderr
+
+
+def test_migration_refreshes_node_name_not_numeric_id():
+    """VISION_NODE_ID adalah nama node (topik MQTT); id numerik membuat heartbeat 'unknown node'."""
+    text = SCRIPT.read_text()
+    assert "select name from node" in text
+    assert "select id from node" not in text
+
