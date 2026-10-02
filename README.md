@@ -1,82 +1,57 @@
 # I-Sentinel
 
-Sistem surveillance AI: FastAPI backend + vision-node + frontend.
+Sistem surveillance AI **on-premise** untuk jaringan LAN/pabrik. Kamera RTSP (umumnya di balik NVR) diproses di server GPU
+lokal: deteksi orang berbasis zona untuk keamanan, dan pengenalan wajah untuk absensi. Tanpa cloud; data tetap di server Anda.
 
-Dokumen inti: **`ARCHITECTURE.md`** (komponen, kontrak MQTT/HTTP/WS, alur data) ·
-**`WORKFLOW.md`** (alur per fitur) · `docs/DEVELOPMENT.md` (siklus pengembangan, deploy, rollback) · `ROADMAP.md` · `CHANGELOG.md`.
+| | |
+|---|---|
+| **Keamanan** | Zona poligon per kamera: intrusi, loitering, berlari, zona kosong, kerumunan. Snapshot + klip, Inbox Events, alert Telegram. |
+| **Absensi** | Enrollment wajah (3 foto), gerbang wajah di kamera pintu, shift, rekap harian, ekspor/impor CSV. |
+| **Operasional** | Live View + Mode TV, Dashboard, Monitoring dengan alert kesehatan, retensi storage, user admin/viewer. |
 
-## Arsitektur (referensi systemd)
+Status: pra-rilis `0.x`. Berjalan di Docker Compose (server dev `gspe-ai3` sejak 2026-10-02).
 
-```
+**Isi:** [Arsitektur](#arsitektur) · [Instalasi](#instalasi) · [Penyiapan pertama](#penyiapan-pertama) ·
+[Operasi harian](#operasi-harian) · [Panduan fitur](#panduan-fitur) · [Pengembangan](#pengembangan) · [Peta dokumen](#peta-dokumen)
+
+## Arsitektur
+
+```text
 Browser (LAN)
-   │  :7700 (Vite dev — isentinel-web.service)
-   ▼
-API FastAPI :7701 ──── Postgres (isentinel) ─── go2rtc :7702 (API/snapshot, proxy same-origin)
-   ▲  ▲                                    └── go2rtc :7703 WebRTC (LAN) · :7705 RTSP (127.0.0.1 saja)
-   │  └── MQTT Mosquitto :7704 ◄── vision-node (heartbeat + event + config push + LWT)
-   └──── blob upload (clip/snapshot/crop) ─── vision-node (YOLO26s TensorRT + ByteTrack)
+  ├─ :7700  web (nginx: UI + proxy /api) ─────► api :7701 ─────► postgres (internal)
+  └─ :7702 / :7703  go2rtc  (video langsung: WebRTC / MSE)
+
+Kamera / NVR ──RTSP──► go2rtc ──RTSP internal──► vision (GPU: YOLO26s + wajah)
+vision ──MQTT :7704──► mosquitto ◄──► api        (heartbeat, event, config node)
+vision ──HTTP internal──► api                    (unggah snapshot / klip)
+retention                                        (sapuan harian pukul 03:00: DB + file)
 ```
 
-- Port terbuka di LAN: **7700** (UI dev), **7701** (API), **7702** (go2rtc API) dan **7703**
-  (go2rtc WebRTC) — Live Wall memutar stream langsung dari browser, jadi kedua port go2rtc
-  memang harus terjangkau klien LAN (terbukti port lama 1984 terjangkau dari LAN, 2026-10-01) —
-  dan **7704** (MQTT, untuk node edge Fase E). RTSP go2rtc **7705** hanya `127.0.0.1`
-  (vision node server membaca dari localhost); snapshot browser lewat proxy API (auth-gated).
-- Status server dev `gspe-ai3`: berjalan di Docker dengan peta di atas sejak cutover 2026-10-02 (unit systemd lama
-  dinonaktifkan dan hanya untuk rollback).
-- Vision node: satu worker per kamera; detektor pin GPU via UI (Konfigurasi → Node).
+| Layanan | Fungsi | Port host | Akses |
+|---|---|---|---|
+| `web` | UI React (build statis) + proxy `/api` dan WebSocket | `7700` | LAN |
+| `api` | Backend FastAPI, konsumen MQTT, alert, retensi data | `7701` | LAN (juga untuk node edge, Fase E) |
+| `go2rtc` | Jembatan RTSP → WebRTC / MSE / snapshot | `7702`, `7703` (TCP+UDP) | LAN (browser memutar langsung) |
+| `mosquitto` | Broker MQTT (event, heartbeat, config, LWT) | `7704` | LAN, wajib kredensial |
+| `vision` | Deteksi (YOLO26s TensorRT + ByteTrack), wajah, rekam klip | tanpa port | internal; memakai GPU |
+| `postgres` | Database | tanpa port | internal (named volume `pgdata`) |
+| `retention` | Sapuan retensi harian | tanpa port | internal |
 
-## Peta Folder
+RTSP go2rtc (`7705`) hanya di jaringan internal Compose. Port yang dipublikasikan Docker melewati filter firewall host
+(terbukti di server dev) dan tidak ada TLS: pasang di LAN tepercaya, bukan di internet. Detail kontrak MQTT/HTTP/WS dan
+alur data: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-```
-isentinel/
-├── backend/                  # FastAPI server pusat
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── api/              # routers: auth, cameras, zones, nodes, gates,
-│   │   │                     #   detection, employees, attendance, events, alerts,
-│   │   │                     #   telegram, users, settings
-│   │   ├── core/             # config(env), security(jwt), db
-│   │   ├── models/           # SQLAlchemy models
-│   │   ├── schemas/          # Pydantic
-│   │   ├── services/         # probe, attendance, alerting, face, events_consumer,
-│   │   │                     #   event_stats, recorder, retention
-│   │   └── ws/               # websocket hub
-│   └── tests/
-├── vision/                   # vision-node (deployable ke Jetson, minimal deps)
-│   ├── node.py
-│   ├── pipeline/             # source(go2rtc) → detector(YOLO) → tracker(ByteTrack) → emit
-│   ├── analyzers/            # intrusion, loitering, running, idle_zone, crowd (face: face_worker.py)
-│   ├── transport/            # mqtt client + disk queue store-and-forward
-│   └── tests/
-├── frontend/                 # React 19 + Vite + Carbon (9 halaman)
-│   ├── src/
-│   │   ├── app/              # shell, routing, i18n
-│   │   ├── features/         # dashboard, live, events, attendance, enrollment, config
-│   │   ├── components/
-│   │   └── api/              # REST client + WS
-├── docker/                   # Compose, image, setup, migrasi host, dan tes infrastruktur
-├── deploy/
-│   ├── go2rtc/go2rtc.example.yaml   # template; salin ke go2rtc.yaml (gitignored, isi kredensial RTSP)
-│   ├── mosquitto/mosquitto.conf
-│   ├── systemd/              # isentinel-api.service, isentinel-recorder.service,
-│   │                         #   vision-node.service, isentinel-retention.service
-│   └── sql/                  # alembic migrations
-├── docs/plans/               # spec desain awal + milestone tersisa (Edge Jetson)
-├── docs/superpowers/         # spec + plan per fitur (catatan)
-├── docs/runbooks/            # prosedur operasional per fitur
-├── README.md  ARCHITECTURE.md  WORKFLOW.md  ROADMAP.md  CHANGELOG.md
-```
+## Instalasi
 
-## Quick start Docker
+**Persyaratan server (Linux):**
 
-**Aktif di `gspe-ai3` sejak 2026-10-02** (cutover terverifikasi, bukti di `CHANGELOG.md`).
-Unit systemd di `deploy/` tetap tersedia sebagai jalur legacy/rollback.
+- Docker Engine dengan Compose v2, dan akun Anda di grup `docker` (tanpa `sudo`). `docker.service` enabled agar container naik lagi setelah reboot.
+- **NVIDIA driver + NVIDIA Container Toolkit** untuk deteksi. Tanpa runtime `nvidia`, `setup.sh` memberi peringatan dan menjalankan stack **tanpa vision** (UI dan Live View tetap jalan, tanpa deteksi).
+- `python3` dan `openssl` di host (dipakai skrip setup).
+- Port `7700–7704` TCP dan `7703` UDP kosong (`setup.sh` berhenti bila ada yang terpakai).
+- Internet saat instalasi: unduh image dan model. Siapkan ±20 GB disk untuk image (vision ±15 GB) di luar ruang media.
 
-Prasyarat host Linux: Docker Engine + Compose v2, akses Docker tanpa sudo, Python 3,
-openssl, internet untuk build/model, serta NVIDIA Container Toolkit untuk vision.
-Tanpa runtime NVIDIA, setup memberi peringatan dan menjalankan stack tanpa vision.
-Pastikan `docker.service` enabled dan port `7700–7704` TCP serta `7703` UDP kosong.
+**Langkah:**
 
 ```bash
 git clone <URL_REPO> I-Sentinel
@@ -84,66 +59,98 @@ cd I-Sentinel
 ./docker/setup.sh
 ```
 
-Web tersedia di `http://<IP-LAN>:7700`. `ADMIN_USERNAME` dan `ADMIN_PASSWORD` hanya
-dicetak pada run pembuat `docker/.env`; selanjutnya baca berkas itu secara lokal
-(mode `0600`, jangan salin ke log/git). `setup.sh` juga menjadi jalur update:
-`git pull && ./docker/setup.sh`. Rahasia, password broker, dan YAML go2rtc existing
-tidak ditimpa. `ENV_FILE`, `DATA_DIR`, dan `GO2RTC_PUBLIC_HOST` bisa dioverride saat
-setup pertama; `.env` existing menentukan DATA_DIR pada run berikutnya.
+Server dengan lebih dari satu kartu jaringan atau VPN: tentukan IP LAN yang dilihat klien agar WebRTC berfungsi, mis.
+`GO2RTC_PUBLIC_HOST=192.168.2.133 ./docker/setup.sh`. Nilai ini ditulis sekali ke `go2rtc.yaml`.
 
-Kredensial kamera berbasis environment (`CAM_USERNAME`, `CAM_PASSWORD`, `CAMERA_CREDENTIAL_*`)
-diisi di `${DATA_DIR}/secrets/camera.env` (dibuat kosong oleh `setup.sh`, mode `0600`); profil
-kredensial yang disimpan dari UI memakai `camera-secrets.json` di folder yang sama.
+`setup.sh` membuat semuanya: memeriksa prasyarat, menulis `docker/.env` (rahasia acak, mode `0600`), menyiapkan folder data
+(`../I-Sentinel-docker-data`), membuat password broker MQTT, membangun image, menyalakan layanan, menjalankan migrasi database
+otomatis, mengunduh model wajah, membangun engine TensorRT, lalu menyalakan sisanya. Instalasi pertama memakan ±25–30 menit
+(sebagian besar unduhan image vision); berikutnya hanya hitungan detik sampai menit.
 
-Data default: direktori sibling `../I-Sentinel-docker-data` (`api`, `vision`,
-`models`, `go2rtc`, `mosquitto`, `secrets`); PostgreSQL memakai named volume `pgdata`.
-YAML go2rtc menyimpan kredensial kamera saat runtime: backup sebagai rahasia, bukan
-config publik. PostgreSQL `5432` dan RTSP go2rtc `7705` hanya internal jaringan
-Compose, **bukan** loopback/publish host. API dan enrollment wajah memakai CPU;
-hanya vision memakai GPU. Engine TensorRT harus dibuat pada arsitektur GPU target.
+Hasil di akhir: alamat `http://<IP-LAN>:7700`, user `admin`, dan **password admin dicetak sekali saja** (selanjutnya hanya di
+`docker/.env`, jangan disalin ke log atau git). Skrip ini aman diulang (idempoten): tidak menimpa `.env`, password MQTT, atau
+`go2rtc.yaml`.
 
-Mode persiapan: `./docker/setup.sh --env-only` tidak memanggil Docker;
-`./docker/setup.sh --rehearse --no-engine` tidak menjalankan vision. Jangan memakai
-DATA_DIR produksi untuk rehearsal. Default `VISION_SHM_SIZE=2gb` masih sementara;
-ukur ring klip sebelum cutover. Prosedur migrasi, backup, dan rollback:
-[`docs/RUNBOOK.md`](docs/RUNBOOK.md#docker--prosedur-pending-cutover).
+**Model** (tidak ada yang disimpan di git):
 
-## Run (dev lokal)
+| Model | Fungsi | Sumber | Lokasi |
+|---|---|---|---|
+| YOLO26s | Deteksi orang | `yolo26s.pt` (20 MB) diunduh otomatis oleh Ultralytics saat ekspor, lalu dikompilasi menjadi engine TensorRT FP16 (±20 detik) di GPU server | `<DATA_DIR>/models/yolo26s.engine` |
+| InsightFace `buffalo_l` | Pengenalan wajah | Diunduh otomatis (±280 MB); bila gagal hanya muncul peringatan, jalankan ulang `setup.sh` | `<DATA_DIR>/api/faces_models` |
 
-Backend:
+Engine TensorRT hanya valid untuk **satu jenis GPU**; jangan disalin antar tipe GPU yang berbeda. Server tanpa internet:
+letakkan `yolo26s.pt` di `<DATA_DIR>/models/` dan folder `models/buffalo_l` di `<DATA_DIR>/api/faces_models/` sebelum menjalankan
+`setup.sh`. Server multi-GPU: engine dibangun di GPU `VISION_ENGINE_GPU` (default 0); bila GPU lain dipakai,
+`./docker/scripts/export-engine.sh <nomor-GPU>`.
+
+**Opsi** (set sebagai variabel lingkungan saat menjalankan `setup.sh` pertama kali; selanjutnya `docker/.env` yang berlaku):
+`DATA_DIR` (lokasi data), `GO2RTC_PUBLIC_HOST`, `TZ`, `VISION_ENGINE_GPU`, `VISION_SHM_SIZE` (default `2gb`, memadai untuk puluhan kamera),
+`RETENTION_DAYS`. Flag: `--no-engine` (lewati ekspor engine), `--env-only` (hanya buat konfigurasi, tanpa Docker).
+
+**Lokasi data** (`../I-Sentinel-docker-data/`): `api/` (media: clips, snapshots, crops, faces, faces_models), `vision/`, `models/`,
+`go2rtc/` (`go2rtc.yaml` berisi kredensial RTSP kamera, perlakukan sebagai rahasia), `mosquitto/`, `secrets/`
+(`camera.env`, `camera-secrets.json`). Database ada di named volume `pgdata`.
+
+## Penyiapan pertama
+
+Instalasi menghasilkan sistem kosong. Urutan berikut membawa Anda dari login sampai deteksi berjalan:
+
+| # | Langkah | Di mana | Hasil |
+|---|---|---|---|
+| 1 | Login `admin`, lalu ganti password | tombol **Password** di kartu akun sidebar (khusus admin) | akun aman |
+| 2 | Siapkan kredensial kamera/NVR | **Konfigurasi → Kamera → Lanjutan → Kelola kredensial**; atau isi `CAM_USERNAME`/`CAM_PASSWORD` di `<DATA_DIR>/secrets/camera.env` lalu `./docker/setup.sh` | pilihan kredensial tersedia |
+| 3 | Tambah kamera | **Konfigurasi → Kamera → + Tambah kamera → Tes koneksi → Simpan** | otomatis terdaftar di go2rtc dan dikirim ke node; tampil di **Live View** |
+| 4 | (Opsional) Pilih GPU | **Konfigurasi → Node** (satu GPU: biarkan tanpa pin) | detektor dan wajah dipin ke GPU |
+| 5 | Buat zona deteksi | **Konfigurasi → Zona Deteksi**: gambar poligon, pilih behavior, jadwal, Snapshot/Clip, toggle Telegram | **deteksi aktif hanya di kamera yang punya zona aktif** |
+| 6 | (Opsional) Telegram | **Konfigurasi → Notifikasi** | alert foto ke grup staf |
+| 7 | (Opsional) Absensi | **Enrollment → Shift** (buat shift), **Enrollment → Karyawan** (3 foto), lalu zona absensi di kamera pintu (langkah 5) | rekap di **Attendance** |
+| 8 | Verifikasi | **Dashboard** (kamera sehat, node `online`) dan **Monitoring** | sistem siap |
+
+Penting: menambah kamera saja sudah cukup untuk **Live View**. Tanpa zona aktif kamera tidak menghasilkan event atau klip.
+Kredensial: bila "Default (NVR)" gagal pada instalasi baru, `camera.env` masih kosong (langkah 2). Rincian tiap fitur ada di
+[Panduan fitur](#panduan-fitur).
+
+## Operasi harian
+
+Jalankan dari folder `docker/` (Compose otomatis memakai `docker/.env`):
 
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+cd I-Sentinel/docker
+docker compose ps                         # semua layanan harus healthy / running
+docker compose logs --tail 100 api        # log layanan: api, vision, go2rtc, mosquitto, postgres, web, retention
+docker compose restart api                # restart satu layanan
+curl -s localhost:7701/api/v1/health      # {"status":"ok"}
 ```
 
-Frontend (dev server dengan proxy ke API):
+- **Update versi:** `git pull && ./docker/setup.sh` (membangun ulang image yang berubah, migrasi database otomatis).
+- **Backup:** salin `<DATA_DIR>` (termasuk `secrets/` dan `go2rtc/`) dan `docker/.env`; database terpisah:
+  `docker compose exec -T postgres pg_dump -U isentinel --no-owner --no-privileges isentinel > cadangan.sql` (simpan di luar repo, mode privat).
+  Tidak ada backup otomatis.
+- **Retensi:** container `retention` menyapu media dan event lama tiap hari pukul 03:00 (`TZ`); atur masa simpan di **Konfigurasi → Retensi & Storage**.
+- **Setelah reboot server:** container naik sendiri (`restart: unless-stopped`).
 
-```bash
-cd frontend
-npm install
-npm run dev
-npm test          # vitest run
-```
+**Masalah umum**
 
-## Run (server dev)
+| Gejala | Periksa |
+|---|---|
+| Live View hitam atau hanya snapshot | `curl -s localhost:7702/api/streams` memuat `cam_<id>`; kredensial kamera benar; `GO2RTC_PUBLIC_HOST` adalah IP LAN (bukan `127.0.0.1`); UDP `7703` terjangkau dari klien; **Lanjutan → Sync go2rtc** |
+| Tidak ada event | ada zona **aktif** di kamera; node `online`; `docker compose logs vision` memuat `started N worker(s)` dengan N > 0 |
+| Node `offline` / log API `heartbeat for unknown node` | `VISION_NODE_ID` di `docker/.env` harus **nama** node (`server`), bukan angka |
+| Vision tidak berjalan | runtime NVIDIA tidak ada (`docker info` tanpa `nvidia`): pasang toolkit lalu ulangi `./docker/setup.sh` |
+| CPU container vision tinggi, log `CUDAExecutionProvider is not in available provider names` | wajah jatuh ke CPU: bangun ulang image vision (`./docker/setup.sh`) |
+| `setup.sh` berhenti "Port … in use" | hentikan layanan lain di `7700–7704`; port ini tetap |
+| Disk hampir penuh | **Konfigurasi → Retensi & Storage** (kurangi masa simpan, bersihkan event) |
 
-Sejak 2026-10-02 server dev berjalan di Docker (clone `/home/gspe-ai3/project_cv/I-Sentinel-docker`):
+Prosedur lengkap (backup, rollback, pin GPU, load test, cutover dari sistem lama): [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
-```bash
-ssh gspe-ai3
-cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git pull && ./docker/setup.sh   # build + up, idempoten
-docker compose -f docker/compose.yml ps
-curl -s localhost:7701/api/v1/health                                             # {"status":"ok"}
-docker compose -f docker/compose.yml logs --tail 50 api
-```
+## Panduan fitur
 
-Jalur legacy systemd (`./deploy/bootstrap.sh`, `isentinel-*.service`, port lama) dinonaktifkan sejak cutover dan hanya untuk
-rollback; lihat `docs/RUNBOOK.md`.
+Rincian perilaku tiap fitur. Alur lengkap per fitur ada di [`WORKFLOW.md`](WORKFLOW.md).
+
+- [Manajemen Kamera](#manajemen-kamera): wizard, kredensial, zona, jadwal
+- [Live View & Mode TV](#live-view--mode-tv): grid, TV, notifikasi, Inbox Events
+- [Dashboard](#dashboard) · [User management](#user-management) · [Attendance](#attendance-absensi)
+- [Retensi & Storage](#retensi--storage) · [Alert Telegram](#alert-telegram) · [Monitoring Resource](#monitoring-resource)
 
 ## Manajemen Kamera
 
@@ -152,7 +159,7 @@ Registrasi kamera cukup lewat **Konfigurasi → Kamera → + Tambah kamera**:
 1. Isi **Nama kamera**, **Lokasi** (pilih dari kamera lain atau ketik baru), **IP kamera**
    (port opsional: `192.168.2.179:8554`), **Path mainstream** (wajib), **Path substream**
    (kosong = pakai mainstream).
-2. Pilih **Kredensial**: `Default (NVR)` (fallback `CAM_USERNAME`/`CAM_PASSWORD` dari `.env`)
+2. Pilih **Kredensial**: `Default (NVR)` (fallback `CAM_USERNAME`/`CAM_PASSWORD` dari `secrets/camera.env`)
    atau profil khusus; **+ Kredensial baru…** langsung membuat profil (Nama, Username, Password).
 3. Klik **Tes koneksi** — probe menampilkan res/fps/codec MAIN & SUB + thumbnail substream;
    peringatan muncul bila substream sama dengan mainstream (AI memproses resolusi penuh).
@@ -170,10 +177,9 @@ masih dipakai kamera aktif; tambah profil baru).
 Aturan yang perlu diketahui:
 
 - **Grup lokasi otomatis** dari teks Lokasi (get-or-create, tidak diinput manual).
-- **Password kamera tidak pernah tampil di UI atau DB.** Default: kredensial dari `.env`
-  (`CAM_USERNAME`/`CAM_PASSWORD`). Kredensial khusus dibuat via Kelola kredensial: DB hanya
+- **Password kamera tidak pernah tampil di UI atau DB.** Default: kredensial dari `secrets/camera.env` (`CAM_USERNAME`/`CAM_PASSWORD`). Kredensial khusus dibuat via Kelola kredensial: DB hanya
   menyimpan referensi `store:cred_<id>`; password aslinya di file rahasia server
-  `CAMERA_SECRETS_FILE` (default `~/.isentinel/camera-secrets.json`, izin `0600`, direktori
+  `CAMERA_SECRETS_FILE` (di Docker: `<DATA_DIR>/secrets/camera-secrets.json`; default non-Docker `~/.isentinel/camera-secrets.json`; izin `0600`, direktori
   `0700`, WAJIB di luar `STORAGE_ROOT`).
 - **Backup**: file rahasia tersebut harus ikut dibackup bersama DB — tanpa file itu, kamera
   berkredensial khusus gagal konek ("credential reference is unavailable").
@@ -200,14 +206,7 @@ Aturan yang perlu diketahui:
   Jadwal manual dan shift memakai jam dinding lokal (termasuk frame vision bertimestamp monotonic).
   Shift malam/jadwal lintas tengah malam belum didukung; gunakan rentang dalam satu hari.
 
-Prosedur operasional (restart, backup, tambah kamera, pin GPU, troubleshooting,
-load test): lihat **`docs/RUNBOOK.md`**. Unit systemd di `deploy/systemd/` kini
-sudah direkonsiliasi dengan yang berjalan di `gspe-ai3` (Fase 5 Task 12):
-`User=gspe-ai3` + path `/home/gspe-ai3/project_cv/I-Sentinel`. `sudo` tanpa
-password tidak tersedia di server, jadi restart service dilakukan lewat
-`kill $(cat /sys/fs/cgroup/system.slice/<unit>.service/cgroup.procs)` (unit
-memakai `Restart=always`). Itu jalur legacy: sejak 2026-10-02 server dev memakai Docker
-(`docker compose restart <layanan>`).
+Prosedur operasional lainnya (restart, backup, pin GPU, load test): lihat **`docs/RUNBOOK.md`**.
 
 ## Live View & Mode TV
 
@@ -327,8 +326,7 @@ sweep retensi manual (admin), pengaturan retensi, dan (admin) pembersihan event 
 - **Retensi editable dari UI**: `GET/PUT /api/v1/storage/settings` menyimpan clip dan snapshot
   **terpisah** (`clip_days`, `snapshot_days`, `attendance_days` untuk media absensi, 1–3650 hari) plus ambang peringatan disk
   (`disk_alert_percent`, 50–99 %). Nilai disimpan di tabel `setting` (key `storage`) — tanpa migrasi.
-  Field yang belum pernah disimpan tetap mengikuti `RETENTION_DAYS` di `.env`; sweep harian systemd
-  (`isentinel-retention.timer`) membaca nilai DB, jadi perubahan berlaku pada sweep berikutnya tanpa
+  Field yang belum pernah disimpan tetap mengikuti `RETENTION_DAYS` di `docker/.env`; sweep harian (container `retention`, pukul 03:00 sesuai `TZ`) membaca nilai DB, jadi perubahan berlaku pada sweep berikutnya tanpa
   restart. Viewer melihat nilainya read-only (PUT tetap admin-only).
 - **Sweep terpisah clip vs snapshot**: event yang lebih tua dari `clip_days` kehilangan clip, yang
   lebih tua dari `snapshot_days` kehilangan snapshot. **Media absensi** (snapshot + crop wajah
@@ -400,7 +398,7 @@ Yang perlu diketahui:
   walau sudah di luar daftar terbaru (atau menampilkan peringatan bila sudah dihapus).
 - **Token disimpan di file rahasia server** `CAMERA_SECRETS_FILE` (key
   `telegram_bot_token`, izin `0600`, di luar `STORAGE_ROOT`) — bukan di DB dan tidak
-  pernah tampil di UI/log/response. `TELEGRAM_BOT_TOKEN` di `.env` hanya fallback.
+  pernah tampil di UI/log/response. `TELEGRAM_BOT_TOKEN` di `.env` hanya fallback (tidak diteruskan pada Docker: isi token lewat UI).
 - **Kirim berjalan di thread terpisah** — konsumen MQTT tidak pernah menunggu
   jaringan Telegram. Rate-limit per kamera, zona, tipe, dan `track_id`: severity
   critical tanpa batas, lainnya 2 menit; absensi tercatat tanpa batas. Pengingat
@@ -498,3 +496,43 @@ tampil; kamera ber-node yang belum mengirim statistik diberi `no_data`.
   "Node offline" palsu setiap kali API restart; backend mengabaikan payload LWT non-offline.
 
 Kode masalah dan langkah penanganan: `docs/runbooks/monitoring.md`.
+
+## Pengembangan
+
+Dev lokal (tanpa Docker):
+
+```bash
+# backend
+cd backend && python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]" && alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+# frontend (proxy /api ke http://localhost:8000; ubah dengan env API_URL)
+cd frontend && npm install && npm run dev
+```
+
+Tes: backend `pytest tests -q -m "not gpu"`, vision `pytest tests -q -m "not gpu"` (dari `vision/`), frontend `npx vitest run`
+lalu `npm run build` dan `npm run lint`, infrastruktur Docker `pytest docker/tests -q`. Jalankan berurutan, bukan bersamaan.
+Aturan kerja, konvensi, dan alur branch/commit: [`AGENTS.md`](AGENTS.md) dan [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+
+```text
+I-Sentinel/
+├── backend/            FastAPI: app/{api,core,models,schemas,services,ws}, alembic/, scripts/, tests/
+├── vision/             vision node (deployable): vision/{node,recorder,pipeline,analyzers,transport,face*}, scripts/, tests/
+├── frontend/           React 19 + Vite + Carbon: src/{app,features,components,api}
+├── docker/             compose.yml, setup.sh, Dockerfile (backend, vision, web), scripts/, tests/
+├── deploy/             legacy: unit systemd, bootstrap.sh, template go2rtc/mosquitto, loadtest/ (rollback dan uji beban)
+└── docs/               DEVELOPMENT, RUNBOOK, runbooks/ (per fitur), superpowers/ (spec + plan), plans/
+```
+
+## Peta dokumen
+
+| Dokumen | Isi |
+|---|---|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | komponen, kontrak MQTT/HTTP/WS, alur data, topologi Docker |
+| [`WORKFLOW.md`](WORKFLOW.md) | alur per fitur (kamera, zona, event, absensi, monitoring) |
+| [`DESIGN.md`](DESIGN.md) | pedoman desain UI |
+| [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | operasi server: backup, rollback, pin GPU, troubleshooting, cutover |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | siklus pengembangan, verifikasi, deploy |
+| [`docs/runbooks/`](docs/runbooks/) | prosedur per fitur: absensi, monitoring, retensi/storage, Live View TV (Raspberry Pi) |
+| [`ROADMAP.md`](ROADMAP.md) · [`CHANGELOG.md`](CHANGELOG.md) | status fase dan bukti · riwayat perubahan |
+| [`docs/superpowers/`](docs/superpowers/) | spec dan plan tiap fitur (catatan) |
