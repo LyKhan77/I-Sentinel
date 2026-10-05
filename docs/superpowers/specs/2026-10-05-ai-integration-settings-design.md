@@ -60,8 +60,10 @@ riwayat rotasi kunci, mengubah konkurensi/ukuran antrean saat berjalan.
 
 ### 5.2 Layanan `app/services/llm_config.py`
 - Saat impor menyimpan salinan nilai awal `settings.llm_*` (`_BASE`) dan `_ENV_SET = set(settings.model_fields_set)`.
-- `apply(db) -> None`: untuk tiap field, bila ada di baris `setting` maka `setattr(settings, "llm_<field>", nilai)`, selain itu
-  kembalikan `_BASE`; kunci dari `secret_store` atau `_BASE`. Dipanggil saat startup (`lifespan`) dan setelah `PUT`.
+- `apply(db) -> None`: untuk tiap field yang ada di baris `setting` → `setattr(settings, "llm_<field>", nilai)` dan catat di `_overridden`;
+  field yang **pernah** di-override tetapi kini tidak ada → kembalikan `_BASE`; field yang tidak pernah di-override **tidak disentuh**
+  (kode lain dan tes boleh memonkeypatch `settings`; `apply` dengan DB kosong adalah no-op). Kunci: dari `secret_store` bila ada, bila
+  pernah di-override dan kini hilang → `_BASE`. Dipanggil saat startup (`lifespan`) dan setelah `PUT`.
   `# ponytail:` mengubah singleton `settings` (satu proses API; tidak aman untuk multi-worker, per-worker perlu muat ulang dari DB).
 - `view(db) -> dict`: nilai efektif per field, `sources` (`db|env|default`), `key_configured: bool`, serta `restart_only: {concurrency, queue_max}` (nilai env, hanya baca).
 - `save(db, values: dict, *, api_key: str | None, clear_api_key: bool) -> None`: validasi lengkap lebih dulu, lalu tulis `setting`/`secret_store`, commit, `apply`.
