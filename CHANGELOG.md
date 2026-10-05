@@ -3,6 +3,40 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Perbaikan review cabang Caption AI dan Tanya AI — lokal, tanpa deploy (2026-10-05)
+
+- **Konteks:** review independen cabang `feat/ai-event-caption` (skill code-review, level high;
+  tiap temuan diverifikasi ke kode, temuan header juga dengan percobaan nyata `httpx` ke server
+  lokal). Delapan temuan diperbaiki dengan TDD (RED dilihat dulu, alasan merah benar), satu commit
+  per perbaikan. **BELUM diuji di server/UI/LLM nyata**; jaringan server dev sedang mati,
+  deploy menunggu user. ROADMAP tetap `[~]`.
+- **Perbaikan:**
+  - `3b753c7` header `Authorization: Bearer ` (kunci kosong) ditolak h11 → tidak dikirim bila kunci kosong.
+  - `689515e` caption otomatis menunggu slot LLM selama Tanya AI boleh memegangnya
+    (`llm_timeout_ask_s`), bukan 5 detik yang membuat caption `failed` permanen; snapshot
+    didekode sebelum mengambil slot.
+  - `c5afcad` `recover()` menandai baris `pending` yang tak muat antrean sebagai `failed`
+    ("antrean penuh"), tidak lagi menggantung.
+  - `7eda054` cache preset tidak menyajikan jawaban `frames_used=0` bila event punya klip.
+  - `a88e801` `PATCH /zones` `ai_caption: null` → 422 (sebelumnya IntegrityError 500);
+    validator panjang prompt dicabut dari `ZoneOut` (nilai >600 di DB membuat daftar zona 500).
+  - `898f098` panel Tanya AI: event hanya-klip (snapshot=false, clip=true) dinonaktifkan dengan
+    pesan snapshot (`ai.err.snapshot`, id dan en), bukan "media kedaluwarsa"; 409
+    `snapshot_unavailable` memakai pesan yang sama.
+  - `5e4cc4c` panel memantau caption `pending` lewat polling 5 detik (maks 60 kali) bila WS
+    tidak mengirim `kind:'ai'`.
+- **Sengaja tidak diubah:** kuota rate limit dihitung sebelum `ffmpeg` (urutan spec, melindungi CPU)
+  sehingga permintaan yang gagal sebelum LLM tetap menghabiskan kuota; dict `_limits` tumbuh per
+  user (dibatasi jumlah user).
+- **Bukti (berurutan, HEAD `5e4cc4c`):** backend `739 passed, 1 skipped, 521 warnings in 147.28s`
+  (733 → 739: +6 tes); Docker `75 passed in 8.62s`; vision `235 passed, 3 deselected, 2 warnings`;
+  frontend `Test Files 34 passed (34)` / `Tests 444 passed (444)` (441 → 444: +3 tes);
+  `tsc -b --noEmit` exit 0; lint exit 0, 24 warning, 16 pasangan identik baseline; build exit 0.
+  Hasil run pertama pada `f9fa24d` (sebelum perbaikan) dari sesi ini cocok dengan laporan executor.
+- **Dampak:** perilaku default tidak berubah (`LLM_ENABLED=false`). Tanpa migrasi baru.
+- **Rollback:** `git revert` commit perbaikan terkait; atau seluruh fitur via `LLM_ENABLED=false`
+  + recreate `api` (lihat RUNBOOK).
+
 ### Caption AI per zona dan Tanya AI — MVP lokal (2026-10-02)
 
 - **Konteks:** spec/plan `2026-10-02-ai-event-caption-ask`; Task 1–12 native dengan TDD
