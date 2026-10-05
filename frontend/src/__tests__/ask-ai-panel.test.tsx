@@ -131,3 +131,19 @@ test('ganti event mereset percakapan browser', async () => {
   await waitFor(() => expect(posts(f)).toHaveLength(2))
   expect(JSON.parse(String(posts(f)[1][1]!.body)).history).toEqual([])
 })
+
+test('event hanya-klip: input nonaktif dengan pesan snapshot, bukan media kedaluwarsa', async () => {
+  stub(); const { container } = panel({ ...EVENT, snapshot_path: null, clip_path: 'clip.mp4' })
+  await screen.findByText('Area terlihat kosong.')
+  expect(screen.getByLabelText('Pertanyaan untuk AI')).toBeDisabled()
+  for (const button of container.querySelectorAll('.ev-ai__presets button')) expect(button).toBeDisabled()
+  expect(screen.getByText('Snapshot event tidak tersedia; Tanya AI membutuhkan snapshot.')).toBeInTheDocument()
+  expect(screen.queryByText('Media event sudah kedaluwarsa.')).not.toBeInTheDocument()
+})
+
+test('409 snapshot_unavailable dari server memakai pesan snapshot', async () => {
+  stub({ status: 409, code: 'snapshot_unavailable' }); panel()
+  fireEvent.click(screen.getByRole('button', { name: 'Apa yang terjadi?' }))
+  expect(await screen.findByText('Snapshot event tidak tersedia; Tanya AI membutuhkan snapshot.')).toBeInTheDocument()
+  expect(screen.queryByText('Media event sudah kedaluwarsa.')).not.toBeInTheDocument()
+})

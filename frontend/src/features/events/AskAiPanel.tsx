@@ -20,8 +20,11 @@ function Conversation({ event, status, tick }: PanelProps) {
   const [turns, setTurns] = useState<Turn[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<TKey | null>(null)
-  const [mediaGone, setMediaGone] = useState(false)
-  const unavailable = mediaGone || (!event.snapshot_path && !event.clip_path)
+  const [goneKey, setGoneKey] = useState<TKey | null>(null)
+  // backend selalu butuh snapshot: event hanya-klip (zona snapshot=false) tidak bisa ditanya
+  const clipOnly = !event.snapshot_path && !!event.clip_path
+  const unavailable = goneKey !== null || !event.snapshot_path
+  const unavailableKey: TKey = goneKey ?? (clipOnly ? 'ai.err.snapshot' : 'ai.err.mediaExpired')
   const disabled = busy || unavailable || !status.enabled
 
   useEffect(() => {
@@ -50,8 +53,8 @@ function Conversation({ event, status, tick }: PanelProps) {
         else if (e.code === 'disabled') key = 'ai.err.disabled'
         else if (e.status === 503) key = 'ai.err.busy'
         else if (e.code === 'media_expired' || e.code === 'snapshot_unavailable') {
-          key = 'ai.err.mediaExpired'
-          setMediaGone(true)
+          key = e.code === 'media_expired' ? 'ai.err.mediaExpired' : 'ai.err.snapshot'
+          setGoneKey(key)
         } else if (e.code === 'clip_unavailable') key = 'ai.err.clip'
       }
       setError(key)
@@ -71,7 +74,7 @@ function Conversation({ event, status, tick }: PanelProps) {
           : <p>{t(caption?.status === 'pending' ? 'ai.caption.pending' : caption?.status === 'failed' ? 'ai.caption.failed' : 'ai.caption.empty')}</p>}
       </div>
       <p className="ev-ai__hint">{t('ai.warn.smallObjects')}</p>
-      {unavailable && !error && <p className="ev-ai__hint">{t('ai.err.mediaExpired')}</p>}
+      {unavailable && !error && <p className="ev-ai__hint">{t(unavailableKey)}</p>}
       <div className="ev-ai__presets">
         {(status.presets[event.type] ?? []).map((preset) => (
           <Button key={preset} kind="tertiary" size="sm" disabled={disabled} onClick={() => send(preset)}>
