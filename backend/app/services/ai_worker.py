@@ -82,12 +82,15 @@ class AiWorker:
             if zone is None or not zone.ai_caption or ev.type not in ai_prompts.AI_TYPES:
                 raise llm_client.LlmError("Caption zona nonaktif")
             camera = db.get(Camera, ev.camera_id) if ev.camera_id else None
-            with llm_client.slot():
+            content = [llm_client.text_part(ai_prompts.build_caption_prompt(
+                zone, ev, camera.name if camera else None, zone.name)),
+                llm_client.image_part(ai_media.snapshot_jpeg(ev.snapshot_path))]
+            # worker thread khusus: menunggu selama Tanya AI boleh memegang slot, bukan 5 detik
+            # (timeout pendek membuat caption gagal permanen karena baris caption sudah ada)
+            with llm_client.slot(timeout=settings.llm_timeout_ask_s):
                 result = llm_client.chat([
                     {"role": "system", "content": ai_prompts.SYSTEM_PROMPT},
-                    {"role": "user", "content": [llm_client.text_part(ai_prompts.build_caption_prompt(
-                        zone, ev, camera.name if camera else None, zone.name)),
-                        llm_client.image_part(ai_media.snapshot_jpeg(ev.snapshot_path))]},
+                    {"role": "user", "content": content},
                 ], timeout=settings.llm_timeout_caption_s)
             row.status = "ok"
             row.answer = llm_client.clean_error(result.text)

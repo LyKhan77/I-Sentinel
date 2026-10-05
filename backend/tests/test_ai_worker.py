@@ -117,3 +117,21 @@ def test_recover(db, setup):
     assert worker.recover(db, now) == 1
     assert stale.status == "failed" and stale.error == "interrupted by restart"
     assert fresh.status == "pending"
+
+
+def test_caption_waits_for_slot_as_long_as_an_ask_may_hold_it(db, setup, monkeypatch):
+    """Tanya AI memegang slot sampai llm_timeout_ask_s; caption yang menunggu lebih pendek gagal permanen."""
+    from contextlib import contextmanager
+    worker, ev, _, _, _ = setup
+    waits = []
+    @contextmanager
+    def slot(timeout=5.0):
+        waits.append(timeout)
+        yield
+    monkeypatch.setattr(llm_client, "slot", slot)
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k: llm_client.LlmResult("Seseorang.", "stop", 1, 1, "test-model"))
+    worker.maybe_enqueue_caption(db, ev)
+    row = db.query(EventAi).one()
+    worker.process(row.id, db)
+    assert row.status == "ok"
+    assert waits and waits[0] >= settings.llm_timeout_ask_s
