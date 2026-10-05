@@ -130,3 +130,15 @@ def test_audit_row(db, setup):
     row = db.query(EventAi).one()
     assert row.kind == "ask" and row.channel == "web" and row.actor == "user:7"
     assert row.question == "Apa?" and row.answer == "Terlihat satu orang." and row.latency_ms >= 0
+
+
+def test_preset_cache_skips_snapshot_only_answer_when_clip_is_readable(db, setup, monkeypatch):
+    """Jawaban frames_used=0 (klip sempat gagal dibaca) tidak boleh terus disajikan setelah klip bisa dibaca."""
+    service, ev, calls = setup
+    ev.clip_path = "clip.mp4"
+    def fail(*args, **kwargs): raise ai_media.AiMediaError("missing")
+    monkeypatch.setattr(ai_media, "extract_keyframes", fail)
+    assert service.ask(db, ev, user_id=7, preset="what_happened").frames_used == 0
+    monkeypatch.setattr(ai_media, "extract_keyframes", lambda rel, times: [(at, b"jpeg") for at in times])
+    second = service.ask(db, ev, user_id=7, preset="what_happened")
+    assert not second.cached and second.frames_used == 6 and len(calls) == 2

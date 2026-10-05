@@ -80,7 +80,8 @@ def ask(db, ev: Event, *, user_id: int, question: str | None = None, preset: str
         raise AskError(409, "clip_unavailable")
     if preset is not None:
         cached = db.query(EventAi).filter_by(event_id=ev.id, kind="ask", preset=preset, status="ok").order_by(EventAi.id.desc()).first()
-        if cached is not None:
+        # jawaban tanpa frame hanya valid bila event memang tanpa klip; selain itu ulangi (klip bisa pulih)
+        if cached is not None and (cached.frames_used or not ev.clip_path):
             return AskResult(cached.answer or "", cached.frames_used, True, cached.latency_ms or 0, cached.model or "")
     _admit(user_id)
     started = time.monotonic()
