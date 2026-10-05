@@ -117,6 +117,8 @@ class AiWorker:
                 row.status, row.error = "failed", "interrupted by restart"
             elif self.enqueue(row.id):
                 count += 1
+            else:
+                row.status, row.error = "failed", "antrean penuh"
         db.commit()
         return count
 

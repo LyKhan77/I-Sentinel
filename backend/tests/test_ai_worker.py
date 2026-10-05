@@ -135,3 +135,15 @@ def test_caption_waits_for_slot_as_long_as_an_ask_may_hold_it(db, setup, monkeyp
     worker.process(row.id, db)
     assert row.status == "ok"
     assert waits and waits[0] >= settings.llm_timeout_ask_s
+
+
+def test_recover_fails_pending_rows_that_do_not_fit_the_queue(db, setup):
+    """Baris pending yang tak muat antrean tidak boleh menggantung (maybe_enqueue_caption menolak event ber-baris)."""
+    from app.services.ai_worker import AiWorker
+    _, ev, _, _, _ = setup
+    now = datetime.now(timezone.utc)
+    rows = [EventAi(event_id=ev.id, kind="caption", channel="auto", created_at=now) for _ in range(2)]
+    db.add_all(rows); db.commit()
+    assert AiWorker(maxsize=1).recover(db, now) == 1
+    assert sorted(r.status for r in rows) == ["failed", "pending"]
+    assert next(r for r in rows if r.status == "failed").error == "antrean penuh"
