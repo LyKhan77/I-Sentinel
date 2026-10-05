@@ -153,6 +153,14 @@ class ZonePatch(BaseModel):
     ai_prompt: str | None = None
     _clean_ai_prompt = field_validator("ai_prompt")(_clean_ai_prompt)
 
+    @field_validator("ai_caption")
+    @classmethod
+    def _ai_caption_not_null(cls, v):
+        """Kolom NOT NULL: null eksplisit harus 422, bukan IntegrityError saat commit."""
+        if v is None:
+            raise ValueError("ai_caption cannot be null")
+        return v
+
     _validate_polygon = field_validator("polygon")(_validate_polygon)
     _validate_schedule = field_validator("schedule")(_validate_schedule)
     _validate_behaviors = field_validator("behaviors")(_validate_behaviors)
@@ -193,6 +201,5 @@ class ZoneOut(BaseModel):
     active: bool
     ai_caption: bool
     ai_prompt: str | None
-    _clean_ai_prompt = field_validator("ai_prompt")(_clean_ai_prompt)
     camera_name: str | None = None
     model_config = {"from_attributes": True}
