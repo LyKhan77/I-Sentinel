@@ -47,6 +47,11 @@ async def lifespan(app: FastAPI):
     db = next(gen) if hasattr(gen, "__next__") else gen
     try:
         _bootstrap(db)
+        try:
+            from app.services import llm_config
+            llm_config.apply(db)
+        except Exception:
+            logger.warning("LLM settings apply at startup failed")
         from app.services.config_push import republish_all
         republish_all(db)
         try:
@@ -134,6 +139,8 @@ from app.models import event as _e  # noqa: F401 — register table
 app.include_router(events_router)
 from app.api.ai import router as ai_router
 app.include_router(ai_router)
+from app.api.ai_settings import router as ai_settings_router
+app.include_router(ai_settings_router)
 from app.api.zones import router as zones_router
 app.include_router(zones_router)
 from app.api.alerts import router as alerts_router
