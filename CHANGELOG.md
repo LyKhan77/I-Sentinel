@@ -3,6 +3,58 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Pengaturan LLM di UI — AI Integration, lokal tanpa deploy (2026-10-05)
+
+- **Konteks:** Task 1–4 plan `2026-10-05-ai-integration-settings` dijalankan native dengan
+  RED → GREEN dan commit lokal. Admin kini dapat mengatur koneksi LLM tanpa SSH/restart,
+  memakai prioritas DB > env > default. **BELUM diuji di server/UI/LLM nyata**; ROADMAP `[~]`.
+- **Commit:** `f59fee1` layanan `llm_config` dan `Connection`; `a4fda8b` API admin/startup;
+  `ff6c4ca` tab AI Integration. Commit keempat memperbarui dokumentasi dan bukti verifikasi.
+- **Berkas:** `llm_client.py`, layanan/tes `llm_config`, router/skema/tes `ai_settings`, lifespan;
+  frontend `api/aiSettings.ts`, `AiIntegrationPage.tsx`, `ConfigurationPage.tsx`, i18n dua bahasa,
+  tes `ai-integration.test.tsx`; README, ARCHITECTURE, WORKFLOW, DESIGN, ROADMAP, RUNBOOK,
+  CHANGELOG, dan daftar struktur AGENTS. Tidak ada migrasi/dependensi baru; konsumen LLM tidak diubah.
+- **RED → GREEN:** T1 `2 failed, 9 passed, 41 errors` (fitur/modul belum ada) → `52 passed`;
+  T2 `11 failed` (404 dan startup belum apply) → `11 passed`;
+  T3 `14 failed` (tab/form belum ada) → `14 passed`.
+  Fixture Storage pada percobaan RED pertama T3 diperbaiki lalu RED diulang.
+  TypeScript sempat TS2322 pada tipe fixture hasil; anotasi kontrak diperbaiki lalu noEmit/build lulus.
+- **Baseline diukur ulang:** backend `739 passed, 1 skipped, 521 warnings in 146.50s`;
+  Docker `75 passed in 9.00s`; vision `235 passed, 3 deselected, 2 warnings in 13.58s`;
+  frontend `34 files / 444 passed` setelah ulang flake lama `zone-start-ring`
+  (run pertama `1 failed / 443 passed`). Build exit 0; lint exit 0, 24 warning / 16 pasangan.
+- **Verifikasi penuh berurutan sebelum commit dokumen (perintah S1):**
+  ```text
+  backend: 793 passed, 1 skipped, 539 warnings in 154.27s (0:02:34)
+  docker: 75 passed in 8.92s
+  vision: 235 passed, 3 deselected, 2 warnings in 13.73s
+  frontend: Test Files 35 passed (35); Tests 458 passed (458)
+  build: exit 0; built in 2.89s
+  lint: exit 0; 24 warning / 16 pasangan; baseline identical: True
+  ```
+  Backend naik 54 tes (43 T1 + 11 T2), frontend naik 14 tes. Tes lama tidak dihapus/diubah,
+  kecuali dua penegasan jumlah tab `7→8` di `configuration.test.tsx` (judul tes tetap).
+  Vision memiliki warning lama pynvml dan thread fixture `publish_heartbeat`; build tetap warning
+  ukuran chunk. Suite S1 diulang pada commit terakhir untuk laporan handoff.
+- **Bukti perilaku:** viewer 403 pada ketiga endpoint; key tidak di respons/DB;
+  PUT invalid bersama key tidak menulis secret_store; null kembali ke env/default;
+  form/stored key terredaksi pada error; apply DB kosong tidak merusak monkeypatch;
+  tab viewer tidak fetch; simpan model saja tidak mengirim api_key.
+  Browser stub API 390×844: document/body scrollWidth 390, koneksi, Lanjutan terbuka, dan Inggris.
+  Browser dan Vite verifikasi telah dihentikan. Ini bukan penerimaan UI/endpoint nyata.
+- **Dampak/keputusan:** `apply` hanya menyentuh override aktif/lama dan mengembalikan `_BASE`
+  bila override dihapus. Kunci di `secret_store`, form tulis-saja dan dibersihkan saat dikirim.
+  Validasi lengkap sebelum efek samping; clear key mengembalikan env, clear bersama key nonkosong
+  ditolak. Input API strict, field tak dikenal ditolak; token/rate integer, timeout/interval boleh
+  pecahan. Tes form tidak menyimpan/tidak mengambil slot worker, timeout 30 detik per panggilan,
+  teks sukses dengan vision ditolak → `ok=true`, `vision_ok=false`.
+  Konkurensi/antrean tetap env dan memerlukan recreate; pengaturan DB berlaku tanpa restart.
+- **Rollback:** matikan AI dari UI lalu Simpan (override DB mengalahkan env), atau reset enabled
+  lalu gunakan env false + recreate. Reset per field menghapus override, clear key tidak menghapus
+  env. Rollback kode tahap ini: revert commit task urut terbalik lalu rebuild api/web; tanpa
+  downgrade skema. Bila key hanya di secret_store, siapkan fallback env secara privat sebelum
+  rollback karena kode lama hanya membaca env. Push, review, deploy, dan merge belum dilakukan.
+
 ### Perbaikan review cabang Caption AI dan Tanya AI — lokal, tanpa deploy (2026-10-05)
 
 - **Konteks:** review independen cabang `feat/ai-event-caption` (skill code-review, level high;

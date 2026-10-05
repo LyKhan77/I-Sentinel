@@ -313,3 +313,23 @@ Synthetic browser verification at 390×844 measured page scrollWidth 390 for bot
 and custom zone editor; the panel measured 292/292 after a long unbroken answer. The custom input
 had maxLength 600. Local evidence: `docs/evidence/ai-event-caption-390.png` and
 `docs/evidence/ai-event-zone-390.png` (not committed). This is not real server/user/LLM acceptance.
+
+## I-Sentinel: AI Integration settings
+
+Configuration adds an admin-only **AI Integration** tab after Notifications, with the same
+label in Indonesian and English. Only the active panel mounts; viewers never mount or fetch
+provider settings. The panel reuses Carbon controls and theme text tokens without a new palette.
+
+Connection uses a Toggle, URL/model TextInputs, and an always-empty PasswordInput. A stored-key
+status and explicit delete action never expose the key. Save submits only edited fields; submitted
+keys are immediately cleared, including on test requests or failures. Test connection is independent
+of Save and reports text/vision support, latency, model, and sanitized errors as literal text.
+
+Advanced settings use an Accordion with bounded numeric TextInputs and a JSON TextArea.
+DB/Env/Default Tags show provenance, and per-field reset actions allow null resets, including the
+enabled toggle. Blank fields return to environment/default on Save. Restart-only concurrency and
+queue size are read-only copy: changes require environment edits and API recreation.
+
+The form is single-column, max-width 640px, with wrapping actions and error text. Synthetic browser
+checks at 390×844 measured document/body scrollWidth 390 with Connection, Advanced expanded,
+and English copy. These stub checks are not real admin/viewer/server/LLM acceptance.

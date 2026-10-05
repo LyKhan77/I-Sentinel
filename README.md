@@ -267,13 +267,26 @@ tidak ada panggilan LLM, panel disembunyikan, dan endpoint Tanya AI memberi 503 
   Hasil berupa saran, bukan bukti pasti; benda kecil dan gambar malam bisa salah dikenali.
   `event_ai` mengikuti umur event dan dihapus oleh retensi/cleanup.
 
-Semua `LLM_*` dan `AI_QUEUE_MAX` hanya di `${DATA_DIR}/secrets/llm.env` (mode `0600`, hanya container `api`).
-Isi `LLM_API_URL` (base URL berakhiran `/v1`), `LLM_API_KEY`, `LLM_MODEL`, lalu `LLM_ENABLED=true`.
-`setup.sh` membuat template komentar tanpa menimpa konfigurasi. Default: concurrency 2, antrean 100,
+Admin mengatur LLM melalui **Konfigurasi → AI Integration**: aktif/nonaktif, URL API (base `/v1`),
+model, kunci API, serta parameter lanjutan. Tab dan ketiga endpoint `/api/v1/ai/settings`
+(GET/PUT dan POST `/test`) hanya untuk admin; viewer tetap dapat memakai Tanya AI.
+**Tes koneksi** memakai nilai form tanpa menyimpan, dengan teks dan JPEG sintetis 64×64 (30 detik
+per panggilan). Kunci form kosong memakai kunci tersimpan/env. Kunci tulis-saja di `secret_store`
+(0600 di luar `storage_root`), tidak di respons atau tabel `setting`, dan dikosongkan setelah dikirim.
+
+Prioritas **DB > env > default**: tabel `setting`, key `llm`, hanya menyimpan override non-rahasia.
+**Reset ke env**: kosongkan field atau pilih tombol reset, lalu Simpan (`null` menghapus override).
+Hapus kunci hanya menghapus kunci tersimpan; kunci env tetap menjadi fallback. Perubahan berlaku
+pada panggilan berikutnya tanpa restart. Tanpa baris `llm`, perilaku startup tetap seperti sebelumnya.
+
+`${DATA_DIR}/secrets/llm.env` tetap nilai awal/fallback `LLM_*` (0600, hanya container `api`);
+`setup.sh` membuat template komentar tanpa menimpa file lama. Default: concurrency 2, antrean 100,
 throttle caption 60 detik/zona, kuota Tanya AI 6/menit/user, timeout caption/ask 60/120 detik,
 `LLM_MAX_TOKENS=1000`, `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`.
-Rebuild image API untuk `ffmpeg`, lalu **buat ulang** container API agar perubahan `env_file` terbaca;
-`docker compose restart api` saja tidak memuat env baru. Panduan rollout/rollback: [`docs/RUNBOOK.md`](docs/RUNBOOK.md#caption-ai-dan-tanya-ai--rollout-terpisah).
+**`LLM_CONCURRENCY` dan `AI_QUEUE_MAX` tetap env dan hanya-baca di UI**; ubah file lalu recreate API.
+Perubahan env memerlukan **recreate**, bukan `docker compose restart api`, dan tidak menimpa override DB.
+Rollout tahap ini belum dilakukan; setelah review, rebuild `api` dan `web`, tanpa migrasi tambahan.
+Panduan rollout/rollback: [`docs/RUNBOOK.md`](docs/RUNBOOK.md#caption-ai-dan-tanya-ai--rollout-terpisah).
 
 **Sebelum produksi, konfirmasi kepada pemilik endpoint bahwa gambar tidak disimpan atau dipakai melatih model.
 Snapshot dapat memuat wajah karyawan.** Jalankan satu proses API; semaphore, throttle, dan rate limit bersifat lokal proses.

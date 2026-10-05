@@ -64,14 +64,14 @@ I-Sentinel/
 │   │   ├── main.py              # app factory, lifespan, router wiring, admin bootstrap
 │   │   ├── api/                 # routers: auth, users, cameras, stream_sources,
 │   │   │                        #   credential_profiles, location_groups, probe, live,
-│   │   │                        #   nodes, zones, events, ai, alerts, telegram, storage,
+│   │   │                        #   nodes, zones, events, ai, ai_settings, alerts, telegram, storage,
 │   │   │                        #   employees, shifts, enrollment, attendance, deps
 │   │   ├── core/                # config (env), security (jwt/bcrypt), db session
 │   │   ├── models/              # SQLAlchemy models
 │   │   ├── schemas/             # Pydantic contracts
 │   │   ├── services/            # probe, stream_endpoint, go2rtc, config_push, ingest,
 │   │   │                        #   events_consumer, face, attendance, alerting, retention
-│   │   │                        #   ai_worker, ask_ai, llm_client, ai_media, ai_prompts
+│   │   │                        #   ai_worker, ask_ai, llm_client, llm_config, ai_media, ai_prompts
 │   │   └── ws/hub.py            # websocket fan-out
 │   ├── alembic/versions/        # migrations (latest: 0021_ai_caption)
 │   ├── scripts/                 # camera_management_migrate, retention_sweep,

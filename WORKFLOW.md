@@ -171,8 +171,23 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 6. Jawaban manual tetap ask, tidak mengisi kotak caption. AI hanya saran; konfirmasi dengan media asli.
    Audit menyimpan actor user; caption/ask ikut dihapus bersama event oleh retensi/cleanup.
 
-Konfigurasi global melalui `secrets/llm.env`, bukan UI. Rollout hanya setelah konfirmasi privasi
-pemilik endpoint; lihat `docs/RUNBOOK.md`. Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
+Konfigurasi global melalui **Konfigurasi → AI Integration**, hanya admin:
+1. Atur aktif/nonaktif, URL API dan model. Kolom kunci selalu kosong; status hanya menunjukkan
+   apakah kunci tersimpan/env tersedia. Menyimpan tanpa mengetik kunci tidak mengirim `api_key`.
+2. Buka **Lanjutan** untuk token, timeout, kuota, interval caption, dan `extra_body` objek JSON.
+   Lencana menunjukkan sumber DB/Env/Default. Konkurensi/antrean hanya-baca dan tetap env.
+3. **Tes koneksi** memakai perubahan form tanpa menyimpan: teks dan JPEG sintetis, hasil teks/vision,
+   latensi, dan galat terredaksi. Kunci kosong memakai kunci tersimpan/env, bukan menghapusnya.
+4. **Simpan** mengirim hanya field yang berubah. Kunci dikosongkan setelah dikirim; pengaturan
+   berlaku pada panggilan berikutnya tanpa restart. Prioritas DB > env > default.
+5. **Reset ke env**: kosongkan field atau pilih reset, lalu Simpan. Hapus kunci secara eksplisit
+   mengembalikan fallback env; tidak menghapus kunci env.
+
+`secrets/llm.env` tetap nilai awal/fallback. Mengubah env, konkurensi, atau antrean memerlukan
+recreate API, bukan restart biasa; override DB tetap lebih tinggi. Viewer tidak melihat tab dan
+tidak memanggil API pengaturan. Rollout hanya setelah review dan konfirmasi privasi pemilik
+endpoint; lihat `docs/RUNBOOK.md`. **BELUM diuji di server/UI/LLM nyata** pada tahap ini.
+Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
 
 ## 9. Notifikasi web
 
