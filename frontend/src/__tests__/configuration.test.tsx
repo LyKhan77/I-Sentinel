@@ -331,7 +331,7 @@ test('admin sees all seven tabs', async () => {
   renderConfigurationAs(ME, '/configuration')
 
   expect(await screen.findByRole('tab', { name: 'Kamera', selected: true })).toBeInTheDocument()
-  expect(screen.getAllByRole('tab')).toHaveLength(7)
+  expect(screen.getAllByRole('tab')).toHaveLength(8)
 })
 
 test('without a session context all seven tabs are shown', async () => {
@@ -339,7 +339,7 @@ test('without a session context all seven tabs are shown', async () => {
   renderConfigurationAs(undefined, '/configuration')
 
   expect(await screen.findByRole('tab', { name: 'Kamera', selected: true })).toBeInTheDocument()
-  expect(screen.getAllByRole('tab')).toHaveLength(7)
+  expect(screen.getAllByRole('tab')).toHaveLength(8)
 })
 
 test('while the session is loading (context null) no tabs or panels are mounted', async () => {
