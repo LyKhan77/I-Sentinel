@@ -147,3 +147,29 @@ test('409 snapshot_unavailable dari server memakai pesan snapshot', async () => 
   expect(await screen.findByText('Snapshot event tidak tersedia; Tanya AI membutuhkan snapshot.')).toBeInTheDocument()
   expect(screen.queryByText('Media event sudah kedaluwarsa.')).not.toBeInTheDocument()
 })
+
+test('caption pending dipantau lewat polling sampai selesai, tanpa pesan WS', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    let reads = 0
+    const f = vi.fn(async (url: string) => {
+      const u = String(url)
+      const data = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+      if (u.endsWith('/ai')) {
+        reads += 1
+        return data({ caption: reads === 1 ? { ...CAPTION, status: 'pending', answer: null } : CAPTION, history: [] })
+      }
+      return { ok: false, status: 404, json: async () => null }
+    })
+    vi.stubGlobal('fetch', f)
+    panel()
+    expect(await screen.findByText('Menunggu caption…')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(await screen.findByText('Area terlihat kosong.')).toBeInTheDocument()
+    const afterDone = reads
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(reads).toBe(afterDone)
+  } finally {
+    vi.useRealTimers()
+  }
+})

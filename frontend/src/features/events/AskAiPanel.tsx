@@ -34,6 +34,20 @@ function Conversation({ event, status, tick }: PanelProps) {
     return () => { alive = false }
   }, [event.id, tick])
 
+  // Selesainya caption hanya diumumkan lewat WS (kind:'ai'); bila handshake WS ditolak, panel
+  // tetap menunggu selamanya. Polling terbatas (5 dtk, ±5 menit) selama caption masih pending.
+  const pending = data?.caption?.status === 'pending'
+  useEffect(() => {
+    if (!pending) return
+    let alive = true
+    let left = 60
+    const timer = setInterval(() => {
+      if (--left < 0) { clearInterval(timer); return }
+      getEventAi(event.id).then((value) => { if (alive) setData(value) }).catch(() => {})
+    }, 5000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [pending, event.id])
+
   const send = async (preset?: string) => {
     if (disabled || (!preset && !question.trim())) return
     const q = preset ? t(`ai.preset.${preset}` as TKey) : question.trim()
