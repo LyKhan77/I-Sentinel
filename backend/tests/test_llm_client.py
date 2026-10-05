@@ -74,3 +74,15 @@ def test_slot_busy(llm, monkeypatch):
                 pytest.fail("A second request must not enter")
     with llm.slot(timeout=0):
         pass
+
+
+def test_no_authorization_header_without_key(llm, monkeypatch):
+    """Endpoint tanpa kunci: 'Bearer ' (spasi di ujung) ditolak httpx/h11 sebagai header ilegal."""
+    monkeypatch.setattr(llm.settings, "llm_api_key", "")
+    seen = {}
+    def handler(req):
+        seen["headers"] = dict(req.headers)
+        return response()
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        llm.chat([], timeout=1, client=client)
+    assert "authorization" not in seen["headers"]

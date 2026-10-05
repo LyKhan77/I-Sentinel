@@ -71,7 +71,8 @@ def chat(messages: list[dict], *, timeout: float, client: httpx.Client | None = 
     http = client if client is not None else httpx.Client()
     try:
         response = http.post(settings.llm_api_url.rstrip("/") + "/chat/completions", json=body,
-                             headers={"Authorization": f"Bearer {settings.llm_api_key}"}, timeout=timeout)
+                             headers={"Authorization": f"Bearer {settings.llm_api_key}"} if settings.llm_api_key else {},
+                             timeout=timeout)
         if response.is_error:
             raise LlmError(f"LLM HTTP {response.status_code}")
         data = response.json()
