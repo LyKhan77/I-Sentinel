@@ -66,3 +66,12 @@ def test_other_presets_ask_for_a_short_answer_without_timeline(key):
     from app.services import ai_prompts
     question = ai_prompts.preset_question(key)
     assert "1-3 kalimat" in question and "kronologi" not in question.lower()
+
+
+def test_system_prompt_limits_timeline_rows_and_forbids_summary_label():
+    """Klip 70 detik menghasilkan 12 baris (3 identik) dan label 'Satu kalimat ringkasan:' ikut tertulis."""
+    from app.services import ai_prompts
+    prompt = ai_prompts.SYSTEM_PROMPT
+    assert "paling banyak 8 baris" in prompt
+    assert "gabungkan" in prompt
+    assert "tanpa label" in prompt
