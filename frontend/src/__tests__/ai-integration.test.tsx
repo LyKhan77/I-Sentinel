@@ -236,3 +236,16 @@ test.each([
   expect(screen.queryByText('Kunci tersimpan')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Hapus kunci' })).not.toBeInTheDocument()
 })
+
+test('turning the AI toggle on and saving sends only enabled:true', async () => {
+  const calls = stub(200, RESULT, 200, undefined, { enabled: false })
+  await form()
+  const toggle = screen.getByRole('switch')
+  expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await userEvent.click(toggle)
+  expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Pengaturan AI disimpan.')
+  expect(calls.find(call => call.method === 'PUT')?.body).toEqual({ enabled: true })
+  expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+})
