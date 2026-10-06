@@ -19,8 +19,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
     `alert.ai_synced` (default false, aditif).
   - `alert_ai.py` baru: `ai_text`, `build_caption` (dipindah dari dispatcher),
     `sync_ai_caption` idempoten (guard: `sent`, `message_id`, foto, chat aktif,
-    token, caption `ok`; lock proses; commit sebelum jaringan; tidak pernah raise,
-    log tanpa nilai rahasia).
+    token, caption `ok`; klaim atomik `UPDATE … WHERE ai_synced = false` (lihat perbaikan review); commit
+    sebelum jaringan; tidak pernah raise, log tanpa nilai rahasia).
   - `alert_dispatcher.process`: pakai `build_caption`, simpan `message_id`/
     `message_photo`, `ai_synced=True` bila AI sudah di pesan awal, panggil
     `sync_ai_caption` setelah commit status.
@@ -32,6 +32,21 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   naik hanya karena tes baru); Docker `75 passed`; vision `235 passed, 3 deselected`
   (tidak disentuh); frontend `36 files / 477 passed` (tidak disentuh); build exit 0;
   lint exit 0, `24 warning / 16 pasangan` identik baseline.
+- **Perbaikan review (sesi perencanaan, code-review high; tiap temuan diverifikasi ke kode):**
+  - `aeecc54` lock proses diganti klaim atomik: lock dipegang selama I/O Telegram (hingga ~48 dtk) dan juga dipakai
+    thread dispatcher; objek `alert` di sesi bisa basi (`SessionLocal` memakai `expire_on_commit=False`) sehingga
+    guard `ai_synced` meloloskan edit kedua. Kini `UPDATE … WHERE ai_synced = false` mengklaim edit, edit tanpa
+    lock, klaim dilepas bila gagal.
+  - `b2595d2` anggaran caption dihitung dalam unit UTF-16 untuk seluruh isi caption (nama kamera/zona berisi
+    emoji astral sebelumnya bisa melewati 1024 dan ditolak 400).
+  - `cdd0514` `build_caption` menolak event kosong secara eksplisit; dua lookup dan dua impor tak terpakai di
+    dispatcher dibuang.
+  - **Sengaja tidak diubah:** retry pada galat permanen dan `retry_after` (dampak kecil setelah lock dihapus);
+    `ai_synced=True` walau baris AI terbuang karena anggaran (edit lanjutan akan membuangnya lagi); sinkron inline
+    di thread `AiWorker` (keputusan spec, `ponytail:`); fallback `getattr` untuk tuple polos dari tes lama.
+  - Bukti setelah perbaikan (berurutan, HEAD `cdd0514`): backend `864 passed, 1 skipped, 545 warnings in 154.79s`
+    (860 → 864); Docker `75 passed`; vision `235 passed, 3 deselected`; frontend `36 files / 477 passed`; lint
+    `24 warning / 16 pasangan` identik; build exit 0.
 - **Dampak:** alert tetap terkirim ±1 dtk tanpa menunggu LLM; tepat satu edit per
   alert apa pun urutan caption/pengiriman; tanpa notifikasi baru dari edit.
 - **Rollback:** `git revert` (kolom aditif aman) atau `alembic downgrade 0021`.
