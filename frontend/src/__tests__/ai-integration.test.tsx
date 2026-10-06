@@ -216,3 +216,12 @@ test('test connection forwards a pending key clear so it probes with the saved-a
   await screen.findByText(/Teks: OK/)
   expect(calls.find(call => call.method === 'POST')?.body).toEqual({ clear_api_key: true })
 })
+
+test('latency label comes from i18n in both languages', async () => {
+  stub()
+  localStorage.setItem('isentinel_locale', 'en')
+  mount()
+  await screen.findByLabelText('LLM model')
+  await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+  expect(await screen.findByText(/Text: OK.*Vision: OK.*Latency 42 ms/)).toBeInTheDocument()
+})

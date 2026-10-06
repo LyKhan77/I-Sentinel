@@ -163,7 +163,7 @@ export default function AiIntegrationPage() {
     </div>
     {busy && <p role="status">{t('aiint.working')}</p>}
     {result && <div role="status" style={{ overflowWrap: 'anywhere' }}>
-      <p>{t('aiint.text')}: {t(result.ok ? 'aiint.ok' : 'aiint.failed')} · {t('aiint.vision')}: {t(result.vision_ok ? 'aiint.ok' : 'aiint.failed')} · {result.latency_ms ?? '—'} ms</p>
+      <p>{t('aiint.text')}: {t(result.ok ? 'aiint.ok' : 'aiint.failed')} · {t('aiint.vision')}: {t(result.vision_ok ? 'aiint.ok' : 'aiint.failed')} · {result.latency_ms == null ? '—' : t('aiint.latency').replace('{n}', String(result.latency_ms))}</p>
       {result.model && <p>{t('aiint.model')}: {result.model}</p>}
       {result.error && <p>{result.error}</p>}
     </div>}
