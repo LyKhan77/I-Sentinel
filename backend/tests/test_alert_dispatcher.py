@@ -6,9 +6,10 @@ from app.core.config import settings
 from app.models.alert import Alert
 from app.models.camera import Camera
 from app.models.event import Event
+from app.models.event_ai import EventAi
 from app.models.telegram_chat import TelegramChat
 from app.models.zone import Zone
-from app.services import telegram
+from app.services import alert_ai, telegram
 from app.services.alert_dispatcher import AlertDispatcher
 from app.ws.hub import hub
 
@@ -106,12 +107,73 @@ def test_process_not_configured_makes_no_call(db, tmp_path, sent, monkeypatch):
     assert alert.status == "not_configured" and sent == []
 
 
+def test_plain_tuple_deliver_still_works(db, tmp_path, monkeypatch, broadcast):
+    """Fixture lama mengembalikan tuple polos: tanpa message_id → tidak ada edit (Review Focus 5)."""
+    edits = []
+    monkeypatch.setattr(telegram, "edit_caption", lambda *a, **k: edits.append(a) or ("edited", None))
+    monkeypatch.setattr(telegram, "deliver", lambda *a, **k: ("sent", None))
+    alert = _alert(db, tmp_path, monkeypatch)
+    _dispatcher().process(alert.id, db)
+    db.refresh(alert)
+    assert alert.status == "sent" and alert.message_id is None and alert.ai_synced is False
+    assert edits == []
+
+
 def test_process_records_failure(db, tmp_path, monkeypatch):
     monkeypatch.setattr(telegram, "deliver", lambda *a, **k: ("failed", "Forbidden: bot was kicked"))
     alert = _alert(db, tmp_path, monkeypatch)
     _dispatcher().process(alert.id, db)
     db.refresh(alert)
     assert (alert.status, alert.error) == ("failed", "Forbidden: bot was kicked")
+
+
+def test_failure_alert_is_never_synced(db, tmp_path, sent, monkeypatch):
+    """Kirim gagal → tidak ada edit dan baris tetap ai_synced=False."""
+    monkeypatch.setattr(telegram, "deliver", lambda *a, **k: ("failed", "Forbidden: bot was kicked"))
+    alert = _alert(db, tmp_path, monkeypatch)
+    _dispatcher().process(alert.id, db)
+    db.refresh(alert)
+    assert alert.ai_synced is False
+
+
+def test_ai_text_present_at_send_is_in_first_message_and_not_edited(db, tmp_path, monkeypatch, broadcast):
+    """Caption ok sebelum process → baris AI ikut pesan awal, tanpa edit (Review Focus 1)."""
+    alert = _alert(db, tmp_path, monkeypatch)
+    db.add(EventAi(event_id=alert.event_id, kind="caption", channel="auto", status="ok",
+                   answer="Seseorang berjalan."))
+    db.commit()
+    calls = []
+
+    def fake_deliver(token, chat_id, caption, photo=None, **kw):
+        calls.append({"caption": caption})
+        return telegram.Delivery("sent", None, 321, photo is not None)
+
+    monkeypatch.setattr(telegram, "deliver", fake_deliver)
+    edits = []
+    monkeypatch.setattr(telegram, "edit_caption", lambda *a, **k: edits.append(a) or ("edited", None))
+    _dispatcher().process(alert.id, db)
+    db.refresh(alert)
+    assert "🤖 <b>AI</b>: Seseorang berjalan." in calls[0]["caption"]
+    assert alert.message_id == 321 and alert.message_photo is True and alert.ai_synced is True
+    assert edits == []
+
+
+def test_caption_finishing_during_send_triggers_one_edit(db, tmp_path, monkeypatch, broadcast):
+    """Caption ok muncul di tengah kirim → tepat satu editMessageCaption (Review Focus 2)."""
+    alert = _alert(db, tmp_path, monkeypatch)
+
+    def fake_deliver(token, chat_id, caption, photo=None, **kw):
+        db.add(EventAi(event_id=alert.event_id, kind="caption", channel="auto", status="ok",
+                       answer="Seorang pria berdiri di lorong."))
+        db.commit()
+        return telegram.Delivery("sent", None, 99, True)
+
+    monkeypatch.setattr(telegram, "deliver", fake_deliver)
+    edits = []
+    monkeypatch.setattr(telegram, "edit_caption", lambda *a, **k: edits.append(a) or ("edited", None))
+    _dispatcher().process(alert.id, db)
+    db.refresh(alert)
+    assert len(edits) == 1 and alert.ai_synced is True
 
 
 def test_worker_thread_drains_queue(db, tmp_path, sent, monkeypatch):
