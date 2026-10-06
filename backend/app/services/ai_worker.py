@@ -11,7 +11,7 @@ import time
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Camera, Event, EventAi, Zone
-from app.services import ai_media, ai_prompts, llm_client
+from app.services import ai_media, ai_prompts, alert_ai, llm_client
 from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,12 @@ class AiWorker:
             asyncio.run(hub.broadcast({"kind": "ai", "event_id": row.event_id, "status": row.status}))
         except Exception:
             logger.warning("AI status broadcast failed for event %s", row.event_id)
+        if row.status == "ok":
+            # ponytail: sync Telegram di thread worker (jaringan ≤ ~15 dtk + retry); pindah ke antrean terpisah bila Telegram lambat terbukti menunda caption
+            try:
+                alert_ai.sync_ai_caption(db, row.event_id)
+            except Exception as exc:
+                logger.error("telegram alert sync failed for event %s: %s", row.event_id, type(exc).__name__)
 
     def recover(self, db, now: datetime | None = None) -> int:
         """Requeue pending captions at most ten minutes old; fail stale attempts."""

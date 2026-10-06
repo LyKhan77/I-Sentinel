@@ -147,3 +147,42 @@ def test_recover_fails_pending_rows_that_do_not_fit_the_queue(db, setup):
     assert AiWorker(maxsize=1).recover(db, now) == 1
     assert sorted(r.status for r in rows) == ["failed", "pending"]
     assert next(r for r in rows if r.status == "failed").error == "antrean penuh"
+
+
+def test_ok_caption_triggers_alert_sync(db, setup, monkeypatch):
+    from app.services import alert_ai
+    worker, ev, _, _, sent = setup
+    calls = []
+    monkeypatch.setattr(alert_ai, "sync_ai_caption", lambda db_, event_id: calls.append(event_id) or True)
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k: llm_client.LlmResult("Seseorang.", "stop", 1, 1, "m"))
+    worker.maybe_enqueue_caption(db, ev)
+    row = db.query(EventAi).one()
+    worker.process(row.id, db)
+    assert row.status == "ok" and calls == [ev.id]
+    assert sent == [{"kind": "ai", "event_id": ev.id, "status": "ok"}]
+
+
+def test_failed_caption_skips_alert_sync(db, setup, monkeypatch):
+    from app.services import alert_ai
+    worker, ev, _, _, _ = setup
+    calls = []
+    monkeypatch.setattr(alert_ai, "sync_ai_caption", lambda db_, event_id: calls.append(event_id) or True)
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k: (_ for _ in ()).throw(llm_client.LlmError("LLM timeout")))
+    worker.maybe_enqueue_caption(db, ev)
+    row = db.query(EventAi).one()
+    worker.process(row.id, db)
+    assert row.status == "failed" and calls == []
+
+
+def test_sync_error_does_not_change_caption_row(db, setup, monkeypatch, caplog):
+    from app.services import alert_ai
+    worker, ev, _, _, sent = setup
+    def boom(*args):
+        raise RuntimeError("telegram down")
+    monkeypatch.setattr(alert_ai, "sync_ai_caption", boom)
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k: llm_client.LlmResult("Seseorang.", "stop", 1, 1, "m"))
+    worker.maybe_enqueue_caption(db, ev)
+    row = db.query(EventAi).one()
+    worker.process(row.id, db)
+    assert row.status == "ok" and row.answer == "Seseorang." and row.error is None
+    assert sent == [{"kind": "ai", "event_id": ev.id, "status": "ok"}]
