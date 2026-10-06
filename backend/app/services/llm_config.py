@@ -2,6 +2,7 @@
 from copy import deepcopy
 from io import BytesIO
 import json
+import logging
 import math
 from time import monotonic
 from urllib.parse import urlsplit
@@ -14,6 +15,7 @@ from app.core.config import settings
 from app.models.setting import Setting
 from app.services import llm_client, secret_store
 
+logger = logging.getLogger(__name__)
 SETTING_KEY = "llm"
 KEY_NAME = "llm_api_key"
 FIELDS = ("enabled", "api_url", "model", "max_tokens", "timeout_caption_s", "timeout_ask_s",
@@ -36,9 +38,22 @@ def _stored(db: Session) -> dict:
     return {field: deepcopy(values[field]) for field in FIELDS if field in values and values[field] is not None}
 
 
+def _stored_key() -> str:
+    """Read the stored credential; an unreadable store behaves like an empty one.
+
+    Without this guard a corrupt secret file would abort apply() (dropping every DB override) and
+    make GET /ai/settings answer 500, leaving the admin unable to open the page that fixes it.
+    """
+    try:
+        return secret_store.get(KEY_NAME) or ""
+    except secret_store.SecretStoreError:
+        logger.warning("LLM key store unreadable; falling back to the environment key")
+        return ""
+
+
 def _key() -> str:
     """Resolve a stored key, falling back to the startup environment credential."""
-    return secret_store.get(KEY_NAME) or _BASE["api_key"]
+    return _stored_key() or _BASE["api_key"]
 
 
 def _clean_key(api_key: str | None) -> str | None:
@@ -122,7 +137,7 @@ def _validate(values: dict) -> None:
 def apply(db: Session) -> None:
     """Apply current overrides and restore removed ones; an untouched empty DB is a no-op."""
     stored = _stored(db)
-    key = secret_store.get(KEY_NAME)
+    key = _stored_key()
     if key:
         stored["api_key"] = key
     # ponytail: mengubah singleton settings (satu proses API); multi-worker perlu muat ulang dari DB per worker.

@@ -134,3 +134,13 @@ def test_lifespan_apply_failure_does_not_stop_startup(app_db, monkeypatch, caplo
     assert called == [True]
     assert "LLM settings apply at startup failed" in caplog.text
     assert "sk-secret" not in caplog.text
+
+
+def test_get_survives_unreadable_secret_store(client, monkeypatch):
+    """Admin harus tetap bisa membuka halaman untuk memperbaiki konfigurasi."""
+    def broken(name):
+        raise secret_store.SecretStoreError("unreadable")
+
+    monkeypatch.setattr(secret_store, "get", broken)
+    r = client.get(URL, headers=admin_headers(client))
+    assert r.status_code == 200 and r.json()["key_configured"] is False

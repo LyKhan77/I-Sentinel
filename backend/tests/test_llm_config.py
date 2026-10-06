@@ -246,3 +246,19 @@ def test_api_url_with_credentials_is_rejected(config, db, url):
         config.save(db, {"api_url": url}, api_key="sk-new")
     assert "pw" not in str(exc.value) and "token@" not in str(exc.value)
     assert db.get(Setting, "llm") is None and secret_store.get("llm_api_key") is None
+
+
+def test_unreadable_secret_store_keeps_db_overrides_and_view(config, db, monkeypatch):
+    """File rahasia rusak/izin salah tidak boleh membuang override DB atau membuat halaman admin 500."""
+    config.save(db, {"model": "dari-db"})
+    monkeypatch.setattr(settings, "llm_model", "")
+    config._overridden.clear()
+
+    def broken(name):
+        raise secret_store.SecretStoreError("unreadable")
+
+    monkeypatch.setattr(secret_store, "get", broken)
+    config.apply(db)
+    assert settings.llm_model == "dari-db"
+    view = config.view(db)
+    assert view["model"] == "dari-db" and view["key_configured"] is False
