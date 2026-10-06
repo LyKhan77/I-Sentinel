@@ -162,3 +162,11 @@ def test_failed_edit_releases_the_claim_so_a_later_call_can_retry(db, ready, mon
     assert alert_ai.sync_ai_caption(db, alert.event_id) is True  # balasan default sukses
     assert len(calls) == 4
     assert db.execute(text("SELECT ai_synced FROM alert WHERE id = :i"), {"i": alert.id}).scalar() == 1
+
+
+def test_build_caption_requires_an_event(db):
+    """Event hilang dulu membuat dispatcher gagal cepat (alert 'failed'); jangan mengirim pesan kosong."""
+    from types import SimpleNamespace
+    from app.services import alert_ai
+    with pytest.raises(ValueError):
+        alert_ai.build_caption(db, SimpleNamespace(event=None, camera_id=None, zone_id=None), None)

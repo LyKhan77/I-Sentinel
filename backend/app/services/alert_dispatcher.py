@@ -19,8 +19,6 @@ from datetime import datetime, timedelta, timezone
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models.alert import Alert
-from app.models.camera import Camera
-from app.models.zone import Zone
 from app.services import alert_ai, telegram
 from app.ws.hub import hub
 
@@ -168,8 +166,6 @@ class AlertDispatcher:
             _broadcast_status(alert.event_id, alert.status)
             return
         event = alert.event
-        camera = db.get(Camera, alert.camera_id) if alert.camera_id else None
-        zone = db.get(Zone, alert.zone_id) if alert.zone_id else None
         ai = alert_ai.ai_text(db, alert.event_id)
         caption = alert_ai.build_caption(db, alert, ai)
         photo = self._snapshot(db, event)

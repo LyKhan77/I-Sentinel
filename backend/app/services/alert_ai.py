@@ -22,8 +22,8 @@ def ai_text(db: Session, event_id: int) -> str | None:
 def build_caption(db: Session, alert: Alert, ai: str | None) -> str:
     """Caption builder now shared by the dispatcher and the sync path."""
     event = alert.event
-    if event is None:
-        return ""
+    if event is None:  # mustahil lewat FK; tetap eksplisit agar dispatcher gagal cepat, bukan mengirim pesan kosong
+        raise ValueError("alert has no event")
     camera = db.get(Camera, alert.camera_id) if alert.camera_id else None
     zone = db.get(Zone, alert.zone_id) if alert.zone_id else None
     return telegram.format_caption(
