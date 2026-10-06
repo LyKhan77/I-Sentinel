@@ -49,6 +49,5 @@ export async function putAiSettings(patch: AiSettingsPatch): Promise<AiSettings>
 }
 
 export async function testAiSettings(patch: AiSettingsPatch): Promise<AiTestResult> {
-  const { clear_api_key: _clear, ...values } = patch
-  return ok(await apiFetch('/ai/settings/test', { method: 'POST', body: JSON.stringify(values) }))
+  return ok(await apiFetch('/ai/settings/test', { method: 'POST', body: JSON.stringify(patch) }))
 }

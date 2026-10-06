@@ -207,3 +207,12 @@ test('422 shows the server validation detail for save and test', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Tes koneksi' }))
   await waitFor(() => expect(screen.getAllByText(/timeout_ask_s must be between 5 and 600/).length).toBeGreaterThan(0))
 })
+
+test('test connection forwards a pending key clear so it probes with the saved-after configuration', async () => {
+  const calls = stub()
+  await form()
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus kunci' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Tes koneksi' }))
+  await screen.findByText(/Teks: OK/)
+  expect(calls.find(call => call.method === 'POST')?.body).toEqual({ clear_api_key: true })
+})
