@@ -21,16 +21,17 @@ CAPTION_PROMPTS = {
     "person_detect": "Jelaskan apa yang dilakukan orang yang terlihat.",
 }
 TEMPORAL_PRESETS = frozenset({"last_person"})
+_SHORT = " Jawab 1-3 kalimat saja."
 _QUESTIONS = {
-    "what_happened": "Apa yang terjadi?",
-    "false_alarm": "Apakah ini alarm palsu? Jelaskan berdasarkan bukti visual, jangan mengubah keputusan alert.",
-    "report": "Buat laporan insiden singkat berdasarkan bukti yang terlihat.",
-    "person_in_zone": "Ada orang di area, termasuk yang jongkok atau terhalang?",
-    "last_person": "Orang terakhir terlihat ke mana? Gunakan urutan frame; abstain bila arah tidak terlihat.",
-    "fallen": "Ada orang tergeletak? Jangan menyimpulkan kondisi kesehatan.",
-    "working_or_standing": "Sedang bekerja atau hanya berdiri?",
-    "who": "Berapa orang dan apa ciri pakaian serta aktivitasnya? Jangan menebak identitas.",
-    "count": "Berapa perkiraan jumlah orang yang terlihat?",
+    "what_happened": "Apa yang terjadi? Jawab sebagai kronologi.",
+    "false_alarm": "Apakah ini alarm palsu? Jelaskan berdasarkan bukti visual, jangan mengubah keputusan alert." + _SHORT,
+    "report": "Buat laporan insiden singkat berdasarkan bukti yang terlihat. Jawab sebagai kronologi.",
+    "person_in_zone": "Ada orang di area, termasuk yang jongkok atau terhalang?" + _SHORT,
+    "last_person": "Orang terakhir terlihat ke mana? Gunakan urutan frame; abstain bila arah tidak terlihat." + _SHORT,
+    "fallen": "Ada orang tergeletak? Jangan menyimpulkan kondisi kesehatan." + _SHORT,
+    "working_or_standing": "Sedang bekerja atau hanya berdiri?" + _SHORT,
+    "who": "Berapa orang dan apa ciri pakaian serta aktivitasnya? Jangan menebak identitas." + _SHORT,
+    "count": "Berapa perkiraan jumlah orang yang terlihat?" + _SHORT,
 }
 _EXTRA = {"idle_zone": ["person_in_zone", "last_person", "fallen"], "loitering": ["working_or_standing"],
           "intrusion": ["who"], "crowd": ["count"]}

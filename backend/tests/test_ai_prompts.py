@@ -52,3 +52,17 @@ def test_system_prompt_requests_plain_text_and_timeline_format():
     assert "tanpa markdown" in prompt
     assert "m:dd" in prompt and "Kesimpulan:" in prompt
     assert "Frame pada detik" in prompt
+
+
+@pytest.mark.parametrize("key", ["what_happened", "report"])
+def test_chronological_presets_ask_for_a_timeline(key):
+    from app.services import ai_prompts
+    assert "kronologi" in ai_prompts.preset_question(key).lower()
+
+
+@pytest.mark.parametrize("key", ["false_alarm", "person_in_zone", "last_person", "fallen", "working_or_standing", "who", "count"])
+def test_other_presets_ask_for_a_short_answer_without_timeline(key):
+    """Tanpa petunjuk ini model membuat linimasa penuh bahkan untuk pertanyaan ya/tidak."""
+    from app.services import ai_prompts
+    question = ai_prompts.preset_question(key)
+    assert "1-3 kalimat" in question and "kronologi" not in question.lower()
