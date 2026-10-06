@@ -296,16 +296,20 @@ Custom uses a TextArea with a 600-character counter; a ghost button opens a read
 default prompts, labeled by event type. Attendance has no AI block. Global availability and zone
 caption preference remain separate controls.
 
-The event detail places `AskAiPanel` below media tabs and before metadata. Carbon Tag marks
-“Dibuat AI”; text distinguishes pending, failed, and no caption. Presets use wrapping tertiary
-buttons, followed by a 500-character TextArea and send action. InlineLoading signals an in-flight
+The event detail keeps the metadata grid as the primary content and places `AskAiPanel` below it.
+The block is compact: a highlighted caption callout (accent layer, 3px interactive-border start
+rule, Carbon Tag “Dibuat AI”) and a ghost “Tanya AI” toggle. Pending, failed, and missing captions
+collapse to one muted line. The ask section (presets, 500-character TextArea, send action, thread)
+is closed by default and closes again when the event changes. InlineLoading signals an in-flight
 request; InlineNotification explains rate limits, busy/disabled AI, and unavailable media.
-Answers render as literal React text, preserving line breaks and wrapping long unbroken content.
-Each new turn shows frame count and cache/snapshot-only notes. Switching events resets the local
-conversation. Saved audit history is visible but is not seeded into the outgoing browser history.
+Captions and answers render through `AiAnswer`: React elements only (no raw HTML), with timeline
+rows (`m:dd — text` as a monospace time label plus text), bullet lists, `**bold**`, a summary line,
+and a `Kesimpulan:` line. Any markup from the model stays literal text. Each new turn shows frame
+count and cache/snapshot-only notes. Switching events resets the local conversation. Saved audit
+history is visible but is not seeded into the outgoing browser history.
 
 Use existing Carbon surface, text, and border tokens; no new palette or rounded card treatment.
-An always-visible warning explains that small objects may be misidentified. Global disabled,
+A hint inside the ask section explains that small objects may be misidentified. Global disabled,
 attendance, and system events hide the panel. Missing media disables input and preset actions.
 All copy has Indonesian and English translations.
 

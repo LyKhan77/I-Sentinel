@@ -3,6 +3,28 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Blok AI ringkas di bawah meta grid dan kronologi rapi — lokal, belum di-deploy (2026-10-06)
+
+- **Konteks:** permintaan user setelah mencoba UI: bagian Ask AI jarang dipakai, jadi harus ringkas dan hanya
+  caption yang disorot; meta grid tetap utama; kronologi ditampilkan rapi. Rancangan disetujui di chat.
+  Tahap deploy dan uji lapangan menunggu OK. ROADMAP tetap `[~]`.
+- **Perubahan:**
+  - `601e67a` blok AI dipindah ke bawah meta grid; caption disorot (latar aksen + garis kiri + lencana Dibuat AI);
+    caption belum ada/menunggu/gagal satu baris redup; bagian **Tanya AI** tertutup secara default (tombol
+    `aria-expanded`), tertutup lagi saat event berganti.
+  - `936c725` `AiAnswer`: parser per baris menjadi elemen React tanpa HTML mentah: `m:dd — teks` / `detik N — teks`
+    menjadi linimasa, butir menjadi daftar, `**tebal**`, ringkasan, `Kesimpulan:`; markdown lama (termasuk cache)
+    ikut rapi; markup apa pun tetap teks.
+  - `f6e9031` pesan sistem: teks biasa tanpa markdown; urutan kejadian `m:dd — kejadian` + `Kesimpulan:`.
+  - `02d17b5` preset `what_happened` dan `report` meminta kronologi; preset lain 1-3 kalimat. Diverifikasi ke
+    LLM nyata dengan bingkai event 4738 (kronologi `00:00 — …` + Kesimpulan; preset singkat 2 kalimat).
+- **Bukti:** tes baru backend (preset/prompt) dan frontend (`ai-answer.test.tsx` 5 tes; `ask-ai-panel.test.tsx`
+  tertutup default, caption disorot, kronologi, urutan di bawah meta grid). Browser 390×844 dengan API stub:
+  `scrollWidth` 375 (< 390), blok AI di bawah meta grid, 3 baris linimasa; screenshot lokal
+  `docs/evidence/ai-panel-{collapsed,open}-390.png` (gitignored). **BELUM diuji di server/UI nyata.**
+- **Dampak:** hanya tampilan dan teks prompt; tanpa migrasi, tanpa perubahan API. Jawaban cache lama tetap
+  ber-markdown tetapi dirender rapi. **Rollback:** `git revert` commit di atas.
+
 ### Perbaikan review cabang AI Integration — lokal, tanpa deploy (2026-10-06)
 
 - **Konteks:** review independen cabang `feat/ai-integration-settings` (skill code-review, level high;

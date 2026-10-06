@@ -160,13 +160,17 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 
 1. `GET /ai/status` sekali saat halaman dipasang. Global off → panel tidak ada, ask 503;
    attendance dan system selalu tanpa panel.
-2. Caption otomatis ditampilkan dengan lencana **Dibuat AI** dan status. `kind: "ai"` untuk event
-   terpilih memuat ulang `GET /events/{id}/ai` (caption + 20 ask terbaru).
+2. Blok AI berada **di bawah meta grid** event. Caption otomatis disorot dengan lencana **Dibuat AI**;
+   belum ada/menunggu/gagal tampil satu baris redup. Bagian **Tanya AI** tertutup secara default dan
+   dibuka lewat tombol. `kind: "ai"` untuk event terpilih (atau polling saat pending) memuat ulang
+   `GET /events/{id}/ai` (caption + 20 ask terbaru).
 3. Pilih preset sesuai tipe atau tulis pertanyaan ≤500 karakter. Riwayat percakapan browser dikirim
    ulang (enam giliran terakhir, q/a ≤2000); memilih event lain meresetnya.
 4. API memakai cache preset sukses sebelum kuota (6/menit/user). Permintaan baru mengirim snapshot
    dan keyframe ke LLM; timeout/LLM mati → failed pada audit dan pesan ramah, tidak menghentikan alert.
-5. Jawaban tampil sebagai teks literal, dengan jumlah frame dan catatan cache/snapshot saja.
+5. Jawaban dirender `AiAnswer` sebagai elemen React (tanpa HTML mentah): kronologi `m:dd — kejadian`
+   menjadi baris waktu, daftar, tebal, dan `Kesimpulan:`; markup apa pun dari model tetap teks. Tampil dengan
+   jumlah frame dan catatan cache/snapshot saja.
    Media habis/hilang → input nonaktif; tanpa klip preset temporal ditolak. Busy/429 dapat dicoba lagi.
 6. Jawaban manual tetap ask, tidak mengisi kotak caption. AI hanya saran; konfirmasi dengan media asli.
    Audit menyimpan actor user; caption/ask ikut dihapus bersama event oleh retensi/cleanup.
