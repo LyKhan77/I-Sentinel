@@ -132,12 +132,26 @@ test('connection failure shows sanitized server error', async () => {
   expect(await screen.findByText(/LLM timeout/)).toBeInTheDocument()
 })
 
-test.each([403, 422])('save error %s is translated and clears a submitted key', async status => {
+test.each([403, 422])('save error %s is translated and keeps the typed key for a retry', async status => {
   stub(status)
   fireEvent.change(await form(), { target: { value: 'form-model' } })
   fireEvent.change(screen.getByLabelText('Kunci API'), { target: { value: 'sk-form' } })
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   expect(await screen.findByText(status === 403 ? 'Hanya admin yang dapat mengatur AI.' : 'Pengaturan AI tidak valid. Periksa nilai form.')).toBeInTheDocument()
+  expect(screen.getByLabelText('Kunci API')).toHaveValue('sk-form')
+})
+
+test('typed key survives Test and is cleared only after a successful save', async () => {
+  const calls = stub()
+  await form()
+  fireEvent.change(screen.getByLabelText('Kunci API'), { target: { value: 'sk-form' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Tes koneksi' }))
+  await screen.findByText(/Teks: OK/)
+  expect(calls.find(call => call.method === 'POST')?.body).toEqual({ api_key: 'sk-form' })
+  expect(screen.getByLabelText('Kunci API')).toHaveValue('sk-form')
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Pengaturan AI disimpan.')
+  expect(calls.find(call => call.method === 'PUT')?.body).toEqual({ api_key: 'sk-form' })
   expect(screen.getByLabelText('Kunci API')).toHaveValue('')
 })
 

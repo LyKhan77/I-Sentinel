@@ -18,7 +18,7 @@ const SOURCES: Record<'db' | 'env' | 'default', TKey> = {
   db: 'aiint.sourceDb', env: 'aiint.sourceEnv', default: 'aiint.sourceDefault',
 }
 
-/** Admin-only form; credentials remain blank on load and are cleared after submission. */
+/** Admin-only form; credentials remain blank on load and are cleared after a successful save. */
 export default function AiIntegrationPage() {
   const { t } = useT()
   const [settings, setSettings] = useState<AiSettings | null>(null)
@@ -98,11 +98,13 @@ export default function AiIntegrationPage() {
     if (!values) return
     setBusy(true)
     setResult(null)
-    setKey('')
     try {
       if (test) setResult(await testAiSettings(values))
       else {
         setSettings(await putAiSettings(values))
+        // kunci diketik tetap ada selama Test atau simpan gagal (admin tak perlu mengetik ulang);
+        // hanya dikosongkan setelah tersimpan, supaya tidak tertahan di state
+        setKey('')
         setEdits({})
         setClearKey(false)
         setMessage({ kind: 'success', text: t('aiint.saved') })
