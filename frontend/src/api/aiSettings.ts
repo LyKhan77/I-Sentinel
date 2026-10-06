@@ -11,11 +11,12 @@ export type AiSettings = {
   caption_min_interval_s: number
   extra_body: Record<string, unknown>
   key_configured: boolean
+  key_source: 'db' | 'env' | 'none'
   sources: Record<string, 'db' | 'env' | 'default'>
   restart_only: { concurrency: number; queue_max: number }
 }
 export type AiSettingsPatch = {
-  [K in keyof Omit<AiSettings, 'key_configured' | 'sources' | 'restart_only'>]?: AiSettings[K] | null
+  [K in keyof Omit<AiSettings, 'key_configured' | 'key_source' | 'sources' | 'restart_only'>]?: AiSettings[K] | null
 } & { api_key?: string; clear_api_key?: boolean }
 export type AiTestResult = {
   ok: boolean; vision_ok: boolean; latency_ms: number | null; model: string | null; error: string | null

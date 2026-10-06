@@ -8,7 +8,7 @@ import type { AiTestResult } from '../api/aiSettings'
 const INITIAL = {
   enabled: true, api_url: 'https://llm.test/v1', model: 'env-model', max_tokens: 1000,
   timeout_caption_s: 60, timeout_ask_s: 120, ask_rate_per_min: 6, caption_min_interval_s: 60,
-  extra_body: { chat_template_kwargs: { enable_thinking: false } }, key_configured: true,
+  extra_body: { chat_template_kwargs: { enable_thinking: false } }, key_configured: true, key_source: 'db',
   sources: { enabled: 'default', api_url: 'env', model: 'env', max_tokens: 'db', timeout_caption_s: 'default',
     timeout_ask_s: 'default', ask_rate_per_min: 'default', caption_min_interval_s: 'default', extra_body: 'default' },
   restart_only: { concurrency: 2, queue_max: 100 },
@@ -16,9 +16,9 @@ const INITIAL = {
 const RESULT: AiTestResult = { ok: true, vision_ok: true, latency_ms: 42, model: 'form-model', error: null }
 type Call = { url: string; method: string; body?: Record<string, unknown> }
 
-function stub(status = 200, result = RESULT, getStatus = 200, detail?: string) {
+function stub(status = 200, result = RESULT, getStatus = 200, detail?: string, initial: Record<string, unknown> = {}) {
   const calls: Call[] = []
-  let current = structuredClone(INITIAL)
+  let current: typeof INITIAL = { ...structuredClone(INITIAL), ...initial }
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined
@@ -32,8 +32,8 @@ function stub(status = 200, result = RESULT, getStatus = 200, detail?: string) {
       code = method === 'GET' ? getStatus : status
       if (method === 'PUT' && code === 200) {
         for (const [field, value] of Object.entries(body ?? {})) {
-          if (field === 'api_key') current.key_configured = true
-          else if (field === 'clear_api_key') current.key_configured = false
+          if (field === 'api_key') current = { ...current, key_configured: true, key_source: 'db' }
+          else if (field === 'clear_api_key') current = { ...current, key_configured: false, key_source: 'none' }
           else {
             current = { ...current, [field]: value === null ? INITIAL[field as keyof typeof INITIAL] : value }
           }
@@ -224,4 +224,15 @@ test('latency label comes from i18n in both languages', async () => {
   await screen.findByLabelText('LLM model')
   await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
   expect(await screen.findByText(/Text: OK.*Vision: OK.*Latency 42 ms/)).toBeInTheDocument()
+})
+
+test.each([
+  ['env', true, 'Kunci dari environment (llm.env). Isi kolom di atas untuk menimpanya.'],
+  ['none', false, 'Belum ada kunci. Isi kolom di atas bila endpoint membutuhkannya.'],
+] as const)('key from %s is not shown as stored and offers no clear button', async (source, configured, text) => {
+  stub(200, RESULT, 200, undefined, { key_source: source, key_configured: configured })
+  await form()
+  expect(screen.getByText(text)).toBeInTheDocument()
+  expect(screen.queryByText('Kunci tersimpan')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Hapus kunci' })).not.toBeInTheDocument()
 })

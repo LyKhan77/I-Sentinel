@@ -3,7 +3,7 @@ import { Accordion, AccordionItem, Button, InlineNotification, PasswordInput, Ta
 import { useT, type TKey } from '../../app/i18n'
 import { AiSettingsError, getAiSettings, putAiSettings, testAiSettings, type AiSettings, type AiSettingsPatch, type AiTestResult } from '../../api/aiSettings'
 
-type Field = keyof Omit<AiSettings, 'key_configured' | 'sources' | 'restart_only'>
+type Field = keyof Omit<AiSettings, 'key_configured' | 'key_source' | 'sources' | 'restart_only'>
 type Edits = Partial<Record<Field, string | boolean | null>>
 const NUMBERS = [
   ['max_tokens', 100, 8000, 1], ['timeout_caption_s', 5, 600, 'any'], ['timeout_ask_s', 5, 600, 'any'],
@@ -132,7 +132,8 @@ export default function AiIntegrationPage() {
     </div>)}
     <PasswordInput id="llm-key" labelText={t('aiint.key')} helperText={t('aiint.keyHint')} autoComplete="off"
       value={key} disabled={busy} onChange={event => { setKey(event.target.value); setClearKey(false); setResult(null) }} />
-    {settings.key_configured && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+    {settings.key_source !== 'db' ? <p style={{ color: 'var(--cds-text-helper)' }}>{t(settings.key_source === 'env' ? 'aiint.keyEnv' : 'aiint.keyNone')}</p>
+      : <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
       <span>{clearKey ? t('aiint.clearPending') : t('aiint.keySaved')}</span>
       <Button kind="danger--ghost" size="sm" disabled={busy || clearKey} onClick={() => { setClearKey(true); setKey(''); setResult(null) }}>
         {t('aiint.clearKey')}
