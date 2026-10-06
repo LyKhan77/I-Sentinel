@@ -132,3 +132,33 @@ def test_unexpected_error_is_contained_without_secret_logging(db, ready, monkeyp
     assert alert_ai.sync_ai_caption(db, alert.event_id) is False
     db.refresh(alert)
     assert not alert.ai_synced and alert.status == "sent" and TOKEN not in caplog.text
+
+
+def test_stale_session_object_cannot_cause_a_second_edit(db, ready):
+    """SessionLocal memakai expire_on_commit=False: objek alert lama di memori tidak boleh meloloskan guard
+    setelah pemanggil lain sudah mengedit dan menandai ai_synced."""
+    from sqlalchemy import text
+    from app.services import alert_ai
+    alert, calls, _ = ready
+    db.expire_on_commit = False  # seperti sesi produksi
+    assert alert.ai_synced is False  # dimuat dan tertahan di identity map
+    db.execute(text("UPDATE alert SET ai_synced = 1 WHERE id = :i"), {"i": alert.id})
+    db.commit()
+    assert alert.ai_synced is False  # objek di sesi ini basi
+    assert alert_ai.sync_ai_caption(db, alert.event_id) is False
+    assert calls == []
+
+
+def test_failed_edit_releases_the_claim_so_a_later_call_can_retry(db, ready, monkeypatch):
+    from sqlalchemy import text
+    from app.services import alert_ai
+    alert, calls, replies = ready
+    original = telegram.edit_caption
+    monkeypatch.setattr(telegram, "edit_caption", lambda *a, **k: original(*a, **k, sleep=lambda _: None))
+    replies.extend([urllib.error.HTTPError("u", 500, "Error", {}, io.BytesIO(json.dumps(
+        {"ok": False, "description": "Internal"}).encode())) for _ in range(3)])
+    assert alert_ai.sync_ai_caption(db, alert.event_id) is False
+    assert db.execute(text("SELECT ai_synced FROM alert WHERE id = :i"), {"i": alert.id}).scalar() == 0
+    assert alert_ai.sync_ai_caption(db, alert.event_id) is True  # balasan default sukses
+    assert len(calls) == 4
+    assert db.execute(text("SELECT ai_synced FROM alert WHERE id = :i"), {"i": alert.id}).scalar() == 1
