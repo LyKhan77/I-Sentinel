@@ -112,7 +112,9 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 4. Paralel: notifikasi web (§9) dan alert Telegram (§10).
 5. Opsional AI: setelah snapshot tersedia, hook mengantre caption tanpa gerbang severity.
    Worker menyimpan `event_ai` pending → ok/failed, mengirim WS `kind: "ai"`.
-   Kegagalan AI tidak mengubah event atau pengiriman alert.
+   Kegagalan AI tidak mengubah event atau pengiriman alert. Caption `ok` ikut diedit
+   ke alert Telegram yang sudah terkirim (§10), atau langsung ada bila alert terkirim
+   setelah caption selesai.
 
 ## 8. Event Inbox
 
@@ -214,7 +216,9 @@ Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
 3. Saat event: `alerting` memeriksa toggle, `ALERT_MIN_SEVERITY`, dan rate-limit (per kamera, zona,
    tipe, track; critical tanpa batas, lainnya 2 menit) → baris `alert` berstatus `queued`.
 4. `alert_dispatcher` (thread terpisah) mengirim foto + caption HTML → status `sent`/`failed` →
-   broadcast ke Inbox.
+   broadcast ke Inbox. Alert `sent` ber-foto menyimpan `message_id`; bila caption AI sudah/kembali
+   `ok`, `alert_ai.sync_ai_caption` mengedit pesan sekali untuk menambah baris `🤖 AI:`
+   (alert teks-saja, `rate_limited`, `failed`, atau tanpa `message_id` tidak pernah diedit).
 
 Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert kesehatan dengan toggle ON (§14).
 

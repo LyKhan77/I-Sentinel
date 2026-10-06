@@ -110,6 +110,9 @@ ditolak (node tetap hidup, device lama).
   `curl -H 'Authorization: Bearer <token>' localhost:8000/api/v1/alerts`.
 - Konfigurasi Telegram: env `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` di `.env`,
   restart API. Rate limit alert: `ALERT_MIN_SEVERITY`, `TELEGRAM_RATE_LIMIT`.
+- Caption AI pada alert (edit `editMessageCaption`) butuh `app_url` benar
+  (Konfigurasi → Notifikasi → port web `7700`) agar tautan klip pada caption
+  yang diedit menunjuk aplikasi; alert lama tanpa `message_id` tidak pernah diedit.
 
 ## 5c. Rotasi JWT secret
 

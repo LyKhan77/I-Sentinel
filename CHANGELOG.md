@@ -3,6 +3,39 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Caption AI di alert Telegram (edit pesan, sekali per alert) — lokal, belum di-deploy (2026-10-06)
+
+- **Konteks:** lanjutan fitur AI (opsi A dari spec
+  `docs/superpowers/specs/2026-10-06-telegram-ai-caption-design.md`): caption `🤖 AI:`
+  terlihat langsung di grup Telegram. Eksekusi TDD native pada
+  `feat/telegram-ai-caption` (T1 `4be2fed`, T2 `55c51ec`, T3 kode+dokumen).
+  **BELUM diuji di server/Telegram nyata.**
+- **Perubahan:**
+  - `telegram.py`: `Delivery` (tuple kompatibel + `message_id`/`photo`),
+    `edit_caption` (retry, "message is not modified" = sukses, galat bebas token),
+    `format_caption(ai_text=...)` (baris AI di-escape, dilipat, anggaran ≤ 1024
+    dengan margin 8 untuk emoji UTF-16, sisa < 40 → tanpa baris AI).
+  - Migrasi `0022_alert_telegram_message`: `alert.message_id`, `alert.message_photo`,
+    `alert.ai_synced` (default false, aditif).
+  - `alert_ai.py` baru: `ai_text`, `build_caption` (dipindah dari dispatcher),
+    `sync_ai_caption` idempoten (guard: `sent`, `message_id`, foto, chat aktif,
+    token, caption `ok`; lock proses; commit sebelum jaringan; tidak pernah raise,
+    log tanpa nilai rahasia).
+  - `alert_dispatcher.process`: pakai `build_caption`, simpan `message_id`/
+    `message_photo`, `ai_synced=True` bila AI sudah di pesan awal, panggil
+    `sync_ai_caption` setelah commit status.
+  - `ai_worker.process`: caption `ok` memicu `sync_ai_caption` setelah commit dan
+    broadcast, dibungkus try/except (kegagalan Telegram tidak mengubah baris caption).
+- **Bukti (lokal):** RED benar per task; T2 GREEN 38 passed (test_alert_ai +
+  test_alert_dispatcher); T3 test_ai_worker 19 passed; suite final S1 pada HEAD:
+  backend `860 passed, 1 skipped, 545 warnings` (baseline `818 passed, 1 skipped` —
+  naik hanya karena tes baru); Docker `75 passed`; vision `235 passed, 3 deselected`
+  (tidak disentuh); frontend `36 files / 477 passed` (tidak disentuh); build exit 0;
+  lint exit 0, `24 warning / 16 pasangan` identik baseline.
+- **Dampak:** alert tetap terkirim ±1 dtk tanpa menunggu LLM; tepat satu edit per
+  alert apa pun urutan caption/pengiriman; tanpa notifikasi baru dari edit.
+- **Rollback:** `git revert` (kolom aditif aman) atau `alembic downgrade 0021`.
+
 ### Deploy dan uji lapangan Caption AI, Tanya AI, dan AI Integration — gspe-ai3 (2026-10-06)
 
 - **Konteks:** deploy cabang `feat/ai-event-caption` lalu `feat/ai-integration-settings` ke `gspe-ai3`

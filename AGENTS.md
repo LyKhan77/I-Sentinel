@@ -70,10 +70,11 @@ I-Sentinel/
 │   │   ├── models/              # SQLAlchemy models
 │   │   ├── schemas/             # Pydantic contracts
 │   │   ├── services/            # probe, stream_endpoint, go2rtc, config_push, ingest,
-│   │   │                        #   events_consumer, face, attendance, alerting, retention
+│   │   │                        #   events_consumer, face, attendance, alerting, alert_ai,
+│   │   │                        #   alert_dispatcher, retention, telegram,
 │   │   │                        #   ai_worker, ask_ai, llm_client, llm_config, ai_media, ai_prompts
 │   │   └── ws/hub.py            # websocket fan-out
-│   ├── alembic/versions/        # migrations (latest: 0021_ai_caption)
+│   ├── alembic/versions/        # migrations (latest: 0022_alert_telegram_message)
 │   ├── scripts/                 # camera_management_migrate, retention_sweep,
 │   │                            #   download_face_models
 │   └── tests/                   # pytest (`gpu` = CUDA/RTSP; `llm` = explicit real endpoint opt-in)

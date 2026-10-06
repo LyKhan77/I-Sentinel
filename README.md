@@ -450,10 +450,18 @@ Yang perlu diketahui:
 - **Format pesan**: foto snapshot dengan caption HTML — judul tebal berbahasa
   Inggris (`INTRUSION`, `LOITERING`, `RUNNING`, `IDLE ZONE`, `CROWD`,
   `ATTENDANCE — CHECK IN/OUT`, `UNKNOWN FACE`), lalu satu data per baris berlabel
-  Indonesia (Nama/Kamera/Zona/Waktu/Level; idle: durasi kosong, crowd: jumlah orang)
-  dan tautan klip di akhir. Pengingat ditandai di judul. Snapshot behavior berlabel
+  Indonesia (Nama/Kamera/Zona/Waktu/Level; idle: durasi kosong, crowd: jumlah orang),
+  baris `🤖 AI:` bila caption AI sudah siap, dan tautan klip di akhir. Pengingat ditandai di judul. Snapshot behavior berlabel
   jenis kejadian; snapshot absensi berlabel nama karyawan (atau `Unknown` oranye
   untuk wajah tak dikenal).
+
+- **Caption AI pada alert**: bila zona ber-Caption AI, caption `🤖 AI:` ditambahkan
+  ke pesan alert yang sudah terkirim (edit `editMessageCaption`, tanpa notifikasi
+  baru); bila caption sudah siap saat alert dikirim, ia langsung ada di pesan awal.
+  Edit hanya pada alert `sent` ber-foto dengan `message_id`, sekali per alert
+  (`ai_synced`), tidak pernah mengubah status alert atau antrean AI. Kegagalan edit
+  hanya dicatat di log; alert lama tanpa `message_id` tidak disentuh. Pengaturan
+  `app_url` di Konfigurasi → Notifikasi memengaruhi tautan pada caption yang diedit.
 
 ## Monitoring Resource
 
