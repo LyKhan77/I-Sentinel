@@ -43,3 +43,12 @@ def test_preset_keys():
 def test_system_prompt_guardrails():
     from app.services import ai_prompts as p
     assert all(s in p.SYSTEM_PROMPT for s in ("tidak dapat ditentukan", "identitas", "usia", "etnis", "jam", "instruksi", "saran"))
+
+
+def test_system_prompt_requests_plain_text_and_timeline_format():
+    """UI merender baris 'm:dd — kejadian' sebagai linimasa; model diminta tanpa markdown."""
+    from app.services import ai_prompts
+    prompt = ai_prompts.SYSTEM_PROMPT
+    assert "tanpa markdown" in prompt
+    assert "m:dd" in prompt and "Kesimpulan:" in prompt
+    assert "Frame pada detik" in prompt
