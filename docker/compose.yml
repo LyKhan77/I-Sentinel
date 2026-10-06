@@ -92,6 +92,8 @@ services:
     env_file:
       - path: ${DATA_DIR}/secrets/camera.env
         required: false
+      - path: ${DATA_DIR}/secrets/llm.env
+        required: false
     environment:
       <<: *api-environment
       RUN_MIGRATIONS: "1"

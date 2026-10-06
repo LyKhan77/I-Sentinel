@@ -92,6 +92,7 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | Node & deteksi | `nodes`, `detector_settings` | `config_push`, `node_health`, `host_stats` |
 | Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `limit` ≤ 200, `offset` 0–10000 (paginasi halaman berikutnya, di luar rentang → 422) — semuanya difilter di server; urutan `ts_event DESC, id DESC` (pemutus seri deterministik antar-halaman); `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka; `GET /api/v1/events/{id}` → `EventOut` per id, 404 `"event not found"` untuk deep link `/events?event=<id>`) |
 | Alert | `alerts`, `telegram` | `alerting`, `alert_dispatcher`, `telegram` |
+| AI advisory (opsional) | `ai` | `ai_worker`, `ask_ai`, `llm_client`, `ai_media`, `ai_prompts`; tidak terlibat dalam keputusan alert |
 | Absensi | `employees`, `shifts`, `enrollment`, `attendance` | `face`, `attendance` |
 | Storage | `storage` | `retention`, `storage_settings`, `disk_alert` |
 | Monitoring | `monitoring` | `monitoring`, `monitoring_history` (`GET /api/v1/monitoring/history` dua mode: `range` relatif (`1h`/`6h`/`24h`/`7d`, default `6h`, bucket 60–1800 dtk) atau jendela eksplisit `from`/`to` ISO + `node_id` opsional — jendela bucket tetap 60 dtk, `range: "custom"`, maksimum 6 jam, diluar retensi 7 hari → seri kosong; `range` bersama `from`/`to`, hanya salah satu, `to <= from`, atau > 6 jam → 422), `health_rules`, `health_alerts` |
@@ -106,8 +107,9 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | `node_monitor` (`NodeHealthMonitor`) | 15 s | Heartbeat > 35 s → node offline; pulih → online |
 | `history_sampler` (`HistorySampler`) | 60 s | Bucket per menit → `monitoring_sample`, lalu evaluasi `health_alerts` |
 | `attendance_closer` (`AttendanceCloser`) | 15 menit | Tutup hari: `absent` / `no_exit`, catch-up 7 hari saat start |
+| `ai_worker` (`AiWorker`) | antrean | Caption snapshot, dedupe caption per event, throttle per zona, recovery pending saat start |
 
-### Data utama (PostgreSQL, migrasi Alembic `0001`–`0020`)
+### Data utama (PostgreSQL, migrasi Alembic `0001`–`0021`)
 
 - **Kamera**: `camera`, `stream_source`, `credential_profile` (hanya referensi `env:`/`store:`),
   `location_group`, `node`.
@@ -118,6 +120,8 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 - **Absensi**: `employee`, `shift`, `face_embedding`, `attendance_event`, `attendance_day`
   (status + `override_note`).
 - **Monitoring**: `monitoring_sample` (7 hari), `health_alert`.
+- **AI**: `event_ai` (caption/ask, pending/ok/failed, prompt, jawaban, model, actor, latency);
+  `zone.ai_caption` default false dan `zone.ai_prompt` nullable (bawaan/kustom).
 - **User**: `user` (role `admin`/`viewer`, `token_version`).
 
 ## 3. Vision node (`vision/vision/`)
@@ -159,6 +163,7 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 
 - Event baru (`EventOut`): Inbox, lonceng notifikasi, outline tile Live View, banner node offline.
 - `{kind: "alert", event_id, status}`: status Telegram realtime di Inbox.
+- `{kind: "ai", event_id, status}`: detail event memuat ulang caption/riwayat; tidak memicu notifikasi alert.
 - `{type: "detections", …}`: overlay debugger Live View.
 
 ### `payload.evidence` pada event `system` (v1, permanen)
@@ -189,6 +194,34 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
    (tren 7 hari) → `health_alerts` (alert kesehatan, event `system` `payload.kind="health"`).
 6. **Retensi**: sweep harian menghapus media sesuai `clip_days`/`snapshot_days`/`attendance_days`;
    event yang kehilangan media terakhirnya ikut dihapus (kecuali `system`).
+   Retensi/cleanup menghapus `event_ai` → `alert` → `event` secara eksplisit, tanpa cascade FK AI.
+
+### AI advisory: caption otomatis dan Tanya AI
+
+`events_consumer` hanya menambah dua hook: setelah event/alert diproses dan setelah path snapshot
+di-commit. Hook terisolasi `try/except`; antrean/thread AI tidak menghalangi ingest, broadcast, atau Telegram.
+Caption membutuhkan global enabled, tipe didukung, zona on, snapshot tersedia, belum ada caption,
+dan lolos throttle zona. Antrean penuh membuang pekerjaan tanpa baris pending. Thread memakai Session
+sendiri per item; idle tidak membuka DB. Recovery mengantre ulang pending ≤10 menit, sisanya failed.
+
+`GET /api/v1/ai/status` memberi enabled, preset, dan prompt bawaan tanpa rahasia.
+`GET /api/v1/events/{id}/ai` memberi caption dan 20 ask terbaru.
+`POST /api/v1/events/{id}/ask` memakai auth semua role, id positif int4, tepat satu question/preset,
+history ≤6 giliran, q/a ≤2000 karakter. `ask_ai` memeriksa enabled → tipe → input → media →
+cache preset sukses → kuota user → frame → slot LLM → chat. Cache tidak memakai kuota.
+Klip hilang/gagal jatuh ke snapshot (`frames_used=0`), kecuali preset temporal (409 `clip_unavailable`).
+Respons successful/failed diaudit di `event_ai`; hasil ask tidak memperbarui caption.
+
+`llm_client` mengirim chat OpenAI-compatible, timeout 60/120 detik, dan semaphore bersama default 2
+(acquire maksimal 5 detik). Error/konten/model diredaksi dari kunci. `ai_media` membatasi path ke
+STORAGE_ROOT termasuk symlink, JPEG sisi terpanjang ≤960; ffprobe/ffmpeg tanpa shell dan deadline
+ekstraksi total 15 detik. Klip ≤30 detik menghasilkan 6 frame, selebihnya 12.
+System prompt advisory, metadata allowlist, instruksi tipe/kustom, dan batas format selalu dikirim.
+
+Satu proses API saja: admission lock, throttle, semaphore, dan kuota 6/menit/user tidak lintas proses.
+Semua `LLM_*`/`AI_QUEUE_MAX` berasal dari `secrets/llm.env`, diteruskan hanya ke `api`, tidak ke
+retention atau vision. Global disabled tidak membuat panggilan, status false, ask 503. Endpoint LLM
+opsional menerima gambar; kebijakan penyimpanan/pelatihan pemilik wajib dikonfirmasi sebelum produksi.
 
 ## 6. Frontend (`frontend/src/`)
 

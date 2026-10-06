@@ -5,6 +5,7 @@ from app.models.stream_source import StreamSource
 from app.models.location_group import LocationGroup
 from app.models.camera import Camera
 from app.models.event import Event
+from app.models.event_ai import EventAi
 from app.models.zone import Zone
 from app.models.alert import Alert
 from app.models.telegram_chat import TelegramChat

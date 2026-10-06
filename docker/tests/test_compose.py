@@ -114,3 +114,17 @@ def test_vision_waits_for_mqtt_config_instead_of_exiting(services):
     assert services["vision"]["environment"]["VISION_AWAIT_CONFIG"] == "true"
     assert not services["vision"]["environment"].get("VISION_CAMERAS_JSON")
 
+
+
+def test_api_receives_llm_settings_from_optional_env_file(tmp_path):
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets/llm.env").write_text("LLM_ENABLED=true\nLLM_API_KEY='k#1'\n")
+    environment = config(env={"DATA_DIR": str(tmp_path)})["services"]["api"]["environment"]
+    assert environment["LLM_ENABLED"] == "true" and environment["LLM_API_KEY"] == "k#1"
+
+
+def test_llm_key_reaches_only_api(tmp_path):
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets/llm.env").write_text("LLM_API_KEY='synthetic'\n")
+    for name, service in config(env={"DATA_DIR": str(tmp_path)})["services"].items():
+        assert ("LLM_API_KEY" in service.get("environment", {})) == (name == "api")

@@ -333,3 +333,58 @@ def test_behavior_without_any_media_rejected(client):
     r = client.patch(f"/api/v1/zones/{zid}", json={"behaviors": [
         {"kind": "running", "trigger_seconds": 0, "snapshot": False, "clip": False}]}, headers=h)
     assert r.status_code == 422
+
+
+def test_create_zone_ai_fields(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    base = {**VALID, "camera_id": cam["id"]}
+    default = client.post("/api/v1/zones", json=base, headers=h).json()
+    assert default["ai_caption"] is False and default["ai_prompt"] is None
+    custom = client.post("/api/v1/zones", json={
+        **base, "ai_caption": True, "ai_prompt": "  Fokus helm  ",
+    }, headers=h).json()
+    assert custom["ai_caption"] is True and custom["ai_prompt"] == "Fokus helm"
+
+
+def test_patch_ai_prompt_blank_becomes_null(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
+    for value in ("   ", None):
+        r = client.patch(f"/api/v1/zones/{zid}", json={"ai_prompt": value}, headers=h)
+        assert r.status_code == 200 and r.json()["ai_prompt"] is None
+    assert client.patch(f"/api/v1/zones/{zid}", json={"ai_prompt": "x"*601}, headers=h).status_code == 422
+    r = client.patch(f"/api/v1/zones/{zid}", json={"ai_prompt": "x"*600, "ai_caption": True}, headers=h)
+    assert r.status_code == 200 and r.json()["ai_caption"] is True and len(r.json()["ai_prompt"]) == 600
+
+
+def test_patch_ai_fields_viewer_forbidden(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
+    r = client.patch(f"/api/v1/zones/{zid}", json={"ai_caption": True, "ai_prompt": "Fokus helm"},
+                     headers=viewer_headers(client))
+    assert r.status_code == 403
+
+
+def test_patch_ai_caption_null_is_rejected(client):
+    """null pada kolom NOT NULL harus 422, bukan IntegrityError/500."""
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zone = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()
+    r = client.patch(f"/api/v1/zones/{zone['id']}", json={"ai_caption": None}, headers=h)
+    assert r.status_code == 422
+    assert client.get(f"/api/v1/zones/{zone['id']}", headers=h).json()["ai_caption"] is False
+
+
+def test_zone_list_survives_oversized_stored_prompt(client, db):
+    """Batas 600 berlaku saat menulis; nilai lama/ubahan manual di DB tidak boleh membuat daftar zona 500."""
+    from app.models.zone import Zone
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zone = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()
+    db.get(Zone, zone["id"]).ai_prompt = "x" * 601
+    db.commit()
+    r = client.get("/api/v1/zones", headers=h)
+    assert r.status_code == 200 and len(r.json()[0]["ai_prompt"]) == 601

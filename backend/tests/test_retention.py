@@ -345,3 +345,21 @@ def test_attendance_clip_follows_attendance_retention(db, tmp_path, monkeypatch)
     r = retention.sweep(db, now=now)
     assert not os.path.exists(a_clip) and os.path.exists(b_clip)
     assert db.get(Event, att.id) is None and db.get(Event, beh.id) is not None
+
+
+def test_delete_events_removes_event_ai(db):
+    from app.models.alert import Alert
+    from app.models.event_ai import EventAi
+
+    ev = Event(type="intrusion", ts_event=datetime.now(timezone.utc))
+    db.add(ev)
+    db.commit()
+    eid = ev.id
+    db.add(Alert(event_id=eid, type="intrusion", status="sent"))
+    db.add(EventAi(event_id=eid, kind="caption", channel="auto"))
+    db.commit()
+    retention._delete_events(db, [eid])
+    db.commit()
+    assert db.query(EventAi).count() == 0
+    assert db.query(Alert).count() == 0
+    assert db.get(Event, eid) is None

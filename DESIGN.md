@@ -287,3 +287,29 @@ The brand commits to flat 0px corners. The other tokens exist for product / mobi
 - Form-field error and validation styling is documented in Carbon docs; the inspected pages didn't render error states.
 - Dark mode is documented in Carbon as Gray-100 theme but isn't exposed on these marketing pages — only the footer inverts. The full dark theme is a separate Carbon palette not extracted here.
 - The community.ibm.com sub-domain uses a different chrome (community-platform white-label) that approximates Carbon but isn't strict — the documented system applies to ibm.com proper.
+
+## I-Sentinel: AI advisory surfaces
+
+The zone editor keeps AI settings inside the non-attendance branch. A Carbon Toggle controls
+automatic captions. When enabled, a RadioButtonGroup selects Default (null prompt) or Custom.
+Custom uses a TextArea with a 600-character counter; a ghost button opens a read-only modal of
+default prompts, labeled by event type. Attendance has no AI block. Global availability and zone
+caption preference remain separate controls.
+
+The event detail places `AskAiPanel` below media tabs and before metadata. Carbon Tag marks
+“Dibuat AI”; text distinguishes pending, failed, and no caption. Presets use wrapping tertiary
+buttons, followed by a 500-character TextArea and send action. InlineLoading signals an in-flight
+request; InlineNotification explains rate limits, busy/disabled AI, and unavailable media.
+Answers render as literal React text, preserving line breaks and wrapping long unbroken content.
+Each new turn shows frame count and cache/snapshot-only notes. Switching events resets the local
+conversation. Saved audit history is visible but is not seeded into the outgoing browser history.
+
+Use existing Carbon surface, text, and border tokens; no new palette or rounded card treatment.
+An always-visible warning explains that small objects may be misidentified. Global disabled,
+attendance, and system events hide the panel. Missing media disables input and preset actions.
+All copy has Indonesian and English translations.
+
+Synthetic browser verification at 390×844 measured page scrollWidth 390 for both event panel
+and custom zone editor; the panel measured 292/292 after a long unbroken answer. The custom input
+had maxLength 600. Local evidence: `docs/evidence/ai-event-caption-390.png` and
+`docs/evidence/ai-event-zone-390.png` (not committed). This is not real server/user/LLM acceptance.

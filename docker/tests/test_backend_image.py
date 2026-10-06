@@ -49,3 +49,9 @@ def test_pyproject_has_face_extra():
     assert any(item.startswith("insightface") for item in extra)
     assert any(item.startswith("onnxruntime>=") for item in extra)
     assert not any(item.startswith("onnxruntime-gpu") for item in extra)
+
+
+def test_runtime_stage_installs_ffmpeg():
+    runtime = (ROOT / "docker/backend/Dockerfile").read_text().rsplit("FROM ", 1)[1]
+    install = runtime.split("apt-get install", 1)[1].split("&&", 1)[0]
+    assert "ffmpeg" in install.split()

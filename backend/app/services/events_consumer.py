@@ -80,6 +80,12 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 except Exception:
                     db.rollback()
                     logger.exception("alerting failed for event %s", ev.event_id)
+                try:
+                    from app.services.ai_worker import worker
+                    worker.maybe_enqueue_caption(db, ev)
+                except Exception:
+                    db.rollback()
+                    logger.exception("AI caption hook failed for event %s", ev.event_id)
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
         elif topic == MEDIA_TOPIC:
             event_id = data.get("event_id")
@@ -95,6 +101,13 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             if isinstance(offset, (int, float)) and not isinstance(offset, bool) and offset >= 0:
                 ev.payload = {**(ev.payload or {}), "clip_offset_s": offset}
             db.commit()
+            if data.get("snapshot_path"):
+                try:
+                    from app.services.ai_worker import worker
+                    worker.maybe_enqueue_caption(db, ev)
+                except Exception:
+                    db.rollback()
+                    logger.exception("AI caption media hook failed for event %s", ev.event_id)
             # F5: snapshot absensi bisa datang belakangan (handle_face_event sudah jalan
             # saat snapshot masih None) — label ulang dari payload yang tersimpan.
             if data.get("snapshot_path") and ev.type == "attendance":

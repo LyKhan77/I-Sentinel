@@ -34,6 +34,9 @@ export type Zone = {
   snapshot: boolean
   clip: boolean
   telegram: boolean
+  // Optional for locally drawn zones and pre-migration data; API responses include both.
+  ai_caption?: boolean
+  ai_prompt?: string | null
   active: boolean
   camera_name?: string | null
 }
@@ -50,6 +53,8 @@ export type ZonePayload = {
   snapshot?: boolean
   clip?: boolean
   telegram?: boolean
+  ai_caption?: boolean
+  ai_prompt?: string | null
   active?: boolean
 }
 

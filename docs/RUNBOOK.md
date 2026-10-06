@@ -208,6 +208,52 @@ Hasil di `${DATA_DIR}/models/yolo26s.engine` hanya valid untuk arsitektur GPU
 pembuatnya. Cadangkan engine sebelum ekspor ulang; jangan membangun image vision
 atau engine di Mac arm64. Ukur shm ring klip untuk menentukan VISION_SHM_SIZE final.
 
+### Caption AI dan Tanya AI — rollout terpisah
+
+MVP tersedia di repo; **BELUM diuji di server/UI/LLM nyata**. Prosedur ini untuk sesi deploy
+setelah review, bukan bukti bahwa layanan sudah aktif.
+
+1. Konfirmasikan kepada pemilik endpoint bahwa snapshot/keyframe tidak disimpan atau dipakai
+   melatih model. Gambar dapat memuat wajah karyawan. Backup DB dan secrets sebelum migrasi.
+2. Deploy kode yang disetujui memakai `./docker/setup.sh`: image `api` harus dibangun ulang
+   untuk `ffmpeg`, image `web` untuk panel, dan entrypoint API menjalankan migrasi `0021`.
+   `setup.sh` membuat `${DATA_DIR}/secrets/llm.env` berupa komentar (0600) tanpa menimpa file lama.
+3. Isi hanya file tersebut, bukan `docker/.env`: `LLM_API_URL` (base `/v1`),
+   `LLM_API_KEY`, `LLM_MODEL`, `LLM_ENABLED=true`. Semua `LLM_*` dan `AI_QUEUE_MAX`
+   diteruskan hanya ke API. Jangan mencetak env, resolved compose config, atau kunci.
+   Default `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`;
+   sesuaikan kontrak endpoint jika perlu. Default concurrency 2, antrean 100, throttle caption
+   60 detik/zona, kuota ask 6/menit/user, timeout caption/ask 60/120 detik, max tokens 1000.
+4. Muat ulang env dengan **recreate**, bukan restart biasa:
+
+   ```bash
+   docker compose -f docker/compose.yml --env-file docker/.env up -d --no-deps --force-recreate api
+   ```
+
+   `docker compose restart api` tidak membaca ulang `env_file`. Tetap satu proses API;
+   semaphore/rate limit/throttle bersifat lokal proses.
+5. Dengan izin pemilik, jalankan tes kontrak marker `llm` memakai konfigurasi privat lalu
+   verifikasi `/api/v1/ai/status` sesudah login. Kode tes default skip saat URL kosong.
+6. Aktifkan **Caption AI otomatis** pada satu zona non-attendance dengan snapshot aktif,
+   pilih Bawaan/Kustom, picu event nyata. Verifikasi caption pending → ok, Tanya AI dengan
+   preset/teks, cache, jumlah frame, dan fallback klip. Telegram harus tetap memakai alur lama;
+   hasil AI tidak mengubah severity atau menekan alert. Real user melakukan penerimaan UI.
+
+**Rollback fitur aman:** set `LLM_ENABLED=false` di `llm.env` lalu recreate API seperti di atas.
+Tidak ada panggilan baru, panel tersembunyi, ask 503 `disabled`; zona/prompt dan audit tetap di DB.
+Toggle zona off hanya menghentikan caption otomatis, bukan akses Tanya AI global.
+
+**Rollback skema (destruktif):** `alembic downgrade 0020` menghapus seluruh `event_ai` dan kolom
+prompt/toggle zona. Jangan menjalankannya pada API baru yang masih aktif: backup dulu, hentikan
+writer API/retention dalam maintenance, jalankan downgrade lewat image yang masih mempunyai migrasi
+0021, lalu jalankan kode lama yang cocok. Downgrade tidak dapat memulihkan jawaban yang dihapus.
+Tidak perlu downgrade hanya untuk mematikan fitur.
+
+Gejala: caption tidak muncul → periksa enabled, toggle zona, snapshot, throttle, status failed.
+Ask 409 `clip_unavailable` → preset temporal memerlukan klip; kegagalan ekstraksi pada pertanyaan biasa
+memberi `frames_used=0`. 429 → tunggu kuota; 503 `busy` → slot penuh; 502 → endpoint/timeout.
+Riwayat `event_ai` hilang saat retensi menghapus event; pencarian permanen dan Telegram Tanya AI belum tersedia.
+
 ### Rehearsal dan cutover (memerlukan persetujuan operator)
 
 1. Siapkan clone terpisah dan DATA_DIR terpisah dari
