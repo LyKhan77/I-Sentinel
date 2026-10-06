@@ -21,8 +21,22 @@ export type AiTestResult = {
   ok: boolean; vision_ok: boolean; latency_ms: number | null; model: string | null; error: string | null
 }
 
+/** `detail` is the backend validation message (field names only, never submitted values); null otherwise. */
+export class AiSettingsError extends Error {
+  status: number
+  detail: string | null
+  constructor(status: number, detail: string | null) {
+    super(`AI settings failed: ${status}`)
+    this.status = status
+    this.detail = detail
+  }
+}
+
 async function ok<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new Error(`AI settings failed: ${response.status}`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new AiSettingsError(response.status, typeof body?.detail === 'string' ? body.detail : null)
+  }
   return response.json()
 }
 

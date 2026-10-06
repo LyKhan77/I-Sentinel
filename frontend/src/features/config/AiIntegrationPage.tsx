@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Accordion, AccordionItem, Button, InlineNotification, PasswordInput, Tag, TextArea, TextInput, Toggle } from '@carbon/react'
 import { useT, type TKey } from '../../app/i18n'
-import { getAiSettings, putAiSettings, testAiSettings, type AiSettings, type AiSettingsPatch, type AiTestResult } from '../../api/aiSettings'
+import { AiSettingsError, getAiSettings, putAiSettings, testAiSettings, type AiSettings, type AiSettingsPatch, type AiTestResult } from '../../api/aiSettings'
 
 type Field = keyof Omit<AiSettings, 'key_configured' | 'sources' | 'restart_only'>
 type Edits = Partial<Record<Field, string | boolean | null>>
@@ -29,8 +29,10 @@ export default function AiIntegrationPage() {
   const [result, setResult] = useState<AiTestResult | null>(null)
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
 
-  const errorText = (error: unknown): string => t(error instanceof Error && error.message.endsWith(': 403')
-    ? 'aiint.forbidden' : error instanceof Error && error.message.endsWith(': 422') ? 'aiint.invalid' : 'aiint.error')
+  const errorText = (error: unknown): string => {
+    if (error instanceof AiSettingsError && error.status === 422) return error.detail ? `${t('aiint.invalid')} (${error.detail})` : t('aiint.invalid')
+    return t(error instanceof Error && error.message.endsWith(': 403') ? 'aiint.forbidden' : 'aiint.error')
+  }
 
   useEffect(() => {
     let active = true

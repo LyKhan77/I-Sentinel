@@ -16,7 +16,7 @@ const INITIAL = {
 const RESULT: AiTestResult = { ok: true, vision_ok: true, latency_ms: 42, model: 'form-model', error: null }
 type Call = { url: string; method: string; body?: Record<string, unknown> }
 
-function stub(status = 200, result = RESULT, getStatus = 200) {
+function stub(status = 200, result = RESULT, getStatus = 200, detail?: string) {
   const calls: Call[] = []
   let current = structuredClone(INITIAL)
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -27,7 +27,7 @@ function stub(status = 200, result = RESULT, getStatus = 200) {
     let data: unknown = []
     if (String(url).endsWith('/ai/settings/test')) {
       code = status
-      data = result
+      data = detail && status >= 400 ? { detail } : result
     } else if (String(url).endsWith('/ai/settings')) {
       code = method === 'GET' ? getStatus : status
       if (method === 'PUT' && code === 200) {
@@ -39,7 +39,7 @@ function stub(status = 200, result = RESULT, getStatus = 200) {
           }
         }
       }
-      data = structuredClone(current)
+      data = detail && method !== 'GET' && code >= 400 ? { detail } : structuredClone(current)
     } else if (String(url).endsWith('/storage/stats')) {
       data = { retention_days: 30, settings: { clip_days: 30, snapshot_days: 30, attendance_days: 90, disk_alert_percent: 85 },
         disk_alert: { threshold: 85, over: false }, storage_root: '/data/test',
@@ -197,4 +197,13 @@ test('load 403 shows admin-only error', async () => {
   stub(200, RESULT, 403)
   mount()
   expect(await screen.findByText('Hanya admin yang dapat mengatur AI.')).toBeInTheDocument()
+})
+
+test('422 shows the server validation detail for save and test', async () => {
+  stub(422, RESULT, 200, 'timeout_ask_s must be between 5 and 600')
+  fireEvent.change(await form(), { target: { value: 'form-model' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  expect(await screen.findByText(/Pengaturan AI tidak valid.*timeout_ask_s must be between 5 and 600/)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Tes koneksi' }))
+  await waitFor(() => expect(screen.getAllByText(/timeout_ask_s must be between 5 and 600/).length).toBeGreaterThan(0))
 })
