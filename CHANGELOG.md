@@ -3,6 +3,35 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Deploy dan uji lapangan Caption AI, Tanya AI, dan AI Integration — gspe-ai3 (2026-10-06)
+
+- **Konteks:** deploy cabang `feat/ai-event-caption` lalu `feat/ai-integration-settings` ke `gspe-ai3`
+  (Docker; image `api` mendapat `ffmpeg`; migrasi `0021` di Postgres, idempoten; backup
+  `isentinel-pre-ai-20261005-161652.sql`). Server pindah jaringan selama pengujian (IP sempat berubah,
+  kembali `192.168.2.133`); LLM `intercon-agent` di LAN.
+- **Hasil uji:**
+  - **AI Integration (user, UI):** URL/model/kunci tersimpan; Tes koneksi `Teks OK · Vision OK · 1347 ms`; toggle
+    aktif tersimpan. Server: `setting.llm` hanya field yang diubah, kunci di secret_store 0600, 0 kemunculan di log `api`.
+  - **Tanya AI (server, service yang sama dengan UI, LLM nyata):** 7 event nyata + preset + teks bebas multi-turn:
+    semua jawaban sesuai penilaian visual (laptop kini terbaca benar pada 4742); preset kedua dari cache (1 ms);
+    7–16 dtk per pertanyaan; 10 baris audit `actor=user:1`, `channel=web`.
+  - **Caption otomatis live (user memicu):** event 4770 loitering zona 18 "Pantry 2" → caption `ok`, 3,2 dtk, ±3,3 dtk
+    dari event; user menilai caption akurat dan tampilan UI OK. Telegram tidak terpengaruh (belum dikonfigurasi).
+  - Kontrak endpoint: `pytest -m llm` lulus 0,74 dtk (sebelum endpoint macet).
+- **Temuan lapangan dan tindakan:**
+  - Container `vision` kehilangan akses GPU setelah berhari-hari (`nvidia-smi` di dalam: `Failed to initialize NVML: Unknown Error`;
+    ribuan `detector error`): **restart `vision`** memulihkannya (disetujui user). Hardening (device cgroup/CDI di compose)
+    belum dikerjakan.
+  - Jawaban kronologi klip 70 dtk berisi 12 baris (tiga identik), label "Satu kalimat ringkasan:" ikut tertulis, 30 dtk:
+    diperbaiki (`ea6938c` prompt maks 8 baris + gabungkan + tanpa label; `f78d53c` parser membuang label). **Belum diverifikasi
+    ke LLM nyata** karena inferensi endpoint sedang macet.
+  - Inferensi endpoint LLM macet (`/models` 0,1 dtk, tetapi chat 8 token timeout): satu pertanyaan viewer (`user:5`, event
+    4748) gagal `LLM timeout` 120 dtk dan tercatat `failed` (alur galat berfungsi). Perlu diperiksa di mesin LLM.
+  - Kamera 367 dan 357 tanpa stream go2rtc; `camera_no_frames` untuk 367 menghasilkan event `system` (tidak di-caption).
+- **Belum diuji live:** throttle zona 60 dtk, prompt Kustom, kuota 6/menit lewat UI, tab AI Integration tersembunyi untuk viewer di
+  browser, reset ke env, hapus kunci. Telegram Tanya AI: fase 2, belum dibuat.
+- **Rollback:** `LLM_ENABLED=false` (UI: matikan toggle) atau `git revert`; skema aditif.
+
 ### Blok AI ringkas di bawah meta grid dan kronologi rapi — lokal, belum di-deploy (2026-10-06)
 
 - **Konteks:** permintaan user setelah mencoba UI: bagian Ask AI jarang dipakai, jadi harus ringkas dan hanya
