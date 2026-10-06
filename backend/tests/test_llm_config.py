@@ -274,3 +274,15 @@ def test_key_source_distinguishes_stored_env_and_none(config, db, monkeypatch):
     config.save(db, {}, clear_api_key=True)
     assert config.view(db)["key_source"] == "env"
     assert "sk-env" not in json.dumps(config.view(db))
+
+
+def test_apply_and_current_connection_share_one_lock(config, db):
+    """apply() menulis settings field demi field; pembacaan Connection tidak boleh menyelinap di tengahnya."""
+    import threading
+    lock = config.llm_client.config_lock
+    applied, read = threading.Event(), threading.Event()
+    with lock:
+        threading.Thread(target=lambda: (config.apply(db), applied.set()), daemon=True).start()
+        threading.Thread(target=lambda: (config.llm_client.current_connection(), read.set()), daemon=True).start()
+        assert not applied.wait(0.2) and not read.wait(0.2)
+    assert applied.wait(2) and read.wait(2)

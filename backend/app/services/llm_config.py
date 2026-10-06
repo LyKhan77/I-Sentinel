@@ -141,10 +141,11 @@ def apply(db: Session) -> None:
     if key:
         stored["api_key"] = key
     # ponytail: mengubah singleton settings (satu proses API); multi-worker perlu muat ulang dari DB per worker.
-    for field in stored.keys() | _overridden:
-        setattr(settings, "llm_" + field, deepcopy(stored.get(field, _BASE[field])))
-    _overridden.clear()
-    _overridden.update(stored)
+    with llm_client.config_lock:
+        for field in stored.keys() | _overridden:
+            setattr(settings, "llm_" + field, deepcopy(stored.get(field, _BASE[field])))
+        _overridden.clear()
+        _overridden.update(stored)
 
 
 def view(db: Session) -> dict:

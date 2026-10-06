@@ -2,7 +2,7 @@
 from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, RLock
 
 import httpx
 
@@ -28,10 +28,16 @@ class Connection:
     max_tokens: int
 
 
+# Dipegang llm_config.apply saat menulis settings.llm_* agar satu Connection tidak pernah memadukan
+# nilai lama dan baru (mis. kunci lama ke host baru) ketika admin menyimpan di tengah panggilan.
+config_lock = RLock()
+
+
 def current_connection() -> Connection:
     """Snapshot the runtime provider configuration used by caption and ask callers."""
-    return Connection(settings.llm_api_url, settings.llm_api_key, settings.llm_model,
-                      settings.llm_extra_body.copy(), settings.llm_max_tokens)
+    with config_lock:
+        return Connection(settings.llm_api_url, settings.llm_api_key, settings.llm_model,
+                          settings.llm_extra_body.copy(), settings.llm_max_tokens)
 
 
 @dataclass(frozen=True)
