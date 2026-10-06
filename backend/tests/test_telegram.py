@@ -275,3 +275,11 @@ def test_caption_without_ai_text_is_unchanged(ai):
     assert telegram.format_caption(_event(), "Cam", None, None, tz=WIB, ai_text=ai) == (
         "🚨 <b>INTRUSION</b>\n\n<b>Kamera</b>: Cam\n<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB\n"
         "<b>Level</b>: WARNING")
+
+
+def test_caption_budget_counts_utf16_units_of_the_base_fields():
+    """Nama kamera/zona berisi emoji astral dihitung dua unit oleh Telegram; anggaran harus memakainya,
+    bukan jumlah karakter Python, supaya caption akhir tidak melewati 1024 dan ditolak (400)."""
+    text = telegram.format_caption(_event(), "😀" * 60, "😀" * 60, "http://app.test", tz=WIB, ai_text="x" * 2000)
+    assert len(text.encode("utf-16-le")) // 2 <= 1024
+    assert "🤖 <b>AI</b>: " in text

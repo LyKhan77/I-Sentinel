@@ -221,6 +221,11 @@ def send_text(db, text: str) -> bool:
     return status == "sent"
 
 
+def _u16(text: str) -> int:
+    """Length in UTF-16 code units, which is how Telegram counts caption characters."""
+    return len(text.encode("utf-16-le")) // 2
+
+
 def format_caption(event, camera_name: str, zone_name: str | None, app_url: str | None, tz=None, *,
                    ai_text: str | None = None) -> str:
     """Caption HTML Telegram: judul tebal (Inggris), satu data per baris (label Indonesia).
@@ -261,14 +266,16 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
         lines += ["", f"🎥 Lihat klip: {val(app_url)}/events?event={event.id}"]
     base = "\n".join(lines)
     raw = " ".join((ai_text or "").split())
-    budget = CAPTION_MAX - len(base) - 1 - 8  # newline + margin untuk emoji judul/tautan
+    # Telegram menghitung emoji astral (judul, tautan, nama) sebagai dua unit UTF-16; semua dihitung dalam unit itu.
+    budget = CAPTION_MAX - _u16(base) - 1 - 8  # newline + margin keselamatan
     if raw and budget >= 40:
         prefix = "🤖 <b>AI</b>: "
-        size = min(len(raw), budget - len(prefix))
+        room = budget - _u16(prefix)
+        size = min(len(raw), room)
         while size > 0:
             escaped = html.escape(raw[:size]) + ("…" if size < len(raw) else "")
-            # Telegram counts astral emoji as two UTF-16 units; never split an HTML entity.
-            if len(escaped.encode("utf-16-le")) // 2 <= budget - len(prefix):
+            # never split an HTML entity: escape first, then shrink until the escaped text fits
+            if _u16(escaped) <= room:
                 lines.insert(len(lines) - 2 if app_url else len(lines), prefix + escaped)
                 break
             size -= 1
