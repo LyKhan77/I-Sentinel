@@ -630,10 +630,6 @@ export default function EventsPage() {
                 </>
               )}
 
-              {aiStatus?.enabled && selected.type !== 'attendance' && !isSystem && (
-                <AskAiPanel key={selected.id} event={selected} status={aiStatus} tick={aiTick} />
-              )}
-
               <dl className="ev-meta-grid">
                 <div className="ev-meta">
                   <dt className="ev-meta__k">{t('events.col.time')}</dt>
@@ -676,6 +672,11 @@ export default function EventsPage() {
                   <dd className="ev-meta__v">{detailAlert ? t(ALERT_KEY[detailAlert]) : '—'}</dd>
                 </div>
               </dl>
+
+              {/* metadata event tetap utama; blok AI (caption + Tanya AI) di bawahnya */}
+              {aiStatus?.enabled && selected.type !== 'attendance' && !isSystem && (
+                <AskAiPanel key={selected.id} event={selected} status={aiStatus} tick={aiTick} />
+              )}
             </div>
           )}
         </div>
