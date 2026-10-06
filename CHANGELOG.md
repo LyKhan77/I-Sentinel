@@ -3,6 +3,43 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Perbaikan review cabang AI Integration — lokal, tanpa deploy (2026-10-06)
+
+- **Konteks:** review independen cabang `feat/ai-integration-settings` (skill code-review, level high;
+  tiap temuan diverifikasi ke kode). Sembilan temuan diperbaiki dengan TDD (RED dilihat dulu, alasan
+  merah benar), satu commit per perbaikan. **BELUM diuji di server/UI/LLM nyata.** ROADMAP tetap `[~]`.
+- **Perbaikan:**
+  - `85e17f2` kunci LLM di-strip dan divalidasi (spasi/newline hasil tempel membuat header Bearer
+    ilegal; kunci spasi-saja dianggap tersimpan; kontrol/spasi di tengah atau >512 ditolak).
+  - `8476ad6` `api_url` menolak kredensial tertanam (`user:pass@host`; sebelumnya tersimpan plaintext di
+    `setting` dan dikembalikan oleh GET).
+  - `3fc0995` `SecretStoreError` dari `secret_store.get` tidak lagi menghentikan `apply()` (override DB
+    terbuang) atau membuat `GET /ai/settings` 500; diperlakukan seperti kunci kosong dengan peringatan log.
+  - `bc018b6` + `1bd836d` `key_source` (`db|env|none`): UI tidak lagi menampilkan kunci env sebagai
+    "tersimpan" dengan tombol hapus yang tidak berefek.
+  - `8e3deb8` `llm_client.config_lock`: `apply()` dan `current_connection()` memakai lock yang sama
+    sehingga satu `Connection` tidak memadukan nilai lama dan baru.
+  - `00677b3` + `c55d008` tes koneksi menerima `clear_api_key` dan memakai kunci env (hasil setelah
+    simpan), bukan kunci tersimpan.
+  - `64b010a` kunci yang diketik dipertahankan saat Test atau simpan gagal; dikosongkan hanya setelah
+    simpan berhasil (tes executor yang mengunci perilaku lama diperbarui).
+  - `5d84b33` detail validasi 422 (nama field dan batas, tak pernah nilai) tampil di halaman.
+  - `5d486cb` label latensi tes koneksi lewat i18n (id dan en).
+- **Sengaja tidak diubah:** urutan `secret_store` sebelum commit dan lost update PUT bersamaan (admin-only,
+  frekuensi rendah); kunci tersimpan dikirim ke URL form saat tes (keputusan spec §9, admin sudah bisa
+  mengarahkan URL lewat simpan; memaksa mengetik ulang kunci menghambat pemakaian utama saat endpoint pindah);
+  `style={{}}` inline (pola yang sama di halaman lain).
+- **Bukti (berurutan, HEAD `1bd836d`):** backend `807 passed, 1 skipped, 545 warnings in 153.28s`
+  (793 → 807: +14 tes); Docker `75 passed`; vision `235 passed, 3 deselected`; frontend
+  `Test Files 35 passed (35)` / `Tests 464 passed (464)` (458 → 464: +6 tes); `tsc -b --noEmit` exit 0;
+  lint exit 0, 24 warning, 16 pasangan identik baseline; build exit 0. Satu run vitest penuh (tepat
+  setelah suite backend) mencatat 1 tes gagal yang tidak reproduksi: 4 run penuh berikutnya dan 6 run
+  `zones.test.tsx` terpisah hijau; pola sama dengan flake `zones.test.tsx` yang dicatat executor pada baseline.
+  Hasil run independen pada `7d53451` (sebelum perbaikan) cocok dengan laporan executor.
+- **Dampak:** tanpa migrasi; kontrak API bertambah `key_source` (GET) dan `clear_api_key` (POST test).
+  Perilaku default tanpa override tidak berubah.
+- **Rollback:** `git revert` commit perbaikan terkait; `llm.env` tetap berlaku sebagai nilai awal.
+
 ### Pengaturan LLM di UI — AI Integration, lokal tanpa deploy (2026-10-05)
 
 - **Konteks:** Task 1–4 plan `2026-10-05-ai-integration-settings` dijalankan native dengan
