@@ -237,3 +237,12 @@ def test_invalid_api_key_is_rejected_without_side_effects(config, db, bad):
     result = config.test_connection(db, {"api_url": "https://llm.test/v1", "model": "m"}, bad)
     assert result["ok"] is False and result["error"]
     assert not bad.strip() or bad.strip() not in result["error"]
+
+
+@pytest.mark.parametrize("url", ["http://user:pw@llm.test/v1", "https://token@llm.test/v1"])
+def test_api_url_with_credentials_is_rejected(config, db, url):
+    """Kredensial di URL akan tersimpan plaintext di tabel setting dan dikembalikan oleh GET."""
+    with pytest.raises(config.ConfigError, match="credentials") as exc:
+        config.save(db, {"api_url": url}, api_key="sk-new")
+    assert "pw" not in str(exc.value) and "token@" not in str(exc.value)
+    assert db.get(Setting, "llm") is None and secret_store.get("llm_api_key") is None

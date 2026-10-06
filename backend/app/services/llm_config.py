@@ -93,6 +93,8 @@ def _validate(values: dict) -> None:
             valid = False
         if not valid:
             raise ConfigError("api_url must be http(s)")
+        if parsed.username or parsed.password:
+            raise ConfigError("api_url must not contain credentials")
     model = values["model"]
     if not isinstance(model, str) or len(model) > 64:
         raise ConfigError("model must be a string of at most 64 characters")
