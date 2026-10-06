@@ -41,6 +41,24 @@ def _key() -> str:
     return secret_store.get(KEY_NAME) or _BASE["api_key"]
 
 
+def _clean_key(api_key: str | None) -> str | None:
+    """Normalize a pasted credential; None and "" mean "not provided".
+
+    Surrounding whitespace is stripped (copy-paste adds newlines, which httpx rejects as an illegal
+    header). Messages never contain the submitted value.
+    """
+    if api_key is None or api_key == "":
+        return None
+    if not isinstance(api_key, str):
+        raise ConfigError("api_key must be a string")
+    key = api_key.strip()
+    if not key:
+        raise ConfigError("api_key must not be blank")
+    if len(key) > 512 or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in key):
+        raise ConfigError("api_key is not a valid credential")
+    return key
+
+
 def _patched(stored: dict, values: dict) -> dict:
     """Merge a partial patch; null removes an override instead of becoming a DB value."""
     if values.keys() - set(FIELDS):
@@ -129,8 +147,7 @@ def save(db: Session, values: dict, *, api_key: str | None = None, clear_api_key
     """
     stored = _patched(_stored(db), values)
     _validate(_effective(stored))
-    if api_key is not None and not isinstance(api_key, str):
-        raise ConfigError("api_key must be a string")
+    api_key = _clean_key(api_key)
     if clear_api_key and api_key:
         raise ConfigError("api_key and clear_api_key cannot be combined")
     if clear_api_key:
@@ -157,6 +174,7 @@ def test_connection(db: Session, values: dict, api_key: str | None = None, *, cl
     result = {"ok": False, "vision_ok": False, "latency_ms": None, "model": None, "error": None}
     try:
         stored_key = _key()
+        api_key = _clean_key(api_key)
         effective = _effective(_patched(_stored(db), values))
         _validate(effective)
         connection = llm_client.Connection(effective["api_url"], api_key or stored_key, effective["model"],

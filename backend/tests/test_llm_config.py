@@ -208,3 +208,32 @@ def test_connection_invalid_form_returns_failure(config, db):
     result = config.test_connection(db, {"max_tokens": 99}, "sk-form")
     assert result["ok"] is False and result["error"]
     assert db.get(Setting, "llm") is None
+
+
+def test_api_key_is_stripped_before_storage_and_use(config, db):
+    """Kunci hasil tempel berspasi/newline ditolak h11 sebagai header ilegal; harus dibersihkan."""
+    config.save(db, {}, api_key="  sk-pasted\n")
+    assert secret_store.get("llm_api_key") == "sk-pasted"
+    assert settings.llm_api_key == "sk-pasted"
+
+    def handler(req):
+        assert req.headers["Authorization"] == "Bearer sk-form"
+        return completion()
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = config.test_connection(db, {"api_url": "https://llm.test/v1", "model": "m"}, " sk-form\t", client=client)
+    assert result["ok"] is True
+
+
+@pytest.mark.parametrize("bad", ["   ", "sk with space", "sk\nnewline", "k" * 513])
+def test_invalid_api_key_is_rejected_without_side_effects(config, db, bad):
+    config.save(db, {}, api_key="sk-old")
+    before = settings.llm_api_key
+    with pytest.raises(config.ConfigError) as exc:
+        config.save(db, {"model": "m2"}, api_key=bad)
+    assert bad.strip() not in str(exc.value) or not bad.strip()
+    assert secret_store.get("llm_api_key") == "sk-old" and settings.llm_api_key == before
+    assert config.view(db)["model"] != "m2"
+    result = config.test_connection(db, {"api_url": "https://llm.test/v1", "model": "m"}, bad)
+    assert result["ok"] is False and result["error"]
+    assert not bad.strip() or bad.strip() not in result["error"]
