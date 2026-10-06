@@ -22,6 +22,9 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   tertutup default, caption disorot, kronologi, urutan di bawah meta grid). Browser 390×844 dengan API stub:
   `scrollWidth` 375 (< 390), blok AI di bawah meta grid, 3 baris linimasa; screenshot lokal
   `docs/evidence/ai-panel-{collapsed,open}-390.png` (gitignored). **BELUM diuji di server/UI nyata.**
+- **Suite berurutan (HEAD `211066c`):** backend `817 passed, 1 skipped, 545 warnings in 153.54s` (807 → 817);
+  Docker `75 passed`; vision `235 passed, 3 deselected`; frontend `Test Files 36 passed (36)` /
+  `Tests 474 passed (474)` (464 → 474); lint exit 0, 24 warning, 16 pasangan identik baseline; build exit 0.
 - **Dampak:** hanya tampilan dan teks prompt; tanpa migrasi, tanpa perubahan API. Jawaban cache lama tetap
   ber-markdown tetapi dirender rapi. **Rollback:** `git revert` commit di atas.
 
