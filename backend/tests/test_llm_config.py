@@ -262,3 +262,15 @@ def test_unreadable_secret_store_keeps_db_overrides_and_view(config, db, monkeyp
     assert settings.llm_model == "dari-db"
     view = config.view(db)
     assert view["model"] == "dari-db" and view["key_configured"] is False
+
+
+def test_key_source_distinguishes_stored_env_and_none(config, db, monkeypatch):
+    """Kunci dari env tidak boleh terbaca 'tersimpan': hapus kunci hanya menghapus entri secret_store."""
+    assert config.view(db)["key_source"] == "none" and config.view(db)["key_configured"] is False
+    monkeypatch.setitem(config._BASE, "api_key", "sk-env")
+    assert config.view(db)["key_source"] == "env" and config.view(db)["key_configured"] is True
+    config.save(db, {}, api_key="sk-db")
+    assert config.view(db)["key_source"] == "db"
+    config.save(db, {}, clear_api_key=True)
+    assert config.view(db)["key_source"] == "env"
+    assert "sk-env" not in json.dumps(config.view(db))

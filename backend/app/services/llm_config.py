@@ -153,6 +153,7 @@ def view(db: Session) -> dict:
     return {**_effective(stored),
             "sources": {field: "db" if field in stored else "env" if "llm_" + field in _ENV_SET else "default" for field in FIELDS},
             "key_configured": bool(_key()),
+            "key_source": "db" if _stored_key() else "env" if _BASE["api_key"] else "none",
             "restart_only": {"concurrency": settings.llm_concurrency, "queue_max": settings.ai_queue_max}}
 
 

@@ -144,3 +144,10 @@ def test_get_survives_unreadable_secret_store(client, monkeypatch):
     monkeypatch.setattr(secret_store, "get", broken)
     r = client.get(URL, headers=admin_headers(client))
     assert r.status_code == 200 and r.json()["key_configured"] is False
+
+
+def test_get_reports_key_source_without_key(client):
+    h = admin_headers(client)
+    assert client.get(URL, headers=h).json()["key_source"] == "none"
+    r = client.put(URL, json={"api_key": "sk-secret"}, headers=h)
+    assert r.json()["key_source"] == "db" and "sk-secret" not in r.text

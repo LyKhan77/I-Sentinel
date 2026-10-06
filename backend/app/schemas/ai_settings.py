@@ -46,6 +46,7 @@ class AiSettingsOut(BaseModel):
     caption_min_interval_s: float
     extra_body: dict
     key_configured: bool
+    key_source: Literal["db", "env", "none"]
     sources: dict[str, Literal["db", "env", "default"]]
     restart_only: RestartOnly
 
