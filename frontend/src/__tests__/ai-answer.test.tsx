@@ -39,3 +39,14 @@ test('plain lines become separate paragraphs and blank input renders nothing', (
   expect(Array.from(c.querySelectorAll('p')).map(p => p.textContent)).toEqual(['Satu.', 'Dua.'])
   expect(html('  \n ').textContent).toBe('')
 })
+
+test.each([
+  'Satu kalimat ringkasan: Seorang pria berdiri lalu pergi.',
+  'Ringkasan: Seorang pria berdiri lalu pergi.',
+  '**Ringkasan:** Seorang pria berdiri lalu pergi.',
+])('label ringkasan di baris pertama tidak ikut tampil (%s)', (first) => {
+  const c = html(`${first}\n0:00 — Pria berdiri\nKesimpulan: Ia pergi.`)
+  expect(c.querySelector('.ev-ai-summary')?.textContent).toBe('Seorang pria berdiri lalu pergi.')
+  expect(c.textContent).not.toMatch(/Satu kalimat ringkasan/i)
+  expect(c.querySelectorAll('.ev-ai-conclusion')).toHaveLength(1)
+})

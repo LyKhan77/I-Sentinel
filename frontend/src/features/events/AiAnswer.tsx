@@ -10,12 +10,19 @@ type Block =
 const TIME = /^(?:[-*•]\s*|\d+[.)]\s+)?(?:\*\*)?(\d{1,2}:\d{2}(?::\d{2})?|detik\s+\d+(?:[.,]\d+)?)(?:\*\*)?\s*[—–-]\s+(.+)$/i
 const CONCLUSION = /^(?:\*\*)?(kesimpulan|ringkasan|catatan)\s*:(?:\*\*)?\s*(.*)$/i
 const ITEM = /^(?:[-*•]|\d+[.)])\s+(.*)$/
+// label ringkasan pada baris pertama ("Satu kalimat ringkasan:", "Ringkasan:") tidak ikut ditampilkan
+const LEAD_LABEL = /^(?:\*\*)?(?:satu kalimat\s+)?(?:ringkasan|summary)\s*:(?:\*\*)?\s*(.+)$/i
 
 function parse(text: string): Block[] {
   const blocks: Block[] = []
   for (const raw of text.split('\n')) {
     const line = raw.trim().replace(/^#{1,6}\s+/, '')
     if (!line) continue
+    const lead = blocks.length === 0 ? LEAD_LABEL.exec(line) : null
+    if (lead) {
+      blocks.push({ kind: 'p', text: lead[1] })
+      continue
+    }
     const time = TIME.exec(line)
     const conclusion = CONCLUSION.exec(line)
     const item = ITEM.exec(line)
