@@ -182,10 +182,11 @@ def save(db: Session, values: dict, *, api_key: str | None = None, clear_api_key
     apply(db)
 
 
-def test_connection(db: Session, values: dict, api_key: str | None = None, *, client: httpx.Client | None = None) -> dict:
+def test_connection(db: Session, values: dict, api_key: str | None = None, *, clear_api_key: bool = False,
+                    client: httpx.Client | None = None) -> dict:
     """Probe form values with text and a synthetic JPEG, without saving or leasing a slot.
 
-    Each call has a 30-second timeout. Text success with a rejected image reports
+    A pending key clear probes with the environment key. Each call has a 30-second timeout. Text success with a rejected image reports
     ok=True and vision_ok=False; all errors are sanitized, including form credentials.
     """
     started = monotonic()
@@ -194,9 +195,13 @@ def test_connection(db: Session, values: dict, api_key: str | None = None, *, cl
     try:
         stored_key = _key()
         api_key = _clean_key(api_key)
+        if clear_api_key and api_key:
+            raise ConfigError("api_key and clear_api_key cannot be combined")
         effective = _effective(_patched(_stored(db), values))
         _validate(effective)
-        connection = llm_client.Connection(effective["api_url"], api_key or stored_key, effective["model"],
+        # hapus kunci tertunda: tes harus mencerminkan konfigurasi yang akan disimpan (kunci env, bukan tersimpan)
+        key = api_key or (_BASE["api_key"] if clear_api_key else stored_key)
+        connection = llm_client.Connection(effective["api_url"], key, effective["model"],
                                            effective["extra_body"], effective["max_tokens"])
         parts = [llm_client.text_part("Balas satu kata: ok")]
         text = llm_client.chat([{"role": "user", "content": parts}], timeout=30, client=client, connection=connection)

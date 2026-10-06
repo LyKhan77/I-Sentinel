@@ -286,3 +286,21 @@ def test_apply_and_current_connection_share_one_lock(config, db):
         threading.Thread(target=lambda: (config.llm_client.current_connection(), read.set()), daemon=True).start()
         assert not applied.wait(0.2) and not read.wait(0.2)
     assert applied.wait(2) and read.wait(2)
+
+
+def test_connection_with_pending_key_clear_uses_env_key(config, db, monkeypatch):
+    """Tes harus mencerminkan konfigurasi yang akan disimpan: hapus kunci tersimpan = kembali ke kunci env."""
+    monkeypatch.setitem(config._BASE, "api_key", "sk-env")
+    config.save(db, {}, api_key="sk-db")
+    seen = []
+
+    def handler(req):
+        seen.append(req.headers["Authorization"])
+        return completion()
+
+    form = {"api_url": "https://llm.test/v1", "model": "m"}
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert config.test_connection(db, form, None, clear_api_key=True, client=client)["ok"] is True
+        both = config.test_connection(db, form, "sk-form", clear_api_key=True, client=client)
+    assert set(seen) == {"Bearer sk-env"}
+    assert both["ok"] is False and "cannot be combined" in both["error"]

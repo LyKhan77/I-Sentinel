@@ -18,12 +18,11 @@ class AiTestIn(BaseModel):
     caption_min_interval_s: float | None = None
     extra_body: dict | None = None
     api_key: str | None = None
+    clear_api_key: bool = False
 
 
 class AiSettingsIn(AiTestIn):
     """A partial saved update; clear_api_key restores the environment credential."""
-
-    clear_api_key: bool = False
 
 
 class RestartOnly(BaseModel):

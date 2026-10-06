@@ -37,4 +37,5 @@ def put_settings(body: AiSettingsIn, admin=Depends(require_admin), db: Session =
 @router.post("/test", response_model=AiTestOut)
 def test_settings(body: AiTestIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     """Probe unsaved values without changing DB, secret store, or worker configuration."""
-    return llm_config.test_connection(db, body.model_dump(exclude_unset=True, exclude={"api_key"}), body.api_key)
+    return llm_config.test_connection(db, body.model_dump(exclude_unset=True, exclude={"api_key", "clear_api_key"}),
+                                      body.api_key, clear_api_key=body.clear_api_key)

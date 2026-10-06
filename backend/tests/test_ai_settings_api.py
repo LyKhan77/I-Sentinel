@@ -83,7 +83,7 @@ def test_invalid_put_with_key_does_not_write_secret_store(client, db, monkeypatc
 def test_test_endpoint_passes_form_values(client, monkeypatch):
     seen = []
 
-    def fake(db, values, api_key=None):
+    def fake(db, values, api_key=None, clear_api_key=False):
         seen.append((values, api_key))
         return dict(RESULT)
 
@@ -151,3 +151,16 @@ def test_get_reports_key_source_without_key(client):
     assert client.get(URL, headers=h).json()["key_source"] == "none"
     r = client.put(URL, json={"api_key": "sk-secret"}, headers=h)
     assert r.json()["key_source"] == "db" and "sk-secret" not in r.text
+
+
+def test_test_endpoint_forwards_pending_key_clear(client, monkeypatch):
+    seen = []
+
+    def fake(db, values, api_key=None, clear_api_key=False):
+        seen.append((values, api_key, clear_api_key))
+        return dict(RESULT)
+
+    monkeypatch.setattr(llm_config, "test_connection", fake)
+    response = client.post(URL + "/test", json={"clear_api_key": True}, headers=admin_headers(client))
+    assert response.status_code == 200
+    assert seen == [({}, None, True)]
