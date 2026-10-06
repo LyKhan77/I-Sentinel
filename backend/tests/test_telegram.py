@@ -181,3 +181,97 @@ def test_http_error_body_description_is_used(urlopen):
     urlopen.replies.append(urllib.error.HTTPError("u", 401, "Unauthorized", {}, body))
     with pytest.raises(telegram.TelegramError, match="Unauthorized"):
         telegram.get_me(TOKEN)
+
+
+@pytest.mark.parametrize("photo", [None, b"jpg"])
+def test_delivery_unpacks_and_equals_plain_tuple_and_carries_message_id(urlopen, photo):
+    urlopen.replies.append({"ok": True, "result": {"message_id": 77}})
+    result = telegram.deliver(TOKEN, "-1001", "cap", photo)
+    status, error = result
+    assert (status, error) == result == ("sent", None)
+    assert result.message_id == 77 and result.photo is bool(photo)
+
+
+def test_delivery_non_dict_reply_and_failure_carry_metadata(urlopen):
+    result = telegram.deliver(TOKEN, "-1001", "cap")
+    assert result.message_id is None and result.photo is False
+    urlopen.replies.append(urllib.error.URLError(f"boom {TOKEN}"))
+    result = telegram.deliver(TOKEN, "-1001", "cap", b"jpg", retries=1)
+    assert result[0] == "failed" and TOKEN not in result[1]
+    assert result.message_id is None and result.photo is False
+
+
+def test_edit_caption_posts_edit_message_caption(urlopen):
+    assert telegram.edit_caption(TOKEN, "-1001", 77, "cap") == ("edited", None)
+    req = urlopen.calls[0]
+    assert req.full_url.endswith("/editMessageCaption")
+    assert json.loads(req.data) == {"chat_id": "-1001", "message_id": 77,
+                                    "caption": "cap", "parse_mode": "HTML"}
+
+
+def test_edit_caption_not_modified_is_success(urlopen):
+    body = io.BytesIO(json.dumps({"ok": False, "description":
+        "Bad Request: MESSAGE IS NOT MODIFIED: same content"}).encode())
+    urlopen.replies.append(urllib.error.HTTPError("u", 400, "Bad Request", {}, body))
+    assert telegram.edit_caption(TOKEN, "-1001", 77, "cap") == ("edited", None)
+    assert len(urlopen.calls) == 1
+
+
+def test_edit_caption_failure_has_no_token(urlopen):
+    urlopen.replies.extend([urllib.error.URLError(f"boom {TOKEN}")] * 3)
+    sleeps = []
+    status, error = telegram.edit_caption(TOKEN, "-1001", 77, "cap", sleep=sleeps.append)
+    assert status == "failed" and TOKEN not in error and "***" in error
+    assert len(urlopen.calls) == 3 and sleeps == [1, 2]
+
+
+def test_caption_ai_line_between_rows_and_link():
+    lines = telegram.format_caption(_event(), "Cam", "Zone", "http://app.test", tz=WIB,
+                                    ai_text="Seseorang berjalan.").splitlines()
+    assert lines[-4:] == ["<b>Level</b>: WARNING", "🤖 <b>AI</b>: Seseorang berjalan.",
+                          "", "🎥 Lihat klip: http://app.test/events?event=1234"]
+
+
+def test_caption_ai_text_is_escaped_and_whitespace_folded():
+    text = telegram.format_caption(_event(), "C", None, None, tz=WIB, ai_text=" a <b> & c\n d ")
+    assert text.endswith("🤖 <b>AI</b>: a &lt;b&gt; &amp; c d")
+
+
+@pytest.mark.parametrize("ai", ["x" * 2000, "<&\n😀 " * 400], ids=["long", "escaped-emoji"])
+def test_caption_with_ai_stays_within_limit(ai):
+    from html.parser import HTMLParser
+
+    class ValidHtml(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.tags = []
+        def handle_starttag(self, tag, attrs):
+            assert tag == "b"
+            self.tags.append(tag)
+        def handle_endtag(self, tag):
+            assert self.tags.pop() == tag
+
+    text = telegram.format_caption(_event(type="x" * 120, severity="s" * 120),
+        "C" * 120, "Z" * 120, "http://app.test/" + "p" * 200, tz=WIB, ai_text=ai)
+    assert len(text) <= 1024
+    assert len(text.encode("utf-16-le")) // 2 <= 1024
+    assert next(l for l in text.splitlines() if l.startswith("🤖")).endswith("…")
+    parser = ValidHtml()
+    parser.feed(text)
+    assert not parser.tags
+    # Every ampersand starts a complete escape entity, never a truncated one.
+    import re
+    assert not re.search(r"&(?!amp;|lt;|gt;|quot;|#x27;)", text)
+
+
+def test_caption_without_ai_budget_drops_line(monkeypatch):
+    base = telegram.format_caption(_event(), "C", None, None, tz=WIB)
+    monkeypatch.setattr(telegram, "CAPTION_MAX", len(base) + 39)
+    assert telegram.format_caption(_event(), "C", None, None, tz=WIB, ai_text="caption") == base
+
+
+@pytest.mark.parametrize("ai", [None, "", " \n "])
+def test_caption_without_ai_text_is_unchanged(ai):
+    assert telegram.format_caption(_event(), "Cam", None, None, tz=WIB, ai_text=ai) == (
+        "🚨 <b>INTRUSION</b>\n\n<b>Kamera</b>: Cam\n<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB\n"
+        "<b>Level</b>: WARNING")
