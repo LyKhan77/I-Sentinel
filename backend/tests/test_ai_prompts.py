@@ -43,3 +43,35 @@ def test_preset_keys():
 def test_system_prompt_guardrails():
     from app.services import ai_prompts as p
     assert all(s in p.SYSTEM_PROMPT for s in ("tidak dapat ditentukan", "identitas", "usia", "etnis", "jam", "instruksi", "saran"))
+
+
+def test_system_prompt_requests_plain_text_and_timeline_format():
+    """UI merender baris 'm:dd — kejadian' sebagai linimasa; model diminta tanpa markdown."""
+    from app.services import ai_prompts
+    prompt = ai_prompts.SYSTEM_PROMPT
+    assert "tanpa markdown" in prompt
+    assert "m:dd" in prompt and "Kesimpulan:" in prompt
+    assert "Frame pada detik" in prompt
+
+
+@pytest.mark.parametrize("key", ["what_happened", "report"])
+def test_chronological_presets_ask_for_a_timeline(key):
+    from app.services import ai_prompts
+    assert "kronologi" in ai_prompts.preset_question(key).lower()
+
+
+@pytest.mark.parametrize("key", ["false_alarm", "person_in_zone", "last_person", "fallen", "working_or_standing", "who", "count"])
+def test_other_presets_ask_for_a_short_answer_without_timeline(key):
+    """Tanpa petunjuk ini model membuat linimasa penuh bahkan untuk pertanyaan ya/tidak."""
+    from app.services import ai_prompts
+    question = ai_prompts.preset_question(key)
+    assert "1-3 kalimat" in question and "kronologi" not in question.lower()
+
+
+def test_system_prompt_limits_timeline_rows_and_forbids_summary_label():
+    """Klip 70 detik menghasilkan 12 baris (3 identik) dan label 'Satu kalimat ringkasan:' ikut tertulis."""
+    from app.services import ai_prompts
+    prompt = ai_prompts.SYSTEM_PROMPT
+    assert "paling banyak 8 baris" in prompt
+    assert "gabungkan" in prompt
+    assert "tanpa label" in prompt

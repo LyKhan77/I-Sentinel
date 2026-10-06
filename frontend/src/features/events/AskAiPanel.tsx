@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Button, InlineLoading, InlineNotification, Tag, TextArea } from '@carbon/react'
+import { ChevronDown, ChevronUp } from '@carbon/icons-react'
 import { AiError, askEvent, getEventAi, type AiStatus, type AiTurn, type EventAi } from '../../api/ai'
 import type { EventOut } from '../../api/events'
 import { useT, type TKey } from '../../app/i18n'
+import AiAnswer from './AiAnswer'
 
 type PanelProps = { event: EventOut; status: AiStatus; tick: number }
 type Turn = AiTurn & { frames: number; cached: boolean }
@@ -18,6 +20,7 @@ function Conversation({ event, status, tick }: PanelProps) {
   const [data, setData] = useState<EventAi | null>(null)
   const [question, setQuestion] = useState('')
   const [turns, setTurns] = useState<Turn[]>([])
+  const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<TKey | null>(null)
   const [goneKey, setGoneKey] = useState<TKey | null>(null)
@@ -82,34 +85,59 @@ function Conversation({ event, status, tick }: PanelProps) {
 
   return (
     <section className="ev-ai" aria-label={t('ai.title')}>
-      <div className="ev-ai__head"><h3>{t('ai.title')}</h3><Tag type="purple">{t('ai.badge')}</Tag></div>
-      <div className="ev-ai__caption" aria-live="polite">
-        {caption?.status === 'ok' ? <p>{caption.answer}</p>
-          : <p>{t(caption?.status === 'pending' ? 'ai.caption.pending' : caption?.status === 'failed' ? 'ai.caption.failed' : 'ai.caption.empty')}</p>}
-      </div>
-      <p className="ev-ai__hint">{t('ai.warn.smallObjects')}</p>
-      {unavailable && !error && <p className="ev-ai__hint">{t(unavailableKey)}</p>}
-      <div className="ev-ai__presets">
-        {(status.presets[event.type] ?? []).map((preset) => (
-          <Button key={preset} kind="tertiary" size="sm" disabled={disabled} onClick={() => send(preset)}>
-            {t(`ai.preset.${preset}` as TKey)}
-          </Button>
-        ))}
-      </div>
-      <TextArea id={`ai-question-${event.id}`} labelText={t('ai.ask.label')} placeholder={t('ai.ask.placeholder')}
-        maxLength={500} value={question} disabled={disabled} onChange={(e) => setQuestion(e.target.value)} />
-      <Button size="sm" disabled={disabled || !question.trim()} onClick={() => send()}>{t('ai.ask.send')}</Button>
-      {busy && <InlineLoading description={t('ai.ask.thinking')} />}
-      {error && <InlineNotification kind="error" lowContrast hideCloseButton title={t('common.error')} subtitle={t(error)} />}
-      <div className="ev-ai__thread" aria-live="polite">
-        {saved.map((row) => <div key={row.id} className="ev-ai__turn"><strong>{row.question ?? (row.preset ? t(`ai.preset.${row.preset}` as TKey) : '')}</strong><p>{row.answer}</p></div>)}
-        {turns.map((turn, i) => (
-          <div key={i} className="ev-ai__turn"><strong>{turn.q}</strong><p>{turn.a}</p>
-            <p className="ev-ai__hint">{t('ai.frames').replace('{n}', String(turn.frames))}{turn.cached ? ` · ${t('ai.cached')}` : ''}</p>
-            {turn.frames === 0 && <p className="ev-ai__hint">{t('ai.snapshotOnly')}</p>}
+      {caption?.status === 'ok' && caption.answer ? (
+        <div className="ev-ai__caption ev-ai__caption--ok" aria-live="polite">
+          <div className="ev-ai__caption-head">
+            <Tag type="purple" size="sm">{t('ai.badge')}</Tag>
+            <span className="ev-ai__caption-title">{t('ai.caption.title')}</span>
           </div>
-        ))}
+          <AiAnswer text={caption.answer} />
+        </div>
+      ) : (
+        <p className="ev-ai__caption ev-ai__caption--muted" aria-live="polite">
+          {t(caption?.status === 'pending' ? 'ai.caption.pending' : caption?.status === 'failed' ? 'ai.caption.failed' : 'ai.caption.empty')}
+        </p>
+      )}
+      <div className="ev-ai__bar">
+        <Button kind="ghost" size="sm" className="ev-ai__toggle" aria-expanded={open} aria-controls={`ev-ai-ask-${event.id}`}
+          renderIcon={open ? ChevronUp : ChevronDown} onClick={() => setOpen((value) => !value)}>
+          {t('ai.ask.toggle')}
+        </Button>
       </div>
+      {open && (
+        <div className="ev-ai__ask" id={`ev-ai-ask-${event.id}`}>
+          <p className="ev-ai__hint">{t('ai.warn.smallObjects')}</p>
+          {unavailable && !error && <p className="ev-ai__hint">{t(unavailableKey)}</p>}
+          <div className="ev-ai__presets">
+            {(status.presets[event.type] ?? []).map((preset) => (
+              <Button key={preset} kind="tertiary" size="sm" disabled={disabled} onClick={() => send(preset)}>
+                {t(`ai.preset.${preset}` as TKey)}
+              </Button>
+            ))}
+          </div>
+          <TextArea id={`ai-question-${event.id}`} labelText={t('ai.ask.label')} placeholder={t('ai.ask.placeholder')}
+            maxLength={500} value={question} disabled={disabled} onChange={(e) => setQuestion(e.target.value)} />
+          <Button size="sm" disabled={disabled || !question.trim()} onClick={() => send()}>{t('ai.ask.send')}</Button>
+          {busy && <InlineLoading description={t('ai.ask.thinking')} />}
+          {error && <InlineNotification kind="error" lowContrast hideCloseButton title={t('common.error')} subtitle={t(error)} />}
+          <div className="ev-ai__thread" aria-live="polite">
+            {saved.map((row) => (
+              <div key={row.id} className="ev-ai__turn">
+                <strong>{row.question ?? (row.preset ? t(`ai.preset.${row.preset}` as TKey) : '')}</strong>
+                <AiAnswer text={row.answer ?? ''} />
+              </div>
+            ))}
+            {turns.map((turn, i) => (
+              <div key={i} className="ev-ai__turn">
+                <strong>{turn.q}</strong>
+                <AiAnswer text={turn.a} />
+                <p className="ev-ai__hint">{t('ai.frames').replace('{n}', String(turn.frames))}{turn.cached ? ` · ${t('ai.cached')}` : ''}</p>
+                {turn.frames === 0 && <p className="ev-ai__hint">{t('ai.snapshotOnly')}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

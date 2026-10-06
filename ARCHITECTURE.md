@@ -92,7 +92,7 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | Node & deteksi | `nodes`, `detector_settings` | `config_push`, `node_health`, `host_stats` |
 | Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `limit` ≤ 200, `offset` 0–10000 (paginasi halaman berikutnya, di luar rentang → 422) — semuanya difilter di server; urutan `ts_event DESC, id DESC` (pemutus seri deterministik antar-halaman); `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka; `GET /api/v1/events/{id}` → `EventOut` per id, 404 `"event not found"` untuk deep link `/events?event=<id>`) |
 | Alert | `alerts`, `telegram` | `alerting`, `alert_dispatcher`, `telegram` |
-| AI advisory (opsional) | `ai` | `ai_worker`, `ask_ai`, `llm_client`, `ai_media`, `ai_prompts`; tidak terlibat dalam keputusan alert |
+| AI advisory (opsional) | `ai`, `ai_settings` (admin) | `ai_worker`, `ask_ai`, `llm_client`, `llm_config`, `ai_media`, `ai_prompts`; tidak terlibat dalam keputusan alert |
 | Absensi | `employees`, `shifts`, `enrollment`, `attendance` | `face`, `attendance` |
 | Storage | `storage` | `retention`, `storage_settings`, `disk_alert` |
 | Monitoring | `monitoring` | `monitoring`, `monitoring_history` (`GET /api/v1/monitoring/history` dua mode: `range` relatif (`1h`/`6h`/`24h`/`7d`, default `6h`, bucket 60–1800 dtk) atau jendela eksplisit `from`/`to` ISO + `node_id` opsional — jendela bucket tetap 60 dtk, `range: "custom"`, maksimum 6 jam, diluar retensi 7 hari → seri kosong; `range` bersama `from`/`to`, hanya salah satu, `to <= from`, atau > 6 jam → 422), `health_rules`, `health_alerts` |
@@ -219,9 +219,24 @@ ekstraksi total 15 detik. Klip ≤30 detik menghasilkan 6 frame, selebihnya 12.
 System prompt advisory, metadata allowlist, instruksi tipe/kustom, dan batas format selalu dikirim.
 
 Satu proses API saja: admission lock, throttle, semaphore, dan kuota 6/menit/user tidak lintas proses.
-Semua `LLM_*`/`AI_QUEUE_MAX` berasal dari `secrets/llm.env`, diteruskan hanya ke `api`, tidak ke
-retention atau vision. Global disabled tidak membuat panggilan, status false, ask 503. Endpoint LLM
-opsional menerima gambar; kebijakan penyimpanan/pelatihan pemilik wajib dikonfirmasi sebelum produksi.
+Nilai awal `LLM_*`/`AI_QUEUE_MAX` berasal dari `secrets/llm.env`, diteruskan hanya ke `api`, tidak ke
+retention atau vision. `llm_config` menyimpan override non-rahasia di `setting.llm` dan kunci
+`llm_api_key` di `secret_store`; prioritas DB > env > default, tanpa migrasi. `apply(db)` dipanggil
+saat startup (sebelum recovery AI) dan sesudah PUT untuk menimpa singleton `settings`. Hanya field
+yang ada di DB/secret_store dan field yang pernah ditimpa disentuh; override yang dihapus kembali
+ke nilai awal `_BASE`, DB kosong yang belum menimpa apa pun adalah no-op. Multi-worker perlu
+memuat ulang per worker; konkurensi semaphore dan ukuran antrean tidak hot-reload.
+
+`GET/PUT /api/v1/ai/settings` dan `POST /api/v1/ai/settings/test` memerlukan admin.
+PUT parsial memvalidasi seluruh nilai efektif sebelum efek samping; `null` menghapus override.
+Kunci tulis-saja tidak masuk DB/respons/log; audit hanya actor dan nama field. GET menampilkan
+sumber DB/Env/Default serta batas restart-only. `llm_client.Connection` mengisolasi tes form
+dari konfigurasi worker: teks lalu JPEG sintetis 64×64, timeout 30 detik per panggilan, tanpa slot
+worker dan tanpa simpan. Galat meredaksi kunci form maupun tersimpan; teks berhasil dan vision
+ditolak dilaporkan terpisah (`ok=true`, `vision_ok=false`).
+Global disabled tidak membuat panggilan caption/ask, status false, ask 503; tes koneksi admin
+tetap dapat mencoba form yang belum diaktifkan. Endpoint LLM menerima gambar; kebijakan
+penyimpanan/pelatihan pemilik wajib dikonfirmasi sebelum produksi.
 
 ## 6. Frontend (`frontend/src/`)
 

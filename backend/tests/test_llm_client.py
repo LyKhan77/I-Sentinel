@@ -86,3 +86,23 @@ def test_no_authorization_header_without_key(llm, monkeypatch):
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         llm.chat([], timeout=1, client=client)
     assert "authorization" not in seen["headers"]
+
+
+def test_connection_override_is_used(llm):
+    connection = llm.Connection("https://form.test/v1", "sk-form", "form-model", {"temperature": 0.7}, 321)
+
+    def handler(req):
+        assert str(req.url) == "https://form.test/v1/chat/completions"
+        assert req.headers["Authorization"] == "Bearer sk-form"
+        body = json.loads(req.content)
+        assert body["model"] == "form-model"
+        assert body["max_tokens"] == 321 and body["temperature"] == 0.7
+        return response("ok sk-form sk-secret")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = llm.chat([], timeout=30, client=client, connection=connection)
+    assert result.text == "ok [redacted] [redacted]"
+
+
+def test_clean_error_redacts_extra_secrets(llm):
+    assert llm.clean_error("a sk-form b sk-secret", "sk-form") == "a [redacted] b [redacted]"

@@ -218,30 +218,45 @@ setelah review, bukan bukti bahwa layanan sudah aktif.
 2. Deploy kode yang disetujui memakai `./docker/setup.sh`: image `api` harus dibangun ulang
    untuk `ffmpeg`, image `web` untuk panel, dan entrypoint API menjalankan migrasi `0021`.
    `setup.sh` membuat `${DATA_DIR}/secrets/llm.env` berupa komentar (0600) tanpa menimpa file lama.
-3. Isi hanya file tersebut, bukan `docker/.env`: `LLM_API_URL` (base `/v1`),
-   `LLM_API_KEY`, `LLM_MODEL`, `LLM_ENABLED=true`. Semua `LLM_*` dan `AI_QUEUE_MAX`
-   diteruskan hanya ke API. Jangan mencetak env, resolved compose config, atau kunci.
-   Default `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`;
-   sesuaikan kontrak endpoint jika perlu. Default concurrency 2, antrean 100, throttle caption
-   60 detik/zona, kuota ask 6/menit/user, timeout caption/ask 60/120 detik, max tokens 1000.
-4. Muat ulang env dengan **recreate**, bukan restart biasa:
+3. Admin membuka **Konfigurasi → AI Integration** untuk URL API (base `/v1`), model, kunci,
+   aktif/nonaktif, dan parameter lanjutan. Kunci tulis-saja disimpan di `secret_store` (0600 di luar
+   `storage_root`), bukan DB/respons. Tombol **Tes koneksi** memakai form tanpa menyimpan
+   (teks + JPEG sintetis 64×64; timeout 30 detik per panggilan); konfirmasikan teks/vision/latensi.
+   Simpan hanya field berubah. Viewer tidak melihat tab dan ketiga endpoint memberi 403.
+   **BELUM diuji di server/UI/LLM nyata** untuk pengaturan UI ini; penerimaan dilakukan setelah review.
+4. `llm.env` tetap nilai awal/fallback, bukan satu-satunya cara konfigurasi. Prioritas **DB > env > default**.
+   `setting.llm` kosong mempertahankan perilaku sebelumnya. **Reset ke env**: kosongkan field atau
+   pilih reset lalu Simpan. Hapus kunci hanya menghapus secret_store; `LLM_API_KEY` env tetap berlaku.
+   `LLM_CONCURRENCY`/`AI_QUEUE_MAX` hanya env, ditampilkan hanya-baca. Default concurrency 2,
+   antrean 100, throttle caption 60 detik/zona, kuota ask 6/menit/user, timeout caption/ask 60/120
+   detik, max tokens 1000; `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`.
+   Jangan mencetak env, resolved compose config, atau kunci. Bila mengubah env (termasuk batas
+   restart-only), muat ulang dengan **recreate**, bukan restart biasa:
 
    ```bash
    docker compose -f docker/compose.yml --env-file docker/.env up -d --no-deps --force-recreate api
    ```
 
-   `docker compose restart api` tidak membaca ulang `env_file`. Tetap satu proses API;
-   semaphore/rate limit/throttle bersifat lokal proses.
-5. Dengan izin pemilik, jalankan tes kontrak marker `llm` memakai konfigurasi privat lalu
-   verifikasi `/api/v1/ai/status` sesudah login. Kode tes default skip saat URL kosong.
+   `docker compose restart api` tidak membaca ulang `env_file`; override DB tetap menang setelah recreate.
+   Tetap satu proses API: singleton settings, semaphore/rate limit/throttle lokal proses.
+   Tahap AI Integration memerlukan rebuild `api` dan `web`, tanpa migrasi tambahan di atas fitur induk.
+5. Dengan izin pemilik, tes koneksi UI dan tes kontrak marker `llm` dapat dicoba pada endpoint nyata.
+   Verifikasi `/api/v1/ai/status` sesudah login, tanpa URL/model/kunci dalam respons status.
 6. Aktifkan **Caption AI otomatis** pada satu zona non-attendance dengan snapshot aktif,
    pilih Bawaan/Kustom, picu event nyata. Verifikasi caption pending → ok, Tanya AI dengan
    preset/teks, cache, jumlah frame, dan fallback klip. Telegram harus tetap memakai alur lama;
    hasil AI tidak mengubah severity atau menekan alert. Real user melakukan penerimaan UI.
 
-**Rollback fitur aman:** set `LLM_ENABLED=false` di `llm.env` lalu recreate API seperti di atas.
-Tidak ada panggilan baru, panel tersembunyi, ask 503 `disabled`; zona/prompt dan audit tetap di DB.
-Toggle zona off hanya menghentikan caption otomatis, bukan akses Tanya AI global.
+**Rollback fitur aman:** admin menonaktifkan AI di tab AI Integration lalu Simpan; override DB
+mengalahkan `LLM_ENABLED` env. Tidak ada panggilan caption/ask baru, panel tersembunyi, ask 503
+`disabled`; zona/prompt dan audit tetap di DB. Toggle zona off hanya menghentikan caption otomatis,
+bukan Tanya AI global. Bila memakai env untuk mematikan fitur, reset override `enabled` terlebih
+dulu lalu set `LLM_ENABLED=false` dan recreate API. Tes koneksi admin tetap aksi eksplisit.
+
+**Rollback pengaturan UI:** revert commit tahap AI Integration lalu rebuild `api` dan `web`.
+Kode lama kembali membaca `llm.env`; baris `setting.llm` tidak dipakai dan audit AI tidak dihapus.
+Cadangkan secrets terlebih dahulu. Bila kunci baru hanya ada di secret_store, atur fallback env secara
+privat sebelum rollback; kode lama belum membaca kunci LLM dari secret_store.
 
 **Rollback skema (destruktif):** `alembic downgrade 0020` menghapus seluruh `event_ai` dan kolom
 prompt/toggle zona. Jangan menjalankannya pada API baru yang masih aktif: backup dulu, hentikan

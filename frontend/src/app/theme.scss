@@ -2001,22 +2001,49 @@ button.lv-alert-chip {
   min-inline-size: 0;
 }
 
-/* Advisory event AI panel; long model text must not widen mobile detail layouts. */
+/* Event AI block (below the metadata grid): highlighted caption, collapsed ask section.
+   Long model text must not widen mobile detail layouts. */
 .ev-ai {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
   min-inline-size: 0;
-  margin-block: 16px;
-  padding-block: 16px;
-  border-block: 1px solid var(--cds-border-subtle);
+  margin-block-start: 16px;
   overflow-wrap: anywhere;
 }
-.ev-ai__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ev-ai__head h3 { font-size: 16px; margin: 0; }
+.ev-ai__caption { margin: 0; min-inline-size: 0; }
+.ev-ai__caption--ok {
+  display: grid;
+  gap: 6px;
+  padding: 12px 16px;
+  background: var(--cds-layer-accent);
+  border-inline-start: 3px solid var(--cds-border-interactive);
+}
+.ev-ai__caption--muted { font-size: 12px; color: var(--cds-text-secondary); }
+.ev-ai__caption-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ev-ai__caption-title { font-size: 12px; font-weight: 600; color: var(--cds-text-secondary); text-transform: uppercase; letter-spacing: 0.32px; }
+.ev-ai__bar { display: flex; }
+.ev-ai__ask { display: flex; flex-direction: column; gap: 12px; min-inline-size: 0; padding-block: 8px 4px; }
 .ev-ai__presets { display: flex; flex-wrap: wrap; gap: 8px; min-inline-size: 0; }
 .ev-ai__presets .cds--btn { max-inline-size: 100%; white-space: normal; block-size: auto; }
-.ev-ai__caption p, .ev-ai__turn p { white-space: pre-wrap; margin: 0; }
 .ev-ai__thread { display: grid; gap: 12px; min-inline-size: 0; }
 .ev-ai__turn { display: grid; gap: 8px; padding: 12px; background: var(--cds-layer); min-inline-size: 0; }
 .ev-ai__hint { font-size: 12px; color: var(--cds-text-secondary); margin: 0; }
+
+/* Rendered AI answer (AiAnswer): summary, timeline rows, lists, conclusion. */
+.ev-ai-answer { display: grid; gap: 6px; min-inline-size: 0; }
+.ev-ai-answer p { margin: 0; }
+.ev-ai-summary { font-weight: 600; }
+.ev-ai-timeline, .ev-ai-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ev-ai-timeline li { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
+.ev-ai-time {
+  font-family: var(--cds-code-01-font-family, ui-monospace, monospace);
+  font-size: 12px;
+  padding: 1px 6px;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  white-space: nowrap;
+}
+.ev-ai-list li { padding-inline-start: 14px; position: relative; }
+.ev-ai-list li::before { content: '•'; position: absolute; inset-inline-start: 2px; }
+.ev-ai-conclusion { padding-block-start: 4px; border-block-start: 1px solid var(--cds-border-subtle); }

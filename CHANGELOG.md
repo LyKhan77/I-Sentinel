@@ -3,6 +3,149 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Deploy dan uji lapangan Caption AI, Tanya AI, dan AI Integration — gspe-ai3 (2026-10-06)
+
+- **Konteks:** deploy cabang `feat/ai-event-caption` lalu `feat/ai-integration-settings` ke `gspe-ai3`
+  (Docker; image `api` mendapat `ffmpeg`; migrasi `0021` di Postgres, idempoten; backup
+  `isentinel-pre-ai-20261005-161652.sql`). Server pindah jaringan selama pengujian (IP sempat berubah,
+  kembali `192.168.2.133`); LLM `intercon-agent` di LAN.
+- **Hasil uji:**
+  - **AI Integration (user, UI):** URL/model/kunci tersimpan; Tes koneksi `Teks OK · Vision OK · 1347 ms`; toggle
+    aktif tersimpan. Server: `setting.llm` hanya field yang diubah, kunci di secret_store 0600, 0 kemunculan di log `api`.
+  - **Tanya AI (server, service yang sama dengan UI, LLM nyata):** 7 event nyata + preset + teks bebas multi-turn:
+    semua jawaban sesuai penilaian visual (laptop kini terbaca benar pada 4742); preset kedua dari cache (1 ms);
+    7–16 dtk per pertanyaan; 10 baris audit `actor=user:1`, `channel=web`.
+  - **Caption otomatis live (user memicu):** event 4770 loitering zona 18 "Pantry 2" → caption `ok`, 3,2 dtk, ±3,3 dtk
+    dari event; user menilai caption akurat dan tampilan UI OK. Telegram tidak terpengaruh (belum dikonfigurasi).
+  - Kontrak endpoint: `pytest -m llm` lulus 0,74 dtk (sebelum endpoint macet).
+- **Temuan lapangan dan tindakan:**
+  - Container `vision` kehilangan akses GPU setelah berhari-hari (`nvidia-smi` di dalam: `Failed to initialize NVML: Unknown Error`;
+    ribuan `detector error`): **restart `vision`** memulihkannya (disetujui user). Hardening (device cgroup/CDI di compose)
+    belum dikerjakan.
+  - Jawaban kronologi klip 70 dtk berisi 12 baris (tiga identik), label "Satu kalimat ringkasan:" ikut tertulis, 30 dtk:
+    diperbaiki (`ea6938c` prompt maks 8 baris + gabungkan + tanpa label; `f78d53c` parser membuang label). **Belum diverifikasi
+    ke LLM nyata** karena inferensi endpoint sedang macet.
+  - Inferensi endpoint LLM macet (`/models` 0,1 dtk, tetapi chat 8 token timeout): satu pertanyaan viewer (`user:5`, event
+    4748) gagal `LLM timeout` 120 dtk dan tercatat `failed` (alur galat berfungsi). Perlu diperiksa di mesin LLM.
+  - Kamera 367 dan 357 tanpa stream go2rtc; `camera_no_frames` untuk 367 menghasilkan event `system` (tidak di-caption).
+- **Belum diuji live:** throttle zona 60 dtk, prompt Kustom, kuota 6/menit lewat UI, tab AI Integration tersembunyi untuk viewer di
+  browser, reset ke env, hapus kunci. Telegram Tanya AI: fase 2, belum dibuat.
+- **Rollback:** `LLM_ENABLED=false` (UI: matikan toggle) atau `git revert`; skema aditif.
+
+### Blok AI ringkas di bawah meta grid dan kronologi rapi — lokal, belum di-deploy (2026-10-06)
+
+- **Konteks:** permintaan user setelah mencoba UI: bagian Ask AI jarang dipakai, jadi harus ringkas dan hanya
+  caption yang disorot; meta grid tetap utama; kronologi ditampilkan rapi. Rancangan disetujui di chat.
+  Tahap deploy dan uji lapangan menunggu OK. ROADMAP tetap `[~]`.
+- **Perubahan:**
+  - `601e67a` blok AI dipindah ke bawah meta grid; caption disorot (latar aksen + garis kiri + lencana Dibuat AI);
+    caption belum ada/menunggu/gagal satu baris redup; bagian **Tanya AI** tertutup secara default (tombol
+    `aria-expanded`), tertutup lagi saat event berganti.
+  - `936c725` `AiAnswer`: parser per baris menjadi elemen React tanpa HTML mentah: `m:dd — teks` / `detik N — teks`
+    menjadi linimasa, butir menjadi daftar, `**tebal**`, ringkasan, `Kesimpulan:`; markdown lama (termasuk cache)
+    ikut rapi; markup apa pun tetap teks.
+  - `f6e9031` pesan sistem: teks biasa tanpa markdown; urutan kejadian `m:dd — kejadian` + `Kesimpulan:`.
+  - `02d17b5` preset `what_happened` dan `report` meminta kronologi; preset lain 1-3 kalimat. Diverifikasi ke
+    LLM nyata dengan bingkai event 4738 (kronologi `00:00 — …` + Kesimpulan; preset singkat 2 kalimat).
+- **Bukti:** tes baru backend (preset/prompt) dan frontend (`ai-answer.test.tsx` 5 tes; `ask-ai-panel.test.tsx`
+  tertutup default, caption disorot, kronologi, urutan di bawah meta grid). Browser 390×844 dengan API stub:
+  `scrollWidth` 375 (< 390), blok AI di bawah meta grid, 3 baris linimasa; screenshot lokal
+  `docs/evidence/ai-panel-{collapsed,open}-390.png` (gitignored). **BELUM diuji di server/UI nyata.**
+- **Suite berurutan (HEAD `211066c`):** backend `817 passed, 1 skipped, 545 warnings in 153.54s` (807 → 817);
+  Docker `75 passed`; vision `235 passed, 3 deselected`; frontend `Test Files 36 passed (36)` /
+  `Tests 474 passed (474)` (464 → 474); lint exit 0, 24 warning, 16 pasangan identik baseline; build exit 0.
+- **Dampak:** hanya tampilan dan teks prompt; tanpa migrasi, tanpa perubahan API. Jawaban cache lama tetap
+  ber-markdown tetapi dirender rapi. **Rollback:** `git revert` commit di atas.
+
+### Perbaikan review cabang AI Integration — lokal, tanpa deploy (2026-10-06)
+
+- **Konteks:** review independen cabang `feat/ai-integration-settings` (skill code-review, level high;
+  tiap temuan diverifikasi ke kode). Sembilan temuan diperbaiki dengan TDD (RED dilihat dulu, alasan
+  merah benar), satu commit per perbaikan. **BELUM diuji di server/UI/LLM nyata.** ROADMAP tetap `[~]`.
+- **Perbaikan:**
+  - `85e17f2` kunci LLM di-strip dan divalidasi (spasi/newline hasil tempel membuat header Bearer
+    ilegal; kunci spasi-saja dianggap tersimpan; kontrol/spasi di tengah atau >512 ditolak).
+  - `8476ad6` `api_url` menolak kredensial tertanam (`user:pass@host`; sebelumnya tersimpan plaintext di
+    `setting` dan dikembalikan oleh GET).
+  - `3fc0995` `SecretStoreError` dari `secret_store.get` tidak lagi menghentikan `apply()` (override DB
+    terbuang) atau membuat `GET /ai/settings` 500; diperlakukan seperti kunci kosong dengan peringatan log.
+  - `bc018b6` + `1bd836d` `key_source` (`db|env|none`): UI tidak lagi menampilkan kunci env sebagai
+    "tersimpan" dengan tombol hapus yang tidak berefek.
+  - `8e3deb8` `llm_client.config_lock`: `apply()` dan `current_connection()` memakai lock yang sama
+    sehingga satu `Connection` tidak memadukan nilai lama dan baru.
+  - `00677b3` + `c55d008` tes koneksi menerima `clear_api_key` dan memakai kunci env (hasil setelah
+    simpan), bukan kunci tersimpan.
+  - `64b010a` kunci yang diketik dipertahankan saat Test atau simpan gagal; dikosongkan hanya setelah
+    simpan berhasil (tes executor yang mengunci perilaku lama diperbarui).
+  - `5d84b33` detail validasi 422 (nama field dan batas, tak pernah nilai) tampil di halaman.
+  - `5d486cb` label latensi tes koneksi lewat i18n (id dan en).
+- **Sengaja tidak diubah:** urutan `secret_store` sebelum commit dan lost update PUT bersamaan (admin-only,
+  frekuensi rendah); kunci tersimpan dikirim ke URL form saat tes (keputusan spec §9, admin sudah bisa
+  mengarahkan URL lewat simpan; memaksa mengetik ulang kunci menghambat pemakaian utama saat endpoint pindah);
+  `style={{}}` inline (pola yang sama di halaman lain).
+- **Bukti (berurutan, HEAD `1bd836d`):** backend `807 passed, 1 skipped, 545 warnings in 153.28s`
+  (793 → 807: +14 tes); Docker `75 passed`; vision `235 passed, 3 deselected`; frontend
+  `Test Files 35 passed (35)` / `Tests 464 passed (464)` (458 → 464: +6 tes); `tsc -b --noEmit` exit 0;
+  lint exit 0, 24 warning, 16 pasangan identik baseline; build exit 0. Satu run vitest penuh (tepat
+  setelah suite backend) mencatat 1 tes gagal yang tidak reproduksi: 4 run penuh berikutnya dan 6 run
+  `zones.test.tsx` terpisah hijau; pola sama dengan flake `zones.test.tsx` yang dicatat executor pada baseline.
+  Hasil run independen pada `7d53451` (sebelum perbaikan) cocok dengan laporan executor.
+- **Dampak:** tanpa migrasi; kontrak API bertambah `key_source` (GET) dan `clear_api_key` (POST test).
+  Perilaku default tanpa override tidak berubah.
+- **Rollback:** `git revert` commit perbaikan terkait; `llm.env` tetap berlaku sebagai nilai awal.
+
+### Pengaturan LLM di UI — AI Integration, lokal tanpa deploy (2026-10-05)
+
+- **Konteks:** Task 1–4 plan `2026-10-05-ai-integration-settings` dijalankan native dengan
+  RED → GREEN dan commit lokal. Admin kini dapat mengatur koneksi LLM tanpa SSH/restart,
+  memakai prioritas DB > env > default. **BELUM diuji di server/UI/LLM nyata**; ROADMAP `[~]`.
+- **Commit:** `f59fee1` layanan `llm_config` dan `Connection`; `a4fda8b` API admin/startup;
+  `ff6c4ca` tab AI Integration. Commit keempat memperbarui dokumentasi dan bukti verifikasi.
+- **Berkas:** `llm_client.py`, layanan/tes `llm_config`, router/skema/tes `ai_settings`, lifespan;
+  frontend `api/aiSettings.ts`, `AiIntegrationPage.tsx`, `ConfigurationPage.tsx`, i18n dua bahasa,
+  tes `ai-integration.test.tsx`; README, ARCHITECTURE, WORKFLOW, DESIGN, ROADMAP, RUNBOOK,
+  CHANGELOG, dan daftar struktur AGENTS. Tidak ada migrasi/dependensi baru; konsumen LLM tidak diubah.
+- **RED → GREEN:** T1 `2 failed, 9 passed, 41 errors` (fitur/modul belum ada) → `52 passed`;
+  T2 `11 failed` (404 dan startup belum apply) → `11 passed`;
+  T3 `14 failed` (tab/form belum ada) → `14 passed`.
+  Fixture Storage pada percobaan RED pertama T3 diperbaiki lalu RED diulang.
+  TypeScript sempat TS2322 pada tipe fixture hasil; anotasi kontrak diperbaiki lalu noEmit/build lulus.
+- **Baseline diukur ulang:** backend `739 passed, 1 skipped, 521 warnings in 146.50s`;
+  Docker `75 passed in 9.00s`; vision `235 passed, 3 deselected, 2 warnings in 13.58s`;
+  frontend `34 files / 444 passed` setelah ulang flake lama `zone-start-ring`
+  (run pertama `1 failed / 443 passed`). Build exit 0; lint exit 0, 24 warning / 16 pasangan.
+- **Verifikasi penuh berurutan sebelum commit dokumen (perintah S1):**
+  ```text
+  backend: 793 passed, 1 skipped, 539 warnings in 154.27s (0:02:34)
+  docker: 75 passed in 8.92s
+  vision: 235 passed, 3 deselected, 2 warnings in 13.73s
+  frontend: Test Files 35 passed (35); Tests 458 passed (458)
+  build: exit 0; built in 2.89s
+  lint: exit 0; 24 warning / 16 pasangan; baseline identical: True
+  ```
+  Backend naik 54 tes (43 T1 + 11 T2), frontend naik 14 tes. Tes lama tidak dihapus/diubah,
+  kecuali dua penegasan jumlah tab `7→8` di `configuration.test.tsx` (judul tes tetap).
+  Vision memiliki warning lama pynvml dan thread fixture `publish_heartbeat`; build tetap warning
+  ukuran chunk. Suite S1 diulang pada commit terakhir untuk laporan handoff.
+- **Bukti perilaku:** viewer 403 pada ketiga endpoint; key tidak di respons/DB;
+  PUT invalid bersama key tidak menulis secret_store; null kembali ke env/default;
+  form/stored key terredaksi pada error; apply DB kosong tidak merusak monkeypatch;
+  tab viewer tidak fetch; simpan model saja tidak mengirim api_key.
+  Browser stub API 390×844: document/body scrollWidth 390, koneksi, Lanjutan terbuka, dan Inggris.
+  Browser dan Vite verifikasi telah dihentikan. Ini bukan penerimaan UI/endpoint nyata.
+- **Dampak/keputusan:** `apply` hanya menyentuh override aktif/lama dan mengembalikan `_BASE`
+  bila override dihapus. Kunci di `secret_store`, form tulis-saja dan dibersihkan saat dikirim.
+  Validasi lengkap sebelum efek samping; clear key mengembalikan env, clear bersama key nonkosong
+  ditolak. Input API strict, field tak dikenal ditolak; token/rate integer, timeout/interval boleh
+  pecahan. Tes form tidak menyimpan/tidak mengambil slot worker, timeout 30 detik per panggilan,
+  teks sukses dengan vision ditolak → `ok=true`, `vision_ok=false`.
+  Konkurensi/antrean tetap env dan memerlukan recreate; pengaturan DB berlaku tanpa restart.
+- **Rollback:** matikan AI dari UI lalu Simpan (override DB mengalahkan env), atau reset enabled
+  lalu gunakan env false + recreate. Reset per field menghapus override, clear key tidak menghapus
+  env. Rollback kode tahap ini: revert commit task urut terbalik lalu rebuild api/web; tanpa
+  downgrade skema. Bila key hanya di secret_store, siapkan fallback env secara privat sebelum
+  rollback karena kode lama hanya membaca env. Push, review, deploy, dan merge belum dilakukan.
+
 ### Perbaikan review cabang Caption AI dan Tanya AI — lokal, tanpa deploy (2026-10-05)
 
 - **Konteks:** review independen cabang `feat/ai-event-caption` (skill code-review, level high;

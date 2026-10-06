@@ -31,8 +31,11 @@ function stub(opts: { caption?: AiRow | null; answer?: string; status?: number; 
   vi.stubGlobal('fetch', f)
   return f
 }
-function panel(event = EVENT, status = STATUS) {
-  return render(<I18nProvider><AskAiPanel event={event} status={status} tick={0} /></I18nProvider>)
+function panel(event = EVENT, status = STATUS, open = true) {
+  const view = render(<I18nProvider><AskAiPanel event={event} status={status} tick={0} /></I18nProvider>)
+  // bagian Tanya AI tertutup secara default; tes lama berinteraksi dengannya, jadi dibuka di sini
+  if (open) fireEvent.click(screen.getByRole('button', { name: 'Tanya AI' }))
+  return view
 }
 const posts = (f: Mock) => f.mock.calls.filter(([u, init]) => String(u).endsWith('/ask') && init?.method === 'POST')
 
@@ -126,6 +129,8 @@ test('ganti event mereset percakapan browser', async () => {
   await screen.findByText('Satu orang bergerak.')
   view.rerender(<I18nProvider><AskAiPanel event={{ ...EVENT, id: 2 }} status={STATUS} tick={0} /></I18nProvider>)
   expect(screen.queryByText('q lama')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Pertanyaan untuk AI')).not.toBeInTheDocument() // event baru: bagian Tanya AI tertutup lagi
+  fireEvent.click(screen.getByRole('button', { name: 'Tanya AI' }))
   fireEvent.change(screen.getByLabelText('Pertanyaan untuk AI'), { target: { value: 'q baru' } })
   fireEvent.click(screen.getByRole('button', { name: 'Kirim pertanyaan' }))
   await waitFor(() => expect(posts(f)).toHaveLength(2))
@@ -172,4 +177,46 @@ test('caption pending dipantau lewat polling sampai selesai, tanpa pesan WS', as
   } finally {
     vi.useRealTimers()
   }
+})
+
+test('Tanya AI tertutup secara default dan terbuka lewat tombol', async () => {
+  stub(); const { container } = panel(EVENT, STATUS, false)
+  await screen.findByText('Area terlihat kosong.')
+  const toggle = screen.getByRole('button', { name: 'Tanya AI' })
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByLabelText('Pertanyaan untuk AI')).not.toBeInTheDocument()
+  expect(container.querySelectorAll('.ev-ai__presets button')).toHaveLength(0)
+  fireEvent.click(toggle)
+  expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByLabelText('Pertanyaan untuk AI')).toBeInTheDocument()
+  expect(container.querySelectorAll('.ev-ai__presets button')).toHaveLength(6)
+})
+
+test('caption ok disorot sedangkan caption belum ada hanya satu baris redup', async () => {
+  stub(); const first = panel(EVENT, STATUS, false)
+  await screen.findByText('Area terlihat kosong.')
+  expect(first.container.querySelector('.ev-ai__caption--ok')).toHaveTextContent('Area terlihat kosong.')
+  expect(first.container.querySelector('.ev-ai__caption--ok')).toHaveTextContent('Dibuat AI')
+  first.unmount()
+  stub({ caption: null }); const second = panel(EVENT, STATUS, false)
+  await screen.findByText('Belum ada caption otomatis.')
+  expect(second.container.querySelector('.ev-ai__caption--ok')).toBeNull()
+  expect(second.container.querySelector('.ev-ai__caption--muted')).not.toBeNull()
+})
+
+test('jawaban kronologi tampil sebagai linimasa rapi', async () => {
+  stub({ answer: 'Pria berdiri lalu pergi.\n0:03 — Berdiri memegang ponsel\n0:09 — Berjalan ke kamera\nKesimpulan: Keluar bingkai.' })
+  const { container } = panel()
+  fireEvent.click(screen.getByRole('button', { name: 'Apa yang terjadi?' }))
+  await screen.findByText('Berjalan ke kamera')
+  expect(Array.from(container.querySelectorAll('.ev-ai__turn .ev-ai-time')).map(e => e.textContent)).toEqual(['0:03', '0:09'])
+  expect(container.querySelector('.ev-ai__turn .ev-ai-conclusion')).not.toBeNull()
+})
+
+test('EventsPage menaruh blok AI di bawah meta grid', async () => {
+  stub(); const { container } = page()
+  await screen.findByText('Area terlihat kosong.')
+  const grid = container.querySelector('.ev-meta-grid')!
+  const ai = container.querySelector('.ev-ai')!
+  expect(grid.compareDocumentPosition(ai) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })

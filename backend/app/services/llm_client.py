@@ -2,7 +2,7 @@
 from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, RLock
 
 import httpx
 
@@ -15,6 +15,29 @@ class LlmError(Exception):
 
 class LlmBusy(LlmError):
     """The shared caption/question capacity is exhausted."""
+
+
+@dataclass(frozen=True)
+class Connection:
+    """Explicit provider configuration for a request that must not change settings."""
+
+    url: str
+    api_key: str
+    model: str
+    extra_body: dict
+    max_tokens: int
+
+
+# Dipegang llm_config.apply saat menulis settings.llm_* agar satu Connection tidak pernah memadukan
+# nilai lama dan baru (mis. kunci lama ke host baru) ketika admin menyimpan di tengah panggilan.
+config_lock = RLock()
+
+
+def current_connection() -> Connection:
+    """Snapshot the runtime provider configuration used by caption and ask callers."""
+    with config_lock:
+        return Connection(settings.llm_api_url, settings.llm_api_key, settings.llm_model,
+                          settings.llm_extra_body.copy(), settings.llm_max_tokens)
 
 
 @dataclass(frozen=True)
@@ -31,9 +54,11 @@ class LlmResult:
 _semaphore = BoundedSemaphore(settings.llm_concurrency)
 
 
-def clean_error(text: str) -> str:
-    """Redact the configured credential before any error is exposed or persisted."""
-    return text.replace(settings.llm_api_key, "[redacted]") if settings.llm_api_key else text
+def clean_error(text: str, *secrets: str) -> str:
+    """Redact runtime and request-specific credentials before exposing text."""
+    for secret in sorted({settings.llm_api_key, *secrets} - {""}, key=len, reverse=True):
+        text = text.replace(secret, "[redacted]")
+    return text
 
 
 def text_part(text: str) -> dict:
@@ -57,21 +82,23 @@ def slot(timeout: float = 5.0):
         _semaphore.release()
 
 
-def chat(messages: list[dict], *, timeout: float, client: httpx.Client | None = None) -> LlmResult:
+def chat(messages: list[dict], *, timeout: float, client: httpx.Client | None = None,
+         connection: Connection | None = None) -> LlmResult:
     """Request one completion without leaking response bodies or transport secrets.
 
     Callers own the slot lease. A supplied client remains owned by its caller.
     Truncated or empty completions are failures, not usable answers.
     """
-    if not settings.llm_api_url or not settings.llm_model:
+    conn = connection or current_connection()
+    if not conn.url or not conn.model:
         raise LlmError("LLM belum dikonfigurasi")
-    body = {"model": settings.llm_model, "messages": messages, "max_tokens": settings.llm_max_tokens,
-            "temperature": 0.2, **settings.llm_extra_body}
+    body = {"model": conn.model, "messages": messages, "max_tokens": conn.max_tokens,
+            "temperature": 0.2, **conn.extra_body}
     owned = client is None
     http = client if client is not None else httpx.Client()
     try:
-        response = http.post(settings.llm_api_url.rstrip("/") + "/chat/completions", json=body,
-                             headers={"Authorization": f"Bearer {settings.llm_api_key}"} if settings.llm_api_key else {},
+        response = http.post(conn.url.rstrip("/") + "/chat/completions", json=body,
+                             headers={"Authorization": f"Bearer {conn.api_key}"} if conn.api_key else {},
                              timeout=timeout)
         if response.is_error:
             raise LlmError(f"LLM HTTP {response.status_code}")
@@ -84,8 +111,8 @@ def chat(messages: list[dict], *, timeout: float, client: httpx.Client | None = 
         if not isinstance(text, str) or not text.strip():
             raise LlmError("Jawaban LLM kosong")
         usage = data.get("usage") or {}
-        return LlmResult(clean_error(text.strip()), finish, usage.get("prompt_tokens"),
-                         usage.get("completion_tokens"), clean_error(str(data.get("model") or settings.llm_model))[:64])
+        return LlmResult(clean_error(text.strip(), conn.api_key), finish, usage.get("prompt_tokens"),
+                         usage.get("completion_tokens"), clean_error(str(data.get("model") or conn.model), conn.api_key)[:64])
     except httpx.TimeoutException:
         raise LlmError("LLM timeout") from None
     except httpx.HTTPError:
@@ -93,7 +120,7 @@ def chat(messages: list[dict], *, timeout: float, client: httpx.Client | None = 
     except (ValueError, KeyError, IndexError, TypeError):
         raise LlmError("Respons LLM tidak valid") from None
     except LlmError as exc:
-        raise LlmError(clean_error(str(exc))) from None
+        raise LlmError(clean_error(str(exc), conn.api_key)) from None
     finally:
         if owned:
             http.close()

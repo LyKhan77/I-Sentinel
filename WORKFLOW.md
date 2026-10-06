@@ -160,19 +160,38 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 
 1. `GET /ai/status` sekali saat halaman dipasang. Global off → panel tidak ada, ask 503;
    attendance dan system selalu tanpa panel.
-2. Caption otomatis ditampilkan dengan lencana **Dibuat AI** dan status. `kind: "ai"` untuk event
-   terpilih memuat ulang `GET /events/{id}/ai` (caption + 20 ask terbaru).
+2. Blok AI berada **di bawah meta grid** event. Caption otomatis disorot dengan lencana **Dibuat AI**;
+   belum ada/menunggu/gagal tampil satu baris redup. Bagian **Tanya AI** tertutup secara default dan
+   dibuka lewat tombol. `kind: "ai"` untuk event terpilih (atau polling saat pending) memuat ulang
+   `GET /events/{id}/ai` (caption + 20 ask terbaru).
 3. Pilih preset sesuai tipe atau tulis pertanyaan ≤500 karakter. Riwayat percakapan browser dikirim
    ulang (enam giliran terakhir, q/a ≤2000); memilih event lain meresetnya.
 4. API memakai cache preset sukses sebelum kuota (6/menit/user). Permintaan baru mengirim snapshot
    dan keyframe ke LLM; timeout/LLM mati → failed pada audit dan pesan ramah, tidak menghentikan alert.
-5. Jawaban tampil sebagai teks literal, dengan jumlah frame dan catatan cache/snapshot saja.
+5. Jawaban dirender `AiAnswer` sebagai elemen React (tanpa HTML mentah): kronologi `m:dd — kejadian`
+   menjadi baris waktu, daftar, tebal, dan `Kesimpulan:`; markup apa pun dari model tetap teks. Tampil dengan
+   jumlah frame dan catatan cache/snapshot saja.
    Media habis/hilang → input nonaktif; tanpa klip preset temporal ditolak. Busy/429 dapat dicoba lagi.
 6. Jawaban manual tetap ask, tidak mengisi kotak caption. AI hanya saran; konfirmasi dengan media asli.
    Audit menyimpan actor user; caption/ask ikut dihapus bersama event oleh retensi/cleanup.
 
-Konfigurasi global melalui `secrets/llm.env`, bukan UI. Rollout hanya setelah konfirmasi privasi
-pemilik endpoint; lihat `docs/RUNBOOK.md`. Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
+Konfigurasi global melalui **Konfigurasi → AI Integration**, hanya admin:
+1. Atur aktif/nonaktif, URL API dan model. Kolom kunci selalu kosong; status hanya menunjukkan
+   apakah kunci tersimpan/env tersedia. Menyimpan tanpa mengetik kunci tidak mengirim `api_key`.
+2. Buka **Lanjutan** untuk token, timeout, kuota, interval caption, dan `extra_body` objek JSON.
+   Lencana menunjukkan sumber DB/Env/Default. Konkurensi/antrean hanya-baca dan tetap env.
+3. **Tes koneksi** memakai perubahan form tanpa menyimpan: teks dan JPEG sintetis, hasil teks/vision,
+   latensi, dan galat terredaksi. Kunci kosong memakai kunci tersimpan/env, bukan menghapusnya.
+4. **Simpan** mengirim hanya field yang berubah. Kunci dikosongkan setelah dikirim; pengaturan
+   berlaku pada panggilan berikutnya tanpa restart. Prioritas DB > env > default.
+5. **Reset ke env**: kosongkan field atau pilih reset, lalu Simpan. Hapus kunci secara eksplisit
+   mengembalikan fallback env; tidak menghapus kunci env.
+
+`secrets/llm.env` tetap nilai awal/fallback. Mengubah env, konkurensi, atau antrean memerlukan
+recreate API, bukan restart biasa; override DB tetap lebih tinggi. Viewer tidak melihat tab dan
+tidak memanggil API pengaturan. Rollout hanya setelah review dan konfirmasi privasi pemilik
+endpoint; lihat `docs/RUNBOOK.md`. **BELUM diuji di server/UI/LLM nyata** pada tahap ini.
+Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
 
 ## 9. Notifikasi web
 
