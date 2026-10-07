@@ -219,7 +219,8 @@ untuk deploy ke server lain atau ulang, bukan bukti bahwa layanan aktif di lingk
 1. Konfirmasikan kepada pemilik endpoint bahwa snapshot/keyframe tidak disimpan atau dipakai
    melatih model. Gambar dapat memuat wajah karyawan. Backup DB dan secrets sebelum migrasi.
 2. Deploy kode yang disetujui memakai `./docker/setup.sh`: image `api` harus dibangun ulang
-   untuk `ffmpeg`, image `web` untuk panel, dan entrypoint API menjalankan migrasi `0021`.
+   untuk `ffmpeg`, image `web` untuk panel, dan entrypoint API menjalankan migrasi `0021` dan `0022` (kolom `alert.message_id`/`message_photo`/`ai_synced`
+   untuk edit caption Telegram; aditif, alert lama tetap NULL dan tidak pernah diedit).
    `setup.sh` membuat `${DATA_DIR}/secrets/llm.env` berupa komentar (0600) tanpa menimpa file lama.
 3. Admin membuka **Konfigurasi → AI Integration** untuk URL API (base `/v1`), model, kunci,
    aktif/nonaktif, dan parameter lanjutan. Kunci tulis-saja disimpan di `secret_store` (0600 di luar
@@ -247,8 +248,11 @@ untuk deploy ke server lain atau ulang, bukan bukti bahwa layanan aktif di lingk
    Verifikasi `/api/v1/ai/status` sesudah login, tanpa URL/model/kunci dalam respons status.
 6. Aktifkan **Caption AI otomatis** pada satu zona non-attendance dengan snapshot aktif,
    pilih Bawaan/Kustom, picu event nyata. Verifikasi caption pending → ok, Tanya AI dengan
-   preset/teks, cache, jumlah frame, dan fallback klip. Telegram harus tetap memakai alur lama;
-   hasil AI tidak mengubah severity atau menekan alert. Real user melakukan penerimaan UI.
+   preset/teks, cache, jumlah frame, dan fallback klip. Alert Telegram tetap terkirim tanpa menunggu
+   LLM; begitu caption `ok`, pesan `sent` ber-foto diedit sekali dengan baris `🤖 AI:` (tanpa
+   notifikasi baru). Hasil AI tidak mengubah severity atau menekan alert. Pastikan **Konfigurasi →
+   Notifikasi → app_url** menunjuk alamat LAN web (mis. `http://192.168.2.133:7700`) agar tautan caption
+   benar. Real user melakukan penerimaan UI dan memeriksa pesan di grup Telegram.
 
 **Rollback fitur aman:** admin menonaktifkan AI di tab AI Integration lalu Simpan; override DB
 mengalahkan `LLM_ENABLED` env. Tidak ada panggilan caption/ask baru, panel tersembunyi, ask 503
@@ -266,6 +270,16 @@ prompt/toggle zona. Jangan menjalankannya pada API baru yang masih aktif: backup
 writer API/retention dalam maintenance, jalankan downgrade lewat image yang masih mempunyai migrasi
 0021, lalu jalankan kode lama yang cocok. Downgrade tidak dapat memulihkan jawaban yang dihapus.
 Tidak perlu downgrade hanya untuk mematikan fitur.
+
+**Rollback caption Telegram:** `git revert -m 1 97dcd9b` (kolom aditif aman) atau
+`alembic downgrade 0021`, yang hanya menghapus `alert.message_id`/`message_photo`/`ai_synced`; riwayat
+alert tidak hilang, pesan yang sudah diedit tetap seperti adanya di Telegram. Mematikan AI (tab AI
+Integration) otomatis menghentikan edit baru karena tidak ada caption `ok` baru.
+
+Gejala caption Telegram: baris `🤖 AI:` tidak muncul → periksa alert `sent` dengan `message_id` dan
+`message_photo=true` (alert lama/teks-saja tidak diedit), caption event `ok`, chat aktif masih sama dengan
+`alert.chat_id`, token terpasang, dan `ai_synced` (true setelah edit sukses; edit gagal melepas klaim,
+log api mencatat nama tipe galat tanpa token).
 
 Gejala: caption tidak muncul → periksa enabled, toggle zona, snapshot, throttle, status failed.
 Ask 409 `clip_unavailable` → preset temporal memerlukan klip; kegagalan ekstraksi pada pertanyaan biasa

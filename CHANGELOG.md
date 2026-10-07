@@ -58,6 +58,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   - **Belum teruji nyata:** jalur AI siap sebelum alert terkirim (baris AI langsung di pesan awal), throttle 60 dtk
     per zona, dan galat Telegram saat edit (hanya tes otomatis). Waktu kirim alert tidak dicatat di DB, jadi urutan
     edit-setelah-kirim disimpulkan dari selisih ±4 dtk.
+- **Dokumentasi:** `docs/RUNBOOK.md` — migrasi `0022` pada langkah deploy, verifikasi pesan Telegram + `app_url`,
+  rollback caption Telegram (`git revert -m 1` merge / `alembic downgrade 0021`), dan gejala "baris AI tidak muncul".
 - **Dampak:** alert tetap terkirim ±1 dtk tanpa menunggu LLM; tepat satu edit per
   alert apa pun urutan caption/pengiriman (dijamin klaim atomik + tes otomatis).
 - **Rollback:** `git revert` (kolom aditif aman) atau `alembic downgrade 0021`.
