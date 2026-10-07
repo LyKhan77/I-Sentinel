@@ -66,10 +66,30 @@ idempoten — start ulang tidak menduplikasi baris.
 
 ### Zona attendance
 
-Zona attendance digambar di **area kepala** (polygon kecil di
-sekitar kepala/atas badan pada frame utama), bukan seluruh area pintu. Gunakan
-editor zona; arah gate `entry`/`exit`. Zona tanpa arah
-diabaikan worker (tidak ada fallback person).
+Zona attendance digambar di **area kepala** pada frame utama, bukan lantai. Buat
+zona cukup lebar agar wajah yang berjalan berada di dalamnya **≥1 detik**
+(sekitar 5 frame pada `ai_fps=5`). Pemicu tetap pusat bbox wajah di polygon;
+deteksi/tracking memakai seluruh frame, tanpa ROI crop. Arah `entry`/`exit`
+tetap wajib, termasuk saat **Catat absensi OFF**; zona tanpa arah diabaikan worker.
+
+**Catat absensi** dan **Kirim wajah tidak dikenal** adalah flag behavior attendance
+(`record`, `telegram_unknown`, default true). OFF pada pencatatan hanya menerbitkan
+evidence `detected` di Inbox/Telegram, tidak membuat riwayat atau rekap absensi.
+Dedup per karyawan+zona memakai cooldown default 5 menit; Unknown tidak di-dedup
+oleh jalur ini. Saklar Telegram induk tetap menentukan pengiriman; Unknown OFF
+hanya menahan alert Unknown, bukan event Inbox.
+
+Telegram membedakan CHECK IN/OUT, SUDAH CHECK IN (jam check in pertama dan exit sejak
+itu bila terlihat), serta TERDETEKSI — MASUK/KELUAR. Cooldown tetap diam.
+Tautan **Lihat event** membuka evidence lengkap.
+
+### Checklist kamera gate
+
+- Shutter **≥1/250** untuk mengurangi blur saat berjalan.
+- Gunakan WDR/BLC bila pintu membelakangi cahaya.
+- Pasang setinggi mata hingga sedikit di atasnya, dengan sudut wajah tidak menyamping.
+- Tempatkan zona **2–4 m sebelum pintu**, dengan waktu wajah di zona ≥1 detik.
+- Bila skor cocok kurang, lakukan enrollment dari kamera gate sendiri dengan foto jelas.
 
 ### Membaca label gerbang di debugger
 
@@ -87,10 +107,42 @@ worker sedang mengumpulkan frame bagus (default 3) sebelum menerbitkan satu even
 
 ### Kalibrasi `face_stats`
 
-Perlu ≥10 lintasan nyata lewat gerbang. Buka debugger, catat distribusi label
-`buram` (nilai blur) dan `wajah terlalu kecil` (width_px) dari log/overlay, lalu
-setel `face_blur_min` dan `face_min_width_px` di Konfigurasi → Deteksi & Model →
-Advanced → "Wajah attendance" agar wajah bagus lolos dan noise dibuang. Nilai
+Gunakan `face_stats` (width_px, det_score, yaw, blur, frames), label debugger, dan
+corong heartbeat untuk menentukan penyebab sebelum menyetel gerbang. Perubahan
+angka hanya setelah uji penerimaan server; siklus kode ini tidak mengubah default
+`FaceSettings` atau ambang cosine.
+
+### Membaca corong di monitoring
+
+`GET /api/v1/monitoring` (login biasa) → `cameras[].ai.funnel`. Data direset per
+jendela heartbeat; heartbeat node lama tanpa corong menghasilkan null.
+
+| Field/gejala | Arti dan langkah |
+|---|---|
+| `faces` | Wajah yang dilacak per frame, bukan jumlah orang unik |
+| `rejects.zone` dominan | Periksa posisi polygon terhadap pusat bbox wajah |
+| `rejects.small` dominan | Dekatkan zona atau evaluasi `det_size` lebih besar pada konfigurasi engine; bukan knob UI baru |
+| `rejects.score` dominan | Perbaiki pencahayaan dan visibilitas wajah sebelum melonggarkan gerbang |
+| `rejects.yaw` / `rejects.blur` dominan | Perbaiki sudut kamera / shutter |
+| `tracks_emitted` | Track yang menerbitkan event |
+| `tracks_silent` tinggi | Track masuk zona tanpa embedding lolos; periksa gerbang yang terlalu ketat |
+| `ttfg_median_s` | Median waktu masuk zona hingga embedding bagus pertama; bukan latensi end-to-end |
+
+`fps` dan `motion_skip_pct` berada di objek `ai` yang sama. Motion gate tetap
+update setiap frame; wajah terlihat mempertahankan pemrosesan frame diam, dan
+gate kembali melewati frame saat wajah hilang. Wajah latar/poster/cermin dapat
+menaikkan beban GPU; pantau sebelum tuning.
+
+### Protokol uji penerimaan server (belum dijalankan)
+
+1. Setelah review dan deploy berizin, gunakan kamera ideal dan **10 karyawan × 5 lintasan**.
+2. Minta jalan normal tanpa menoleh atau berhenti menatap CCTV.
+3. Ukur dari wajah muncul hingga event tercatat: target **≥95% tercatat benar**,
+   **≤2 detik**, dan **nol salah-orang**. Catat hasil dan corong di CHANGELOG.
+4. Ulangi protokol setiap perubahan ambang; jangan menyimpulkan keberhasilan dari tes fake worker.
+5. Deploy memerlukan rebuild `api` dan `vision`, lalu `docker compose up -d`,
+   bukan hanya restart. Tanpa migrasi; flag zona lama tetap memakai default.
+   Kode ini **BELUM diuji di server nyata**. Fase 3b dua fase hanya diputuskan dari data uji.
 
 ## Troubleshooting
 

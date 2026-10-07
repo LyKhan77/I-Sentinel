@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T9 — docs: face gate refine (alur Telegram, zona deteksi-saja, runbook, corong) (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Alur tiga pesan, flag JSON, kontrak payload/heartbeat, runbook kamera dan corong, protokol penerimaan 10×5; ROADMAP tetap [~].
+- **Bukti:** Suite berurutan: backend `894 passed, 1 deselected, 551 warnings in 164.75s`; Docker `75 passed in 9.36s`; vision `247 passed, 3 deselected, 2 warnings in 13.67s`; frontend `36 files / 481 passed`; build exit 0; lint `24 warnings and 0 errors`, 16 pasangan rule-file identik baseline.
+- **Dampak:** Panduan lokal lengkap; BELUM diuji di server nyata. Review, deploy, tuning dan penerimaan server tetap di luar sesi.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Runbook lama memiliki kalimat kalibrasi terputus; diganti panduan berbasis face_stats dan corong pada bagian yang memang ditargetkan plan.
+
+
 ### Face gate refine T8 — feat(vision): corong face worker di heartbeat dan monitoring (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
