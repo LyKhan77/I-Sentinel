@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Node apply per kamera T2 — feat(vision): diff config per kamera (2026-10-07)
+
+- **Konteks:** satu perubahan kamera tidak boleh menghentikan kamera lain; BELUM diuji di server nyata.
+- **Perubahan:** `apply_config` membandingkan `CameraCfg`, menyimpan tanda tangan global, memulai ulang hanya kamera berubah/ditambah, menghentikan kamera dihapus, merestart kamera ber-worker face saat `FaceSettings` berubah, menghapus kamera gagal dari `_applied`, dan fallback penuh pada galat diff. Log diff berisi daftar ID terurut.
+- **Bukti:** RED `14 failed, 9 passed in 0.28s`: worker kamera lain ikut diganti, recorder lain ditutup, start failure lolos keluar, confidence kamera dihapus tertinggal, log diff belum ada. GREEN terarah `23 passed in 0.18s`; suite vision `270 passed, 3 deselected, 2 warnings in 13.95s`. Tes config pertama dan empat variasi global detector sudah hijau sebelum implementasi karena restart penuh merupakan perilaku lama; belum dimutasi, dicatat eksplisit.
+- **Dampak:** worker dan recorder kamera tidak berubah tetap identik dan hidup. Enam perubahan kamera, add/remove, FaceSettings, gagal lalu config kembali, fallback, kamera tanpa zona dan confidence diuji dengan fake. Blok detector/face-device lama tidak diubah; tes GPU baru tidak ditambahkan.
+- **Rollback:** revert commit ini dan rebuild `vision`; tanpa migrasi atau perubahan backend.
+
 ### Node apply per kamera T1 — refactor(vision): lifecycle worker per kamera (2026-10-07)
 
 - **Konteks:** pemisahan lifecycle sebelum diff config; BELUM diuji di server nyata.

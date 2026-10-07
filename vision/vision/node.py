@@ -260,6 +260,7 @@ class VisionNode:
         self._face_settings = FaceSettings()
         self._applied: dict[int, CameraCfg] = {}
         self._detector_settings = None
+        self._global_sig: tuple | None = None
         self._det_prev: tuple[float, int, float] | None = None  # (ms_total, n, monotonic) heartbeat lalu
         self.events: list[dict] = []  # test hook: all worker events
         from .face import FaceEmbedder
@@ -339,7 +340,7 @@ class VisionNode:
             getattr(a, "media", {}).get("clip", True) for a in analyzers)
 
     def apply_config(self, cfg_dict: dict) -> None:
-        """Hot-reload: stop current workers, start new ones from cfg_dict."""
+        """Apply a full snapshot, restarting only changed cameras unless globals change."""
         det = cfg_dict.get("detector")
         if det:
             # model dari config bisa nama file relatif (mis. "yolo26s.engine");
@@ -391,9 +392,46 @@ class VisionNode:
                                                                "faces_models")
                 self.face = FaceEmbedder(root, dev)
                 self.cfg.face_device = dev
+        old_face = self._face_settings
         self._face_settings = FaceSettings.from_config(cfg_dict.get("face"))
         self._await_config = True
-        self._start_workers(self._cameras_from_config(cfg_dict))
+        cameras = self._cameras_from_config(cfg_dict)
+        sig = self._global_signature()
+        if sig != self._global_sig:
+            self._start_workers(cameras)
+            self._global_sig = sig
+            return
+        try:
+            new = {c.camera_id: c for c in cameras}
+            changed = {i for i, c in new.items() if self._applied.get(i) != c}
+            removed = set(self._applied) - set(new)
+            if self._face_settings != old_face:
+                changed |= {w.camera_id for w in self._workers
+                            if isinstance(w, FaceGateWorker)} & set(new)
+            added = changed - set(self._applied)
+            self._stop_workers(changed | removed)
+            applied = {i: new[i] for i in set(new) - changed}
+            for i in sorted(changed):
+                try:
+                    self._start_camera(new[i])
+                    applied[i] = new[i]
+                except Exception:
+                    log.exception("camera %s failed to start", i)
+            self._applied, self._global_sig = applied, sig
+            for i in removed:
+                self._camera_conf.pop(i, None)
+            log.info("config applied: restarted %s, added %s, removed %s, unchanged %d",
+                     sorted(changed - added), sorted(added), sorted(removed),
+                     len(new) - len(changed))
+        except Exception:
+            log.exception("config diff failed; full restart")
+            self._start_workers(cameras)
+            self._global_sig = sig
+
+    def _global_signature(self) -> tuple:
+        """Return settings shared by all camera workers for full-restart detection."""
+        return (tuple(sorted(self._detector_settings.items())) if self._detector_settings else None,
+                self.cfg.detector_device, self.cfg.face_device)
 
     def _start_workers(self, cameras: list[CameraCfg]) -> None:
         self._stop_workers()
