@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T7 — fix(vision): motion gate tidak memutus bukti wajah yang masih terlihat (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Motion gate tetap update setiap frame; wajah yang terlihat mempertahankan pemrosesan; counter motion_skipped; tes gate kembali skip setelah wajah hilang.
+- **Bukti:** RED `3 failed, 22 passed in 5.22s`; GREEN `67 passed, 1 warning in 8.63s` (face_worker, motion_gate, node).
+- **Dampak:** Wajah diam mencapai tiga embedding tanpa menunggu force interval; overlay expiry lama tetap hijau.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Ditambah satu tes eksplisit gate kembali skip setelah wajah hilang, sesuai kriteria smoke S3(g).
+
+
 ### Face gate refine T6 — feat(zones): toggle Catat absensi pada zona attendance (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.

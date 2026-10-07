@@ -86,6 +86,7 @@ class FaceGateWorker(threading.Thread):
         self._media_pending = threading.Event()
         self._pending_events: queue.SimpleQueue = queue.SimpleQueue()
         self.frames = 0  # frame main-stream diproses (heartbeat: fps jendela)
+        self.motion_skipped = 0
 
     def run(self) -> None:
         """Consume source until stopped; event/media finalization runs separately."""
@@ -107,7 +108,9 @@ class FaceGateWorker(threading.Thread):
                 self.frames += 1
                 if frame.data is None:
                     continue
-                if self.motion_gate is not None and not self.motion_gate.update(frame.data, frame.ts):
+                moving = self.motion_gate is None or self.motion_gate.update(frame.data, frame.ts)
+                if not moving and not self._faces_shown:
+                    self.motion_skipped += 1
                     self._tracker.update([], frame.ts)
                     if self._tracker.lost_ids:
                         self._publish([])
