@@ -3,6 +3,18 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine — deploy dan uji lapangan `gspe-ai3` (2026-10-07)
+
+- **Konteks:** deploy `45f7e5e` (branch fitur) ke `gspe-ai3` atas persetujuan user: `git checkout feat/face-gate-refine && ./docker/setup.sh`; `api`, `vision`, `web`, `retention` dibuat ulang. Server **masih di branch fitur** sampai merge. Verifikasi pasca-deploy: `/api/v1/health` ok, `alembic` `0022 (head)`, kode baru ada di container, 3 GPU terlihat di `vision`, log `api` tanpa error, `app_url` = `http://192.168.2.133:7700`.
+- **Hasil uji user:** toggle "Catat absensi" dan "Kirim wajah tidak dikenal" tampil setelah hard refresh (browser menyimpan `index.html` lama: nginx hanya mengirim `Last-Modified`/`ETag`); skenario Telegram (CHECK IN, SUDAH CHECK IN, TERDETEKSI, Unknown OFF) dinyatakan sesuai. Lintasan cepat tanpa berhenti sebagian besar **tidak tercatat**.
+- **Data pemantau live** (heartbeat ±10 dtk, `cameras[].ai.funnel`, dua jendela: 7 dan 10 menit; semua orang yang lewat ikut terhitung, jadi angka kasar):
+  - 10 menit (15:31–15:41, 362/363 pada 10 fps): 7 track emit vs 36 silent. Frame lolos: 362 `9/472` (`blur` 237, `small` 153), 363 `4/523` (`small` 309, `zone` 87), 365 `39/523` (`zone` 129, `small` 75, `blur` 43), 364 `30/119`. Waktu ke frame lolos pertama 2,6–3,8 dtk di 365/363 (outlier 17,5 dtk).
+  - Stream main 362/363/365: H.264 1920×1080 25 fps (`ffprobe` via go2rtc `:7705`), jadi resolusi bukan batasnya; wajah di zona terlalu sedikit piksel (event sukses lebar 111–199 px; kamera 364 `blur` 1251–2733, ttfg 0,0 dtk sebagai acuan ideal).
+  - Menaikkan `ai_fps` 5→10 (362 Tangga 2, 363 Lorong Server) menggandakan frame tetapi tidak menaikkan frame lolos.
+- **Keputusan user:** zona diperluas; SOP menatap kamera sebentar diterima; **protokol penerimaan 10×5 lintasan tidak dijalankan**; tidak ada perubahan ambang (`face_min_width_px`, `face_min_quality`, `blur_min`).
+- **Belum dikerjakan:** geometri kamera 362/363/365 (dekatkan atau lensa lebih sempit; target lebar wajah ≥110 px); debounce kolom `ai_fps` (tiap ketikan memicu PATCH dan restart semua worker, ±9 kali dalam 20 menit); `Cache-Control: no-cache` untuk `index.html`; selaraskan gerbang node (lebar 80 px, skor 0,6) dengan kualitas minimum API 0,5 (muncul event `low_quality` pada wajah 82–85 px); uji `_seen_recently`/`_detected_recently` di Postgres (hanya SQLite); semantik rekap exit berulang (exit tengah hari menutupi `no_exit`).
+- **Rollback:** `ssh gspe-ai3`, `cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git checkout main && ./docker/setup.sh` (tanpa migrasi).
+
 ### Face gate refine — perbaikan review: throttle evidence "SUDAH CHECK IN" (2026-10-07)
 
 - **Konteks:** review sesi perencanaan atas `8487b29`. Cooldown absensi hanya menghitung baris `AttendanceEvent`, sedangkan `already_in` tidak pernah membuatnya; setelah 5 menit pertama dari check in, **setiap** deteksi karyawan yang menetap di area kamera entry (resepsionis, satpam) akan mengirim satu pesan "SUDAH CHECK IN". Asumsi spec §8 ("cooldown yang ada sudah menyaring") keliru; spec/plan tidak diubah (catatan lama). Keputusan user: jendela 5 menit memakai `attendance_cooldown_min`, tanpa setting baru.
