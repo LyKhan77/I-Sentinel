@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Ops kecil A — fix(config): simpan AI FPS dan confidence setelah jeda ketik (2026-10-07)
+
+- **Konteks:** pada uji lapangan face gate refine, tiap ketikan atau klik spinner kolom AI FPS (Deteksi & Model) langsung mengirim `PATCH /cameras/{id}`. Tiap PATCH mendorong config ke node dan node memulai ulang **semua** worker: log `gspe-ai3` mencatat 9 kali "started 5 worker(s)" dalam 20 menit, dan node sempat melaporkan `target_fps` 9.5 dan 1.0 (nilai antara).
+- **Perubahan:** `DetectionPage.tsx`: tampilan tetap berubah seketika, tetapi PATCH dikirim 600 ms setelah perubahan terakhir per (kamera, kolom); perubahan yang masih menunggu dikirim saat halaman ditinggalkan. Berlaku untuk AI FPS dan confidence. Tes lama `detection tab saves per-camera fps…` hanya diubah waktu tunggunya (`timeout: 3000`).
+- **Bukti:** RED `ketikan beruntun…`: PATCH `[{ai_fps: 1}, {ai_fps: 10}]` terkirim langsung, `perubahan yang masih tertunda…`: PATCH terkirim sebelum unmount; GREEN `detection.test.tsx` 7 passed; frontend `36 files / 483 passed`; build exit 0; lint 24 warning, pasangan identik baseline.
+- **Dampak:** satu PATCH (dan satu restart worker) per perubahan, bukan satu per ketikan. Restart semua worker pada tiap config push tetap ada; itu topik terpisah (node menerapkan config per kamera yang berubah).
+- **Rollback:** revert commit ini.
+
 ### Face gate refine — deploy dan uji lapangan `gspe-ai3` (2026-10-07)
 
 - **Konteks:** deploy `45f7e5e` (branch fitur) ke `gspe-ai3` atas persetujuan user: `git checkout feat/face-gate-refine && ./docker/setup.sh`; `api`, `vision`, `web`, `retention` dibuat ulang. Server **masih di branch fitur** sampai merge. Verifikasi pasca-deploy: `/api/v1/health` ok, `alembic` `0022 (head)`, kode baru ada di container, 3 GPU terlihat di `vision`, log `api` tanpa error, `app_url` = `http://192.168.2.133:7700`.
