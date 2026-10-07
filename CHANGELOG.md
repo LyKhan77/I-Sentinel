@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Node apply per kamera T3 — feat(vision): gabungkan antrean config (2026-10-07)
+
+- **Konteks:** snapshot config penuh yang menumpuk tidak perlu diterapkan satu per satu; BELUM diuji di server nyata.
+- **Perubahan:** `run()` menguras antrean dengan `get_nowait()` sesudah `get(timeout=0.2)`, lalu menerapkan hanya snapshot terakhir. Tes memakai thread dengan Event untuk menunggu snapshot terakhir tanpa jeda arbitrer.
+- **Bukti:** RED `1 failed, 1 warning in 0.39s`: spy menerima tiga config (FPS 5, 10, 15), bukan hanya FPS 15. GREEN terarah dan penjaga pesan tunggal lama `25 passed, 1 warning in 1.62s`; suite vision `271 passed, 3 deselected, 2 warnings in 14.18s`.
+- **Dampak:** satu apply per kumpulan snapshot yang sudah tersedia; kontrak MQTT dan pesan tunggal tidak berubah. Worker thread tes di-join dalam finally.
+- **Rollback:** revert commit ini dan rebuild `vision`; tanpa migrasi.
+
 ### Node apply per kamera T2 — feat(vision): diff config per kamera (2026-10-07)
 
 - **Konteks:** satu perubahan kamera tidak boleh menghentikan kamera lain; BELUM diuji di server nyata.

@@ -515,6 +515,11 @@ class VisionNode:
         while not self.stop_event.is_set():
             try:
                 cfg_dict = self._config_q.get(timeout=0.2)
+                while True:
+                    try:
+                        cfg_dict = self._config_q.get_nowait()
+                    except queue.Empty:
+                        break
             except queue.Empty:
                 cfg_dict = None
             if cfg_dict is not None:

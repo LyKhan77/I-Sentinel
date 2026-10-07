@@ -335,3 +335,29 @@ def test_apply_logs_restarted_added_removed_unchanged(make_node, caplog):
     with caplog.at_level("INFO", logger="vision.node"):
         node.apply_config({"cameras": [cam_cfg(1, ai_fps=10), cam_cfg(3)]})
     assert "config applied: restarted [1], added [3], removed [2], unchanged 0" in caplog.text
+
+
+def test_queued_configs_are_coalesced_to_the_latest(make_node):
+    node = make_node()
+    configs = [{"cameras": [cam_cfg(1, ai_fps=fps)]} for fps in (5, 10, 15)]
+    applied = []
+    latest_seen = threading.Event()
+
+    def apply(cfg):
+        applied.append(cfg)
+        if cfg is configs[-1]:
+            latest_seen.set()
+
+    node.apply_config = apply
+    for cfg in configs:
+        node._config_q.put(cfg)
+    runner = threading.Thread(target=node.run, daemon=True)
+    runner.start()
+    try:
+        assert latest_seen.wait(5), "The latest queued snapshot was not applied"
+    finally:
+        node.stop_event.set()
+        runner.join(timeout=5)
+    assert not runner.is_alive()
+    assert applied == [configs[-1]]
+    assert applied[0] is configs[-1]
