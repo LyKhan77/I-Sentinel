@@ -31,3 +31,9 @@ def test_upload_limit_allows_enrollment_photos_and_csv():
 
 def test_spa_fallback():
     assert "try_files $uri /index.html;" in CONF.read_text()
+
+
+def test_index_html_is_revalidated_so_deploys_reach_browsers():
+    """index.html lama di cache browser menunjuk bundle lama: toggle baru tampak hilang sampai hard refresh."""
+    block = re.search(r"location\s*=\s*/index\.html\s*\{([^}]*)\}", CONF.read_text())
+    assert block and re.search(r'add_header\s+Cache-Control\s+"no-cache"\s*;', block[1])

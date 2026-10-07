@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Ops kecil B — fix(web): index.html selalu divalidasi ulang oleh browser (2026-10-07)
+
+- **Konteks:** setelah deploy face gate refine, toggle baru tidak tampil di browser user sampai hard refresh. `curl -sI localhost:7700/` hanya menampilkan `Last-Modified` dan `ETag`, tanpa `Cache-Control`, sehingga browser boleh memakai `index.html` lama yang menunjuk bundle lama (`assets/index-<hash>.js`); bundle baru sudah ada di image `web`.
+- **Perubahan:** `docker/web/nginx.conf`: `location = /index.html { add_header Cache-Control "no-cache"; }` (juga berlaku untuk `/` dan route SPA lewat `index`/`try_files`). Bundle ber-hash tidak diubah. Guard statis baru `test_index_html_is_revalidated_so_deploys_reach_browsers`.
+- **Bukti:** RED `assert (None)` (blok tidak ada); GREEN `pytest docker/tests` semua lulus. Verifikasi header di server dicatat setelah deploy.
+- **Dampak:** deploy berikutnya langsung terlihat tanpa hard refresh; browser tetap mengirim request ringan (304 via ETag).
+- **Rollback:** revert commit ini dan rebuild image `web`.
+
 ### Ops kecil A — fix(config): simpan AI FPS dan confidence setelah jeda ketik (2026-10-07)
 
 - **Konteks:** pada uji lapangan face gate refine, tiap ketikan atau klik spinner kolom AI FPS (Deteksi & Model) langsung mengirim `PATCH /cameras/{id}`. Tiap PATCH mendorong config ke node dan node memulai ulang **semua** worker: log `gspe-ai3` mencatat 9 kali "started 5 worker(s)" dalam 20 menit, dan node sempat melaporkan `target_fps` 9.5 dan 1.0 (nilai antara).
