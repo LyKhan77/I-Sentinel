@@ -408,6 +408,8 @@ class VisionNode:
             if self._face_settings != old_face:
                 changed |= {w.camera_id for w in self._workers
                             if isinstance(w, FaceGateWorker)} & set(new)
+            # keadaan nyata ikut dibandingkan: worker yang sudah mati dihidupkan lagi walau config sama
+            changed |= {w.camera_id for w in self._workers if not w.is_alive()} & set(new)
             added = changed - set(self._applied)
             self._stop_workers(changed | removed)
             applied = {i: new[i] for i in set(new) - changed}
@@ -417,6 +419,7 @@ class VisionNode:
                     applied[i] = new[i]
                 except Exception:
                     log.exception("camera %s failed to start", i)
+                    self._stop_workers({i})  # buang worker/recorder yang sempat berjalan
             self._applied, self._global_sig = applied, sig
             for i in removed:
                 self._camera_conf.pop(i, None)

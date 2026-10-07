@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Node apply per kamera — perbaikan review: worker mati dihidupkan lagi dan start gagal dibersihkan (2026-10-07)
+
+- **Konteks:** review sesi perencanaan atas `c3c2426`. (1) Rekonsiliasi hanya membandingkan config. Sebelumnya setiap push ulang (termasuk pengiriman ulang retained saat MQTT tersambung kembali dan `republish_all` saat API start) merestart semua worker sehingga worker yang mati ikut pulih; kini config identik tidak menyentuh apa pun, jadi worker yang mati (mis. `detector_factory` gagal memuat engine) tetap mati sampai kamera itu berubah, dan `run()` hanya keluar bila **semua** worker mati. (2) Bila `_start_camera` melempar setelah worker detect berjalan, kamera itu tidak dicatat di `_applied` tetapi worker detect dan recorder/ClipRing-nya tetap berjalan sampai push berikutnya.
+- **Perubahan:** `vision/vision/node.py`: kamera yang punya worker tidak `is_alive()` masuk `changed` walau config sama; saat `_start_camera` gagal, `_stop_workers({i})` membuang worker dan menutup recorder yang sempat dibuat. Dua tes baru di `test_config_apply_per_camera.py`. Dokumen: `ARCHITECTURE.md` §3 dan baris ROADMAP NAC.
+- **Bukti:** RED `test_camera_with_a_dead_worker_is_restarted_even_when_config_is_unchanged`: worker mati tetap ada di `_workers`; RED `test_failed_start_leaves_no_half_started_camera_or_open_recorder`: dua worker setengah jalan tertinggal. Mutasi sementara (hapus tiap perbaikan) membuat tiap tes merah, lalu dikembalikan. GREEN terarah `26 passed`; suite berurutan: vision `273 passed, 3 deselected, 2 warnings`, backend `896 passed, 1 deselected, 551 warnings`, docker `76 passed`.
+- **Dampak:** perilaku pemulihan setara dengan sebelumnya untuk worker mati, tetapi hanya untuk kamera yang bermasalah. Hasil sampingan positif: pesan retained yang dikirim ulang saat MQTT tersambung kembali tidak lagi merestart kamera yang sehat. BELUM diuji di server nyata.
+- **Rollback:** revert commit ini.
+
 ### Node apply per kamera T4 — docs: alur config apply dan runbook (2026-10-07)
 
 - **Konteks:** dokumentasi kebijakan apply per kamera dan verifikasi lokal; BELUM diuji di server nyata.

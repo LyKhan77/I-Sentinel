@@ -361,3 +361,36 @@ def test_queued_configs_are_coalesced_to_the_latest(make_node):
     assert not runner.is_alive()
     assert applied == [configs[-1]]
     assert applied[0] is configs[-1]
+
+
+def test_camera_with_a_dead_worker_is_restarted_even_when_config_is_unchanged(make_node):
+    """Rekonsiliasi membandingkan keadaan nyata: worker yang mati tidak boleh menunggu perubahan config."""
+    node = make_node()
+    config = {"cameras": [cam_cfg(1), cam_cfg(2)]}
+    node.apply_config(deepcopy(config))
+    before = list(node._workers)
+    dead = workers(node, 1)[0]
+    dead.source.close()  # thread berakhir tanpa stop_event, seperti worker yang mati karena galat
+    dead.join(timeout=2)
+    assert not dead.is_alive()
+    node.apply_config(deepcopy(config))
+    assert dead not in node._workers
+    assert workers(node, 1) and all(w.is_alive() for w in workers(node, 1))
+    assert workers(node, 2) == [w for w in before if w.camera_id == 2]  # kamera sehat tidak disentuh
+
+
+def test_failed_start_leaves_no_half_started_camera_or_open_recorder(make_node, monkeypatch):
+    node = make_node("k")
+    node.apply_config({"cameras": [cam_cfg(1, attendance=True)]})
+    original = node._start_camera
+
+    def start_then_fail(cam):
+        original(cam)  # worker detect dan face sudah berjalan
+        raise RuntimeError("simulated failure after workers started")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(node, "_start_camera", start_then_fail)
+        node.apply_config({"cameras": [cam_cfg(1, attendance=True, ai_fps=10.0)]})
+    assert workers(node, 1) == []
+    assert 1 not in node._applied
+    assert [r.closed for r in FakeRecorder.instances] == [1, 1]  # recorder lama dan yang gagal sama-sama ditutup

@@ -143,7 +143,8 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   putus; backlog dilaporkan di heartbeat).
 - Config push adalah snapshot penuh. Node membandingkan `CameraCfg` per kamera:
   `source_url`, `ai_fps`, `zones`, `confidence`, `motion`, dan `meters_per_pixel`.
-  Config identik mempertahankan objek worker dan recorder yang hidup; kamera tanpa zona
+  Config identik mempertahankan objek worker dan recorder yang hidup, kecuali kamera yang punya
+  worker mati: kamera itu dimulai ulang (keadaan nyata ikut dibandingkan); kamera tanpa zona
   tetap dicatat sebagai diterapkan meskipun tidak memiliki worker.
 - Kamera berubah memulai ulang worker detect dan face bersama recorder/ClipRing kamera itu;
   kamera lain tidak disentuh. Kamera dihapus dihentikan; kamera baru dimulai bila memiliki zona aktif.
