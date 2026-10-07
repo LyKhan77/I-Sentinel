@@ -239,10 +239,15 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
 **Pengguna:** otomatis + admin (koreksi) · **Halaman:** `/attendance`
 
 1. Karyawan lewat zona attendance → `face_worker` di node mengumpulkan frame wajah yang lolos gerbang
-   kualitas → embedding + crop dikirim sebagai event `attendance` (arah entry/exit).
-2. API mencocokkan ke galeri (cosine ≥ `face_match_threshold`, default 0,40). Cocok → `attendance_event` →
-   `recompute_day` memperbarui `attendance_day`. Tidak cocok → event berlabel `Unknown` (oranye) di
-   Inbox, tidak masuk rekap.
+   kualitas → embedding + crop dikirim sebagai event `attendance` (arah entry/exit). Motion gate tetap
+   diperbarui setiap frame; selama wajah terlihat, frame diam juga diproses pada FPS AI kamera.
+2. API mencocokkan ke galeri (cosine ≥ `face_match_threshold`, default 0,40). Dengan **Catat absensi**
+   aktif (behavior `record=true`, default bila key hilang), cocok → `attendance_event` →
+   `recompute_day` memperbarui `attendance_day`. Cooldown per karyawan+arah diperiksa dahulu;
+   entry kedua hari lokal yang sama hanya evidence `already_in`, tanpa rekap baru, dan hanya bila karyawan
+   itu tidak terlihat (event attendance mana pun) dalam jendela cooldown sebelumnya; selama masih terus
+   terlihat event berlabel `cooldown` tanpa alert.
+   Tidak cocok → event berlabel `Unknown` (oranye) di Inbox, tidak masuk rekap.
 3. Status: tepat waktu/telat (entry + exit), **Di dalam** (`waiting`), **Tanpa exit** (`no_exit`),
    **Tanpa entry** (`no_entry`), **Tidak hadir** (`absent`). Batas hari = selesai shift +
    `NO_EXIT_GRACE_MIN` (60 menit).
@@ -253,6 +258,28 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
 6. Export/import CSV (`rekap.csv`); tab Harian, Rentang tanggal, Per karyawan dengan filter status.
 
 Runbook: `docs/runbooks/attendance.md` (termasuk kalibrasi gerbang wajah).
+
+### Zona deteksi-saja dan pesan Telegram
+
+- **Catat absensi OFF** (`record=false` pada behavior attendance): wajah tetap dicocokkan dan
+  snapshot/crop tetap dilabeli. Hasil `match_reason=detected` tidak membuat `attendance_event`
+  atau menghitung ulang `attendance_day`. Dedup per (karyawan, zona) memakai jendela
+  `attendance_cooldown_min` (default 5 menit), termasuk event yang datang terlambat.
+  `direction` entry/exit tetap wajib, juga untuk zona deteksi-saja.
+- Saklar **Kirim Telegram** tetap induk. **Kirim wajah tidak dikenal** (`telegram_unknown`,
+  default true) hanya tampil ketika Telegram aktif; OFF menahan alert Unknown, bukan event Inbox.
+  Kedua flag hanya ditulis ketika togglenya disentuh; zona lama tetap memakai default.
+- Tiga pesan untuk wajah cocok: **ATTENDANCE — CHECK IN/OUT** untuk pencatatan baru,
+  **ATTENDANCE — SUDAH CHECK IN** untuk entry berulang (`first_entry_ts`, dan `exit_ts` bila exit
+  terlihat sejak check in pertama), serta **TERDETEKSI — MASUK/KELUAR** untuk zona OFF.
+  Pesan evidence melewati rate-limit generik; `cooldown` tetap tanpa alert. Unknown tetap
+  mengikuti rate-limit per track dan flag zona.
+- Semua tautan alert berlabel **Lihat event** dan membuka `/events?event=<id>`.
+- Corong worker face tersedia di `/api/v1/monitoring`, `cameras[].ai.funnel`, untuk membaca
+  penolakan gerbang dan waktu ke frame bagus pertama; belum ada UI corong.
+- Zona OFF tidak mengubah `AttendanceCloser`: karyawan ber-shift tetap mengikuti penutupan
+  berdasarkan zona yang mencatat. Kode lokal belum di-deploy atau diuji di server nyata.
+
 
 ## 13. Retensi & Storage
 

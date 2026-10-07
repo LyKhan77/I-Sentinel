@@ -497,7 +497,7 @@ class VisionNode:
             if prev is not None and frames >= prev[0] and now > prev[2]:
                 df = frames - prev[0]
                 fps = round(df / (now - prev[2]), 1)
-                if kind == "detect" and getattr(w, "motion_gate", None) is not None and df > 0:
+                if getattr(w, "motion_gate", None) is not None and df > 0:
                     skip = round((skipped - prev[1]) / df * 100, 1)
             src = getattr(w, "source", None)
             s = src.stats() if src is not None and hasattr(src, "stats") else {}
@@ -505,6 +505,8 @@ class VisionNode:
                         "target_fps": getattr(src, "target_fps", None),
                         "last_frame_age_s": s.get("last_frame_age_s"),
                         "reconnects_1h": s.get("reconnects_1h"), "motion_skip_pct": skip})
+            if kind == "face":
+                out[-1]["funnel"] = w.take_funnel()
         return out
 
     def _detector_module_info(self, now: float | None = None) -> dict:

@@ -7,6 +7,7 @@ from app.models.camera import Camera
 from app.models.employee import Employee
 from app.models.event import Event
 from app.models.shift import Shift
+from app.models.zone import Zone
 from app.services import attendance
 from app.services.attendance import LOCAL_TZ
 from app.core.config import settings
@@ -51,11 +52,11 @@ def _att_event(db, employee_id, direction, ts, camera_id=1):
     db.commit()
 
 
-def _raw_event(db, direction, ts, payload_over=None):
+def _raw_event(db, direction, ts, payload_over=None, zone_id=None):
     payload = {"crop_path": "crops/x.jpg", "direction": direction}
     payload.update(payload_over or {})
     ev = Event(event_id=str(uuid.uuid4()), type="attendance", camera_id=1, severity="info",
-               ts_event=ts, payload=payload)
+               ts_event=ts, payload=payload, zone_id=zone_id)
     db.add(ev)
     db.commit()
     db.refresh(ev)
@@ -638,3 +639,160 @@ def test_close_due_no_absent_before_employee_registered(db):
     days = {r.date for r in db.query(AttendanceDay).filter_by(employee_id=e.id)}
     assert days == {(now - timedelta(days=1)).date()}   # hanya Senin (hari kerja setelah terdaftar)
     assert attendance.close_days(db, (now - timedelta(days=4)).date(), now=now) == 0  # manual juga dilewati
+
+
+def test_already_in_payload_carries_first_entry_without_exit(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    day = db.query(AttendanceDay).one()
+    before = (day.first_entry, day.last_exit, day.status)
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    assert attendance.handle_face_event(db, again) is None
+    assert again.payload["first_entry_ts"] == _at(*MON, 7, 10).isoformat()
+    assert "exit_ts" not in again.payload
+    assert db.query(AttendanceEvent).count() == 1
+    db.refresh(day)
+    assert (day.first_entry, day.last_exit, day.status) == before
+
+
+def test_already_in_payload_carries_exit_seen_between(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    for direction, hh, mm in (("entry", 7, 10), ("exit", 8, 0)):
+        attendance.handle_face_event(db, _raw_event(db, direction, _at(*MON, hh, mm), VEC))
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    attendance.handle_face_event(db, again)
+    assert again.payload["first_entry_ts"] == _at(*MON, 7, 10).isoformat()
+    assert again.payload["exit_ts"] == _at(*MON, 8, 0).isoformat()
+
+
+def test_already_in_ignores_exit_before_first_entry(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    _att_event(db, e.id, "exit", _at(*MON, 6, 0))
+    _att_event(db, e.id, "exit", _at(2025, 1, 5, 16, 0))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    attendance.handle_face_event(db, again)
+    assert again.payload["first_entry_ts"] == _at(*MON, 7, 10).isoformat()
+    assert "exit_ts" not in again.payload
+
+
+def _record_zone(db, record=None):
+    behavior = {"kind": "attendance", "trigger_seconds": 0}
+    if record is not None:
+        behavior["record"] = record
+    z = Zone(camera_id=1, name="Gate", type="attendance", direction="entry",
+             polygon=[[0, 0], [1, 0], [1, 1]], behaviors=[behavior], telegram=True, rate_limit_min=2)
+    db.add(z)
+    db.commit()
+    return z
+
+
+def test_record_off_detects_without_attendance_rows(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    z = _record_zone(db, False)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), VEC, zone_id=z.id)
+    assert attendance.handle_face_event(db, ev) is None
+    assert db.query(AttendanceEvent).count() == 0
+    assert db.query(AttendanceDay).count() == 0
+    assert (ev.payload["match_reason"], ev.payload["employee_name"]) == ("detected", "Budi")
+    assert "embedding" not in ev.payload
+
+
+def test_record_off_dedups_per_employee_and_zone_within_window(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    other = _emp(db, code="E2")
+    z, z2 = _record_zone(db, False), _record_zone(db, False)
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    for employee, zone, minute, expected in (
+        (e, z, 10, "detected"), (e, z, 13, "cooldown"), (e, z, 16, "detected"),
+        (other, z, 16, "detected"), (e, z2, 16, "detected"),
+    ):
+        monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(employee.id))
+        ev = _raw_event(db, "entry", _at(*MON, 7, minute), VEC, zone_id=zone.id)
+        assert attendance.handle_face_event(db, ev) is None
+        assert ev.payload["match_reason"] == expected
+    assert db.query(AttendanceEvent).count() == db.query(AttendanceDay).count() == 0
+
+
+def test_record_off_unknown_face_is_not_deduped(db, monkeypatch):
+    _camera(db)
+    z = _record_zone(db, False)
+    monkeypatch.setattr(attendance.face, "match_vector", _no_match_vec())
+    for minute in (10, 11):
+        ev = _raw_event(db, "entry", _at(*MON, 7, minute), VEC, zone_id=z.id)
+        assert attendance.handle_face_event(db, ev) is None
+        assert ev.payload["match_reason"] == "no_match"
+        assert ev.payload["employee_id"] is None
+    assert db.query(AttendanceEvent).count() == db.query(AttendanceDay).count() == 0
+
+
+def test_record_default_true_keeps_recording(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    z = _record_zone(db)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), VEC, zone_id=z.id)
+    assert attendance.handle_face_event(db, ev) is not None
+    assert db.query(AttendanceEvent).count() == db.query(AttendanceDay).count() == 1
+
+
+def test_record_off_dedup_ignores_other_reasons_and_handles_late_events(db, monkeypatch):
+    _camera(db)
+    e = _emp(db)
+    z = _record_zone(db, False)
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    _raw_event(db, "entry", _at(*MON, 7, 9),
+               {"employee_id": e.id, "match_reason": "cooldown"}, zone_id=z.id)
+    first = _raw_event(db, "entry", _at(*MON, 7, 10), VEC, zone_id=z.id)
+    attendance.handle_face_event(db, first)
+    assert first.payload["match_reason"] == "detected"
+    late = _raw_event(db, "entry", _at(*MON, 7, 5), VEC, zone_id=z.id)
+    attendance.handle_face_event(db, late)
+    assert late.payload["match_reason"] == "cooldown"
+    outside = _raw_event(db, "entry", _at(*MON, 7, 4), VEC, zone_id=z.id)
+    attendance.handle_face_event(db, outside)
+    assert outside.payload["match_reason"] == "detected"
+
+
+def test_already_in_evidence_only_after_employee_was_unseen_for_the_window(db, monkeypatch):
+    """Orang yang terus terlihat di kamera entry tidak memicu evidence berulang; muncul lagi setelah hilang memicu satu."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+
+    def reason_at(hh, mm):
+        ev = _raw_event(db, "entry", _at(*MON, hh, mm), VEC)
+        attendance.handle_face_event(db, ev)
+        return ev.payload["match_reason"]
+
+    assert reason_at(7, 16) == "already_in"  # 6 menit sejak terakhir terlihat
+    assert reason_at(7, 19) == "cooldown"    # 3 menit setelah evidence tadi
+    assert reason_at(7, 23) == "cooldown"    # 4 menit setelah event cooldown: masih terlihat terus
+    assert reason_at(7, 40) == "already_in"  # hilang 17 menit lalu muncul lagi
+
+
+def test_already_in_not_suppressed_by_another_employee_being_seen(db, monkeypatch):
+    _camera(db)
+    shift = _shift(db)
+    a, b = _emp(db, shift, code="E1"), _emp(db, shift, code="E2")
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(a.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(b.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 12), VEC))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(a.id))
+    again = _raw_event(db, "entry", _at(*MON, 7, 16), VEC)
+    attendance.handle_face_event(db, again)
+    assert again.payload["match_reason"] == "already_in"  # B di 07:12 bukan bukti A masih terlihat

@@ -82,7 +82,7 @@ def test_caption_behavior_layout():
         "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
         "<b>Level</b>: WARNING",
         "",
-        "🎥 Lihat klip: http://10.0.0.1:5173/events?event=1234",
+        "🎥 Lihat event: http://10.0.0.1:5173/events?event=1234",
     ]
 
 
@@ -109,7 +109,7 @@ def test_caption_attendance_check_in_out_and_unknown():
     unknown = _event(type="attendance", severity="info", payload={"match_reason": "no_match"})
     lines = telegram.format_caption(unknown, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
     assert lines[0] == "⚠️ <b>UNKNOWN FACE</b>" and "<b>Zona</b>: Gerbang Lobi" in lines
-    assert not any("Lihat klip" in line for line in lines)
+    assert not any("Lihat event" in line for line in lines)
 
 
 def test_caption_new_type_uppercased_and_no_zone():
@@ -229,7 +229,7 @@ def test_caption_ai_line_between_rows_and_link():
     lines = telegram.format_caption(_event(), "Cam", "Zone", "http://app.test", tz=WIB,
                                     ai_text="Seseorang berjalan.").splitlines()
     assert lines[-4:] == ["<b>Level</b>: WARNING", "🤖 <b>AI</b>: Seseorang berjalan.",
-                          "", "🎥 Lihat klip: http://app.test/events?event=1234"]
+                          "", "🎥 Lihat event: http://app.test/events?event=1234"]
 
 
 def test_caption_ai_text_is_escaped_and_whitespace_folded():
@@ -283,3 +283,40 @@ def test_caption_budget_counts_utf16_units_of_the_base_fields():
     text = telegram.format_caption(_event(), "😀" * 60, "😀" * 60, "http://app.test", tz=WIB, ai_text="x" * 2000)
     assert len(text.encode("utf-16-le")) // 2 <= 1024
     assert "🤖 <b>AI</b>: " in text
+
+
+def test_caption_attendance_already_in_shows_first_entry_and_exit_status():
+    payload = {"match_reason": "already_in", "employee_name": "Budi Santoso",
+               "first_entry_ts": "2026-09-25T07:10:00+07:00"}
+    ev = _event(type="attendance", payload=payload)
+    lines = telegram.format_caption(ev, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
+    assert lines == [
+        "🔁 <b>ATTENDANCE — SUDAH CHECK IN</b>", "", "<b>Nama</b>: Budi Santoso",
+        "<b>Check in pertama</b>: 07:10:00 WIB", "<b>Exit sejak itu</b>: belum terlihat",
+        "<b>Kamera</b>: Receptionist", "<b>Zona</b>: Gerbang Lobi",
+        "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
+    ]
+    payload["exit_ts"] = "2026-09-25T09:00:00+07:00"
+    assert "<b>Exit sejak itu</b>: 09:00:00 WIB" in telegram.format_caption(
+        ev, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
+
+
+@pytest.mark.parametrize("value", [None, "bad-time", 123])
+def test_caption_already_in_without_first_entry_ts_shows_dash(value):
+    ev = _event(type="attendance", payload={"match_reason": "already_in"})
+    if value is not None:
+        ev.payload["first_entry_ts"] = value
+    lines = telegram.format_caption(ev, "C", None, None, tz=WIB).splitlines()
+    assert "<b>Check in pertama</b>: -" in lines
+
+
+@pytest.mark.parametrize("direction, label", [("entry", "MASUK"), ("exit", "KELUAR")])
+def test_caption_attendance_detected_entry_and_exit(direction, label):
+    ev = _event(type="attendance", payload={
+        "match_reason": "detected", "direction": direction, "employee_name": "Budi"})
+    text = telegram.format_caption(ev, "C", "Z", None, tz=WIB)
+    assert text.splitlines() == [
+        f"👤 <b>TERDETEKSI — {label}</b>", "", "<b>Nama</b>: Budi", "<b>Kamera</b>: C",
+        "<b>Zona</b>: Z", "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
+    ]
+    assert "CHECK IN" not in text

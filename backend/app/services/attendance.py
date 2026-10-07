@@ -13,6 +13,8 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
+from app.models.event import Event
+from app.models.zone import Zone
 from app.services import face
 from app.services.annotate import ORANGE, annotate_face_crop, annotate_snapshot
 
@@ -124,14 +126,51 @@ def _in_cooldown(db, employee_id: int, direction: str, ts: datetime) -> bool:
     return any(abs(_local(row.ts_event) - ts_local) <= window for row in rows)
 
 
-def _entered_earlier_today(db, employee_id: int, ts: datetime) -> bool:
-    """Sudah ada entry karyawan ini lebih awal di hari lokal yang sama. Entry yang lebih awal
-    tapi tiba belakangan (antrean disk node) tetap dicatat supaya jam masuk benar."""
+def _first_entry_today(db, employee_id: int, ts: datetime) -> datetime | None:
+    """Return the first local-day entry at or before this event; late earlier entries remain recordable."""
     ts_local = _local(ts)
     rows = db.query(AttendanceEvent).filter(
         AttendanceEvent.employee_id == employee_id, AttendanceEvent.direction == "entry")
-    return any(_local(r.ts_event).date() == ts_local.date() and _local(r.ts_event) <= ts_local
-               for r in rows)
+    # ponytail: normalize in Python for SQLite naive and Postgres aware timestamps.
+    entries = [_local(r.ts_event) for r in rows]
+    return min((t for t in entries if t.date() == ts_local.date() and t <= ts_local), default=None)
+
+
+def _exit_between(db, employee_id: int, start: datetime, end: datetime) -> datetime | None:
+    """Return the latest exit strictly after the first entry and no later than this event."""
+    start, end = _local(start), _local(end)
+    rows = db.query(AttendanceEvent).filter(
+        AttendanceEvent.employee_id == employee_id, AttendanceEvent.direction == "exit")
+    # ponytail: use local Python comparisons across database datetime dialects.
+    exits = [_local(r.ts_event) for r in rows]
+    return max((t for t in exits if start < t <= end), default=None)
+
+
+def _record_on(db, zone_id: int | None) -> bool:
+    """Default to recording attendance when zone data or the record flag is absent."""
+    zone = db.get(Zone, zone_id) if zone_id is not None else None
+    return zone.behavior_flag("attendance", "record") if zone is not None else True
+
+
+def _seen_recently(db, event, employee_id: int, *, same_zone: bool, reason: str | None = None) -> bool:
+    """Another attendance event of this employee within the cooldown window, in both time directions.
+
+    `same_zone` limits the search to this event's zone; `reason` limits it to one `match_reason`.
+    """
+    ts = _local(event.ts_event)
+    window = timedelta(minutes=settings.attendance_cooldown_min)
+    rows = db.query(Event).filter(
+        Event.id != event.id, Event.type == "attendance",
+        Event.ts_event >= ts - timedelta(days=1), Event.ts_event <= ts + timedelta(days=1))
+    if same_zone:
+        rows = rows.filter(Event.zone_id == event.zone_id)
+    # ponytail: a broad DB prefilter tolerates SQLite naive and Postgres aware times;
+    # compare the exact window and the small payload set in Python.
+    return any(
+        (row.payload or {}).get("employee_id") == employee_id
+        and (reason is None or (row.payload or {}).get("match_reason") == reason)
+        and abs(_local(row.ts_event) - ts) <= window
+        for row in rows)
 
 
 def _label_snapshot(event, payload: dict, label: str, color=None) -> None:
@@ -197,12 +236,25 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
         annotate_face_crop(str(Path(settings.storage_root) / crop),
                            emp.name, res.score or 0.0, payload.get("face_bbox"))
 
+    if not _record_on(db, event.zone_id):
+        seen = _seen_recently(db, event, res.employee_id, same_zone=True, reason="detected")
+        payload["match_reason"] = "cooldown" if seen else "detected"
+        return _save(db, event, payload, None)
+
     if _in_cooldown(db, res.employee_id, direction, event.ts_event):
         payload["match_reason"] = "cooldown"
         return _save(db, event, payload, None)
 
-    if direction == "entry" and _entered_earlier_today(db, res.employee_id, event.ts_event):
+    first_entry = _first_entry_today(db, res.employee_id, event.ts_event) if direction == "entry" else None
+    if first_entry is not None:
+        if _seen_recently(db, event, res.employee_id, same_zone=False):
+            payload["match_reason"] = "cooldown"  # masih terlihat terus: bukan masuk ulang, tanpa evidence
+            return _save(db, event, payload, None)
         payload["match_reason"] = "already_in"  # entry sekali per hari; exit boleh berulang
+        payload["first_entry_ts"] = _local(first_entry).isoformat()
+        exit_ts = _exit_between(db, res.employee_id, first_entry, event.ts_event)
+        if exit_ts is not None:
+            payload["exit_ts"] = _local(exit_ts).isoformat()
         return _save(db, event, payload, None)
 
     payload["match_reason"] = "matched"

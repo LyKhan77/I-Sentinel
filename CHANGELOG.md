@@ -3,6 +3,119 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine — deploy dan uji lapangan `gspe-ai3` (2026-10-07)
+
+- **Konteks:** deploy `45f7e5e` (branch fitur) ke `gspe-ai3` atas persetujuan user: `git checkout feat/face-gate-refine && ./docker/setup.sh`; `api`, `vision`, `web`, `retention` dibuat ulang. Server **masih di branch fitur** sampai merge. Verifikasi pasca-deploy: `/api/v1/health` ok, `alembic` `0022 (head)`, kode baru ada di container, 3 GPU terlihat di `vision`, log `api` tanpa error, `app_url` = `http://192.168.2.133:7700`.
+- **Hasil uji user:** toggle "Catat absensi" dan "Kirim wajah tidak dikenal" tampil setelah hard refresh (browser menyimpan `index.html` lama: nginx hanya mengirim `Last-Modified`/`ETag`); skenario Telegram (CHECK IN, SUDAH CHECK IN, TERDETEKSI, Unknown OFF) dinyatakan sesuai. Lintasan cepat tanpa berhenti sebagian besar **tidak tercatat**.
+- **Data pemantau live** (heartbeat ±10 dtk, `cameras[].ai.funnel`, dua jendela: 7 dan 10 menit; semua orang yang lewat ikut terhitung, jadi angka kasar):
+  - 10 menit (15:31–15:41, 362/363 pada 10 fps): 7 track emit vs 36 silent. Frame lolos: 362 `9/472` (`blur` 237, `small` 153), 363 `4/523` (`small` 309, `zone` 87), 365 `39/523` (`zone` 129, `small` 75, `blur` 43), 364 `30/119`. Waktu ke frame lolos pertama 2,6–3,8 dtk di 365/363 (outlier 17,5 dtk).
+  - Stream main 362/363/365: H.264 1920×1080 25 fps (`ffprobe` via go2rtc `:7705`), jadi resolusi bukan batasnya; wajah di zona terlalu sedikit piksel (event sukses lebar 111–199 px; kamera 364 `blur` 1251–2733, ttfg 0,0 dtk sebagai acuan ideal).
+  - Menaikkan `ai_fps` 5→10 (362 Tangga 2, 363 Lorong Server) menggandakan frame tetapi tidak menaikkan frame lolos.
+- **Keputusan user:** zona diperluas; SOP menatap kamera sebentar diterima; **protokol penerimaan 10×5 lintasan tidak dijalankan**; tidak ada perubahan ambang (`face_min_width_px`, `face_min_quality`, `blur_min`).
+- **Belum dikerjakan:** geometri kamera 362/363/365 (dekatkan atau lensa lebih sempit; target lebar wajah ≥110 px); debounce kolom `ai_fps` (tiap ketikan memicu PATCH dan restart semua worker, ±9 kali dalam 20 menit); `Cache-Control: no-cache` untuk `index.html`; selaraskan gerbang node (lebar 80 px, skor 0,6) dengan kualitas minimum API 0,5 (muncul event `low_quality` pada wajah 82–85 px); uji `_seen_recently`/`_detected_recently` di Postgres (hanya SQLite); semantik rekap exit berulang (exit tengah hari menutupi `no_exit`).
+- **Rollback:** `ssh gspe-ai3`, `cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git checkout main && ./docker/setup.sh` (tanpa migrasi).
+
+### Face gate refine — perbaikan review: throttle evidence "SUDAH CHECK IN" (2026-10-07)
+
+- **Konteks:** review sesi perencanaan atas `8487b29`. Cooldown absensi hanya menghitung baris `AttendanceEvent`, sedangkan `already_in` tidak pernah membuatnya; setelah 5 menit pertama dari check in, **setiap** deteksi karyawan yang menetap di area kamera entry (resepsionis, satpam) akan mengirim satu pesan "SUDAH CHECK IN". Asumsi spec §8 ("cooldown yang ada sudah menyaring") keliru; spec/plan tidak diubah (catatan lama). Keputusan user: jendela 5 menit memakai `attendance_cooldown_min`, tanpa setting baru.
+- **Perubahan:**
+  - `attendance.py`: `_detected_recently` menjadi `_seen_recently(db, event, employee_id, *, same_zone, reason=None)`; cabang `already_in` kini memberi `match_reason="cooldown"` (tanpa alert) bila karyawan itu terlihat (event attendance mana pun, zona mana pun, ± cooldown). Evidence hanya terbit setelah karyawan tidak terlihat ≥ cooldown lalu muncul lagi. Jalur `detected` (zona OFF) tidak berubah perilaku.
+  - `ZonesPage.tsx`: paragraf `zone-record-off-hint` memakai gaya yang sama dengan `zone-attendance-hint`.
+  - Dokumen: WORKFLOW §12, ARCHITECTURE (kontrak `already_in`), runbook attendance, baris ROADMAP FGR.
+- **Bukti:** RED `test_already_in_evidence_only_after_employee_was_unseen_for_the_window`: `assert 'already_in' == 'cooldown'` pada event 07:19 (jalur spam terbukti); tes penjaga `test_already_in_not_suppressed_by_another_employee_being_seen` lulus sejak awal dan menjadi merah (`'cooldown' == 'already_in'`) saat filter `employee_id` dihapus sementara (dikembalikan). GREEN terarah `130 passed`; suite berurutan: backend `896 passed, 1 deselected, 551 warnings in 157.24s`; frontend `36 files / 481 passed`; build exit 0; lint 24 warning, pasangan identik baseline.
+- **Dampak:** pesan "SUDAH CHECK IN" tidak lagi berulang untuk orang yang terus terlihat; masih terbit saat masuk ulang setelah hilang ≥5 menit. Event tetap tercatat di Inbox (`cooldown`). BELUM diuji di server nyata; Postgres untuk `_seen_recently` belum diuji (SQLite saja).
+- **Rollback:** revert commit ini; tanpa migrasi.
+
+### Face gate refine T9 — docs: face gate refine (alur Telegram, zona deteksi-saja, runbook, corong) (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Alur tiga pesan, flag JSON, kontrak payload/heartbeat, runbook kamera dan corong, protokol penerimaan 10×5; ROADMAP tetap [~].
+- **Bukti:** Suite berurutan: backend `894 passed, 1 deselected, 551 warnings in 164.75s`; Docker `75 passed in 9.36s`; vision `247 passed, 3 deselected, 2 warnings in 13.67s`; frontend `36 files / 481 passed`; build exit 0; lint `24 warnings and 0 errors`, 16 pasangan rule-file identik baseline.
+- **Dampak:** Panduan lokal lengkap; BELUM diuji di server nyata. Review, deploy, tuning dan penerimaan server tetap di luar sesi.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Runbook lama memiliki kalimat kalibrasi terputus; diganti panduan berbasis face_stats dan corong pada bagian yang memang ditargetkan plan.
+
+
+### Face gate refine T8 — feat(vision): corong face worker di heartbeat dan monitoring (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Counter wajah per track/frame, rejects lima kode, emitted/silent, median ttfg; reset dict tanpa lock; in_zone dibersihkan; heartbeat face funnel/skip; schema monitoring kompatibel node lama.
+- **Bukti:** RED vision `9 failed, 56 passed, 1 warning in 9.06s`; RED backend `4 failed, 31 passed`; GREEN vision `247 passed, 3 deselected, 2 warnings in 13.36s`; GREEN backend `894 passed, 1 deselected, 551 warnings in 168.27s`.
+- **Dampak:** Corong per jendela heartbeat, tanpa UI atau biometrik tambahan; node lama funnel None.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tambahan tes rejects zone/score/yaw/blur dan boundary API. Run backend pertama 1 failed/893 passed karena fixture API baru node.modules=None; diperbaiki tanpa menyentuh tes lama. Mutasi sementara field skema membuktikan RED KeyError funnel setelah fixture benar, lalu field dipulihkan sebelum GREEN penuh.
+
+
+### Face gate refine T7 — fix(vision): motion gate tidak memutus bukti wajah yang masih terlihat (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Motion gate tetap update setiap frame; wajah yang terlihat mempertahankan pemrosesan; counter motion_skipped; tes gate kembali skip setelah wajah hilang.
+- **Bukti:** RED `3 failed, 22 passed in 5.22s`; GREEN `67 passed, 1 warning in 8.63s` (face_worker, motion_gate, node).
+- **Dampak:** Wajah diam mencapai tiga embedding tanpa menunggu force interval; overlay expiry lama tetap hijau.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Ditambah satu tes eksplisit gate kembali skip setelah wajah hilang, sesuai kriteria smoke S3(g).
+
+
+### Face gate refine T6 — feat(zones): toggle Catat absensi pada zona attendance (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Toggle Catat absensi default ON; hint OFF lokal id/en; tes Inbox detected, tanpa mengubah EventsPage.
+- **Bukti:** RED `1 failed | 104 passed (105)`; GREEN ulang `36 files / 481 passed`; build exit 0; lint `24 warnings and 0 errors`, pasangan identik baseline.
+- **Dampak:** OFF menulis record:false hanya ketika toggle disentuh; nama detected tetap tampil tanpa label absensi.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Run suite pertama: 1 failed/480 passed pada tes lama save calls createZone with normalized polygon (zone-start-ring hilang). Ulang tanpa beban lulus, tes lama tidak diubah. Tes detected lulus sejak awal; dicatat sebagai characterization, bukan klaim RED; tidak memutasi EventsPage yang di luar scope.
+
+
+### Face gate refine T5 — feat(attendance): opsi zona catat absensi (OFF = deteksi saja) (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Flag record boolean; cabang OFF setelah anotasi sebelum cooldown absensi; dedup Event ±1 hari prafilter dan jendela lokal tepat; detected alert dan caption MASUK/KELUAR.
+- **Bukti:** RED `7 failed, 141 passed, 78 warnings in 19.59s`; GREEN suite backend `890 passed, 1 deselected, 549 warnings in 166.63s`.
+- **Dampak:** Zona OFF tidak menulis AttendanceEvent/AttendanceDay; default zona tetap mencatat.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tambahan tes dedup untuk event terlambat, batas tepat 5 menit, dan pengabaian alasan cooldown. Tes Unknown/default true lulus sejak awal sebagai kompatibilitas, dicatat sesuai handoff.
+
+
+### Face gate refine T4 — feat(zones): toggle kirim wajah tidak dikenal ke Telegram (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Toggle Carbon Unknown hanya saat Telegram efektif aktif; default true, PATCH hanya ketika disentuh; label id/en.
+- **Bukti:** RED `1 failed | 29 passed (30)` karena toggle belum ada; GREEN `30 passed (30)`; lint `24 warnings and 0 errors`, pasangan identik baseline.
+- **Dampak:** Zona lama tidak mendapat key baru saat toggle tidak disentuh.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tes toggle tidak tampil lulus sejak awal: penjaga perilaku negatif yang sudah ada, dicatat sesuai handoff.
+
+
+### Face gate refine T3 — feat(alerting): opsi zona kirim wajah tidak dikenal ke Telegram (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Zone.behavior_flag aman untuk data lama/non-dict; validasi boolean telegram_unknown; suppress no_match setelah saklar induk.
+- **Bukti:** RED `7 failed, 57 passed in 17.71s`; GREEN `82 passed, 76 warnings in 18.73s`.
+- **Dampak:** Unknown tetap Inbox; matched tidak terpengaruh; key hilang default true.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tes flag hilang/true lulus sejak awal sebagai penjaga kompatibilitas; tujuh RED fitur baru disaksikan. Fixture memblokir TCP eksternal.
+
+
+### Face gate refine T2 — feat(telegram): entry berulang dikirim sebagai evidence "sudah check in" (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Helper entry pertama dan exit sejak entry; payload evidence; already_in melewati rate-limit; caption SUDAH CHECK IN dengan fallback waktu tidak valid.
+- **Bukti:** RED `8 failed, 85 passed in 1.42s`; GREEN `112 passed, 33 warnings in 9.15s` (attendance_logic, alerting, telegram, attendance_api).
+- **Dampak:** Cooldown tetap diam; evidence tidak membuat attendance_event atau mengubah rekap.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Run GREEN pertama gagal pada empat tes caption karena impor datetime belum ada; diperbaiki setelah membaca traceback. Tes baru mencakup waktu hilang, rusak, dan non-string.
+
+
+### Face gate refine T1 — label tautan Telegram (2026-10-07)
+
+- **Konteks:** tautan membuka detail event, bukan hanya klip. BELUM diuji di server nyata.
+- **Perubahan:** `backend/app/services/telegram.py` dan tiga assertion `test_telegram.py`: label menjadi `Lihat event`.
+- **Bukti:** baseline ulang: backend `864 passed, 1 deselected, 545 warnings in 163.11s`; Docker `75 passed in 8.92s`; vision `235 passed, 3 deselected, 2 warnings in 13.49s`; frontend `36 files / 477 passed`; build exit 0; lint `24 warnings and 0 errors`, exit 0. T1 RED `2 failed, 27 passed`; GREEN `70 passed in 1.05s`.
+- **Penyimpangan:** plan mengharapkan tiga kegagalan; assertion tanpa URL tetap lulus karena tidak ada tautan, sehingga hanya dua tes merah. Assertion tersebut mengunci perilaku lama tanpa URL.
+- **Dampak:** semua tipe alert memakai label baru; format lain tidak berubah.
+- **Rollback:** revert commit T1; tanpa migrasi.
+
+
 ### Caption AI di alert Telegram (edit pesan, sekali per alert) — deploy + uji nyata `gspe-ai3` (2026-10-06)
 
 - **Konteks:** lanjutan fitur AI (opsi A dari spec

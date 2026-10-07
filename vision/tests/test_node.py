@@ -535,3 +535,24 @@ def test_node_awaiting_config_stays_alive_and_applies_config_that_arrives_late()
     thread.join(timeout=5)
     assert not thread.is_alive()
 
+
+
+def test_camera_stats_face_entry_carries_funnel(tmp_path):
+    node, workers, *_ = _wired_node(tmp_path, [ATTENDANCE_ZONE, BEHAVIOR_ZONE])
+    node._workers = workers
+    stats = {s["worker"]: s for s in node._camera_stats(0.0)}
+    assert set(stats["face"]["funnel"]) == {
+        "faces", "rejects", "tracks_emitted", "tracks_silent", "ttfg_median_s",
+    }
+    assert "funnel" not in stats["detect"]
+
+
+def test_camera_stats_face_motion_skip_pct(tmp_path):
+    node, workers, *_ = _wired_node(tmp_path, [ATTENDANCE_ZONE])
+    node._workers = workers
+    face = workers[0]
+    face.motion_gate = object()
+    face.frames = face.motion_skipped = 0
+    assert node._camera_stats(0.0)[0]["motion_skip_pct"] is None
+    face.frames, face.motion_skipped = 40, 30
+    assert node._camera_stats(10.0)[0]["motion_skip_pct"] == 75.0

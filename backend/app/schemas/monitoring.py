@@ -63,6 +63,7 @@ class CameraAiOut(BaseModel):
     last_frame_age_s: float | None = None
     reconnects_1h: int = 0
     motion_skip_pct: float | None = None
+    funnel: dict | None = None
 
 
 class CameraStreamOut(BaseModel):

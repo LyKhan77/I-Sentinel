@@ -320,3 +320,23 @@ def test_camera_above_half_target_is_healthy(db):
     _cam(db, 1, n)
     _with_cams(n, db, [_stat(1, fps=3.0)])
     assert _cam_row(monitoring.snapshot(db, now=NOW), 1)["health"] == "ok"
+
+
+def test_merge_workers_carries_face_funnel():
+    entries = [{"worker": "face", "state": "ok", "fps": 4.0, "target_fps": 5.0, "funnel": {"faces": 3}}]
+    assert monitoring._merge_workers(entries)["funnel"] == {"faces": 3}
+
+
+@pytest.mark.parametrize("value", [None, "old"])
+def test_merge_workers_without_valid_funnel_defaults_none(value):
+    assert monitoring._merge_workers([{"state": "ok", "funnel": value}])["funnel"] is None
+
+
+def test_monitoring_endpoint_preserves_face_funnel(client, db):
+    n = db.query(Node).filter_by(name="server").one()
+    _cam(db, 1, n)
+    n.modules = {"cameras": [_stat(1, worker="face", funnel={"faces": 3})]}
+    db.commit()
+    r = client.get("/api/v1/monitoring", headers=viewer_headers(client))
+    assert r.status_code == 200
+    assert r.json()["cameras"][0]["ai"]["funnel"] == {"faces": 3}

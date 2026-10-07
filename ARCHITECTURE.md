@@ -136,6 +136,9 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 - Satu worker per kamera yang punya **zona aktif**; kamera tanpa zona hanya tampil di Live View.
 - Analyzer: `intrusion`, `loitering`, `running`, `idle_zone`, `crowd`; wajah lewat `face_worker`
   pada zona attendance (gerbang kualitas: lebar, skor, yaw, blur).
+- Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.
+  Motion gate bangun karena gerak dan terus memproses frame diam selama wajah masih terlihat.
+  Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.
 - `transport/`: klien MQTT + antrean disk store-and-forward (event tidak hilang saat broker/API
   putus; backlog dilaporkan di heartbeat).
 - Dependensi minimal dan bisa di-import tanpa CUDA; kode GPU/RTSP di balik marker `gpu`.
@@ -152,6 +155,46 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 | `isentinel/events` | node → API | Event behavior/absensi |
 | `isentinel/events/media` | node → API | Path clip/snapshot setelah upload selesai |
 | `isentinel/detections/{node}` | node → API → WS | Kotak deteksi live untuk debugger |
+
+### Attendance evidence dan flag zona
+
+Flag `record` dan `telegram_unknown` disimpan sebagai boolean di JSON behavior `attendance`,
+tanpa migrasi. Key hilang atau `behaviors=null` memakai true; `direction` tetap wajib.
+Backend memberi `employee_id`, `employee_name`, `face_score`, dan `match_reason` setelah
+menghapus embedding dari payload tersimpan.
+
+- `matched`: pencatatan baru, caption CHECK IN/OUT.
+- `already_in`: entry kedua pada hari lokal yang sama, di luar cooldown **dan** karyawan tidak terlihat
+  (event attendance mana pun, zona mana pun, ± `attendance_cooldown_min`) sebelumnya; bila masih terlihat
+  → `cooldown` tanpa alert (anti-spam untuk orang yang menetap di area kamera). Payload memuat
+  `first_entry_ts` ISO lokal dan `exit_ts` hanya bila ada exit dengan
+  `first_entry_ts < exit_ts <= ts_event`. Tidak membuat AttendanceEvent/rekap baru;
+  caption SUDAH CHECK IN.
+- `detected`: wajah cocok di zona `record=false`, tanpa AttendanceEvent/recompute_day;
+  dedup Event per (karyawan, zona), hanya evidence `detected` dalam jendela cooldown.
+  Prafilter DB ±1 hari, waktu tepat dibandingkan di Python lewat `_local` agar SQLite
+  naive dan Postgres aware konsisten. Caption TERDETEKSI — MASUK/KELUAR.
+- `cooldown`: event tetap ada, tanpa alert. `no_match`: Unknown tetap Inbox;
+  `telegram_unknown=false` menahan alert setelah saklar Telegram induk.
+
+`matched`, `already_in`, dan `detected` melewati rate-limit generik; Unknown tetap
+memakai bucket `attendance_unknown`. Tautan semua caption: `Lihat event`.
+
+### Corong heartbeat face
+
+Entri worker `face` pada heartbeat `cameras[]` membawa `funnel` per jendela:
+`faces`, `rejects{zone,small,score,yaw,blur}`, `tracks_emitted`, `tracks_silent`,
+`ttfg_median_s`. Faces/rejects dihitung per wajah yang dilacak per frame.
+Silent hanya track yang pernah masuk zona tetapi tidak memiliki embedding lolos.
+TTFG adalah median detik sejak track pertama masuk zona hingga embedding bagus pertama,
+dibulatkan dua desimal; tanpa sampel bernilai null.
+
+Reset menukar dictionary tanpa lock; selisih satu hitungan antar-thread diterima.
+`fps` dan `motion_skip_pct` tetap pada entri yang sama, skip kini tersedia untuk face.
+Worker detect tidak membawa funnel. API meneruskan dictionary pertama yang valid ke
+`cameras[].ai.funnel` di `/api/v1/monitoring`; heartbeat lama tanpa field → null.
+Tidak ada UI corong atau perubahan protokol event wajah dua fase.
+
 
 ### HTTP internal (node → API, `Authorization: Bearer NODE_API_KEY`)
 

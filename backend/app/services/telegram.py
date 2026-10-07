@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from datetime import timezone
+from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.models.setting import Setting
@@ -236,6 +236,12 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
     def val(v) -> str:
         return html.escape(str(v)[:FIELD_MAX])
 
+    def payload_time(key: str) -> str:
+        try:
+            return datetime.fromisoformat(payload.get(key)).astimezone(tz).strftime("%H:%M:%S %Z").strip()
+        except (TypeError, ValueError):
+            return "-"
+
     ts = event.ts_event if event.ts_event.tzinfo else event.ts_event.replace(tzinfo=timezone.utc)
     ts = ts.astimezone(tz)
     payload = event.payload or {}
@@ -243,6 +249,15 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
     if event.type == "attendance" and payload.get("match_reason") == "matched":
         arah = "CHECK IN" if payload.get("direction") == "entry" else "CHECK OUT"
         title = f"✅ <b>ATTENDANCE — {arah}</b>"
+        rows.append(("Nama", payload.get("employee_name") or "-"))
+    elif event.type == "attendance" and payload.get("match_reason") == "already_in":
+        title = "🔁 <b>ATTENDANCE — SUDAH CHECK IN</b>"
+        rows.append(("Nama", payload.get("employee_name") or "-"))
+        rows.append(("Check in pertama", payload_time("first_entry_ts")))
+        rows.append(("Exit sejak itu", payload_time("exit_ts") if "exit_ts" in payload else "belum terlihat"))
+    elif event.type == "attendance" and payload.get("match_reason") == "detected":
+        arah = "MASUK" if payload.get("direction") == "entry" else "KELUAR"
+        title = f"👤 <b>TERDETEKSI — {arah}</b>"
         rows.append(("Nama", payload.get("employee_name") or "-"))
     elif event.type == "attendance":
         title = "⚠️ <b>UNKNOWN FACE</b>"
@@ -263,7 +278,7 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
         rows.append(("Level", str(event.severity or "").upper()))
     lines = [title, ""] + [f"<b>{k}</b>: {val(v)}" for k, v in rows]
     if app_url:
-        lines += ["", f"🎥 Lihat klip: {val(app_url)}/events?event={event.id}"]
+        lines += ["", f"🎥 Lihat event: {val(app_url)}/events?event={event.id}"]
     base = "\n".join(lines)
     raw = " ".join((ai_text or "").split())
     # Telegram menghitung emoji astral (judul, tautan, nama) sebagai dua unit UTF-16; semua dihitung dalam unit itu.
