@@ -82,7 +82,7 @@ def test_caption_behavior_layout():
         "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
         "<b>Level</b>: WARNING",
         "",
-        "🎥 Lihat klip: http://10.0.0.1:5173/events?event=1234",
+        "🎥 Lihat event: http://10.0.0.1:5173/events?event=1234",
     ]
 
 
@@ -109,7 +109,7 @@ def test_caption_attendance_check_in_out_and_unknown():
     unknown = _event(type="attendance", severity="info", payload={"match_reason": "no_match"})
     lines = telegram.format_caption(unknown, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
     assert lines[0] == "⚠️ <b>UNKNOWN FACE</b>" and "<b>Zona</b>: Gerbang Lobi" in lines
-    assert not any("Lihat klip" in line for line in lines)
+    assert not any("Lihat event" in line for line in lines)
 
 
 def test_caption_new_type_uppercased_and_no_zone():
@@ -229,7 +229,7 @@ def test_caption_ai_line_between_rows_and_link():
     lines = telegram.format_caption(_event(), "Cam", "Zone", "http://app.test", tz=WIB,
                                     ai_text="Seseorang berjalan.").splitlines()
     assert lines[-4:] == ["<b>Level</b>: WARNING", "🤖 <b>AI</b>: Seseorang berjalan.",
-                          "", "🎥 Lihat klip: http://app.test/events?event=1234"]
+                          "", "🎥 Lihat event: http://app.test/events?event=1234"]
 
 
 def test_caption_ai_text_is_escaped_and_whitespace_folded():

@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T1 — label tautan Telegram (2026-10-07)
+
+- **Konteks:** tautan membuka detail event, bukan hanya klip. BELUM diuji di server nyata.
+- **Perubahan:** `backend/app/services/telegram.py` dan tiga assertion `test_telegram.py`: label menjadi `Lihat event`.
+- **Bukti:** baseline ulang: backend `864 passed, 1 deselected, 545 warnings in 163.11s`; Docker `75 passed in 8.92s`; vision `235 passed, 3 deselected, 2 warnings in 13.49s`; frontend `36 files / 477 passed`; build exit 0; lint `24 warnings and 0 errors`, exit 0. T1 RED `2 failed, 27 passed`; GREEN `70 passed in 1.05s`.
+- **Penyimpangan:** plan mengharapkan tiga kegagalan; assertion tanpa URL tetap lulus karena tidak ada tautan, sehingga hanya dua tes merah. Assertion tersebut mengunci perilaku lama tanpa URL.
+- **Dampak:** semua tipe alert memakai label baru; format lain tidak berubah.
+- **Rollback:** revert commit T1; tanpa migrasi.
+
+
 ### Caption AI di alert Telegram (edit pesan, sekali per alert) — deploy + uji nyata `gspe-ai3` (2026-10-06)
 
 - **Konteks:** lanjutan fitur AI (opsi A dari spec

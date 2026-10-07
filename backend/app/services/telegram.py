@@ -263,7 +263,7 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
         rows.append(("Level", str(event.severity or "").upper()))
     lines = [title, ""] + [f"<b>{k}</b>: {val(v)}" for k, v in rows]
     if app_url:
-        lines += ["", f"🎥 Lihat klip: {val(app_url)}/events?event={event.id}"]
+        lines += ["", f"🎥 Lihat event: {val(app_url)}/events?event={event.id}"]
     base = "\n".join(lines)
     raw = " ".join((ai_text or "").split())
     # Telegram menghitung emoji astral (judul, tautan, nama) sebagai dua unit UTF-16; semua dihitung dalam unit itu.
