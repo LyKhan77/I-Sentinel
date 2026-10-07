@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T8 — feat(vision): corong face worker di heartbeat dan monitoring (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Counter wajah per track/frame, rejects lima kode, emitted/silent, median ttfg; reset dict tanpa lock; in_zone dibersihkan; heartbeat face funnel/skip; schema monitoring kompatibel node lama.
+- **Bukti:** RED vision `9 failed, 56 passed, 1 warning in 9.06s`; RED backend `4 failed, 31 passed`; GREEN vision `247 passed, 3 deselected, 2 warnings in 13.36s`; GREEN backend `894 passed, 1 deselected, 551 warnings in 168.27s`.
+- **Dampak:** Corong per jendela heartbeat, tanpa UI atau biometrik tambahan; node lama funnel None.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tambahan tes rejects zone/score/yaw/blur dan boundary API. Run backend pertama 1 failed/893 passed karena fixture API baru node.modules=None; diperbaiki tanpa menyentuh tes lama. Mutasi sementara field skema membuktikan RED KeyError funnel setelah fixture benar, lalu field dipulihkan sebelum GREEN penuh.
+
+
 ### Face gate refine T7 — fix(vision): motion gate tidak memutus bukti wajah yang masih terlihat (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.

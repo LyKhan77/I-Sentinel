@@ -105,7 +105,8 @@ def _merge_workers(entries: list[dict]) -> dict | None:
     return {"state": state_of(worst), "fps": _num(slowest.get("fps")),
             "target_fps": _num(slowest.get("target_fps")),
             "last_frame_age_s": max(ages) if ages else None, "reconnects_1h": max(recon) if recon else 0,
-            "motion_skip_pct": skips[0] if skips else None}
+            "motion_skip_pct": skips[0] if skips else None,
+            "funnel": next((e["funnel"] for e in entries if isinstance(e.get("funnel"), dict)), None)}
 
 
 def _camera_row(cam: Camera, node: Node | None, entries: list[dict] | None, streams: set[str] | None,

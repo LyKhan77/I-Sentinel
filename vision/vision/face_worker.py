@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from statistics import median
 
 from .face_quality import (FaceSettings, aggregate, blur_score, crop_box, gate_code,
                            quality, yaw_ratio)
@@ -87,6 +88,8 @@ class FaceGateWorker(threading.Thread):
         self._pending_events: queue.SimpleQueue = queue.SimpleQueue()
         self.frames = 0  # frame main-stream diproses (heartbeat: fps jendela)
         self.motion_skipped = 0
+        self._in_zone: dict[int, float] = {}
+        self._funnel = self._empty_funnel()
 
     def run(self) -> None:
         """Consume source until stopped; event/media finalization runs separately."""
@@ -134,6 +137,19 @@ class FaceGateWorker(threading.Thread):
         """Jumlah event wajah yang menunggu finalisasi media (heartbeat: antrean face)."""
         return self._pending_events.qsize()
 
+    @staticmethod
+    def _empty_funnel() -> dict:
+        """Create a fresh heartbeat window without sharing mutable counters."""
+        return {"faces": 0, "rejects": dict.fromkeys(("zone", "small", "score", "yaw", "blur"), 0),
+                "tracks_emitted": 0, "tracks_silent": 0, "_ttfg": []}
+
+    def take_funnel(self) -> dict:
+        """Return the completed heartbeat window, resetting counters by swapping dictionaries."""
+        # ponytail: a one-count cross-thread skew is acceptable; swap the dict without a lock.
+        counts, self._funnel = self._funnel, self._empty_funnel()
+        return {**{key: value for key, value in counts.items() if key != "_ttfg"},
+                "ttfg_median_s": round(median(counts["_ttfg"]), 2) if counts["_ttfg"] else None}
+
     def _process(self, frame) -> None:
         h, w = frame.data.shape[:2]
         try:
@@ -150,6 +166,7 @@ class FaceGateWorker(threading.Thread):
             f = by_bbox.get(tr.bbox)
             if f is None:
                 continue  # retained track without detection: no stale face overlay
+            self._funnel["faces"] += 1
             code, zone = gate_code(f, w, h, self.zones, self.settings)
             aligned = None
             if code is None:
@@ -160,6 +177,10 @@ class FaceGateWorker(threading.Thread):
                 except Exception:
                     log.warning("camera %s: face align failed", self.camera_id, exc_info=True)
                     code = "blur"
+            if code != "zone":
+                self._in_zone.setdefault(tr.id, frame.ts)
+            if code is not None:
+                self._funnel["rejects"][code] += 1
             q = quality(f.score, f.bbox[2] - f.bbox[0], yaw_ratio(f.kps))
             boxes.append({"id": tr.id, "bbox_norm": [round(v, 4) for v in tr.bbox],
                           "label": code or f"{q:.2f}"})
@@ -188,6 +209,8 @@ class FaceGateWorker(threading.Thread):
             return
         if vec is None:
             return
+        if not st.vectors:
+            self._funnel["_ttfg"].append(frame.ts - self._in_zone[tid])
         st.vectors.append(vec)
         st.weights.append(q)
         if q > st.best_q:
@@ -206,9 +229,13 @@ class FaceGateWorker(threading.Thread):
             st = self._states.pop(tid, None)
             if st is not None and not st.done and st.vectors:
                 self._emit(tid, st)
+            if tid in self._in_zone and (st is None or not st.vectors):
+                self._funnel["tracks_silent"] += 1
+            self._in_zone.pop(tid, None)
 
     def _emit(self, tid: int, st: _TrackState) -> None:
         st.done = True
+        self._funnel["tracks_emitted"] += 1
         best, st.best = st.best, None
         if self.recorder is not None and (self._media_pending.is_set() or
                                           self._media_busy.is_set()):

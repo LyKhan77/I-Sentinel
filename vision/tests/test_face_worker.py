@@ -441,3 +441,45 @@ def test_motion_gate_resumes_skipping_after_face_disappears():
     assert not w.is_alive()
     assert w.motion_skipped == 4
     assert t.detections[-1][2] == []
+
+
+def test_funnel_counts_rejects_per_gate_code():
+    w, t, _ = run_worker([[face(width=40.0)]] * 5)
+    funnel = w.take_funnel()
+    assert funnel["faces"] == len(labels(t)) >= 3
+    assert funnel["rejects"] == {"zone": 0, "small": funnel["faces"], "score": 0, "yaw": 0, "blur": 0}
+    assert funnel["tracks_emitted"] == 0
+    assert w.take_funnel() == {
+        "faces": 0, "rejects": {"zone": 0, "small": 0, "score": 0, "yaw": 0, "blur": 0},
+        "tracks_emitted": 0, "tracks_silent": 0, "ttfg_median_s": None,
+    }
+
+
+@pytest.mark.parametrize("code", ["zone", "score", "yaw", "blur"])
+def test_funnel_other_reject_codes(code):
+    det = face(cx=100.0) if code == "zone" else face(score=0.55) if code == "score" else face()
+    if code == "yaw":
+        det.kps[2, 0] += 100
+    eng = FakeFaces([[det]] * 5, aligned=np.zeros_like(SHARP) if code == "blur" else SHARP)
+    w, t, _ = run_worker([[det]] * 5, engine=eng)
+    f = w.take_funnel()
+    assert f["faces"] == len(labels(t)) >= 3
+    assert f["rejects"][code] == f["faces"]
+    assert sum(f["rejects"].values()) == f["faces"]
+
+
+def test_funnel_silent_track_counts_only_tracks_that_entered_zone():
+    inside, _, _ = run_worker([[face(width=40.0)]] * 3 + [[]] * 8)
+    assert inside.take_funnel()["tracks_silent"] == 1
+    assert inside._in_zone == {}
+    outside, _, _ = run_worker([[face(cx=100.0)]] * 3 + [[]] * 8)
+    assert outside.take_funnel()["tracks_silent"] == 0
+    assert outside._in_zone == {}
+
+
+def test_funnel_emitted_and_time_to_first_good_frame():
+    w, _, _ = run_worker([[face(score=0.55)]] * 2 + [[GOOD]] * 3)
+    f = w.take_funnel()
+    assert f["tracks_emitted"] == 1
+    assert f["tracks_silent"] == 0
+    assert f["ttfg_median_s"] == pytest.approx(0.2, abs=0.01)
