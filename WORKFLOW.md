@@ -192,7 +192,7 @@ Konfigurasi global melalui **Konfigurasi → AI Integration**, hanya admin:
 `secrets/llm.env` tetap nilai awal/fallback. Mengubah env, konkurensi, atau antrean memerlukan
 recreate API, bukan restart biasa; override DB tetap lebih tinggi. Viewer tidak melihat tab dan
 tidak memanggil API pengaturan. Rollout hanya setelah review dan konfirmasi privasi pemilik
-endpoint; lihat `docs/RUNBOOK.md`. **BELUM diuji di server/UI/LLM nyata** pada tahap ini.
+endpoint; lihat `docs/RUNBOOK.md`. Sudah diuji di `gspe-ai3` dengan LLM nyata (2026-10-06).
 Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
 
 ## 9. Notifikasi web

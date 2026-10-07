@@ -213,8 +213,8 @@ atau engine di Mac arm64. Ukur shm ring klip untuk menentukan VISION_SHM_SIZE fi
 
 ### Caption AI dan Tanya AI — rollout terpisah
 
-MVP tersedia di repo; **BELUM diuji di server/UI/LLM nyata**. Prosedur ini untuk sesi deploy
-setelah review, bukan bukti bahwa layanan sudah aktif.
+MVP sudah diuji di `gspe-ai3` dengan LLM nyata (2026-10-06; lihat `CHANGELOG.md`). Prosedur ini
+untuk deploy ke server lain atau ulang, bukan bukti bahwa layanan aktif di lingkungan Anda.
 
 1. Konfirmasikan kepada pemilik endpoint bahwa snapshot/keyframe tidak disimpan atau dipakai
    melatih model. Gambar dapat memuat wajah karyawan. Backup DB dan secrets sebelum migrasi.
@@ -226,7 +226,7 @@ setelah review, bukan bukti bahwa layanan sudah aktif.
    `storage_root`), bukan DB/respons. Tombol **Tes koneksi** memakai form tanpa menyimpan
    (teks + JPEG sintetis 64×64; timeout 30 detik per panggilan); konfirmasikan teks/vision/latensi.
    Simpan hanya field berubah. Viewer tidak melihat tab dan ketiga endpoint memberi 403.
-   **BELUM diuji di server/UI/LLM nyata** untuk pengaturan UI ini; penerimaan dilakukan setelah review.
+   Pengaturan UI ini sudah diuji di `gspe-ai3` (tes koneksi teks + vision OK).
 4. `llm.env` tetap nilai awal/fallback, bukan satu-satunya cara konfigurasi. Prioritas **DB > env > default**.
    `setting.llm` kosong mempertahankan perilaku sebelumnya. **Reset ke env**: kosongkan field atau
    pilih reset lalu Simpan. Hapus kunci hanya menghapus secret_store; `LLM_API_KEY` env tetap berlaku.

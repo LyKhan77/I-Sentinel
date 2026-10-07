@@ -3,13 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
-### Caption AI di alert Telegram (edit pesan, sekali per alert) — lokal, belum di-deploy (2026-10-06)
+### Caption AI di alert Telegram (edit pesan, sekali per alert) — deploy + uji nyata `gspe-ai3` (2026-10-06)
 
 - **Konteks:** lanjutan fitur AI (opsi A dari spec
   `docs/superpowers/specs/2026-10-06-telegram-ai-caption-design.md`): caption `🤖 AI:`
   terlihat langsung di grup Telegram. Eksekusi TDD native pada
   `feat/telegram-ai-caption` (T1 `4be2fed`, T2 `55c51ec`, T3 kode+dokumen).
-  **BELUM diuji di server/Telegram nyata.**
+  Sudah di-deploy dan diuji pada alert nyata (lihat **Uji nyata** di bawah).
 - **Perubahan:**
   - `telegram.py`: `Delivery` (tuple kompatibel + `message_id`/`photo`),
     `edit_caption` (retry, "message is not modified" = sukses, galat bebas token),
@@ -47,8 +47,19 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   - Bukti setelah perbaikan (berurutan, HEAD `cdd0514`): backend `864 passed, 1 skipped, 545 warnings in 154.79s`
     (860 → 864); Docker `75 passed`; vision `235 passed, 3 deselected`; frontend `36 files / 477 passed`; lint
     `24 warning / 16 pasangan` identik; build exit 0.
+- **Uji nyata (`gspe-ai3`, 2026-10-06 17:15–17:21 WIB):** push `feat/telegram-ai-caption` @ `ea6afeb`, backup DB
+  `isentinel-pre-telegram-ai-20261006-171509.sql`, `./docker/setup.sh`, migrasi `0022` jalan di Postgres; Telegram
+  `app_url` dikoreksi ke `http://192.168.2.133:7700`. Zona 18 (kamera 362) diaktifkan user, dua event loitering:
+  - event 4782 → alert 1312 `sent`, `message_id=34`, `message_photo=true`, `ai_synced=true`; caption AI `ok` 4089 ms
+    (alert dibuat 17:19:00.860, caption selesai 17:19:04.974).
+  - event 4783 (73 dtk kemudian) → alert 1313 `sent`, `message_id=35`, `ai_synced=true`; caption AI `ok` 3859 ms.
+  - Satu alert per event, tanpa warning/galat Telegram di log api; user mengonfirmasi baris `🤖 AI:` muncul di
+    grup Telegram. Zona 18 lalu dinonaktifkan kembali oleh user.
+  - **Belum teruji nyata:** jalur AI siap sebelum alert terkirim (baris AI langsung di pesan awal), throttle 60 dtk
+    per zona, dan galat Telegram saat edit (hanya tes otomatis). Waktu kirim alert tidak dicatat di DB, jadi urutan
+    edit-setelah-kirim disimpulkan dari selisih ±4 dtk.
 - **Dampak:** alert tetap terkirim ±1 dtk tanpa menunggu LLM; tepat satu edit per
-  alert apa pun urutan caption/pengiriman; tanpa notifikasi baru dari edit.
+  alert apa pun urutan caption/pengiriman (dijamin klaim atomik + tes otomatis).
 - **Rollback:** `git revert` (kolom aditif aman) atau `alembic downgrade 0021`.
 
 ### Deploy dan uji lapangan Caption AI, Tanya AI, dan AI Integration — gspe-ai3 (2026-10-06)
