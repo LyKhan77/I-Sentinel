@@ -258,6 +258,9 @@ class VisionNode:
         # without static cameras wait for the MQTT config instead of exiting at once
         self._await_config = self.cfg.await_config
         self._face_settings = FaceSettings()
+        self._applied: dict[int, CameraCfg] = {}
+        self._detector_settings = None
+        self._global_sig: tuple | None = None
         self._det_prev: tuple[float, int, float] | None = None  # (ms_total, n, monotonic) heartbeat lalu
         self.events: list[dict] = []  # test hook: all worker events
         from .face import FaceEmbedder
@@ -337,7 +340,7 @@ class VisionNode:
             getattr(a, "media", {}).get("clip", True) for a in analyzers)
 
     def apply_config(self, cfg_dict: dict) -> None:
-        """Hot-reload: stop current workers, start new ones from cfg_dict."""
+        """Apply a full snapshot, restarting only changed cameras unless globals change."""
         det = cfg_dict.get("detector")
         if det:
             # model dari config bisa nama file relatif (mis. "yolo26s.engine");
@@ -389,60 +392,109 @@ class VisionNode:
                                                                "faces_models")
                 self.face = FaceEmbedder(root, dev)
                 self.cfg.face_device = dev
+        old_face = self._face_settings
         self._face_settings = FaceSettings.from_config(cfg_dict.get("face"))
         self._await_config = True
-        self._start_workers(self._cameras_from_config(cfg_dict))
+        cameras = self._cameras_from_config(cfg_dict)
+        sig = self._global_signature()
+        if sig != self._global_sig:
+            self._start_workers(cameras)
+            self._global_sig = sig
+            return
+        try:
+            new = {c.camera_id: c for c in cameras}
+            changed = {i for i, c in new.items() if self._applied.get(i) != c}
+            removed = set(self._applied) - set(new)
+            if self._face_settings != old_face:
+                changed |= {w.camera_id for w in self._workers
+                            if isinstance(w, FaceGateWorker)} & set(new)
+            # keadaan nyata ikut dibandingkan: worker yang sudah mati dihidupkan lagi walau config sama
+            changed |= {w.camera_id for w in self._workers if not w.is_alive()} & set(new)
+            added = changed - set(self._applied)
+            self._stop_workers(changed | removed)
+            applied = {i: new[i] for i in set(new) - changed}
+            for i in sorted(changed):
+                try:
+                    self._start_camera(new[i])
+                    applied[i] = new[i]
+                except Exception:
+                    log.exception("camera %s failed to start", i)
+                    self._stop_workers({i})  # buang worker/recorder yang sempat berjalan
+            self._applied, self._global_sig = applied, sig
+            for i in removed:
+                self._camera_conf.pop(i, None)
+            log.info("config applied: restarted %s, added %s, removed %s, unchanged %d",
+                     sorted(changed - added), sorted(added), sorted(removed),
+                     len(new) - len(changed))
+        except Exception:
+            log.exception("config diff failed; full restart")
+            self._start_workers(cameras)
+            self._global_sig = sig
+
+    def _global_signature(self) -> tuple:
+        """Return settings shared by all camera workers for full-restart detection."""
+        return (tuple(sorted(self._detector_settings.items())) if self._detector_settings else None,
+                self.cfg.detector_device, self.cfg.face_device)
 
     def _start_workers(self, cameras: list[CameraCfg]) -> None:
         self._stop_workers()
         self._await_config |= bool(cameras)
         for cam in cameras:
-            analyzers = self._make_analyzers(cam)
-            gates = attendance_zones(cam) if self.face is not None else []
-            run_yolo = bool(analyzers) or self.cfg.emit_person_detect
-            if not run_yolo and not gates:
-                continue  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
-            recorder = None
-            if self.cfg.api_key:  # production: upload blobs to backend
-                from .recorder import Recorder
-                ring = None
-                if run_yolo and self._wants_clip(analyzers):
-                    from . import clipring
-                    ring = clipring.ClipRing(cam.camera_id, main_stream_url(cam.source_url),
-                                             self.cfg.clip_ring_dir)
-                    ring.start()
-                recorder = Recorder(cam.camera_id, self.cfg, self.transport, clip_ring=ring)
-            if run_yolo:
-                w = CameraWorker(cam, self.detector_factory, self.transport,
-                                 threading.Event(), self.cfg.node_id,
-                                 analyzers=analyzers, recorder=recorder,
-                                 emit_person_detect=self.cfg.emit_person_detect,
-                                 motion=cam.motion)
-                w.source = self.source_factory(cam)
-                w.start()
-                self._workers.append(w)
-            if gates:
-                fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
-                                    self.cfg.node_id, self._face_settings,
-                                    recorder=recorder, motion=cam.motion)
-                fw.source = self.source_factory(
-                    cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
-                fw.start()
-                self._workers.append(fw)
+            self._start_camera(cam)
+        self._applied = {c.camera_id: c for c in cameras}
         log.info("started %d worker(s) for %d camera(s)", len(self._workers), len(cameras))
 
-    def _stop_workers(self) -> list[CameraWorker | FaceGateWorker]:
-        for w in self._workers:
+    def _start_camera(self, cam: CameraCfg) -> None:
+        """Start detect and face workers with one shared recorder for this camera."""
+        analyzers = self._make_analyzers(cam)
+        gates = attendance_zones(cam) if self.face is not None else []
+        run_yolo = bool(analyzers) or self.cfg.emit_person_detect
+        if not run_yolo and not gates:
+            return  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
+        recorder = None
+        if self.cfg.api_key:  # production: upload blobs to backend
+            from .recorder import Recorder
+            ring = None
+            if run_yolo and self._wants_clip(analyzers):
+                from . import clipring
+                ring = clipring.ClipRing(cam.camera_id, main_stream_url(cam.source_url),
+                                         self.cfg.clip_ring_dir)
+                ring.start()
+            recorder = Recorder(cam.camera_id, self.cfg, self.transport, clip_ring=ring)
+        if run_yolo:
+            w = CameraWorker(cam, self.detector_factory, self.transport,
+                             threading.Event(), self.cfg.node_id,
+                             analyzers=analyzers, recorder=recorder,
+                             emit_person_detect=self.cfg.emit_person_detect,
+                             motion=cam.motion)
+            w.source = self.source_factory(cam)
+            w.start()
+            self._workers.append(w)
+        if gates:
+            fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
+                                self.cfg.node_id, self._face_settings,
+                                recorder=recorder, motion=cam.motion)
+            fw.source = self.source_factory(
+                cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
+            fw.start()
+            self._workers.append(fw)
+
+    def _stop_workers(self, camera_ids: set[int] | None = None) -> list[CameraWorker | FaceGateWorker]:
+        """Detach selected cameras before joining workers and closing shared recorders."""
+        stopped = [w for w in self._workers
+                   if camera_ids is None or w.camera_id in camera_ids]
+        self._workers = [w for w in self._workers
+                         if camera_ids is not None and w.camera_id not in camera_ids]
+        for w in stopped:
             w.stop_event.set()
             w.stop()
         recorders = {}
-        for w in self._workers:
+        for w in stopped:
             w.join(timeout=5.0)
             if w.recorder is not None:
                 recorders[id(w.recorder)] = w.recorder
         for rec in recorders.values():
             rec.close()
-        stopped, self._workers = self._workers, []
         return stopped
 
     def run(self, join_timeout: float = 5.0):
@@ -466,6 +518,11 @@ class VisionNode:
         while not self.stop_event.is_set():
             try:
                 cfg_dict = self._config_q.get(timeout=0.2)
+                while True:
+                    try:
+                        cfg_dict = self._config_q.get_nowait()
+                    except queue.Empty:
+                        break
             except queue.Empty:
                 cfg_dict = None
             if cfg_dict is not None:
@@ -512,7 +569,7 @@ class VisionNode:
     def _detector_module_info(self, now: float | None = None) -> dict:
         """modules.detector: device, model, ms/frame kumulatif (kompatibel) + jendela sejak heartbeat lalu."""
         now = time.monotonic() if now is None else now
-        model = getattr(self, "_detector_settings", {}).get("model") or self.cfg.detector_model
+        model = (self._detector_settings or {}).get("model") or self.cfg.detector_model
         total, n = PersonDetector.detect_ms_total, PersonDetector.detect_n
         ms = round(total / n, 1) if self._default_detector and n else None
         prev, self._det_prev = self._det_prev, (total, n, now)

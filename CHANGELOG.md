@@ -3,6 +3,52 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Node apply per kamera — perbaikan review: worker mati dihidupkan lagi dan start gagal dibersihkan (2026-10-07)
+
+- **Konteks:** review sesi perencanaan atas `c3c2426`. (1) Rekonsiliasi hanya membandingkan config. Sebelumnya setiap push ulang (termasuk pengiriman ulang retained saat MQTT tersambung kembali dan `republish_all` saat API start) merestart semua worker sehingga worker yang mati ikut pulih; kini config identik tidak menyentuh apa pun, jadi worker yang mati (mis. `detector_factory` gagal memuat engine) tetap mati sampai kamera itu berubah, dan `run()` hanya keluar bila **semua** worker mati. (2) Bila `_start_camera` melempar setelah worker detect berjalan, kamera itu tidak dicatat di `_applied` tetapi worker detect dan recorder/ClipRing-nya tetap berjalan sampai push berikutnya.
+- **Perubahan:** `vision/vision/node.py`: kamera yang punya worker tidak `is_alive()` masuk `changed` walau config sama; saat `_start_camera` gagal, `_stop_workers({i})` membuang worker dan menutup recorder yang sempat dibuat. Dua tes baru di `test_config_apply_per_camera.py`. Dokumen: `ARCHITECTURE.md` §3 dan baris ROADMAP NAC.
+- **Bukti:** RED `test_camera_with_a_dead_worker_is_restarted_even_when_config_is_unchanged`: worker mati tetap ada di `_workers`; RED `test_failed_start_leaves_no_half_started_camera_or_open_recorder`: dua worker setengah jalan tertinggal. Mutasi sementara (hapus tiap perbaikan) membuat tiap tes merah, lalu dikembalikan. GREEN terarah `26 passed`; suite berurutan: vision `273 passed, 3 deselected, 2 warnings`, backend `896 passed, 1 deselected, 551 warnings`, docker `76 passed`.
+- **Dampak:** perilaku pemulihan setara dengan sebelumnya untuk worker mati, tetapi hanya untuk kamera yang bermasalah. Hasil sampingan positif: pesan retained yang dikirim ulang saat MQTT tersambung kembali tidak lagi merestart kamera yang sehat. BELUM diuji di server nyata.
+- **Rollback:** revert commit ini.
+
+### Node apply per kamera T4 — docs: alur config apply dan runbook (2026-10-07)
+
+- **Konteks:** dokumentasi kebijakan apply per kamera dan verifikasi lokal; BELUM diuji di server nyata.
+- **Perubahan:** `ARCHITECTURE.md` §3 menjelaskan diff CameraCfg, lifecycle bersama, restart penuh pertama/global/fallback, FaceSettings, retry push dan log; `WORKFLOW.md` dan `docs/RUNBOOK.md` membedakan restart worker dari restart service manual. `ROADMAP.md` tetap `[~]`, kode selesai tetapi belum di-deploy/diuji server.
+- **Bukti:** suite berurutan sebelum commit dokumen:
+  ```text
+  vision: 271 passed, 3 deselected, 2 warnings in 14.19s
+  backend: 896 passed, 1 deselected, 551 warnings in 164.50s (0:02:44)
+  docker: 76 passed in 9.01s
+  ```
+  Vision naik tepat 24 tes baru; backend dan Docker sama dengan baseline. Diff backend/frontend/docker, face_worker/recorder/config dan tiga berkas tes lama kosong; `git diff --check` exit 0. Scope diff hanya kode node, tes baru, dokumen task dan dua catatan spec/plan yang sudah ada.
+- **Dampak:** perkiraan reconnect 20–30 detik berasal dari plan, bukan pengukuran sesi ini; durasi dan isolasi kamera tetap perlu diuji di server. Smoke test di commit terakhir dilakukan setelah commit ini dan dilaporkan terpisah.
+- **Rollback:** revert commit perubahan node dan dokumen terkait, lalu rebuild `vision`; tanpa migrasi atau perubahan backend.
+
+### Node apply per kamera T3 — feat(vision): gabungkan antrean config (2026-10-07)
+
+- **Konteks:** snapshot config penuh yang menumpuk tidak perlu diterapkan satu per satu; BELUM diuji di server nyata.
+- **Perubahan:** `run()` menguras antrean dengan `get_nowait()` sesudah `get(timeout=0.2)`, lalu menerapkan hanya snapshot terakhir. Tes memakai thread dengan Event untuk menunggu snapshot terakhir tanpa jeda arbitrer.
+- **Bukti:** RED `1 failed, 1 warning in 0.39s`: spy menerima tiga config (FPS 5, 10, 15), bukan hanya FPS 15. GREEN terarah dan penjaga pesan tunggal lama `25 passed, 1 warning in 1.62s`; suite vision `271 passed, 3 deselected, 2 warnings in 14.18s`.
+- **Dampak:** satu apply per kumpulan snapshot yang sudah tersedia; kontrak MQTT dan pesan tunggal tidak berubah. Worker thread tes di-join dalam finally.
+- **Rollback:** revert commit ini dan rebuild `vision`; tanpa migrasi.
+
+### Node apply per kamera T2 — feat(vision): diff config per kamera (2026-10-07)
+
+- **Konteks:** satu perubahan kamera tidak boleh menghentikan kamera lain; BELUM diuji di server nyata.
+- **Perubahan:** `apply_config` membandingkan `CameraCfg`, menyimpan tanda tangan global, memulai ulang hanya kamera berubah/ditambah, menghentikan kamera dihapus, merestart kamera ber-worker face saat `FaceSettings` berubah, menghapus kamera gagal dari `_applied`, dan fallback penuh pada galat diff. Log diff berisi daftar ID terurut.
+- **Bukti:** RED `14 failed, 9 passed in 0.28s`: worker kamera lain ikut diganti, recorder lain ditutup, start failure lolos keluar, confidence kamera dihapus tertinggal, log diff belum ada. GREEN terarah `23 passed in 0.18s`; suite vision `270 passed, 3 deselected, 2 warnings in 13.95s`. Tes config pertama dan empat variasi global detector sudah hijau sebelum implementasi karena restart penuh merupakan perilaku lama; belum dimutasi, dicatat eksplisit.
+- **Dampak:** worker dan recorder kamera tidak berubah tetap identik dan hidup. Enam perubahan kamera, add/remove, FaceSettings, gagal lalu config kembali, fallback, kamera tanpa zona dan confidence diuji dengan fake. Blok detector/face-device lama tidak diubah; tes GPU baru tidak ditambahkan.
+- **Rollback:** revert commit ini dan rebuild `vision`; tanpa migrasi atau perubahan backend.
+
+### Node apply per kamera T1 — refactor(vision): lifecycle worker per kamera (2026-10-07)
+
+- **Konteks:** pemisahan lifecycle sebelum diff config; BELUM diuji di server nyata.
+- **Perubahan:** `vision/vision/node.py`: `_start_camera`, `_stop_workers(camera_ids)` berfilter, daftar worker ditukar sebelum join, recorder bersama ditutup sekali, `_applied` mencatat kamera tanpa zona. Tes baru memakai sumber idle dan recorder palsu.
+- **Bukti:** baseline ulang `247 passed, 3 deselected, 2 warnings in 13.98s`; RED `3 failed, 1 passed in 0.32s` karena filter belum diterima dan `_applied` belum ada; GREEN terarah `4 passed in 0.20s`; suite vision `251 passed, 3 deselected, 2 warnings in 13.96s`. Tes tanpa filter sudah lulus sebelum implementasi karena menjaga perilaku lama.
+- **Dampak:** belum mengubah kebijakan restart config. Inisialisasi `_detector_settings = None` membutuhkan pembaca info detector memakai `or {}`; algoritma heartbeat dan `_camera_stats` tidak berubah. Dua warning identik baseline.
+- **Rollback:** revert commit ini dan rebuild `vision`; tanpa migrasi.
+
 ### Ops kecil C — docs: profil parameter wajah untuk Kantor dan Industri (2026-10-07)
 
 - **Konteks:** uji lapangan face gate refine menunjukkan gerbang node (lebar 80 px, skor 0,6) meloloskan frame yang pasti ditolak API karena kualitas gabungan `det_score × min(1, lebar/112) × (1 − yaw)` < `face_min_quality` (0,5): event `low_quality` pada wajah 82–85 px. Keputusan user: gerbang tidak diubah di kode (event `low_quality` tetap terlihat di Inbox); yang diubah dokumennya, dengan parameter praktik terbaik hanya untuk lingkungan Kantor dan Industri.
