@@ -231,3 +231,34 @@ def test_attendance_already_in_sent_and_not_rate_limited(db, queued):
         alerts.append(alerting.handle(db, ev, now=NOW + timedelta(seconds=seconds)))
     assert all(a is not None and a.status == "queued" and a.type == "attendance" for a in alerts)
     assert queued == [a.id for a in alerts]
+
+
+def test_unknown_face_suppressed_when_telegram_unknown_off(db, queued):
+    cam, zone = _zone(db, [{**GATE_ON[0], "telegram_unknown": False}], type="attendance", direction="entry")
+    ev = _event(db, cam, zone, type="attendance", payload={"match_reason": "no_match"})
+    assert alerting.should_alert(db, ev, now=NOW) == (False, "attendance_skipped")
+    assert alerting.handle(db, ev, now=NOW) is None
+    matched = _event(db, cam, zone, type="attendance", payload={"match_reason": "matched", "employee_id": 1})
+    assert alerting.should_alert(db, matched, now=NOW) == (True, "")
+
+
+@pytest.mark.parametrize("flag", [None, True])
+def test_unknown_face_sent_when_flag_missing_or_true(db, queued, flag):
+    behavior = dict(GATE_ON[0])
+    if flag is not None:
+        behavior["telegram_unknown"] = flag
+    cam, zone = _zone(db, [behavior], type="attendance", direction="entry")
+    ev = _event(db, cam, zone, type="attendance", payload={"match_reason": "no_match"})
+    assert alerting.should_alert(db, ev, now=NOW) == (True, "")
+
+
+@pytest.mark.parametrize("behaviors", [None, [], [{"kind": "attendance"}],
+                                      [{"kind": "intrusion"}], [None, "old", {"kind": "attendance"}]])
+def test_behavior_flag_defaults(behaviors):
+    zone = Zone(behaviors=behaviors)
+    assert zone.behavior_flag("attendance", "telegram_unknown") is True
+    assert zone.behavior_flag("attendance", "record") is True
+    assert zone.behavior_flag("attendance", "record", False) is False
+    off = Zone(behaviors=[{"kind": "attendance", "telegram_unknown": False, "record": False}])
+    assert off.behavior_flag("attendance", "telegram_unknown") is False
+    assert off.behavior_flag("attendance", "record") is False

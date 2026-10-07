@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T3 — feat(alerting): opsi zona kirim wajah tidak dikenal ke Telegram (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Zone.behavior_flag aman untuk data lama/non-dict; validasi boolean telegram_unknown; suppress no_match setelah saklar induk.
+- **Bukti:** RED `7 failed, 57 passed in 17.71s`; GREEN `82 passed, 76 warnings in 18.73s`.
+- **Dampak:** Unknown tetap Inbox; matched tidak terpengaruh; key hilang default true.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tes flag hilang/true lulus sejak awal sebagai penjaga kompatibilitas; tujuh RED fitur baru disaksikan. Fixture memblokir TCP eksternal.
+
+
 ### Face gate refine T2 — feat(telegram): entry berulang dikirim sebagai evidence "sudah check in" (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.

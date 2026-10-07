@@ -36,3 +36,10 @@ class Zone(Base):
     @property
     def camera_name(self) -> str | None:
         return self.camera.name if self.camera else None
+
+    def behavior_flag(self, kind: str, key: str, default: bool = True) -> bool:
+        """Read a behavior flag, retaining defaults for legacy or incomplete zone data."""
+        for behavior in self.behaviors or []:
+            if isinstance(behavior, dict) and behavior.get("kind") == kind:
+                return bool(behavior[key]) if key in behavior else default
+        return default

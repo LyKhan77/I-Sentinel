@@ -388,3 +388,20 @@ def test_zone_list_survives_oversized_stored_prompt(client, db):
     db.commit()
     r = client.get("/api/v1/zones", headers=h)
     assert r.status_code == 200 and len(r.json()[0]["ai_prompt"]) == 601
+
+
+def test_behavior_telegram_unknown_flag_roundtrip_and_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    bad = client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam["id"], "type": "attendance", "direction": "entry",
+        "behaviors": [{"kind": "attendance", "telegram_unknown": "no"}],
+    }, headers=h)
+    assert bad.status_code == 422
+    for flag in (True, False):
+        behaviors = [{"kind": "attendance", "trigger_seconds": 0, "telegram_unknown": flag}]
+        r = client.post("/api/v1/zones", json={
+            **VALID, "camera_id": cam["id"], "type": "attendance", "direction": "entry",
+            "behaviors": behaviors,
+        }, headers=h)
+        assert r.status_code == 200 and r.json()["behaviors"] == behaviors
