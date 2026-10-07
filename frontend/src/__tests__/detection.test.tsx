@@ -28,7 +28,7 @@ test('detection tab saves per-camera fps and global motion settings', async () =
   await waitFor(() => {
     const patch = calls.find((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH')
     expect(JSON.parse(String(patch!.init!.body))).toEqual({ ai_fps: 8 })
-  })
+  }, { timeout: 3000 })
   await userEvent.click(screen.getByText('Advanced'))
   await userEvent.clear(screen.getByLabelText('Motion threshold'))
   await userEvent.type(screen.getByLabelText('Motion threshold'), '30')
@@ -127,4 +127,46 @@ test('tiap kamera punya tautan Atur zona, tanpa tombol Reset override', async ()
   const link = await screen.findByRole('link', { name: 'Atur zona →' })
   expect(link).toHaveAttribute('href', '/configuration?tab=zones&camera=1')
   expect(screen.queryByRole('button', { name: 'Reset override' })).not.toBeInTheDocument()
+})
+
+// --- simpan kolom per-kamera ditunda: satu PATCH untuk ketikan beruntun (tiap PATCH me-restart worker node) ---
+
+type FetchCall = { url: string; init?: RequestInit }
+
+function stubDetectionFetch() {
+  const calls: FetchCall[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init })
+    const body = url.includes('/detector-settings') ? settings : url.includes('/zones') ? [zone] : url.includes('/cameras') ? [camera] : ADMIN
+    return { ok: true, status: 200, json: async () => body }
+  }))
+  return calls
+}
+
+const cameraPatches = (calls: FetchCall[]) =>
+  calls.filter((c) => c.url.endsWith('/cameras/1') && c.init?.method === 'PATCH').map((c) => JSON.parse(String(c.init!.body)))
+
+const detectionPage = () => (
+  <I18nProvider><MemoryRouter initialEntries={['/configuration?tab=detection']}><Routes><Route element={<Outlet context={ADMIN} />}><Route path="/configuration" element={<ConfigurationPage />} /></Route></Routes></MemoryRouter></I18nProvider>
+)
+
+test('ketikan beruntun pada AI FPS hanya menyimpan nilai akhir dalam satu PATCH', async () => {
+  const calls = stubDetectionFetch()
+  render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.type(document.querySelector('#fps-1') as HTMLInputElement, '10')
+  expect(cameraPatches(calls)).toEqual([]) // belum ada PATCH sebelum jeda
+  await waitFor(() => expect(cameraPatches(calls)).toEqual([{ ai_fps: 10 }]), { timeout: 3000 })
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  expect(cameraPatches(calls)).toEqual([{ ai_fps: 10 }]) // tidak ada PATCH nilai antara
+})
+
+test('perubahan yang masih tertunda tetap tersimpan saat halaman ditinggalkan', async () => {
+  const calls = stubDetectionFetch()
+  const { unmount } = render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.type(document.querySelector('#fps-1') as HTMLInputElement, '9')
+  expect(cameraPatches(calls)).toEqual([])
+  unmount()
+  await waitFor(() => expect(cameraPatches(calls)).toEqual([{ ai_fps: 9 }]))
 })

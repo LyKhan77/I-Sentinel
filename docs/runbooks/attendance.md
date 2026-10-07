@@ -93,6 +93,63 @@ Tautan **Lihat event** membuka evidence lengkap.
 - Tempatkan zona **2–4 m sebelum pintu**, dengan waktu wajah di zona ≥1 detik.
 - Bila skor cocok kurang, lakukan enrollment dari kamera gate sendiri dengan foto jelas.
 
+### Profil parameter: Kantor dan Industri
+
+Titik awal berbasis praktik umum face recognition untuk akses/absensi, **bukan standar resmi**. Dasarnya:
+default kode, angka lapangan `gspe-ai3` (2026-10-07: event sukses berlebar 111–199 px, blur ≥125; kamera
+acuan 364 blur 1251–2733), dan rumus kualitas di bawah. Cakupan hanya **Kantor** (dalam ruangan, cahaya
+terkendali, tanpa APD) dan **Industri** (pabrik/gudang/bengkel: cahaya tidak merata, APD, getaran, langkah
+lebih cepat). Luar ruangan, malam hari, dan lalu lintas padat tidak tercakup. Setiap lokasi tetap wajib
+lolos protokol uji penerimaan (di bawah) sebelum angka dianggap final.
+
+**Rumus yang mengikat gerbang node dan API.** API menolak event bila
+`kualitas = det_score × min(1, lebar/112) × (1 − yaw)` kurang dari `face_min_quality` (0,5). Frame yang lolos
+gerbang node tetapi kualitasnya di bawah 0,5 menjadi event `low_quality` (tampil sebagai "Tidak dikenal",
+tanpa absensi). Lebar minimum agar frame lolos kedua gerbang: `≈ 56 / (det_score × (1 − yaw))`.
+
+| `det_score` | yaw 0,05 | yaw 0,20 |
+|---|---|---|
+| 0,6 | 98 px | 117 px |
+| 0,7 | 84 px | 100 px |
+| 0,8 | 74 px | 88 px |
+
+Karena itu default `face_min_width_px` 80 dengan `face_min_det_score` 0,6 meloloskan frame yang pasti
+ditolak API (contoh nyata: lebar 82 px, skor 0,64 → kualitas 0,45).
+
+**Parameter yang bisa diubah di UI** (Konfigurasi → Deteksi & Model → Advanced → "Wajah attendance", lalu
+**Simpan setelan global**; berlaku untuk **semua kamera**, jadi bila satu situs bercampur Kantor dan
+Industri, pakai kolom Industri). `ai_fps` per kamera ada di tabel kamera pada halaman yang sama.
+
+| Parameter | Default | Kantor | Industri | Alasan |
+|---|---|---|---|---|
+| `face_min_width_px` | 80 | 100 | 110 | Dari rumus: Kantor skor 0,7 dan yaw ≤0,20 → 100 px; Industri skor 0,65 dan yaw ≤0,20 → 108 px, dibulatkan 110 |
+| `face_min_det_score` | 0,6 | 0,7 | 0,65 | Frame ragu hampir selalu `low_quality`; Industri lebih longgar karena bayangan helm menurunkan skor |
+| `face_max_yaw` | 0,35 | 0,35 | 0,35 | ±30°; melonggarkan menambah risiko salah-orang, benahi sudut kamera |
+| `face_blur_min` | 120 | 120 | 120 | Kamera sesuai checklist menghasilkan jauh di atas 120; jangan turunkan sebelum geometri dan shutter beres |
+| `face_min_frames` | 3 | 3 | 3 | Event tetap terbit saat track hilang dengan ≥1 frame bagus; menurunkannya hanya memotong 1–2 frame |
+| `ai_fps` (per kamera) | 5 | 5 | 8–10 | Industri: langkah cepat dan getaran perlu lebih banyak kesempatan frame tajam; beban GPU naik |
+
+**Tetap pada default di Docker** (env-only: `FACE_MATCH_THRESHOLD`, `FACE_MIN_QUALITY`,
+`ATTENDANCE_COOLDOWN_MIN` tidak diteruskan oleh `docker/compose.yml`, jadi tidak bisa diubah dari UI atau `.env`
+tanpa mengubah `docker/compose.yml`): `face_match_threshold` 0,40, `face_min_quality` 0,5, cooldown 5 menit. Naikkan
+`face_match_threshold` ke 0,45 hanya bila terbukti ada salah-orang di lokasi Industri (jumlah karyawan besar,
+APD).
+
+**Kamera dan lingkungan:**
+
+| | Kantor | Industri |
+|---|---|---|
+| Cahaya di wajah | ≥200 lux, tanpa cahaya dari belakang | ≥300 lux; tambah lampu wajah bila perlu; hindari matahari langsung dan bukaan terang di belakang orang |
+| Shutter | ≥1/250 | ≥1/500 |
+| WDR/BLC | bila pintu kaca | wajib bila ada bukaan terang |
+| Tinggi dan sudut | setinggi mata hingga +20 cm, turun ≤15° | setinggi mata (bukan dari atas: brim helm menutupi wajah), turun ≤15° |
+| Zona | 2–4 m sebelum pintu, wajah di zona ≥1 detik | sama; pandu jalur (garis lantai) agar orang menghadap kamera |
+| APD | tidak berlaku | helm dan kacamata bening boleh selama mata terlihat; masker/respirator, kacamata gelap, dan face shield tidak didukung |
+| Enrollment | 3 foto frontal; tambahan dari kamera gate bila skor kurang | 3 foto standar + foto dari kamera gate dengan APD yang dipakai sehari-hari (dengan dan tanpa helm bila bergantian) |
+
+Ukuran target di lapangan: lebar wajah ≥110 px di titik orang melewati zona (kamera 1920×1080); bila kurang,
+dekatkan kamera/zona atau pakai lensa lebih sempit sebelum menyentuh ambang.
+
 ### Membaca label gerbang di debugger
 
 Live View → klik tile kamera attendance → modal debugger. Kotak biru (`face`)
@@ -112,7 +169,9 @@ worker sedang mengumpulkan frame bagus (default 3) sebelum menerbitkan satu even
 Gunakan `face_stats` (width_px, det_score, yaw, blur, frames), label debugger, dan
 corong heartbeat untuk menentukan penyebab sebelum menyetel gerbang. Perubahan
 angka hanya setelah uji penerimaan server; siklus kode ini tidak mengubah default
-`FaceSettings` atau ambang cosine.
+`FaceSettings` atau ambang cosine. Ubah `face_min_width_px` dan `face_min_det_score` **bersamaan** dengan memperhatikan
+rumus kualitas di atas: menurunkan lebar saja membuat frame kecil menjadi event `low_quality`.
+`face_min_quality` bukan setelan UI (lihat "Tetap pada default di Docker").
 
 ### Membaca corong di monitoring
 

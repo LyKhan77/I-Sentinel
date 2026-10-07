@@ -3,6 +3,30 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Ops kecil C — docs: profil parameter wajah untuk Kantor dan Industri (2026-10-07)
+
+- **Konteks:** uji lapangan face gate refine menunjukkan gerbang node (lebar 80 px, skor 0,6) meloloskan frame yang pasti ditolak API karena kualitas gabungan `det_score × min(1, lebar/112) × (1 − yaw)` < `face_min_quality` (0,5): event `low_quality` pada wajah 82–85 px. Keputusan user: gerbang tidak diubah di kode (event `low_quality` tetap terlihat di Inbox); yang diubah dokumennya, dengan parameter praktik terbaik hanya untuk lingkungan Kantor dan Industri.
+- **Perubahan:** `docs/runbooks/attendance.md`: bagian "Profil parameter: Kantor dan Industri" (rumus lebar minimum `≈ 56 / (det_score × (1 − yaw))` dan tabel, parameter UI per profil, kamera/cahaya/APD/enrollment) dan catatan kalibrasi (ubah lebar dan skor bersamaan). **Koreksi:** `face_match_threshold`, `face_min_quality`, dan `attendance_cooldown_min` hanya env (`Settings`) dan **tidak diteruskan** `docker/compose.yml`, jadi di Docker tetap default (0,40 / 0,5 / 5 menit) dan bukan setelan UI; saran lisan sebelumnya untuk menurunkan `face_min_quality` lewat UI keliru. Tidak ada perubahan kode, default, atau setelan server.
+- **Bukti:** dokumen saja; angka tabel rumus dihitung ulang (`56/(0,6×0,95)=98`, `56/(0,7×0,8)=100`, `56/(0,65×0,8)=108`); contoh lapangan lebar 82 px, skor 0,64, yaw 0,03 → kualitas 0,45.
+- **Dampak:** panduan setel awal per lingkungan; tetap wajib protokol uji penerimaan 10×5 per lokasi. Mengubah `FACE_MIN_QUALITY`/`FACE_MATCH_THRESHOLD` di Docker membutuhkan perubahan `docker/compose.yml` (di luar siklus ini).
+- **Rollback:** revert commit ini.
+
+### Ops kecil B — fix(web): index.html selalu divalidasi ulang oleh browser (2026-10-07)
+
+- **Konteks:** setelah deploy face gate refine, toggle baru tidak tampil di browser user sampai hard refresh. `curl -sI localhost:7700/` hanya menampilkan `Last-Modified` dan `ETag`, tanpa `Cache-Control`, sehingga browser boleh memakai `index.html` lama yang menunjuk bundle lama (`assets/index-<hash>.js`); bundle baru sudah ada di image `web`.
+- **Perubahan:** `docker/web/nginx.conf`: `location = /index.html { add_header Cache-Control "no-cache"; }` (juga berlaku untuk `/` dan route SPA lewat `index`/`try_files`). Bundle ber-hash tidak diubah. Guard statis baru `test_index_html_is_revalidated_so_deploys_reach_browsers`.
+- **Bukti:** RED `assert (None)` (blok tidak ada); GREEN `pytest docker/tests` semua lulus. Verifikasi header di server dicatat setelah deploy.
+- **Dampak:** deploy berikutnya langsung terlihat tanpa hard refresh; browser tetap mengirim request ringan (304 via ETag).
+- **Rollback:** revert commit ini dan rebuild image `web`.
+
+### Ops kecil A — fix(config): simpan AI FPS dan confidence setelah jeda ketik (2026-10-07)
+
+- **Konteks:** pada uji lapangan face gate refine, tiap ketikan atau klik spinner kolom AI FPS (Deteksi & Model) langsung mengirim `PATCH /cameras/{id}`. Tiap PATCH mendorong config ke node dan node memulai ulang **semua** worker: log `gspe-ai3` mencatat 9 kali "started 5 worker(s)" dalam 20 menit, dan node sempat melaporkan `target_fps` 9.5 dan 1.0 (nilai antara).
+- **Perubahan:** `DetectionPage.tsx`: tampilan tetap berubah seketika, tetapi PATCH dikirim 600 ms setelah perubahan terakhir per (kamera, kolom); perubahan yang masih menunggu dikirim saat halaman ditinggalkan. Berlaku untuk AI FPS dan confidence. Tes lama `detection tab saves per-camera fps…` hanya diubah waktu tunggunya (`timeout: 3000`).
+- **Bukti:** RED `ketikan beruntun…`: PATCH `[{ai_fps: 1}, {ai_fps: 10}]` terkirim langsung, `perubahan yang masih tertunda…`: PATCH terkirim sebelum unmount; GREEN `detection.test.tsx` 7 passed; frontend `36 files / 483 passed`; build exit 0; lint 24 warning, pasangan identik baseline.
+- **Dampak:** satu PATCH (dan satu restart worker) per perubahan, bukan satu per ketikan. Restart semua worker pada tiap config push tetap ada; itu topik terpisah (node menerapkan config per kamera yang berubah).
+- **Rollback:** revert commit ini.
+
 ### Face gate refine — deploy dan uji lapangan `gspe-ai3` (2026-10-07)
 
 - **Konteks:** deploy `45f7e5e` (branch fitur) ke `gspe-ai3` atas persetujuan user: `git checkout feat/face-gate-refine && ./docker/setup.sh`; `api`, `vision`, `web`, `retention` dibuat ulang. Server **masih di branch fitur** sampai merge. Verifikasi pasca-deploy: `/api/v1/health` ok, `alembic` `0022 (head)`, kode baru ada di container, 3 GPU terlihat di `vision`, log `api` tanpa error, `app_url` = `http://192.168.2.133:7700`.

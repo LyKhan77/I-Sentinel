@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, NumberInput, Toggle } from '@carbon/react'
 import { listCameras, updateCamera, type Camera, type CameraPayload } from '../../api/cameras'
@@ -7,6 +7,9 @@ import { listZones, type Zone } from '../../api/zones'
 import { useT } from '../../app/i18n'
 
 type DetectionPatch = Pick<CameraPayload, 'ai_fps' | 'confidence' | 'motion_enabled'>
+
+// Tiap PATCH kamera mendorong config ke node dan me-restart worker: simpan setelah jeda ketik.
+const SAVE_DELAY_MS = 600
 
 // Aturan sama dengan vision (node.py): zona visual (behaviors kosong) dan gate absensi tanpa arah
 // tidak membuat worker. behaviors null = zona pra-R5 → vision memakai fallback legacy.
@@ -25,6 +28,19 @@ export default function DetectionPage() {
   const [activeZones, setActiveZones] = useState<Map<number, number>>(new Map())
   const [settings, setSettings] = useState<DetectorSettings | null>(null)
   const [advanced, setAdvanced] = useState(false)
+  const pendingSaves = useRef(new Map<string, { timer: number; send: () => void }>())
+
+  useEffect(() => {
+    const pending = pendingSaves.current
+    // keluar halaman: perubahan yang masih menunggu tetap dikirim
+    return () => {
+      for (const { timer, send } of pending.values()) {
+        window.clearTimeout(timer)
+        send()
+      }
+      pending.clear()
+    }
+  }, [])
 
   useEffect(() => {
     // semua kamera tampil; Status AI = jumlah zona yang benar-benar dijalankan vision
@@ -46,9 +62,16 @@ export default function DetectionPage() {
     return n > 0 ? t('detection.statusActive').replace('{n}', String(n)) : t('detection.statusIdle')
   }
 
-  const patch = async (camera: Camera, values: DetectionPatch) => {
+  const patch = (camera: Camera, values: DetectionPatch) => {
     setCameras((rows) => rows.map((row) => (row.id === camera.id ? { ...row, ...values } : row)))
-    await updateCamera(camera.id, values)
+    const key = `${camera.id}:${Object.keys(values).join(',')}`
+    const queued = pendingSaves.current.get(key)
+    if (queued) window.clearTimeout(queued.timer)
+    const send = () => {
+      pendingSaves.current.delete(key)
+      void updateCamera(camera.id, values)
+    }
+    pendingSaves.current.set(key, { timer: window.setTimeout(send, SAVE_DELAY_MS), send })
   }
   const save = async () =>
     setSettings(await putDetectorSettings({
