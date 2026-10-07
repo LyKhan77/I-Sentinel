@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Ops kecil C — docs: profil parameter wajah untuk Kantor dan Industri (2026-10-07)
+
+- **Konteks:** uji lapangan face gate refine menunjukkan gerbang node (lebar 80 px, skor 0,6) meloloskan frame yang pasti ditolak API karena kualitas gabungan `det_score × min(1, lebar/112) × (1 − yaw)` < `face_min_quality` (0,5): event `low_quality` pada wajah 82–85 px. Keputusan user: gerbang tidak diubah di kode (event `low_quality` tetap terlihat di Inbox); yang diubah dokumennya, dengan parameter praktik terbaik hanya untuk lingkungan Kantor dan Industri.
+- **Perubahan:** `docs/runbooks/attendance.md`: bagian "Profil parameter: Kantor dan Industri" (rumus lebar minimum `≈ 56 / (det_score × (1 − yaw))` dan tabel, parameter UI per profil, kamera/cahaya/APD/enrollment) dan catatan kalibrasi (ubah lebar dan skor bersamaan). **Koreksi:** `face_match_threshold`, `face_min_quality`, dan `attendance_cooldown_min` hanya env (`Settings`) dan **tidak diteruskan** `docker/compose.yml`, jadi di Docker tetap default (0,40 / 0,5 / 5 menit) dan bukan setelan UI; saran lisan sebelumnya untuk menurunkan `face_min_quality` lewat UI keliru. Tidak ada perubahan kode, default, atau setelan server.
+- **Bukti:** dokumen saja; angka tabel rumus dihitung ulang (`56/(0,6×0,95)=98`, `56/(0,7×0,8)=100`, `56/(0,65×0,8)=108`); contoh lapangan lebar 82 px, skor 0,64, yaw 0,03 → kualitas 0,45.
+- **Dampak:** panduan setel awal per lingkungan; tetap wajib protokol uji penerimaan 10×5 per lokasi. Mengubah `FACE_MIN_QUALITY`/`FACE_MATCH_THRESHOLD` di Docker membutuhkan perubahan `docker/compose.yml` (di luar siklus ini).
+- **Rollback:** revert commit ini.
+
 ### Ops kecil B — fix(web): index.html selalu divalidasi ulang oleh browser (2026-10-07)
 
 - **Konteks:** setelah deploy face gate refine, toggle baru tidak tampil di browser user sampai hard refresh. `curl -sI localhost:7700/` hanya menampilkan `Last-Modified` dan `ETag`, tanpa `Cache-Control`, sehingga browser boleh memakai `index.html` lama yang menunjuk bundle lama (`assets/index-<hash>.js`); bundle baru sudah ada di image `web`.
