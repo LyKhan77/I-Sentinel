@@ -152,18 +152,23 @@ def _record_on(db, zone_id: int | None) -> bool:
     return zone.behavior_flag("attendance", "record") if zone is not None else True
 
 
-def _detected_recently(db, event, employee_id: int) -> bool:
-    """Deduplicate detection-only evidence per employee and zone in both time directions."""
+def _seen_recently(db, event, employee_id: int, *, same_zone: bool, reason: str | None = None) -> bool:
+    """Another attendance event of this employee within the cooldown window, in both time directions.
+
+    `same_zone` limits the search to this event's zone; `reason` limits it to one `match_reason`.
+    """
     ts = _local(event.ts_event)
     window = timedelta(minutes=settings.attendance_cooldown_min)
     rows = db.query(Event).filter(
-        Event.id != event.id, Event.type == "attendance", Event.zone_id == event.zone_id,
+        Event.id != event.id, Event.type == "attendance",
         Event.ts_event >= ts - timedelta(days=1), Event.ts_event <= ts + timedelta(days=1))
+    if same_zone:
+        rows = rows.filter(Event.zone_id == event.zone_id)
     # ponytail: a broad DB prefilter tolerates SQLite naive and Postgres aware times;
-    # compare the exact window and small per-zone payload set in Python.
+    # compare the exact window and the small payload set in Python.
     return any(
         (row.payload or {}).get("employee_id") == employee_id
-        and (row.payload or {}).get("match_reason") == "detected"
+        and (reason is None or (row.payload or {}).get("match_reason") == reason)
         and abs(_local(row.ts_event) - ts) <= window
         for row in rows)
 
@@ -232,7 +237,8 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
                            emp.name, res.score or 0.0, payload.get("face_bbox"))
 
     if not _record_on(db, event.zone_id):
-        payload["match_reason"] = "cooldown" if _detected_recently(db, event, res.employee_id) else "detected"
+        seen = _seen_recently(db, event, res.employee_id, same_zone=True, reason="detected")
+        payload["match_reason"] = "cooldown" if seen else "detected"
         return _save(db, event, payload, None)
 
     if _in_cooldown(db, res.employee_id, direction, event.ts_event):
@@ -241,6 +247,9 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
 
     first_entry = _first_entry_today(db, res.employee_id, event.ts_event) if direction == "entry" else None
     if first_entry is not None:
+        if _seen_recently(db, event, res.employee_id, same_zone=False):
+            payload["match_reason"] = "cooldown"  # masih terlihat terus: bukan masuk ulang, tanpa evidence
+            return _save(db, event, payload, None)
         payload["match_reason"] = "already_in"  # entry sekali per hari; exit boleh berulang
         payload["first_entry_ts"] = _local(first_entry).isoformat()
         exit_ts = _exit_between(db, res.employee_id, first_entry, event.ts_event)

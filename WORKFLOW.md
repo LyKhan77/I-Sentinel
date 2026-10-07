@@ -244,7 +244,9 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
 2. API mencocokkan ke galeri (cosine ≥ `face_match_threshold`, default 0,40). Dengan **Catat absensi**
    aktif (behavior `record=true`, default bila key hilang), cocok → `attendance_event` →
    `recompute_day` memperbarui `attendance_day`. Cooldown per karyawan+arah diperiksa dahulu;
-   entry kedua hari lokal yang sama di luar cooldown hanya evidence `already_in`, tanpa rekap baru.
+   entry kedua hari lokal yang sama hanya evidence `already_in`, tanpa rekap baru, dan hanya bila karyawan
+   itu tidak terlihat (event attendance mana pun) dalam jendela cooldown sebelumnya; selama masih terus
+   terlihat event berlabel `cooldown` tanpa alert.
    Tidak cocok → event berlabel `Unknown` (oranye) di Inbox, tidak masuk rekap.
 3. Status: tepat waktu/telat (entry + exit), **Di dalam** (`waiting`), **Tanpa exit** (`no_exit`),
    **Tanpa entry** (`no_entry`), **Tidak hadir** (`absent`). Batas hari = selesai shift +

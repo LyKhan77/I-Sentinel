@@ -437,7 +437,9 @@ export default function ZonesPage() {
                       }
                     />
                     {selected.behaviors.find((b) => b.kind === 'attendance')?.record === false && (
-                      <p data-testid="zone-record-off-hint">{t('zones.recordOffHint')}</p>
+                      <p data-testid="zone-record-off-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: 0 }}>
+                        {t('zones.recordOffHint')}
+                      </p>
                     )}
                     <Toggle
                       id="zone-telegram-attendance"

@@ -164,7 +164,9 @@ Backend memberi `employee_id`, `employee_name`, `face_score`, dan `match_reason`
 menghapus embedding dari payload tersimpan.
 
 - `matched`: pencatatan baru, caption CHECK IN/OUT.
-- `already_in`: entry kedua pada hari lokal yang sama, di luar cooldown; payload memuat
+- `already_in`: entry kedua pada hari lokal yang sama, di luar cooldown **dan** karyawan tidak terlihat
+  (event attendance mana pun, zona mana pun, ± `attendance_cooldown_min`) sebelumnya; bila masih terlihat
+  → `cooldown` tanpa alert (anti-spam untuk orang yang menetap di area kamera). Payload memuat
   `first_entry_ts` ISO lokal dan `exit_ts` hanya bila ada exit dengan
   `first_entry_ts < exit_ts <= ts_event`. Tidak membuat AttendanceEvent/rekap baru;
   caption SUDAH CHECK IN.

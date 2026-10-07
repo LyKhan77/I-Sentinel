@@ -3,6 +3,17 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine — perbaikan review: throttle evidence "SUDAH CHECK IN" (2026-10-07)
+
+- **Konteks:** review sesi perencanaan atas `8487b29`. Cooldown absensi hanya menghitung baris `AttendanceEvent`, sedangkan `already_in` tidak pernah membuatnya; setelah 5 menit pertama dari check in, **setiap** deteksi karyawan yang menetap di area kamera entry (resepsionis, satpam) akan mengirim satu pesan "SUDAH CHECK IN". Asumsi spec §8 ("cooldown yang ada sudah menyaring") keliru; spec/plan tidak diubah (catatan lama). Keputusan user: jendela 5 menit memakai `attendance_cooldown_min`, tanpa setting baru.
+- **Perubahan:**
+  - `attendance.py`: `_detected_recently` menjadi `_seen_recently(db, event, employee_id, *, same_zone, reason=None)`; cabang `already_in` kini memberi `match_reason="cooldown"` (tanpa alert) bila karyawan itu terlihat (event attendance mana pun, zona mana pun, ± cooldown). Evidence hanya terbit setelah karyawan tidak terlihat ≥ cooldown lalu muncul lagi. Jalur `detected` (zona OFF) tidak berubah perilaku.
+  - `ZonesPage.tsx`: paragraf `zone-record-off-hint` memakai gaya yang sama dengan `zone-attendance-hint`.
+  - Dokumen: WORKFLOW §12, ARCHITECTURE (kontrak `already_in`), runbook attendance, baris ROADMAP FGR.
+- **Bukti:** RED `test_already_in_evidence_only_after_employee_was_unseen_for_the_window`: `assert 'already_in' == 'cooldown'` pada event 07:19 (jalur spam terbukti); tes penjaga `test_already_in_not_suppressed_by_another_employee_being_seen` lulus sejak awal dan menjadi merah (`'cooldown' == 'already_in'`) saat filter `employee_id` dihapus sementara (dikembalikan). GREEN terarah `130 passed`; suite berurutan: backend `896 passed, 1 deselected, 551 warnings in 157.24s`; frontend `36 files / 481 passed`; build exit 0; lint 24 warning, pasangan identik baseline.
+- **Dampak:** pesan "SUDAH CHECK IN" tidak lagi berulang untuk orang yang terus terlihat; masih terbit saat masuk ulang setelah hilang ≥5 menit. Event tetap tercatat di Inbox (`cooldown`). BELUM diuji di server nyata; Postgres untuk `_seen_recently` belum diuji (SQLite saja).
+- **Rollback:** revert commit ini; tanpa migrasi.
+
 ### Face gate refine T9 — docs: face gate refine (alur Telegram, zona deteksi-saja, runbook, corong) (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.

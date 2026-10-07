@@ -80,7 +80,9 @@ oleh jalur ini. Saklar Telegram induk tetap menentukan pengiriman; Unknown OFF
 hanya menahan alert Unknown, bukan event Inbox.
 
 Telegram membedakan CHECK IN/OUT, SUDAH CHECK IN (jam check in pertama dan exit sejak
-itu bila terlihat), serta TERDETEKSI — MASUK/KELUAR. Cooldown tetap diam.
+itu bila terlihat), serta TERDETEKSI — MASUK/KELUAR. Cooldown tetap diam. SUDAH CHECK IN hanya muncul
+saat karyawan tidak terlihat ≥ cooldown (default 5 menit) lalu muncul lagi; orang yang menetap di area
+kamera tidak memicu pesan berulang.
 Tautan **Lihat event** membuka evidence lengkap.
 
 ### Checklist kamera gate

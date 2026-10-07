@@ -762,3 +762,37 @@ def test_record_off_dedup_ignores_other_reasons_and_handles_late_events(db, monk
     outside = _raw_event(db, "entry", _at(*MON, 7, 4), VEC, zone_id=z.id)
     attendance.handle_face_event(db, outside)
     assert outside.payload["match_reason"] == "detected"
+
+
+def test_already_in_evidence_only_after_employee_was_unseen_for_the_window(db, monkeypatch):
+    """Orang yang terus terlihat di kamera entry tidak memicu evidence berulang; muncul lagi setelah hilang memicu satu."""
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+
+    def reason_at(hh, mm):
+        ev = _raw_event(db, "entry", _at(*MON, hh, mm), VEC)
+        attendance.handle_face_event(db, ev)
+        return ev.payload["match_reason"]
+
+    assert reason_at(7, 16) == "already_in"  # 6 menit sejak terakhir terlihat
+    assert reason_at(7, 19) == "cooldown"    # 3 menit setelah evidence tadi
+    assert reason_at(7, 23) == "cooldown"    # 4 menit setelah event cooldown: masih terlihat terus
+    assert reason_at(7, 40) == "already_in"  # hilang 17 menit lalu muncul lagi
+
+
+def test_already_in_not_suppressed_by_another_employee_being_seen(db, monkeypatch):
+    _camera(db)
+    shift = _shift(db)
+    a, b = _emp(db, shift, code="E1"), _emp(db, shift, code="E2")
+    monkeypatch.setattr(settings, "attendance_cooldown_min", 5)
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(a.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(b.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 12), VEC))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(a.id))
+    again = _raw_event(db, "entry", _at(*MON, 7, 16), VEC)
+    attendance.handle_face_event(db, again)
+    assert again.payload["match_reason"] == "already_in"  # B di 07:12 bukan bukti A masih terlihat
