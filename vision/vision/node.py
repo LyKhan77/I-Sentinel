@@ -258,6 +258,8 @@ class VisionNode:
         # without static cameras wait for the MQTT config instead of exiting at once
         self._await_config = self.cfg.await_config
         self._face_settings = FaceSettings()
+        self._applied: dict[int, CameraCfg] = {}
+        self._detector_settings = None
         self._det_prev: tuple[float, int, float] | None = None  # (ms_total, n, monotonic) heartbeat lalu
         self.events: list[dict] = []  # test hook: all worker events
         from .face import FaceEmbedder
@@ -397,52 +399,61 @@ class VisionNode:
         self._stop_workers()
         self._await_config |= bool(cameras)
         for cam in cameras:
-            analyzers = self._make_analyzers(cam)
-            gates = attendance_zones(cam) if self.face is not None else []
-            run_yolo = bool(analyzers) or self.cfg.emit_person_detect
-            if not run_yolo and not gates:
-                continue  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
-            recorder = None
-            if self.cfg.api_key:  # production: upload blobs to backend
-                from .recorder import Recorder
-                ring = None
-                if run_yolo and self._wants_clip(analyzers):
-                    from . import clipring
-                    ring = clipring.ClipRing(cam.camera_id, main_stream_url(cam.source_url),
-                                             self.cfg.clip_ring_dir)
-                    ring.start()
-                recorder = Recorder(cam.camera_id, self.cfg, self.transport, clip_ring=ring)
-            if run_yolo:
-                w = CameraWorker(cam, self.detector_factory, self.transport,
-                                 threading.Event(), self.cfg.node_id,
-                                 analyzers=analyzers, recorder=recorder,
-                                 emit_person_detect=self.cfg.emit_person_detect,
-                                 motion=cam.motion)
-                w.source = self.source_factory(cam)
-                w.start()
-                self._workers.append(w)
-            if gates:
-                fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
-                                    self.cfg.node_id, self._face_settings,
-                                    recorder=recorder, motion=cam.motion)
-                fw.source = self.source_factory(
-                    cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
-                fw.start()
-                self._workers.append(fw)
+            self._start_camera(cam)
+        self._applied = {c.camera_id: c for c in cameras}
         log.info("started %d worker(s) for %d camera(s)", len(self._workers), len(cameras))
 
-    def _stop_workers(self) -> list[CameraWorker | FaceGateWorker]:
-        for w in self._workers:
+    def _start_camera(self, cam: CameraCfg) -> None:
+        """Start detect and face workers with one shared recorder for this camera."""
+        analyzers = self._make_analyzers(cam)
+        gates = attendance_zones(cam) if self.face is not None else []
+        run_yolo = bool(analyzers) or self.cfg.emit_person_detect
+        if not run_yolo and not gates:
+            return  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
+        recorder = None
+        if self.cfg.api_key:  # production: upload blobs to backend
+            from .recorder import Recorder
+            ring = None
+            if run_yolo and self._wants_clip(analyzers):
+                from . import clipring
+                ring = clipring.ClipRing(cam.camera_id, main_stream_url(cam.source_url),
+                                         self.cfg.clip_ring_dir)
+                ring.start()
+            recorder = Recorder(cam.camera_id, self.cfg, self.transport, clip_ring=ring)
+        if run_yolo:
+            w = CameraWorker(cam, self.detector_factory, self.transport,
+                             threading.Event(), self.cfg.node_id,
+                             analyzers=analyzers, recorder=recorder,
+                             emit_person_detect=self.cfg.emit_person_detect,
+                             motion=cam.motion)
+            w.source = self.source_factory(cam)
+            w.start()
+            self._workers.append(w)
+        if gates:
+            fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
+                                self.cfg.node_id, self._face_settings,
+                                recorder=recorder, motion=cam.motion)
+            fw.source = self.source_factory(
+                cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
+            fw.start()
+            self._workers.append(fw)
+
+    def _stop_workers(self, camera_ids: set[int] | None = None) -> list[CameraWorker | FaceGateWorker]:
+        """Detach selected cameras before joining workers and closing shared recorders."""
+        stopped = [w for w in self._workers
+                   if camera_ids is None or w.camera_id in camera_ids]
+        self._workers = [w for w in self._workers
+                         if camera_ids is not None and w.camera_id not in camera_ids]
+        for w in stopped:
             w.stop_event.set()
             w.stop()
         recorders = {}
-        for w in self._workers:
+        for w in stopped:
             w.join(timeout=5.0)
             if w.recorder is not None:
                 recorders[id(w.recorder)] = w.recorder
         for rec in recorders.values():
             rec.close()
-        stopped, self._workers = self._workers, []
         return stopped
 
     def run(self, join_timeout: float = 5.0):
@@ -512,7 +523,7 @@ class VisionNode:
     def _detector_module_info(self, now: float | None = None) -> dict:
         """modules.detector: device, model, ms/frame kumulatif (kompatibel) + jendela sejak heartbeat lalu."""
         now = time.monotonic() if now is None else now
-        model = getattr(self, "_detector_settings", {}).get("model") or self.cfg.detector_model
+        model = (self._detector_settings or {}).get("model") or self.cfg.detector_model
         total, n = PersonDetector.detect_ms_total, PersonDetector.detect_n
         ms = round(total / n, 1) if self._default_detector and n else None
         prev, self._det_prev = self._det_prev, (total, n, now)

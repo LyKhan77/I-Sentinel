@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Node apply per kamera T1 — refactor(vision): lifecycle worker per kamera (2026-10-07)
+
+- **Konteks:** pemisahan lifecycle sebelum diff config; BELUM diuji di server nyata.
+- **Perubahan:** `vision/vision/node.py`: `_start_camera`, `_stop_workers(camera_ids)` berfilter, daftar worker ditukar sebelum join, recorder bersama ditutup sekali, `_applied` mencatat kamera tanpa zona. Tes baru memakai sumber idle dan recorder palsu.
+- **Bukti:** baseline ulang `247 passed, 3 deselected, 2 warnings in 13.98s`; RED `3 failed, 1 passed in 0.32s` karena filter belum diterima dan `_applied` belum ada; GREEN terarah `4 passed in 0.20s`; suite vision `251 passed, 3 deselected, 2 warnings in 13.96s`. Tes tanpa filter sudah lulus sebelum implementasi karena menjaga perilaku lama.
+- **Dampak:** belum mengubah kebijakan restart config. Inisialisasi `_detector_settings = None` membutuhkan pembaca info detector memakai `or {}`; algoritma heartbeat dan `_camera_stats` tidak berubah. Dua warning identik baseline.
+- **Rollback:** revert commit ini dan rebuild `vision`; tanpa migrasi.
+
 ### Ops kecil C — docs: profil parameter wajah untuk Kantor dan Industri (2026-10-07)
 
 - **Konteks:** uji lapangan face gate refine menunjukkan gerbang node (lebar 80 px, skor 0,6) meloloskan frame yang pasti ditolak API karena kualitas gabungan `det_score × min(1, lebar/112) × (1 − yaw)` < `face_min_quality` (0,5): event `low_quality` pada wajah 82–85 px. Keputusan user: gerbang tidak diubah di kode (event `low_quality` tetap terlihat di Inbox); yang diubah dokumennya, dengan parameter praktik terbaik hanya untuk lingkungan Kantor dan Industri.
