@@ -370,6 +370,18 @@ test('detail event attendance entry kedua hari yang sama menampilkan keterangan'
   expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Budi · sudah absen masuk hari ini')
 })
 
+test('detail event attendance detected menampilkan nama tanpa keterangan absensi', async () => {
+  const att: EventOut[] = [{ id: 5, event_id: 'ev-5', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'detected', employee_id: 1, employee_name: 'Budi' },
+    clip_path: null, snapshot_path: null }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  expect(await screen.findByTestId('event-face-match')).toHaveTextContent(/^Budi$/)
+  expect(screen.getByTestId('event-face-match')).not.toHaveTextContent('cooldown')
+  expect(screen.getByTestId('event-face-match')).not.toHaveTextContent('sudah absen masuk')
+})
+
+
 test('event attendance tanpa tab Clip (attendance tidak merekam klip)', async () => {
   const att: EventOut[] = [{ id: 6, event_id: 'ev-6', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
     ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'matched', employee_name: 'Budi', crop_path: 'crops/x.jpg' },

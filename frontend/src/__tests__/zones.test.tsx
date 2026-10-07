@@ -479,3 +479,18 @@ test('toggle Unknown tidak tampil saat Telegram mati', async () => {
     behaviors: [{ kind: 'attendance', trigger_seconds: 0, telegram: false }] })])
   expect(document.getElementById('zone-telegram-unknown')).toBeNull()
 })
+
+
+test('Catat absensi default aktif; OFF menampilkan hint dan mengirim record:false', async () => {
+  const f = await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] })])
+  const toggle = document.getElementById('zone-record-attendance')!
+  expect(toggle).toHaveAttribute('aria-checked', 'true')
+  expect(screen.queryByTestId('zone-record-off-hint')).not.toBeInTheDocument()
+  fireEvent.click(toggle)
+  expect(screen.getByTestId('zone-record-off-hint')).toHaveTextContent('Hanya mendeteksi wajah')
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(f).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, record: false },
+  ]))
+})

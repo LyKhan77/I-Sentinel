@@ -15,6 +15,7 @@ export type Behavior = {
   clip?: boolean
   telegram?: boolean // kosong = ikut flag zona / default off
   telegram_unknown?: boolean // kosong = true
+  record?: boolean // kosong = true
 }
 
 export type Schedule = { days: number[]; start: string; end: string }

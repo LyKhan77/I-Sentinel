@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T6 — feat(zones): toggle Catat absensi pada zona attendance (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Toggle Catat absensi default ON; hint OFF lokal id/en; tes Inbox detected, tanpa mengubah EventsPage.
+- **Bukti:** RED `1 failed | 104 passed (105)`; GREEN ulang `36 files / 481 passed`; build exit 0; lint `24 warnings and 0 errors`, pasangan identik baseline.
+- **Dampak:** OFF menulis record:false hanya ketika toggle disentuh; nama detected tetap tampil tanpa label absensi.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Run suite pertama: 1 failed/480 passed pada tes lama save calls createZone with normalized polygon (zone-start-ring hilang). Ulang tanpa beban lulus, tes lama tidak diubah. Tes detected lulus sejak awal; dicatat sebagai characterization, bukan klaim RED; tidak memutasi EventsPage yang di luar scope.
+
+
 ### Face gate refine T5 — feat(attendance): opsi zona catat absensi (OFF = deteksi saja) (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
