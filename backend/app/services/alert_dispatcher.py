@@ -19,9 +19,7 @@ from datetime import datetime, timedelta, timezone
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models.alert import Alert
-from app.models.camera import Camera
-from app.models.zone import Zone
-from app.services import telegram
+from app.services import alert_ai, telegram
 from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
@@ -168,17 +166,23 @@ class AlertDispatcher:
             _broadcast_status(alert.event_id, alert.status)
             return
         event = alert.event
-        camera = db.get(Camera, alert.camera_id) if alert.camera_id else None
-        zone = db.get(Zone, alert.zone_id) if alert.zone_id else None
-        caption = telegram.format_caption(
-            event, camera.name if camera else f"cam {alert.camera_id}",
-            zone.name if zone else None, telegram.app_url(db))
+        ai = alert_ai.ai_text(db, alert.event_id)
+        caption = alert_ai.build_caption(db, alert, ai)
         photo = self._snapshot(db, event)
         db.commit()  # tutup transaksi baca sebelum I/O jaringan; token tidak tersimpan di objek alert
-        status, error = telegram.deliver(token, chat.chat_id, caption, photo)
+        result = telegram.deliver(token, chat.chat_id, caption, photo)
+        status, error = result
         alert.status, alert.error, alert.chat_id = status, error, chat.chat_id
+        alert.message_id = getattr(result, "message_id", None)
+        alert.message_photo = getattr(result, "photo", photo is not None)
+        alert.ai_synced = bool(ai) and status == "sent"
         db.commit()
         _broadcast_status(alert.event_id, alert.status)
+        if status == "sent":  # tutup race: caption bisa selesai di antara format dan commit status
+            try:
+                alert_ai.sync_ai_caption(db, alert.event_id)
+            except Exception:
+                logger.exception("ai caption sync failed for event %s", alert.event_id)
 
 
 dispatcher = AlertDispatcher()

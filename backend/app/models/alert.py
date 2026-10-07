@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, DateTime, ForeignKey
+from sqlalchemy import Boolean, String, Integer, DateTime, ForeignKey, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 
@@ -16,6 +16,9 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(String(16))  # queued | sent | failed | rate_limited | not_configured
     error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    message_photo: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    ai_synced: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     event: Mapped["Event"] = relationship(lazy="joined")

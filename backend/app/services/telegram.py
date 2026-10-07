@@ -151,8 +151,21 @@ def get_updates(token: str) -> list[dict]:
     return list(seen.values())
 
 
+class Delivery(tuple):
+    """Two-value delivery result, compatible with existing tuple callers."""
+
+    message_id: int | None
+    photo: bool
+
+    def __new__(cls, status: str, error: str | None, message_id: int | None = None,
+                photo: bool = False) -> "Delivery":
+        result = tuple.__new__(cls, (status, error))
+        result.message_id, result.photo = message_id, photo
+        return result
+
+
 def deliver(token: str, chat_id: str, caption: str, photo: bytes | None = None, *,
-            retries: int = 3, sleep=time.sleep) -> tuple[str, str | None]:
+            retries: int = 3, sleep=time.sleep) -> Delivery:
     """Kirim foto (sendPhoto multipart) atau teks (sendMessage); retry backoff 2^n di antaranya.
 
     Mengembalikan ("sent", None) atau ("failed", pesan Bebas-token). Tidak pernah raise.
@@ -161,14 +174,37 @@ def deliver(token: str, chat_id: str, caption: str, photo: bytes | None = None, 
     for attempt in range(retries):
         try:
             if photo:
-                _call(token, "sendPhoto", {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
-                      {"photo": ("snapshot.jpg", photo, "image/jpeg")})
+                result = _call(token, "sendPhoto", {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+                               {"photo": ("snapshot.jpg", photo, "image/jpeg")})
             else:
-                _call(token, "sendMessage", {"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
-            return "sent", None
+                result = _call(token, "sendMessage", {"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
+            message_id = result.get("message_id") if isinstance(result, dict) else None
+            return Delivery("sent", None, message_id, bool(photo))
         except TelegramError as exc:
             last = str(exc)
         if attempt < retries - 1:
+            sleep(2 ** attempt)
+    return Delivery("failed", last)
+
+
+def edit_caption(token: str, chat_id: str, message_id: int, caption: str, *,
+                 retries: int = 2, sleep=time.sleep) -> tuple[str, str | None]:
+    """Edit a photo caption; retries count additional attempts, never raise.
+
+    Telegram rejects identical captions with HTTP 400; that is already synchronized.
+    All returned errors pass through the same token redaction as delivery.
+    """
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            _call(token, "editMessageCaption", {"chat_id": chat_id, "message_id": message_id,
+                                               "caption": caption, "parse_mode": "HTML"})
+            return "edited", None
+        except TelegramError as exc:
+            last = str(exc)
+            if "message is not modified" in last.lower():
+                return "edited", None
+        if attempt < retries:
             sleep(2 ** attempt)
     return "failed", last
 
@@ -185,7 +221,13 @@ def send_text(db, text: str) -> bool:
     return status == "sent"
 
 
-def format_caption(event, camera_name: str, zone_name: str | None, app_url: str | None, tz=None) -> str:
+def _u16(text: str) -> int:
+    """Length in UTF-16 code units, which is how Telegram counts caption characters."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def format_caption(event, camera_name: str, zone_name: str | None, app_url: str | None, tz=None, *,
+                   ai_text: str | None = None) -> str:
     """Caption HTML Telegram: judul tebal (Inggris), satu data per baris (label Indonesia).
 
     Setiap nilai dibatasi `FIELD_MAX` sebelum di-escape sehingga total pasti < CAPTION_MAX;
@@ -222,4 +264,19 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
     lines = [title, ""] + [f"<b>{k}</b>: {val(v)}" for k, v in rows]
     if app_url:
         lines += ["", f"🎥 Lihat klip: {val(app_url)}/events?event={event.id}"]
+    base = "\n".join(lines)
+    raw = " ".join((ai_text or "").split())
+    # Telegram menghitung emoji astral (judul, tautan, nama) sebagai dua unit UTF-16; semua dihitung dalam unit itu.
+    budget = CAPTION_MAX - _u16(base) - 1 - 8  # newline + margin keselamatan
+    if raw and budget >= 40:
+        prefix = "🤖 <b>AI</b>: "
+        room = budget - _u16(prefix)
+        size = min(len(raw), room)
+        while size > 0:
+            escaped = html.escape(raw[:size]) + ("…" if size < len(raw) else "")
+            # never split an HTML entity: escape first, then shrink until the escaped text fits
+            if _u16(escaped) <= room:
+                lines.insert(len(lines) - 2 if app_url else len(lines), prefix + escaped)
+                break
+            size -= 1
     return "\n".join(lines)

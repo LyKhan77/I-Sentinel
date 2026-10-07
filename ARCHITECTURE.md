@@ -91,8 +91,8 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | Kamera | `cameras`, `stream_sources`, `credential_profiles`, `location_groups`, `probe`, `live` | `probe`, `stream_endpoint`, `go2rtc`, `secret_store` |
 | Node & deteksi | `nodes`, `detector_settings` | `config_push`, `node_health`, `host_stats` |
 | Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `limit` ≤ 200, `offset` 0–10000 (paginasi halaman berikutnya, di luar rentang → 422) — semuanya difilter di server; urutan `ts_event DESC, id DESC` (pemutus seri deterministik antar-halaman); `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka; `GET /api/v1/events/{id}` → `EventOut` per id, 404 `"event not found"` untuk deep link `/events?event=<id>`) |
-| Alert | `alerts`, `telegram` | `alerting`, `alert_dispatcher`, `telegram` |
-| AI advisory (opsional) | `ai`, `ai_settings` (admin) | `ai_worker`, `ask_ai`, `llm_client`, `llm_config`, `ai_media`, `ai_prompts`; tidak terlibat dalam keputusan alert |
+| Alert | `alerts`, `telegram` | `alerting`, `alert_dispatcher`, `alert_ai`, `telegram` |
+| AI advisory (opsional) | `ai`, `ai_settings` (admin) | `ai_worker`, `ask_ai`, `llm_client`, `llm_config`, `ai_media`, `ai_prompts`; tidak terlibat dalam keputusan alert; caption `ok` diedit ke alert Telegram oleh `alert_ai` |
 | Absensi | `employees`, `shifts`, `enrollment`, `attendance` | `face`, `attendance` |
 | Storage | `storage` | `retention`, `storage_settings`, `disk_alert` |
 | Monitoring | `monitoring` | `monitoring`, `monitoring_history` (`GET /api/v1/monitoring/history` dua mode: `range` relatif (`1h`/`6h`/`24h`/`7d`, default `6h`, bucket 60–1800 dtk) atau jendela eksplisit `from`/`to` ISO + `node_id` opsional — jendela bucket tetap 60 dtk, `range: "custom"`, maksimum 6 jam, diluar retensi 7 hari → seri kosong; `range` bersama `from`/`to`, hanya salah satu, `to <= from`, atau > 6 jam → 422), `health_rules`, `health_alerts` |
@@ -102,21 +102,21 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | Thread | Interval | Tugas |
 |---|---|---|
 | `events_consumer` | kontinu | Subscribe MQTT, simpan event/heartbeat/LWT/media, broadcast WS |
-| `alert_dispatcher` | antrean | Kirim Telegram di luar thread MQTT, broadcast status alert |
+| `alert_dispatcher` | antrean | Kirim Telegram di luar thread MQTT, simpan `message_id`, sinkronkan caption AI setelah status `sent`, broadcast status alert |
 | `disk_monitor` | 10 menit | Ambang disk → banner + Telegram (pengingat maks 1×/24 jam) |
 | `node_monitor` (`NodeHealthMonitor`) | 15 s | Heartbeat > 35 s → node offline; pulih → online |
 | `history_sampler` (`HistorySampler`) | 60 s | Bucket per menit → `monitoring_sample`, lalu evaluasi `health_alerts` |
 | `attendance_closer` (`AttendanceCloser`) | 15 menit | Tutup hari: `absent` / `no_exit`, catch-up 7 hari saat start |
-| `ai_worker` (`AiWorker`) | antrean | Caption snapshot, dedupe caption per event, throttle per zona, recovery pending saat start |
+| `ai_worker` (`AiWorker`) | antrean | Caption snapshot, dedupe caption per event, throttle per zona, recovery pending saat start; caption `ok` memicu sinkronisasi alert Telegram |
 
-### Data utama (PostgreSQL, migrasi Alembic `0001`–`0021`)
+### Data utama (PostgreSQL, migrasi Alembic `0001`–`0022`)
 
 - **Kamera**: `camera`, `stream_source`, `credential_profile` (hanya referensi `env:`/`store:`),
   `location_group`, `node`.
 - **Deteksi**: `zone` (polygon, behavior, jadwal, toggle Snapshot/Clip/Telegram),
   `detector_setting`, `setting` (key-value JSON: `storage`, `health_rules`, …).
-- **Event**: `event` (type, severity, payload JSON, path media), `alert` (status kirim Telegram),
-  `telegram_chat`.
+- **Event**: `event` (type, severity, payload JSON, path media), `alert` (status kirim Telegram,
+  `message_id`/`message_photo`/`ai_synced` untuk edit caption AI), `telegram_chat`.
 - **Absensi**: `employee`, `shift`, `face_embedding`, `attendance_event`, `attendance_day`
   (status + `override_note`).
 - **Monitoring**: `monitoring_sample` (7 hari), `health_alert`.
@@ -188,6 +188,10 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
    API mencocokkan ke galeri `face_embedding` (cosine ≥ `FACE_MATCH_THRESHOLD`) →
    `attendance_event` → `recompute_day` → `attendance_day`. `AttendanceCloser` membuat
    `absent`/`no_exit` setelah batas (selesai shift + `NO_EXIT_GRACE_MIN`).
+4. **Caption AI → Telegram**: dispatcher menyimpan `message_id` saat alert `sent`, lalu
+   `alert_ai.sync_ai_caption` (idempoten, dipanggil dispatcher dan `AiWorker`) mengedit
+   caption alert ber-foto untuk menambah baris `🤖 AI:`; urutan apa pun menghasilkan tepat
+   satu edit, tanpa mengubah status alert/caption/antrean.
 4. **Enrollment**: 3 foto per karyawan diunggah → API meng-embed dengan InsightFace
    `buffalo_l` → `face_embedding` → galeri di-refresh.
 5. **Monitoring**: heartbeat → `node.hw`/`node.modules` (kondisi saat ini) → `HistorySampler`
