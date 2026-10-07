@@ -460,3 +460,22 @@ test('zona attendance tanpa blok AI', async () => {
   await selectAiZone(zoneFix({ type: 'attendance', direction: 'entry', ai_caption: true }))
   expect(screen.queryByRole('switch', { name: 'Caption AI otomatis' })).not.toBeInTheDocument()
 })
+
+
+test('zona absensi dengan Telegram aktif menampilkan toggle Unknown default aktif dan mematikannya mengirim telegram_unknown:false', async () => {
+  const f = await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0, telegram: true }] })])
+  const toggle = document.getElementById('zone-telegram-unknown')!
+  expect(toggle).toHaveAttribute('aria-checked', 'true')
+  fireEvent.click(toggle)
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(f).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, telegram: true, telegram_unknown: false },
+  ]))
+})
+
+test('toggle Unknown tidak tampil saat Telegram mati', async () => {
+  await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0, telegram: false }] })])
+  expect(document.getElementById('zone-telegram-unknown')).toBeNull()
+})

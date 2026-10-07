@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T4 — feat(zones): toggle kirim wajah tidak dikenal ke Telegram (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Toggle Carbon Unknown hanya saat Telegram efektif aktif; default true, PATCH hanya ketika disentuh; label id/en.
+- **Bukti:** RED `1 failed | 29 passed (30)` karena toggle belum ada; GREEN `30 passed (30)`; lint `24 warnings and 0 errors`, pasangan identik baseline.
+- **Dampak:** Zona lama tidak mendapat key baru saat toggle tidak disentuh.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tes toggle tidak tampil lulus sejak awal: penjaga perilaku negatif yang sudah ada, dicatat sesuai handoff.
+
+
 ### Face gate refine T3 — feat(alerting): opsi zona kirim wajah tidak dikenal ke Telegram (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.

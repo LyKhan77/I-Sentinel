@@ -436,6 +436,19 @@ export default function ZonesPage() {
                         })
                       }
                     />
+                    {(selected.behaviors.find((b) => b.kind === 'attendance')?.telegram ?? selected.telegram) && (
+                      <Toggle
+                        id="zone-telegram-unknown"
+                        size="sm"
+                        labelText={t('zones.telegramUnknown')}
+                        toggled={selected.behaviors.find((b) => b.kind === 'attendance')?.telegram_unknown ?? true}
+                        onToggle={(v) =>
+                          patchSelected({
+                            behaviors: selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, telegram_unknown: v } : b)),
+                          })
+                        }
+                      />
+                    )}
                   </>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

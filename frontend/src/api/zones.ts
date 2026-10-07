@@ -14,6 +14,7 @@ export type Behavior = {
   snapshot?: boolean // kosong = ikut flag zona (data lama)
   clip?: boolean
   telegram?: boolean // kosong = ikut flag zona / default off
+  telegram_unknown?: boolean // kosong = true
 }
 
 export type Schedule = { days: number[]; start: string; end: string }
