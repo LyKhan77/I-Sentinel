@@ -405,3 +405,20 @@ def test_behavior_telegram_unknown_flag_roundtrip_and_validation(client):
             "behaviors": behaviors,
         }, headers=h)
         assert r.status_code == 200 and r.json()["behaviors"] == behaviors
+
+
+def test_behavior_record_flag_roundtrip_and_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    bad = client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam["id"], "type": "attendance", "direction": "entry",
+        "behaviors": [{"kind": "attendance", "record": "no"}],
+    }, headers=h)
+    assert bad.status_code == 422
+    for flag in (True, False):
+        behaviors = [{"kind": "attendance", "trigger_seconds": 0, "record": flag}]
+        r = client.post("/api/v1/zones", json={
+            **VALID, "camera_id": cam["id"], "type": "attendance", "direction": "entry",
+            "behaviors": behaviors,
+        }, headers=h)
+        assert r.status_code == 200 and r.json()["behaviors"] == behaviors

@@ -308,3 +308,15 @@ def test_caption_already_in_without_first_entry_ts_shows_dash(value):
         ev.payload["first_entry_ts"] = value
     lines = telegram.format_caption(ev, "C", None, None, tz=WIB).splitlines()
     assert "<b>Check in pertama</b>: -" in lines
+
+
+@pytest.mark.parametrize("direction, label", [("entry", "MASUK"), ("exit", "KELUAR")])
+def test_caption_attendance_detected_entry_and_exit(direction, label):
+    ev = _event(type="attendance", payload={
+        "match_reason": "detected", "direction": direction, "employee_name": "Budi"})
+    text = telegram.format_caption(ev, "C", "Z", None, tz=WIB)
+    assert text.splitlines() == [
+        f"👤 <b>TERDETEKSI — {label}</b>", "", "<b>Nama</b>: Budi", "<b>Kamera</b>: C",
+        "<b>Zona</b>: Z", "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
+    ]
+    assert "CHECK IN" not in text

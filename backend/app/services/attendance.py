@@ -13,6 +13,8 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
+from app.models.event import Event
+from app.models.zone import Zone
 from app.services import face
 from app.services.annotate import ORANGE, annotate_face_crop, annotate_snapshot
 
@@ -144,6 +146,28 @@ def _exit_between(db, employee_id: int, start: datetime, end: datetime) -> datet
     return max((t for t in exits if start < t <= end), default=None)
 
 
+def _record_on(db, zone_id: int | None) -> bool:
+    """Default to recording attendance when zone data or the record flag is absent."""
+    zone = db.get(Zone, zone_id) if zone_id is not None else None
+    return zone.behavior_flag("attendance", "record") if zone is not None else True
+
+
+def _detected_recently(db, event, employee_id: int) -> bool:
+    """Deduplicate detection-only evidence per employee and zone in both time directions."""
+    ts = _local(event.ts_event)
+    window = timedelta(minutes=settings.attendance_cooldown_min)
+    rows = db.query(Event).filter(
+        Event.id != event.id, Event.type == "attendance", Event.zone_id == event.zone_id,
+        Event.ts_event >= ts - timedelta(days=1), Event.ts_event <= ts + timedelta(days=1))
+    # ponytail: a broad DB prefilter tolerates SQLite naive and Postgres aware times;
+    # compare the exact window and small per-zone payload set in Python.
+    return any(
+        (row.payload or {}).get("employee_id") == employee_id
+        and (row.payload or {}).get("match_reason") == "detected"
+        and abs(_local(row.ts_event) - ts) <= window
+        for row in rows)
+
+
 def _label_snapshot(event, payload: dict, label: str, color=None) -> None:
     """Snapshot absensi diberi nama/Unknown setelah pencocokan (vision belum tahu identitas)."""
     if event.snapshot_path:
@@ -206,6 +230,10 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
     if emp is not None and crop:
         annotate_face_crop(str(Path(settings.storage_root) / crop),
                            emp.name, res.score or 0.0, payload.get("face_bbox"))
+
+    if not _record_on(db, event.zone_id):
+        payload["match_reason"] = "cooldown" if _detected_recently(db, event, res.employee_id) else "detected"
+        return _save(db, event, payload, None)
 
     if _in_cooldown(db, res.employee_id, direction, event.ts_event):
         payload["match_reason"] = "cooldown"

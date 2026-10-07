@@ -262,3 +262,14 @@ def test_behavior_flag_defaults(behaviors):
     off = Zone(behaviors=[{"kind": "attendance", "telegram_unknown": False, "record": False}])
     assert off.behavior_flag("attendance", "telegram_unknown") is False
     assert off.behavior_flag("attendance", "record") is False
+
+
+def test_attendance_detected_sent_and_not_rate_limited(db, queued):
+    cam, zone = _zone(db, GATE_ON, type="attendance", direction="entry")
+    alerts = []
+    for seconds in (0, 30):
+        ev = _event(db, cam, zone, type="attendance", severity="info",
+                    payload={"match_reason": "detected", "employee_id": 1})
+        alerts.append(alerting.handle(db, ev, now=NOW + timedelta(seconds=seconds)))
+    assert all(a is not None and a.status == "queued" and a.type == "attendance" for a in alerts)
+    assert queued == [a.id for a in alerts]

@@ -255,6 +255,10 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
         rows.append(("Nama", payload.get("employee_name") or "-"))
         rows.append(("Check in pertama", payload_time("first_entry_ts")))
         rows.append(("Exit sejak itu", payload_time("exit_ts") if "exit_ts" in payload else "belum terlihat"))
+    elif event.type == "attendance" and payload.get("match_reason") == "detected":
+        arah = "MASUK" if payload.get("direction") == "entry" else "KELUAR"
+        title = f"👤 <b>TERDETEKSI — {arah}</b>"
+        rows.append(("Nama", payload.get("employee_name") or "-"))
     elif event.type == "attendance":
         title = "⚠️ <b>UNKNOWN FACE</b>"
     else:

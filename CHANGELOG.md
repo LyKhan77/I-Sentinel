@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T5 — feat(attendance): opsi zona catat absensi (OFF = deteksi saja) (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Flag record boolean; cabang OFF setelah anotasi sebelum cooldown absensi; dedup Event ±1 hari prafilter dan jendela lokal tepat; detected alert dan caption MASUK/KELUAR.
+- **Bukti:** RED `7 failed, 141 passed, 78 warnings in 19.59s`; GREEN suite backend `890 passed, 1 deselected, 549 warnings in 166.63s`.
+- **Dampak:** Zona OFF tidak menulis AttendanceEvent/AttendanceDay; default zona tetap mencatat.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Tambahan tes dedup untuk event terlambat, batas tepat 5 menit, dan pengabaian alasan cooldown. Tes Unknown/default true lulus sejak awal sebagai kompatibilitas, dicatat sesuai handoff.
+
+
 ### Face gate refine T4 — feat(zones): toggle kirim wajah tidak dikenal ke Telegram (2026-10-07)
 
 - **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
