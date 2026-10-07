@@ -78,7 +78,7 @@ menghapus riwayat event.
    (`PUT /nodes/{id}/face-device`).
 3. Perubahan dikirim lewat config push (MQTT retained) tanpa restart service manual.
    Node hanya memulai ulang kamera yang berubah (detect + face + recorder bersama);
-   stream kamera itu tersambung ulang sekitar 20–30 detik. Setelan global detector atau
+   stream kamera itu tersambung ulang (terukur <10 detik untuk kamera worker face; kamera worker detect belum diukur). Setelan global detector atau
    device face mengulang semua kamera; gerbang kualitas wajah mengulang kamera dengan worker face.
 4. Node mengirim heartbeat tiap 10 s (perangkat, GPU, statistik kamera) yang tampil di Dashboard dan
    Monitoring.
@@ -93,9 +93,9 @@ menghapus riwayat event.
 3. Per behavior: toggle **Snapshot**, **Clip**, **Telegram**. Behavior aktif wajib punya Snapshot atau
    Clip (422 `needs snapshot or clip`); attendance wajib snapshot.
 4. **Simpan** → `zone` → config push → node hanya memulai ulang kamera yang berubah,
-   bukan kamera lain; stream kamera itu tersambung ulang sekitar 20–30 detik.
+   bukan kamera lain; stream kamera itu tersambung ulang (<10 detik terukur untuk kamera worker face).
    Snapshot tertumpuk digabung ke yang terakhir; config pertama dan perubahan setelan global
-   mengulang semua kamera. Perkiraan waktu ini belum diukur untuk perubahan kode lokal ini.
+   mengulang semua kamera.
 5. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
 
 6. Opsional **Caption AI otomatis** per zona non-attendance: pilih **Bawaan** (instruksi per tipe)

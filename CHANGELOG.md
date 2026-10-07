@@ -3,6 +3,18 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Node apply per kamera — deploy dan verifikasi server `gspe-ai3` (2026-10-07)
+
+- **Konteks:** `ad93bf0` (merge `feat/node-apply-per-camera`, termasuk perbaikan review `27cecf8`) di-deploy atas persetujuan user: pull `main` di clone Docker lalu `./docker/setup.sh`; hanya container `vision` dibuat ulang (`api`, `web`, `go2rtc`, `mosquitto`, `postgres` tidak berubah). Pasca-deploy: `/api/v1/health` ok, kode baru ada di container.
+- **Uji (user mengedit AI FPS kamera 358 "Lorong 1" di UI, satu kali):**
+  - Log `vision`: `config applied: restarted [358], added [], removed [], unchanged 8`; satu `started 6 worker(s) for 9 camera(s)` sebelumnya = restart penuh setelah container dibuat ulang (config pertama). Tanpa `config diff failed`, `failed to start`, atau `worker died`.
+  - Log `api`: tepat satu `PATCH /api/v1/cameras/358` (debounce kolom AI FPS bekerja).
+  - Pemantau 8 menit (49 heartbeat): worker 362, 363, 364, 365 (face) dan 367 (detect) tetap `streaming`, fps tidak jatuh ke 0 atau `None`, `reconnects_1h` tetap 0 sepanjang edit. Kamera 358: fps `None` pada satu jendela (worker baru) lalu 8.0, state `streaming` sejak heartbeat berikutnya (<10 dtk).
+- **Catatan:** fps semua kamera turun ±10% serentak tiap ±2–3 menit (17:33:41, 17:35:11, 17:36:41, 17:38:21) tanpa config apply; pola ini tidak terkait perubahan ini dan belum diselidiki.
+- **Belum terverifikasi:** waktu restart kamera dengan worker detect (muat engine TensorRT); edit zona; perubahan setelan global (restart penuh); jalur kegagalan dan pemulihan worker mati di server. Perkiraan "20–30 detik" di dokumen diganti dengan angka terukur untuk kamera worker face saja.
+- **State kamera 358:** `ai_fps` sekarang 8.0 (sebelumnya kosong = default 5) — perubahan uji user.
+- **Rollback:** `ssh gspe-ai3`, `cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git checkout a6b549e && ./docker/setup.sh` (tanpa migrasi).
+
 ### Node apply per kamera — perbaikan review: worker mati dihidupkan lagi dan start gagal dibersihkan (2026-10-07)
 
 - **Konteks:** review sesi perencanaan atas `c3c2426`. (1) Rekonsiliasi hanya membandingkan config. Sebelumnya setiap push ulang (termasuk pengiriman ulang retained saat MQTT tersambung kembali dan `republish_all` saat API start) merestart semua worker sehingga worker yang mati ikut pulih; kini config identik tidak menyentuh apa pun, jadi worker yang mati (mis. `detector_factory` gagal memuat engine) tetap mati sampai kamera itu berubah, dan `run()` hanya keluar bila **semua** worker mati. (2) Bila `_start_camera` melempar setelah worker detect berjalan, kamera itu tidak dicatat di `_applied` tetapi worker detect dan recorder/ClipRing-nya tetap berjalan sampai push berikutnya.

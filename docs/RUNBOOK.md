@@ -75,8 +75,9 @@ UI: **Konfigurasi → Kamera → Tambah** — isi Nama/Lokasi/IP → **Deteksi o
 - `go2rtc.yaml` ditulis otomatis (stream `cam_<id>` via API go2rtc).
 - Node membaca kamera setelah config push MQTT (otomatis, tanpa restart service manual).
   Hanya kamera yang berubah yang dimulai ulang (detect + face + recorder); kamera lain tetap berjalan.
-  Stream kamera itu tersambung ulang sekitar 20–30 detik; setelan global mengulang semua kamera.
-  Config identik tidak memulai ulang worker. Perkiraan durasi ini belum diukur untuk kode lokal baru.
+  Stream kamera itu tersambung ulang (terukur <10 detik untuk kamera worker face di `gspe-ai3`;
+  kamera worker detect belum diukur); setelan global mengulang semua kamera.
+  Config identik tidak memulai ulang worker.
 - Deteksi baru berjalan setelah ada zona aktif: zona behavior dan absensi dibuat di tab **Zona Deteksi** (tab Gate Absensi sudah tidak ada).
 - Kamera yang baru ditambahkan di instalasi Docker memakai kredensial dari **Kelola kredensial** (UI) atau `<DATA_DIR>/secrets/camera.env`.
 

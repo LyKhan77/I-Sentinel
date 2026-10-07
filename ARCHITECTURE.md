@@ -148,8 +148,9 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   tetap dicatat sebagai diterapkan meskipun tidak memiliki worker.
 - Kamera berubah memulai ulang worker detect dan face bersama recorder/ClipRing kamera itu;
   kamera lain tidak disentuh. Kamera dihapus dihentikan; kamera baru dimulai bila memiliki zona aktif.
-  Stream kamera yang dimulai ulang tersambung kembali sekitar 20–30 detik (perkiraan operasional,
-  belum diukur untuk perubahan ini). Clip aktif kamera tersebut dapat terpotong.
+  Stream kamera yang dimulai ulang tersambung kembali: terukur di `gspe-ai3` (2026-10-07) kamera dengan
+  worker face saja kembali `streaming` pada heartbeat berikutnya (<10 detik); kamera dengan worker detect
+  (memuat engine TensorRT) belum diukur. Clip aktif kamera tersebut dapat terpotong.
 - Restart penuh berlaku pada config pertama, perubahan model/nms/conf/imgsz/`device` detector,
   perubahan `device` face, atau galat tak terduga dalam diff. Perubahan `FaceSettings`
   (lebar, skor, yaw, blur, jumlah frame) hanya merestart kamera yang memiliki worker face.
