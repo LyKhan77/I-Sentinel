@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from datetime import timezone
+from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.models.setting import Setting
@@ -236,6 +236,12 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
     def val(v) -> str:
         return html.escape(str(v)[:FIELD_MAX])
 
+    def payload_time(key: str) -> str:
+        try:
+            return datetime.fromisoformat(payload.get(key)).astimezone(tz).strftime("%H:%M:%S %Z").strip()
+        except (TypeError, ValueError):
+            return "-"
+
     ts = event.ts_event if event.ts_event.tzinfo else event.ts_event.replace(tzinfo=timezone.utc)
     ts = ts.astimezone(tz)
     payload = event.payload or {}
@@ -244,6 +250,11 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
         arah = "CHECK IN" if payload.get("direction") == "entry" else "CHECK OUT"
         title = f"✅ <b>ATTENDANCE — {arah}</b>"
         rows.append(("Nama", payload.get("employee_name") or "-"))
+    elif event.type == "attendance" and payload.get("match_reason") == "already_in":
+        title = "🔁 <b>ATTENDANCE — SUDAH CHECK IN</b>"
+        rows.append(("Nama", payload.get("employee_name") or "-"))
+        rows.append(("Check in pertama", payload_time("first_entry_ts")))
+        rows.append(("Exit sejak itu", payload_time("exit_ts") if "exit_ts" in payload else "belum terlihat"))
     elif event.type == "attendance":
         title = "⚠️ <b>UNKNOWN FACE</b>"
     else:

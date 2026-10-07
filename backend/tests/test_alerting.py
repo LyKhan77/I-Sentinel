@@ -149,7 +149,7 @@ def test_attendance_matched_and_unknown_sent_others_skipped(db, queued):
         ev = _event(db, cam, zone, type="attendance",
                     payload={"match_reason": reason, "employee_id": employee}, severity="info")
         assert alerting.should_alert(db, ev, now=NOW) == (True, "")
-    for reason in ("cooldown", "already_in", "low_quality", "no_face", None):
+    for reason in ("cooldown", "low_quality", "no_face", None):
         ev = _event(db, cam, zone, type="attendance", payload={"match_reason": reason}, severity="info")
         assert alerting.should_alert(db, ev, now=NOW) == (False, "attendance_skipped")
 
@@ -220,3 +220,14 @@ def test_genuine_negative_writes_no_row(db, queued):
     assert alerting.handle(db, _event(db, cam, zone), now=NOW) is None
     assert alerting.handle(db, _event(db, cam, None), now=NOW) is None
     assert db.query(Alert).count() == 0 and queued == []
+
+
+def test_attendance_already_in_sent_and_not_rate_limited(db, queued):
+    cam, zone = _zone(db, GATE_ON, type="attendance", direction="entry")
+    alerts = []
+    for seconds in (0, 30):
+        ev = _event(db, cam, zone, type="attendance", severity="info",
+                    payload={"match_reason": "already_in", "employee_id": 1})
+        alerts.append(alerting.handle(db, ev, now=NOW + timedelta(seconds=seconds)))
+    assert all(a is not None and a.status == "queued" and a.type == "attendance" for a in alerts)
+    assert queued == [a.id for a in alerts]

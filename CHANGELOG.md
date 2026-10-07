@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face gate refine T2 — feat(telegram): entry berulang dikirim sebagai evidence "sudah check in" (2026-10-07)
+
+- **Konteks:** eksekusi plan face gate refine. BELUM diuji di server nyata.
+- **Perubahan:** Helper entry pertama dan exit sejak entry; payload evidence; already_in melewati rate-limit; caption SUDAH CHECK IN dengan fallback waktu tidak valid.
+- **Bukti:** RED `8 failed, 85 passed in 1.42s`; GREEN `112 passed, 33 warnings in 9.15s` (attendance_logic, alerting, telegram, attendance_api).
+- **Dampak:** Cooldown tetap diam; evidence tidak membuat attendance_event atau mengubah rekap.
+- **Rollback:** Revert commit task ini; tanpa migrasi.
+- **Catatan:** Run GREEN pertama gagal pada empat tes caption karena impor datetime belum ada; diperbaiki setelah membaca traceback. Tes baru mencakup waktu hilang, rusak, dan non-string.
+
+
 ### Face gate refine T1 — label tautan Telegram (2026-10-07)
 
 - **Konteks:** tautan membuka detail event, bukan hanya klip. BELUM diuji di server nyata.

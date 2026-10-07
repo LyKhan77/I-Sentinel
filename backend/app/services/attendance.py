@@ -124,14 +124,24 @@ def _in_cooldown(db, employee_id: int, direction: str, ts: datetime) -> bool:
     return any(abs(_local(row.ts_event) - ts_local) <= window for row in rows)
 
 
-def _entered_earlier_today(db, employee_id: int, ts: datetime) -> bool:
-    """Sudah ada entry karyawan ini lebih awal di hari lokal yang sama. Entry yang lebih awal
-    tapi tiba belakangan (antrean disk node) tetap dicatat supaya jam masuk benar."""
+def _first_entry_today(db, employee_id: int, ts: datetime) -> datetime | None:
+    """Return the first local-day entry at or before this event; late earlier entries remain recordable."""
     ts_local = _local(ts)
     rows = db.query(AttendanceEvent).filter(
         AttendanceEvent.employee_id == employee_id, AttendanceEvent.direction == "entry")
-    return any(_local(r.ts_event).date() == ts_local.date() and _local(r.ts_event) <= ts_local
-               for r in rows)
+    # ponytail: normalize in Python for SQLite naive and Postgres aware timestamps.
+    entries = [_local(r.ts_event) for r in rows]
+    return min((t for t in entries if t.date() == ts_local.date() and t <= ts_local), default=None)
+
+
+def _exit_between(db, employee_id: int, start: datetime, end: datetime) -> datetime | None:
+    """Return the latest exit strictly after the first entry and no later than this event."""
+    start, end = _local(start), _local(end)
+    rows = db.query(AttendanceEvent).filter(
+        AttendanceEvent.employee_id == employee_id, AttendanceEvent.direction == "exit")
+    # ponytail: use local Python comparisons across database datetime dialects.
+    exits = [_local(r.ts_event) for r in rows]
+    return max((t for t in exits if start < t <= end), default=None)
 
 
 def _label_snapshot(event, payload: dict, label: str, color=None) -> None:
@@ -201,8 +211,13 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
         payload["match_reason"] = "cooldown"
         return _save(db, event, payload, None)
 
-    if direction == "entry" and _entered_earlier_today(db, res.employee_id, event.ts_event):
+    first_entry = _first_entry_today(db, res.employee_id, event.ts_event) if direction == "entry" else None
+    if first_entry is not None:
         payload["match_reason"] = "already_in"  # entry sekali per hari; exit boleh berulang
+        payload["first_entry_ts"] = _local(first_entry).isoformat()
+        exit_ts = _exit_between(db, res.employee_id, first_entry, event.ts_event)
+        if exit_ts is not None:
+            payload["exit_ts"] = _local(exit_ts).isoformat()
         return _save(db, event, payload, None)
 
     payload["match_reason"] = "matched"

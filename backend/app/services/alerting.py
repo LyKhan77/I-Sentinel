@@ -52,7 +52,7 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
     Alasan: `""` (kirim) | `no_zone` | `telegram_off` | `attendance_skipped` | `rate_limited`.
     Window rate-limit per (camera, zone, type, track_id): critical tanpa batas,
     severity lain 2 menit; baris `rate_limited` tidak memperpanjang window.
-    Attendance `matched` melewati rate-limit (duplikat dicegah cooldown/already_in).
+    Attendance `matched`/`already_in` melewati rate-limit; cooldown tetap `attendance_skipped`.
     Pra-syarat: `event.camera_id` tidak None (dijaga `handle`).
     """
     now = now or datetime.now(timezone.utc)
@@ -63,8 +63,8 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
         return False, "telegram_off"
     if event.type == "attendance":
         payload = event.payload or {}
-        if payload.get("match_reason") == "matched":
-            return True, ""  # duplikat sudah dicegah cooldown/already_in absensi
+        if payload.get("match_reason") in ("matched", "already_in"):
+            return True, ""  # duplikat sudah dicegah cooldown absensi
         if payload.get("match_reason") != "no_match" or payload.get("employee_id") is not None:
             return False, "attendance_skipped"
     # Indexed reminders are generated once per episode by the analyzers; their

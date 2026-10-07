@@ -638,3 +638,44 @@ def test_close_due_no_absent_before_employee_registered(db):
     days = {r.date for r in db.query(AttendanceDay).filter_by(employee_id=e.id)}
     assert days == {(now - timedelta(days=1)).date()}   # hanya Senin (hari kerja setelah terdaftar)
     assert attendance.close_days(db, (now - timedelta(days=4)).date(), now=now) == 0  # manual juga dilewati
+
+
+def test_already_in_payload_carries_first_entry_without_exit(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    day = db.query(AttendanceDay).one()
+    before = (day.first_entry, day.last_exit, day.status)
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    assert attendance.handle_face_event(db, again) is None
+    assert again.payload["first_entry_ts"] == _at(*MON, 7, 10).isoformat()
+    assert "exit_ts" not in again.payload
+    assert db.query(AttendanceEvent).count() == 1
+    db.refresh(day)
+    assert (day.first_entry, day.last_exit, day.status) == before
+
+
+def test_already_in_payload_carries_exit_seen_between(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    for direction, hh, mm in (("entry", 7, 10), ("exit", 8, 0)):
+        attendance.handle_face_event(db, _raw_event(db, direction, _at(*MON, hh, mm), VEC))
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    attendance.handle_face_event(db, again)
+    assert again.payload["first_entry_ts"] == _at(*MON, 7, 10).isoformat()
+    assert again.payload["exit_ts"] == _at(*MON, 8, 0).isoformat()
+
+
+def test_already_in_ignores_exit_before_first_entry(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(e.id))
+    _att_event(db, e.id, "exit", _at(*MON, 6, 0))
+    _att_event(db, e.id, "exit", _at(2025, 1, 5, 16, 0))
+    attendance.handle_face_event(db, _raw_event(db, "entry", _at(*MON, 7, 10), VEC))
+    again = _raw_event(db, "entry", _at(*MON, 9, 30), VEC)
+    attendance.handle_face_event(db, again)
+    assert again.payload["first_entry_ts"] == _at(*MON, 7, 10).isoformat()
+    assert "exit_ts" not in again.payload

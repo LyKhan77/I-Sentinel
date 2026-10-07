@@ -283,3 +283,28 @@ def test_caption_budget_counts_utf16_units_of_the_base_fields():
     text = telegram.format_caption(_event(), "😀" * 60, "😀" * 60, "http://app.test", tz=WIB, ai_text="x" * 2000)
     assert len(text.encode("utf-16-le")) // 2 <= 1024
     assert "🤖 <b>AI</b>: " in text
+
+
+def test_caption_attendance_already_in_shows_first_entry_and_exit_status():
+    payload = {"match_reason": "already_in", "employee_name": "Budi Santoso",
+               "first_entry_ts": "2026-09-25T07:10:00+07:00"}
+    ev = _event(type="attendance", payload=payload)
+    lines = telegram.format_caption(ev, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
+    assert lines == [
+        "🔁 <b>ATTENDANCE — SUDAH CHECK IN</b>", "", "<b>Nama</b>: Budi Santoso",
+        "<b>Check in pertama</b>: 07:10:00 WIB", "<b>Exit sejak itu</b>: belum terlihat",
+        "<b>Kamera</b>: Receptionist", "<b>Zona</b>: Gerbang Lobi",
+        "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
+    ]
+    payload["exit_ts"] = "2026-09-25T09:00:00+07:00"
+    assert "<b>Exit sejak itu</b>: 09:00:00 WIB" in telegram.format_caption(
+        ev, "Receptionist", "Gerbang Lobi", None, tz=WIB).splitlines()
+
+
+@pytest.mark.parametrize("value", [None, "bad-time", 123])
+def test_caption_already_in_without_first_entry_ts_shows_dash(value):
+    ev = _event(type="attendance", payload={"match_reason": "already_in"})
+    if value is not None:
+        ev.payload["first_entry_ts"] = value
+    lines = telegram.format_caption(ev, "C", None, None, tz=WIB).splitlines()
+    assert "<b>Check in pertama</b>: -" in lines
