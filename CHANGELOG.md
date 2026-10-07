@@ -3,6 +3,20 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Node apply per kamera T4 — docs: alur config apply dan runbook (2026-10-07)
+
+- **Konteks:** dokumentasi kebijakan apply per kamera dan verifikasi lokal; BELUM diuji di server nyata.
+- **Perubahan:** `ARCHITECTURE.md` §3 menjelaskan diff CameraCfg, lifecycle bersama, restart penuh pertama/global/fallback, FaceSettings, retry push dan log; `WORKFLOW.md` dan `docs/RUNBOOK.md` membedakan restart worker dari restart service manual. `ROADMAP.md` tetap `[~]`, kode selesai tetapi belum di-deploy/diuji server.
+- **Bukti:** suite berurutan sebelum commit dokumen:
+  ```text
+  vision: 271 passed, 3 deselected, 2 warnings in 14.19s
+  backend: 896 passed, 1 deselected, 551 warnings in 164.50s (0:02:44)
+  docker: 76 passed in 9.01s
+  ```
+  Vision naik tepat 24 tes baru; backend dan Docker sama dengan baseline. Diff backend/frontend/docker, face_worker/recorder/config dan tiga berkas tes lama kosong; `git diff --check` exit 0. Scope diff hanya kode node, tes baru, dokumen task dan dua catatan spec/plan yang sudah ada.
+- **Dampak:** perkiraan reconnect 20–30 detik berasal dari plan, bukan pengukuran sesi ini; durasi dan isolasi kamera tetap perlu diuji di server. Smoke test di commit terakhir dilakukan setelah commit ini dan dilaporkan terpisah.
+- **Rollback:** revert commit perubahan node dan dokumen terkait, lalu rebuild `vision`; tanpa migrasi atau perubahan backend.
+
 ### Node apply per kamera T3 — feat(vision): gabungkan antrean config (2026-10-07)
 
 - **Konteks:** snapshot config penuh yang menumpuk tidak perlu diterapkan satu per satu; BELUM diuji di server nyata.

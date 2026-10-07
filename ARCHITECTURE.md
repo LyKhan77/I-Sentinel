@@ -141,6 +141,24 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.
 - `transport/`: klien MQTT + antrean disk store-and-forward (event tidak hilang saat broker/API
   putus; backlog dilaporkan di heartbeat).
+- Config push adalah snapshot penuh. Node membandingkan `CameraCfg` per kamera:
+  `source_url`, `ai_fps`, `zones`, `confidence`, `motion`, dan `meters_per_pixel`.
+  Config identik mempertahankan objek worker dan recorder yang hidup; kamera tanpa zona
+  tetap dicatat sebagai diterapkan meskipun tidak memiliki worker.
+- Kamera berubah memulai ulang worker detect dan face bersama recorder/ClipRing kamera itu;
+  kamera lain tidak disentuh. Kamera dihapus dihentikan; kamera baru dimulai bila memiliki zona aktif.
+  Stream kamera yang dimulai ulang tersambung kembali sekitar 20–30 detik (perkiraan operasional,
+  belum diukur untuk perubahan ini). Clip aktif kamera tersebut dapat terpotong.
+- Restart penuh berlaku pada config pertama, perubahan model/nms/conf/imgsz/`device` detector,
+  perubahan `device` face, atau galat tak terduga dalam diff. Perubahan `FaceSettings`
+  (lebar, skor, yaw, blur, jumlah frame) hanya merestart kamera yang memiliki worker face.
+- Kamera yang gagal dimulai pada diff tidak dicatat di `_applied`, sehingga push berikutnya
+  mencoba kembali, termasuk jika config kembali ke nilai sebelumnya. Antrean snapshot yang
+  sudah tersedia digabung: hanya snapshot terakhir diterapkan, bukan setiap pesan satu per satu.
+- Jalur diff mencatat `config applied: restarted [..], added [..], removed [..], unchanged N`
+  dengan ID terurut. Jalur penuh tetap mencatat `started N worker(s) for M camera(s)`.
+  Kontrak MQTT, heartbeat, dan `_camera_stats` tidak berubah. Status: kode lokal selesai,
+  BELUM diuji di server nyata.
 - Dependensi minimal dan bisa di-import tanpa CUDA; kode GPU/RTSP di balik marker `gpu`.
 
 ## 4. Kontrak antar-komponen

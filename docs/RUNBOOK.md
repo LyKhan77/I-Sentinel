@@ -73,15 +73,27 @@ UI: **Konfigurasi → Kamera → Tambah** — isi Nama/Lokasi/IP → **Deteksi o
 (scan channel NVR) → pilih stream MAIN/SUB → simpan.
 
 - `go2rtc.yaml` ditulis otomatis (stream `cam_<id>` via API go2rtc).
-- Node membaca kamera setelah config push MQTT (otomatis, tanpa restart).
+- Node membaca kamera setelah config push MQTT (otomatis, tanpa restart service manual).
+  Hanya kamera yang berubah yang dimulai ulang (detect + face + recorder); kamera lain tetap berjalan.
+  Stream kamera itu tersambung ulang sekitar 20–30 detik; setelan global mengulang semua kamera.
+  Config identik tidak memulai ulang worker. Perkiraan durasi ini belum diukur untuk kode lokal baru.
 - Deteksi baru berjalan setelah ada zona aktif: zona behavior dan absensi dibuat di tab **Zona Deteksi** (tab Gate Absensi sudah tidak ada).
 - Kamera yang baru ditambahkan di instalasi Docker memakai kredensial dari **Kelola kredensial** (UI) atau `<DATA_DIR>/secrets/camera.env`.
 
 ## 4. GPU detektor (pin/unpin)
 
 UI: **Konfigurasi → Node** → pilih `cuda:N` (dropdown dari heartbeat hw) →
-Simpan → node hot-reload **tanpa restart**. Badge Dashboard berubah
-`Detektor: PIN cuda:N`.
+Simpan → node hot-reload tanpa restart service manual, tetapi perubahan device detector
+memulai ulang **semua kamera**, sebagaimana perubahan model/nms/conf/imgsz dan device face.
+Badge Dashboard berubah `Detektor: PIN cuda:N`.
+Perubahan `FaceSettings` hanya memulai ulang kamera dengan worker face.
+Config pertama dan galat diff juga memakai restart penuh. Antrean snapshot digabung ke yang terakhir.
+Pantau log `config applied: restarted [..], added [..], removed [..], unchanged N` pada jalur diff,
+atau `started N worker(s) for M camera(s)` pada jalur penuh.
+
+Status perubahan per kamera: BELUM diuji di server nyata. Verifikasi setelah rebuild `vision`:
+edit zona satu kamera, lalu pastikan kamera lain tetap `streaming`, `frames` tidak mereset,
+dan `reconnects_1h` tidak naik. Tidak ada migrasi atau perubahan backend.
 
 Fallback env (bootstrap): `VISION_DETECTOR_DEVICE=cuda:1` di `vision.env`,
 lalu restart vision-node. Prioritas: **DB (UI) > env > auto**.
