@@ -141,11 +141,18 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   `FaceGateWorker` (tanpa zona attendance pun), `CameraWorker` mengisi `IntrusionRegistry` (titik kaki track di polygon) dan mem-bind
   track ke `event_id` saat event intrusion terbit. `FaceGateWorker` memakai deteksi SCRFD yang
   sama (`IdentCollector`): asosiasi wajah→kepala person (40% atas bbox), kandidat crop terbaik
-  (lebar × skor, bebas dari gerbang, diunggah ke `crops/`), gerbang kualitas sendiri (pitch,
-  kualitas ≥ 0,5; penolakan dipisah dari `_funnel` attendance), dan agregasi embedding.
+  (lebar × skor × kefrontalan, bebas dari gerbang, diunggah ke `crops/`), gerbang geometri sendiri
+  (lebar ≥ 60 px, skor deteksi, yaw, pitch; **tanpa gerbang blur atau quality absolut**, karena variansi
+  Laplacian dan lebar tidak memprediksi kecocokan antar-kamera; penolakan dipisah dari `_funnel`
+  attendance), K=5 frame terbaik dipilih relatif per orang dengan peringkat `skor deteksi × ketajaman`,
+  dan agregasi embedding. Label overlay debugger = lebar wajah (`86px`) atau kode penolakan.
   Motion gate dilewati selama registry segar (TTL 3 dtk). Satu pesan `isentinel/events/face`
   per event di akhir jendela 8 dtk setelah event atau saat person hilang (K=5 embedding terbaik berdasar
-  kualitas sejak orang masuk zona, bukan frame pertama; sisa dikirim saat worker berhenti) — dikirim thread pendek,
+  kualitas sejak orang masuk zona, bukan frame pertama; sisa dikirim saat worker berhenti). Selama orang
+  masih di zona (maks 90 dtk setelah event) pengumpulan berlanjut dan **pembaruan** (`seq` > 0, jeda ≥ 10 dtk,
+  maks 6) dikirim bila K terbaik berubah; API menerima hanya hasil yang lebih baik (`recognized` > `unknown` >
+  `not_visible` > `unverified`; status sama dengan skor lebih tinggi memperbarui skor dan crop tanpa edit
+  Telegram kedua) dan tidak pernah menurunkan hasil. Pesan dikirim thread pendek,
   loop frame tidak menunggu unggahan crop. Kamera critical tanpa zona attendance memakai worker wajah
   berzona kosong (tanpa event absensi); bila pesan tidak datang, API menandai alert itu
   `unverified` setelah 20 dtk.

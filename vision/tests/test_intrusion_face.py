@@ -4,7 +4,7 @@ import pytest
 
 from vision.face import FaceDet
 from vision.face_quality import FaceSettings
-from vision.intrusion_face import (BEST_K, HEAD_FRAC, IDENT_MIN_QUALITY, IDENT_WINDOW_S, MAX_PITCH,
+from vision.intrusion_face import (BEST_K, MAX_TRACK_S, MAX_UPDATES, UPDATE_EVERY_S, HEAD_FRAC, IDENT_MIN_WIDTH_PX, IDENT_WINDOW_S, MAX_PITCH,
                                    MIN_CROP_SCORE, REGISTRY_TTL_S, IdentCollector,
                                    IntrusionRegistry, associate, jpeg_crop, pitch_dev)
 
@@ -48,6 +48,24 @@ class FakeEmbedder:
     def embed(self, aligned):
         self.embed_calls += 1
         return self.vec
+
+
+class SequenceEmbedder(FakeEmbedder):
+    """align() bergantian: gambar tajam (derau) atau halus (konstan); embed() mengembalikan vektor sesuai gambar."""
+
+    def __init__(self, kinds):
+        super().__init__()
+        self.kinds = list(kinds)
+        self._i = -1
+
+    def align(self, img, kps):
+        self._i += 1
+        return FakeEmbedder.noise if self.kinds[self._i % len(self.kinds)] == "sharp" \
+            else np.full((112, 112, 3), 128, np.uint8)
+
+    def embed(self, aligned):
+        self.embed_calls += 1
+        return [0.8, 0.6] if aligned.std() > 1 else [1.0, 0.0]  # cukup mirip agar tidak dibuang sebagai outlier
 
 
 # --- registry ---
@@ -141,8 +159,8 @@ def test_collector_emits_best_frames_at_window_end_and_releases_entry():
     msg = msgs[0]
     assert msg["event_id"] == "ev-1" and msg["camera_id"] == 363 and msg["node_id"] == "n1"
     assert msg["track_id"] == 1 and msg["embedding"] is not None and msg["crop_path"] is None
-    assert msg["stats"]["faces"] == 3 and msg["stats"]["frames_used"] == 3
-    assert registry.entries() == []  # entri dilepas setelah kirim
+    assert msg["stats"]["faces"] == 3 and msg["stats"]["frames_used"] == 3 and msg["seq"] == 0
+    assert [(e.track_id, e.event_id) for e in registry.entries()] == [(1, "ev-1")]  # orang masih di zona: pantau terus
 
 
 def test_collector_waits_for_bind_before_emitting():
@@ -194,23 +212,59 @@ def test_collector_unbound_gone_entry_dropped_without_message():
     assert registry.entries() == []
 
 
-def test_collector_rejects_by_pitch_and_by_quality():
+def test_collector_rejects_by_pitch_but_no_longer_by_width_based_quality():
     registry = IntrusionRegistry()
     collector = _collector(registry)
     _bind_entry(registry, ts=10.0)
     registry.touch(5, 1, BBOX, 10.0)
-    # pitch: hidung turun dari posisi frontal → pitch_dev > MAX_PITCH
+    # pitch: hidung turun dari posisi frontal -> pitch_dev > MAX_PITCH
     down = FRONTAL[2][1] + (FRONTAL[4][1] - FRONTAL[0][1]) * 0.9  # jauh di bawah
     collector.observe([face(kps=downslope_kps(down))], None, 1920, 1080, 10.0)
-    # quality: skor 0.62, lebar 80 px, yaw_ratio 0.3 → quality ≈ 0.31 < IDENT_MIN_QUALITY
+    # wajah kecil (60 px), skor 0.62, yaw 0.3: rumus quality lama (lebar/112) memberi 0.31 dan menolaknya;
+    # kini lolos karena lebar bukan penentu kecocokan (data klip jarak dekat)
     yaw30 = [list(p) for p in FRONTAL]
     yaw30[2][0] += 12  # 12/40 (jarak mata) = 0.3
-    collector.observe([face(width=80.0, score=0.62, kps=yaw30)], None, 1920, 1080, 10.0)
-    msgs = collector.drain(10.0 + IDENT_WINDOW_S)
-    assert len(msgs) == 1
-    rej = msgs[0]["stats"]["rejects"]
-    assert rej["pitch"] == 1 and rej["quality"] == 1
-    assert msgs[0]["embedding"] is None and msgs[0]["stats"]["frames_used"] == 0
+    collector.observe([face(width=60.0, score=0.62, kps=yaw30)], None, 1920, 1080, 10.0)
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["stats"]["rejects"]["pitch"] == 1 and msg["stats"]["rejects"]["quality"] == 0
+    assert msg["embedding"] is not None and msg["stats"]["frames_used"] == 1
+
+
+def test_collector_accepts_60px_faces_and_rejects_smaller_ones():
+    assert IDENT_MIN_WIDTH_PX == 60.0
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    collector.observe([face(width=60.0)], None, 1920, 1080, 10.0)
+    collector.observe([face(width=55.0)], None, 1920, 1080, 10.1)
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["stats"]["frames_used"] == 1 and msg["stats"]["rejects"]["small"] == 1
+
+
+def test_collector_keeps_soft_looking_faces_instead_of_rejecting_them_as_blurry():
+    """Variansi Laplacian rendah pada wajah kecil bukan blur gerak: tidak ada gerbang blur absolut."""
+    registry = IntrusionRegistry()
+    collector = _collector(registry, embedder=SequenceEmbedder(["soft"]))
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    collector.observe([face(width=90.0)], None, 1920, 1080, 10.0)
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["stats"]["rejects"]["blur"] == 0 and msg["stats"]["frames_used"] == 1
+
+
+def test_collector_ranks_frames_by_relative_sharpness():
+    registry = IntrusionRegistry()
+    emb = SequenceEmbedder(["soft"] * BEST_K + ["sharp"])
+    collector = _collector(registry, embedder=emb)
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    for i in range(BEST_K + 1):
+        collector.observe([face(width=100.0)], None, 1920, 1080, 10.0 + i * 0.1)
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert emb.embed_calls == BEST_K + 1  # frame tajam mengalahkan salah satu frame halus
+    assert msg["stats"]["frames_used"] == BEST_K
+    assert msg["embedding"][1] > 0.0  # vektor frame tajam ikut teragregasi
 
 
 def test_collector_ignores_face_outside_any_head_region():
@@ -261,25 +315,90 @@ def test_collector_stats_counts_are_isolated_from_attendance_funnel():
     assert set(msg["stats"]["rejects"]) == {"small", "score", "yaw", "pitch", "blur", "quality"}
 
 
-def test_collector_ignores_person_after_result_was_sent():
-    """Orang yang masih di zona setelah pesan terkirim tidak dikumpulkan lagi (tanpa embed berulang)."""
+def _send_first_result(registry, collector, t0=10.0, emb=None):
+    """Orang berada di zona; K frame awal terkumpul dan hasil pertama keluar di akhir jendela."""
+    _bind_entry(registry, ts=t0)
+    registry.touch(5, 1, BBOX, t0)
+    for i in range(BEST_K):
+        collector.observe([face(score=0.70)], None, 1920, 1080, t0 + i * 0.1)
+    now = t0 + IDENT_WINDOW_S
+    registry.touch(5, 1, BBOX, now - 0.1)
+    msgs = collector.drain(now)
+    assert len(msgs) == 1 and msgs[0]["seq"] == 0
+    return now
+
+
+def test_collector_sends_update_when_better_frames_arrive_after_the_first_result():
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    now = _send_first_result(registry, collector)
+    collector.observe([face(score=0.95)], None, 1920, 1080, now + 1.0)  # titik terbaik datang belakangan
+    registry.touch(5, 1, BBOX, now + 1.0)
+    assert collector.drain(now + 1.0) == []  # jeda minimum antar-pembaruan belum lewat
+    registry.touch(5, 1, BBOX, now + UPDATE_EVERY_S)
+    msgs = collector.drain(now + UPDATE_EVERY_S)
+    assert [m["seq"] for m in msgs] == [1] and msgs[0]["embedding"] is not None
+    assert msgs[0]["quality"] == pytest.approx(0.95)
+
+
+def test_collector_lingering_person_adds_no_work_or_messages_when_frames_are_not_better():
     registry = IntrusionRegistry()
     emb = FakeEmbedder()
     collector = _collector(registry, embedder=emb)
-    _bind_entry(registry, ts=10.0)
-    registry.touch(5, 1, BBOX, 10.0)
-    for i in range(3):
-        collector.observe([face()], None, 1920, 1080, 10.0 + i * 0.1)
-    registry.touch(5, 1, BBOX, 10.0 + IDENT_WINDOW_S - 0.1)
-    assert len(collector.drain(10.0 + IDENT_WINDOW_S)) == 1
-    calls_after_send = emb.embed_calls
-    for i in range(20):  # CameraWorker terus men-touch track yang sama selama orangnya berdiam
-        now = 19.0 + i * 0.1
-        registry.touch(5, 1, BBOX, now)
-        collector.observe([face()], None, 1920, 1080, now)
-        assert collector.drain(now) == []
-    assert emb.embed_calls == calls_after_send
+    now = _send_first_result(registry, collector)
+    calls = emb.embed_calls
+    for i in range(30):  # orang berdiam; kualitas frame sama dengan K yang sudah ada
+        t = now + 1.0 + i * 0.5
+        registry.touch(5, 1, BBOX, t)
+        collector.observe([face(score=0.70)], None, 1920, 1080, t)
+        assert collector.drain(t) == []
+    assert emb.embed_calls == calls  # tanpa embed berulang: hanya frame yang mengalahkan K terbaik
+
+
+def test_collector_sends_final_update_when_the_person_leaves():
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    now = _send_first_result(registry, collector)
+    collector.observe([face(score=0.95)], None, 1920, 1080, now + 1.0)
+    registry.touch(5, 1, BBOX, now + 1.0)
+    msgs = collector.drain(now + 1.0 + REGISTRY_TTL_S + 0.1)  # orang pergi sebelum jeda minimum lewat
+    assert [m["seq"] for m in msgs] == [1]
     assert registry.entries() == []
+
+
+def test_collector_stops_after_max_track_time_and_ignores_later_touches():
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    now = _send_first_result(registry, collector)
+    end = 10.0 + MAX_TRACK_S
+    registry.touch(5, 1, BBOX, end)
+    assert collector.drain(end) == []  # tidak ada frame baru: tidak ada pembaruan
+    assert registry.entries() == []  # selesai: dilepas
+    registry.touch(5, 1, BBOX, end + 1.0)
+    assert registry.entries() == []  # track yang sudah selesai tidak dikumpulkan lagi
+
+
+def test_collector_caps_the_number_of_updates():
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    now = _send_first_result(registry, collector)
+    sent = 0
+    for i in range(MAX_UPDATES + 3):
+        t = now + (i + 1) * UPDATE_EVERY_S
+        registry.touch(5, 1, BBOX, t - 0.1)
+        collector.observe([face(score=0.72 + 0.02 * i)], None, 1920, 1080, t - 0.1)  # selalu lebih baik
+        registry.touch(5, 1, BBOX, t)
+        sent += len(collector.drain(t))
+    assert sent == MAX_UPDATES
+
+
+def test_collector_flush_sends_pending_update_and_releases():
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    now = _send_first_result(registry, collector)
+    collector.observe([face(score=0.95)], None, 1920, 1080, now + 1.0)
+    msgs = collector.flush()
+    assert [m["seq"] for m in msgs] == [1] and registry.entries() == []
 
 
 SCORES_DOWN = [0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.62]
@@ -321,7 +440,7 @@ def test_collector_observe_returns_overlay_label_per_associated_face():
     registry.touch(5, 1, BBOX, 10.0)
     good, small, stray = face(width=120.0), face(width=40.0), face(cx=200.0, cy=900.0, width=120.0)
     labels = collector.observe([good, small, stray], None, 1920, 1080, 10.0)
-    assert labels[id(good)] == "0.90" and labels[id(small)] == "small"
+    assert labels[id(good)] == "120px" and labels[id(small)] == "small"
     assert id(stray) not in labels  # bukan kepala siapa pun: tidak berlabel identitas
 
 

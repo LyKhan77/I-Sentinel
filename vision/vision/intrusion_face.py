@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -22,9 +22,12 @@ HEAD_FRAC = 0.40       # area kepala = 40% atas bbox person
 HEAD_PAD = 0.10        # diperlebar 10% ke kiri/kanan/atas
 IDENT_WINDOW_S = 8.0   # kirim hasil setelah sekian detik terikat event meski min_frames belum tercapai
 MAX_PITCH = 0.30       # deviasi pitch maksimum (menghadap bawah)
-IDENT_MIN_QUALITY = 0.5  # sama dengan face_min_quality API: frame yang pasti ditolak API tidak dihitung
 MIN_CROP_SCORE = 0.5   # keyakinan SCRFD minimum untuk kandidat crop bukti manual
+IDENT_MIN_WIDTH_PX = 60.0  # lebar wajah minimum untuk identitas (jarak sampai ±3 m); data: lebar bukan penentu skor
 BEST_K = 5             # embedding terbaik (berdasar kualitas) yang dipertahankan per orang
+UPDATE_EVERY_S = 10.0   # jeda minimum antar-pembaruan identitas untuk orang yang masih di zona
+MAX_TRACK_S = 90.0     # berhenti mengumpulkan sekian detik setelah event
+MAX_UPDATES = 6        # pembaruan maksimum per event sesudah hasil pertama
 
 
 class ErrorThrottle:
@@ -160,19 +163,25 @@ def _dummy_zone(zone_id: int) -> dict:
 
 @dataclass
 class _IdentState:
-    kept: list = field(default_factory=list)  # (kualitas, vektor): BEST_K terbaik, bukan K pertama
+    kept: list = field(default_factory=list)  # (ketajaman, kualitas, vektor): BEST_K terbaik, bukan K pertama
     crop_rank: float = -1.0
     crop: bytes | None = None
     rejects: dict = field(default_factory=lambda: dict.fromkeys(
         ("small", "score", "yaw", "pitch", "blur", "quality"), 0))
     faces: int = 0
+    sent: int = 0            # pesan yang sudah dikirim (seq berikutnya)
+    last_sent: float = 0.0
+    dirty: bool = False      # K terbaik berubah sejak pesan terakhir
+    crop_dirty: bool = False
 
 
 class IdentCollector:
     """Kumpulkan embedding terbaik + kandidat crop per entri terikat; satu pesan per event.
 
-    Frame awal biasanya terburuk (orang masih jauh atau menunduk), jadi hasil baru dikirim di akhir
-    jendela (`IDENT_WINDOW_S` sesudah event) atau saat orang pergi, bukan segera setelah beberapa frame.
+    Frame awal biasanya terburuk (orang masih jauh atau menunduk), jadi hasil pertama dikirim di akhir
+    jendela (`IDENT_WINDOW_S` sesudah event) atau saat orang pergi. Titik terbaik sering datang
+    belakangan, jadi pengumpulan berlanjut selama orang di zona (maks `MAX_TRACK_S`) dan pembaruan
+    dikirim bila K terbaik berubah (jeda `UPDATE_EVERY_S`, maks `MAX_UPDATES`); API tidak menurunkan hasil.
     """
 
     def __init__(self, registry: IntrusionRegistry, face, settings: FaceSettings,
@@ -180,6 +189,8 @@ class IdentCollector:
         self.registry = registry
         self.face = face
         self.settings = settings
+        # gerbang identitas: lebar minimum lebih longgar dan tanpa blur absolut (peringkat relatif per orang)
+        self._gate_settings = replace(settings, min_width_px=IDENT_MIN_WIDTH_PX, blur_min=0.0)
         self.camera_id = camera_id
         self.node_id = node_id
         self.encode = encode
@@ -204,25 +215,27 @@ class IdentCollector:
 
     def _reject_or_keep(self, f: FaceDet, ent: PersonEntry, st: _IdentState,
                         frame_data, frame_w: int, frame_h: int) -> str:
-        """Gerbang kualitas untuk embedding + kandidat crop (bebas dari hasil gerbang).
+        """Gerbang geometri untuk embedding + kandidat crop (crop bebas dari gerbang).
 
-        Mengembalikan label overlay: kode penolakan, atau kualitas ("0.62") bila lolos gerbang.
+        Gerbang: lebar >= `IDENT_MIN_WIDTH_PX`, skor deteksi, yaw, dan pitch. Tidak ada gerbang blur atau
+        quality absolut: variansi Laplacian dan lebar tidak memprediksi kecocokan antar-kamera, jadi K
+        frame terbaik dipilih relatif per orang dengan peringkat `det x ketajaman`.
+        Mengembalikan label overlay: kode penolakan, atau lebar wajah ("86px") bila lolos.
         """
         width_px = f.bbox[2] - f.bbox[0]
         yaw = yaw_ratio(f.kps)
         pitch = pitch_dev(f.kps)
         q = quality(f.score, width_px, yaw)
-        code, _zone = gate_code(f, frame_w, frame_h, [_dummy_zone(ent.zone_id)], self.settings)
-        aligned = None
+        code, _zone = gate_code(f, frame_w, frame_h, [_dummy_zone(ent.zone_id)], self._gate_settings)
+        if code is None and pitch > MAX_PITCH:
+            code = "pitch"
+        aligned, blur = None, 0.0
         if code is None:
             try:
                 aligned = self.face.align(frame_data, f.kps)
-                if blur_score(aligned) < self.settings.blur_min:
-                    code = "blur"
+                blur = blur_score(aligned)
             except Exception:
-                code = "blur"
-        if code is None:
-            code = "pitch" if pitch > MAX_PITCH else "quality" if q < IDENT_MIN_QUALITY else None
+                code = "blur"  # align gagal: frame tak bisa dipakai
         if code is not None:
             st.rejects[code] = st.rejects.get(code, 0) + 1  # kode tak terduga (mis. "zone") tetap dihitung
         if f.score >= MIN_CROP_SCORE:
@@ -234,10 +247,12 @@ class IdentCollector:
                 if data is not None:
                     st.crop_rank = rank
                     st.crop = data
-        label = code or f"{q:.2f}"
+                    st.crop_dirty = True
+        label = code or f"{width_px:.0f}px"
         if code is not None:
             return label
-        if len(st.kept) >= BEST_K and q <= min(k[0] for k in st.kept):
+        sharp = f.score * blur
+        if len(st.kept) >= BEST_K and sharp <= min(k[0] for k in st.kept):
             return label  # tidak mengalahkan K terbaik: tanpa embed berulang
         try:
             vec = self.face.embed(aligned)
@@ -245,53 +260,75 @@ class IdentCollector:
             return label
         if vec is None:
             return label
-        st.kept.append((q, vec))
+        st.kept.append((sharp, q, vec))
         if len(st.kept) > BEST_K:
             st.kept.remove(min(st.kept, key=lambda k: k[0]))
+        st.dirty = True
         return label
 
-    def _message(self, ent: PersonEntry, st: _IdentState) -> dict:
-        qualities = [q for q, _ in st.kept]
-        return {
+    def _message(self, ent: PersonEntry, st: _IdentState, now: float) -> dict:
+        qualities = [q for _, q, _ in st.kept]
+        msg = {
             "event_id": ent.event_id,
             "camera_id": self.camera_id,
             "node_id": self.node_id,
             "track_id": ent.track_id,
-            "embedding": aggregate([v for _, v in st.kept], qualities) if st.kept else None,
+            "seq": st.sent,
+            "embedding": aggregate([v for _, _, v in st.kept], qualities) if st.kept else None,
             "quality": round(max(qualities), 3) if st.kept else None,
             "crop_path": None,
-            "stats": {"faces": st.faces, "rejects": st.rejects, "frames_used": len(st.kept)},
-            "_crop": st.crop,
+            "stats": {"faces": st.faces, "rejects": dict(st.rejects), "frames_used": len(st.kept)},
+            "_crop": st.crop if (st.sent == 0 or st.crop_dirty) else None,
         }
+        st.sent += 1
+        st.last_sent = now
+        st.dirty = False
+        st.crop_dirty = False
+        return msg
 
     def drain(self, now: float) -> list[dict]:
-        """Kirim pesan entri terikat yang jendelanya habis atau orangnya pergi; sisanya dibuang tanpa pesan."""
+        """Hasil pertama di akhir jendela (atau saat orang pergi), lalu pembaruan bila K terbaik membaik.
+
+        Entri basi yang belum terikat dibuang tanpa pesan. Entri dilepas saat orang pergi, melewati
+        `MAX_TRACK_S`, atau setelah `MAX_UPDATES` pembaruan.
+        """
         self.registry.prune(now)
         entries = self.registry.entries()
         live = {(e.zone_id, e.track_id) for e in entries}
         self._states = {k: s for k, s in self._states.items() if k in live}  # orang yang sudah pergi
         out: list[dict] = []
         for ent in entries:
-            key = (ent.zone_id, ent.track_id)
             if ent.event_id is None:
                 continue
-            ready = (now - (ent.bound_ts or now) >= IDENT_WINDOW_S
-                     or now - ent.seen_ts > REGISTRY_TTL_S)
-            if not ready:
-                continue
-            st = self._states.pop(key, _IdentState())
-            self.registry.release(*key)
-            out.append(self._message(ent, st))
+            key = (ent.zone_id, ent.track_id)
+            st = self._states.setdefault(key, _IdentState())
+            gone = now - ent.seen_ts > REGISTRY_TTL_S
+            age = now - (ent.bound_ts or now)
+            if st.sent == 0:
+                if age < IDENT_WINDOW_S and not gone:
+                    continue
+                out.append(self._message(ent, st, now))
+            else:
+                due = st.dirty and now - st.last_sent >= UPDATE_EVERY_S and st.sent <= MAX_UPDATES
+                if not (due or gone or age >= MAX_TRACK_S):
+                    continue
+                if st.dirty and st.sent <= MAX_UPDATES:
+                    out.append(self._message(ent, st, now))
+            if gone or age >= MAX_TRACK_S or st.sent > MAX_UPDATES:
+                self._states.pop(key, None)
+                self.registry.release(*key)
         return out
 
-    def flush(self) -> list[dict]:
-        """Kirim semua entri terikat sekarang (worker berhenti): hasil sebagian lebih baik daripada hilang."""
+    def flush(self, now: float = 0.0) -> list[dict]:
+        """Worker berhenti: kirim hasil yang belum terkirim (atau pembaruan tertunda) dan lepas semua."""
         out: list[dict] = []
         for ent in self.registry.entries():
             if ent.event_id is None:
                 continue
-            st = self._states.pop((ent.zone_id, ent.track_id), _IdentState())
-            self.registry.release(ent.zone_id, ent.track_id)
-            out.append(self._message(ent, st))
+            key = (ent.zone_id, ent.track_id)
+            st = self._states.pop(key, _IdentState())
+            if st.sent == 0 or st.dirty:
+                out.append(self._message(ent, st, now))
+            self.registry.release(*key)
         self._states.clear()
         return out

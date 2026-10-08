@@ -3,6 +3,47 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — uji jarak 6,2 m pada kamera 357 (2026-10-08)
+
+- **Konteks:** user mengukur 16:46:57: tinggi kamera 2,8 m, jarak lantai kamera ke titik berdiri 6,2 m (jarak pandang ±6,3 m). Event 4905: `recognized` (karyawan #1), skor **0,595**, margin **0,395**; crop 101×130.
+- **Analisis klip (dibatasi CPU, 1 fps):** di titik berdiri wajah ±79–85 px pada 2560×1440, deteksi 0,84–0,88, ketajaman (variansi Laplacian) 134–425, skor per frame ke karyawan #1 0,53–0,59; agregasi 5 terbaik offline 0,581 (node 0,595). Dari 83 px pada 6,3 m: f_px ≈ 3.490 px, HFOV ≈ 40° (setara lensa ±8 mm).
+- **Implikasi:** pada kamera 357 jarak ±3 m (target MVP) menghasilkan wajah ±170 px, jauh di atas kebutuhan; batas 60 px ada di ±8,7 m (prediksi, belum diukur). Wajah ±83 px di stream 2K/8 Mbps jauh lebih tajam (blur 134–425) daripada wajah 82–88 px di stream 1080p (28–73), jadi resolusi dan bitrate memberi lebih dari sekadar piksel. Perkiraan jarak uji 1080p sebelumnya ("1–2 m") kemungkinan lebih jauh dari perkiraan (≈4,6 m berdasar f_px). Pedoman jarak vs lensa disimpan di `temp/data/cctv-source-settings.txt` §8 (lokal).
+- **Belum terbukti:** satu non-karyawan di sesi ini dan dua keseluruhan; jarak > 6,3 m; jarak sampai 8–9 m. ROADMAP `IFI` tetap `[~]`.
+- **Rollback:** tidak ada perubahan kode pada entri ini.
+
+### Face ID pada intrusion critical — uji kamera 357 setelah 2K dan gerbang relatif (2026-10-08)
+
+- **Konteks:** user mengubah kamera 357 "Lorong Manager" menjadi 2K 15 fps, Max. bitrate 8192 kbps (terverifikasi `ffprobe` pada `cam_357_main`: H.264 Main, **2560×1440, 15 fps**), dengan server di branch `feat/intrusion-face-progressive` @ `2cedca8` (gerbang identitas relatif, lebar ≥ 60 px, pembaruan progresif, ambang uji 0,35 / margin 0,15, `ai_fps` 15).
+- **Hasil (DB, kamera 357):**
+
+  | Event | Jam WIB | Orang | `payload.face` | Crop |
+  |---|---|---|---|---|
+  | 4899 | 16:36:27 | karyawan | `recognized`, skor 0,444, margin 0,267 | 118×142 |
+  | 4900 | 16:37:01 | karyawan | `recognized`, skor 0,586, margin 0,339 | 135×153 |
+  | 4901 | 16:37:50 | karyawan | `recognized` (karyawan #5), skor 0,639, margin 0,444 | 140×179 |
+  | 4902 | 16:39:12 | non-karyawan | `unknown`, `no_match`, skor 0,222 | 117×156 |
+  | 4903 | 16:42:03 | karyawan, jarak 2 m+ | `recognized`, skor 0,452, margin 0,252 | 100×123 |
+
+- **Terbukti:** semua karyawan dikenali (skor 0,444–0,639; margin ≥ 0,25), non-karyawan tidak (skor 0,222; sebelumnya 0,243 agregat dan 0,298 frame tunggal maks); alert dan caption tersinkron (`face_synced` true di semua). Crop 100–140 px lebar berarti wajah ±62–88 px (padding 30%), sehingga uji 2 m+ dikenali pada wajah ±62 px, di dekat batas 60 px.
+- **Belum terbukti:** tingkat salah-orang (baru 2 non-karyawan di dua sesi), jarak 3 m, dan pengaruh resolusi 2K secara terpisah dari jarak/pose (jarak uji tidak seragam). Ambang 0,35 / 0,15 tetap nilai uji; ROADMAP `IFI` tetap `[~]`.
+- **Rollback:** tidak ada perubahan kode pada entri ini (hanya konfigurasi kamera dan catatan).
+
+### Face ID pada intrusion critical — gerbang identitas relatif untuk jarak sampai ±3 m (2026-10-08)
+
+- **Konteks:** uji kamera 357 (fps 15) memberi 4 event dari 4 percobaan, tetapi hanya uji pertama dikenali; uji mundur/maju `not_visible/small` dan uji non-karyawan `not_visible/blur` sehingga tidak ada skor impostor. Analisis klip (dibatasi CPU): pada keempat klip tidak ada frame yang lolos gerbang lama (lebar ≥ 80 px, blur ≥ 120); tanpa gerbang blur dengan peringkat `det × blur` dan lebar ≥ 60 px, karyawan 0,427–0,483 (margin 0,26–0,29) dan non-karyawan 0,243 (margin 0,01). Variansi Laplacian pada crop 112×112 bergantung pada ukuran wajah asli (median 28–73 untuk wajah 76–88 px di kamera 357 lawan 150–230 untuk 100–120 px di kamera 363), padahal skor per frame di 357 justru lebih tinggi (median 0,42 lawan 0,36): label "buram" menyesatkan. Kebutuhan user: akurasi tinggi sampai ±3 m dan frame terbaik saat orang berjalan.
+- **Perubahan (khusus identitas intrusion, absensi tidak berubah):** `IdentCollector` tidak lagi memakai gerbang blur absolut maupun gerbang `quality` berbasis lebar; gerbang geometri = lebar ≥ `IDENT_MIN_WIDTH_PX` (60), skor deteksi, yaw, pitch. K=5 frame terbaik dipilih relatif per orang dengan peringkat `skor deteksi × ketajaman` (agregasi tetap berbobot kualitas). Label overlay frame yang lolos berupa lebar piksel (`86px`), penolakan hanya `small`/`score`/`yaw`/`pitch`. API: `_identify_with_name` tidak lagi menolak `low_quality` (ambang 0,35/margin 0,15 dan margin top-1/top-2 yang memutuskan). Konstanta `IDENT_MIN_QUALITY` dihapus.
+- **Bukti:** RED vision `7 failed` (`assert 0 == 1` untuk wajah 60 px, `1 == 0` untuk wajah halus, `1 == 5 + 1` untuk peringkat ketajaman, label `0.90` lawan `120px`) dan RED backend `not_visible == recognized` untuk `quality=0.2`; GREEN setelah implementasi. Suite berurutan: backend `954 passed, 1 deselected`, vision `331 passed, 3 deselected` (328 + 3), docker `77 passed`, vitest `38 files / 497 passed`, build exit 0, lint 24 warning. Log `temp/logs/intrusion-face-id/gate-*.txt`, `clip-width-sweep.txt`, `clip-stats-4895-4898.txt`.
+- **Belum terbukti:** akurasi pada ±3 m (belum ada uji 3 m), tingkat salah-orang (baru satu non-karyawan dengan 14 frame), perilaku saat berjalan. Kamera 357 main-stream 1920×1080 H.264 25 fps; sub-stream 640×480 10 fps (detektor efektif ≤ 10 fps walau `ai_fps` 15).
+- **Rollback:** revert commit ini dan rebuild `vision` + `api`.
+
+### Face ID pada intrusion critical — pembaruan identitas progresif (2026-10-08)
+
+- **Konteks:** analisis klip (entri berikutnya) menunjukkan frame terbaik sering datang setelah jendela 8 dtk karena orang bergerak mencari titik terbaik: agregasi seluruh klip memberi 0,446–0,564, sedangkan skor node 0,350–0,576 (4885 jatuh 0,0002 di bawah ambang). Keputusan user: pembaruan progresif.
+- **Perubahan (node):** `IdentCollector` tidak lagi selesai setelah hasil pertama. Selama orang masih di zona (maks `MAX_TRACK_S` = 90 dtk setelah event) pengumpulan berlanjut dan pembaruan (`seq` > 0) dikirim bila K terbaik berubah, dengan jeda minimum `UPDATE_EVERY_S` = 10 dtk dan maks `MAX_UPDATES` = 6; pembaruan akhir dikirim saat orang pergi atau worker berhenti (`flush`). Pekerjaan dan memori tetap terbatas: embed hanya bila frame mengalahkan K terbaik. Crop diunggah ulang hanya bila kandidat membaik. **(API):** `handle_face_result` menerima hanya hasil yang lebih baik (`recognized` > `unknown` > `not_visible` > `unverified`; status sama dengan skor lebih tinggi), memperbarui `payload.face` dan `crop_path`, dan mengedit caption lagi hanya bila status atau karyawan berubah; hasil yang lebih rendah tidak pernah menimpa. `FaceResultIn.seq` ditambah.
+- **Bukti:** RED vision `7 failed` (`KeyError: 'seq'`, fitur belum ada) lalu `30 passed` pada berkas kolektor; RED backend `3 failed` (`crops/.../a.jpg == b.jpg`, hasil `not_visible` menimpa `recognized`, skor tidak diperbarui). Dua tes lama diubah karena siklus hidup berubah: entri tetap dipantau setelah hasil pertama (`registry.entries()`), dan tes "abaikan orang setelah terkirim" diganti dengan tes pekerjaan terbatas. GREEN suite berurutan: backend `954 passed, 1 deselected` (950 + 4), vision `328 passed, 3 deselected` (323 + 5), docker `77 passed`, vitest `38 files / 497 passed`, build exit 0, lint 24 warning. Log di `temp/logs/intrusion-face-id/prog-*.txt`.
+- **Dampak:** caption bisa naik setelah alert (mis. `tidak dikenali` → `Dikenali: <nama>`) selama orang di zona; entri registry bertahan sampai 90 dtk sehingga motion gate dilewati selama itu (SCRFD jalan saat orang berada di zona). BELUM diuji di lapangan.
+- **Rollback:** revert commit ini dan rebuild `vision` + `api`.
+
 ### Face ID pada intrusion critical — uji ambang 0,35/0,15 dan analisis klip (2026-10-08)
 
 - **Konteks:** dua uji karyawan terdaftar pada jarak 1–2 m dengan ambang uji server 0,35 / margin 0,15: event 4885 (14:57:21) `unknown`, skor **0,3498** (kurang 0,0002 dari ambang) dan event 4886 (14:58:18) `recognized`, skor 0,410, margin 0,220. Pada 4885 user berjalan mencari titik terbaik. Klip keempat event jarak dekat (4883–4886, 1080p) dianalisis frame demi frame di container `api` (read-only; SCRFD + ArcFace seperti jalur node; hanya angka).

@@ -20,9 +20,12 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
 - **Caption Telegram**: baris `Identitas: Dikenali: <nama>` / `Wajah terlihat, tidak dikenali` /
   `Wajah tidak terlihat jelas` / `Identitas tidak terverifikasi` (empat hasil; `unverified` =
   pesan susulan tidak pernah datang dalam 20 detik — cek log consumer MQTT dan status worker face).
+  Hasil bisa **naik** selama orang masih di zona (maks 90 detik; mis. `Wajah terlihat, tidak dikenali` →
+  `Dikenali: <nama>` saat orang menemukan titik terbaik); tidak pernah turun, dan caption hanya diedit
+  lagi saat status berubah (skor/crop yang lebih baik diperbarui diam-diam di Inbox).
 - **Inbox**: baris Identitas di panel detail (`event-identity`), tab **Crop wajah** untuk event
   intrusion ber-`crop_path` (bukti manual untuk yang tidak dikenali).
-- **Live View, overlay debugger**: kotak wajah yang terhubung ke kepala orang (40% atas bbox person) diberi label hasil gerbang identitas, yaitu kualitas (`0.62`) atau penolakan `wajah terlalu kecil` / `skor rendah` / `menyamping` / `buram` / `menunduk/mendongak` / `kualitas rendah`, bukan status zona. Pada kamera tanpa zona attendance, wajah yang bukan kepala siapa pun tidak digambar. Kamera ber-zona attendance tetap memberi label `di luar zona` pada wajah yang bukan kandidat identitas.
+- **Live View, overlay debugger**: kotak wajah yang terhubung ke kepala orang (40% atas bbox person) diberi label hasil gerbang identitas, yaitu lebar wajah dalam piksel (`86px`, artinya lolos gerbang) atau penolakan `wajah terlalu kecil` (< 60 px) / `skor rendah` / `menyamping` / `menunduk/mendongak`, bukan status zona. Label `buram` dan `kualitas rendah` tidak muncul lagi untuk identitas: ketajaman hanya dipakai sebagai peringkat relatif, bukan gerbang. Pada kamera ber-zona attendance label absensi (`buram`, dst.) tetap memakai gerbang attendance. Pada kamera tanpa zona attendance, wajah yang bukan kepala siapa pun tidak digambar. Kamera ber-zona attendance tetap memberi label `di luar zona` pada wajah yang bukan kandidat identitas.
 - **Log**: `identity_skipped_text_only` = alert terkirim sebagai teks, tidak bisa diedit (wajar).
   `zona face_id tetapi model wajah tidak tersedia` (log `vision`) = model wajah tidak termuat
   (`VISION_FACE_MODEL_DIR`/insightface); identitas tidak aktif dan alert critical berakhir `unverified`.
@@ -37,7 +40,7 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
 2. Pilih `FACE_ID_THRESHOLD` di atas sebaran skor impostor tertinggi; `FACE_ID_MARGIN` dari jarak
    top-1/top-2 genuine. **Salah-orang harus nol dalam uji** — jangan menurunkan ambang agar
    pengenalan "berhasil" di kondisi gelap.
-3. `MAX_PITCH` dan gerbang kualitas node di `vision/vision/intrusion_face.py` (konstanta atas
+3. `MAX_PITCH`, `IDENT_MIN_WIDTH_PX` (60 px) dan konstanta lain di `vision/vision/intrusion_face.py` (konstanta atas
    berkas) hanya diubah bila statistik penolakan menunjukkan gerbang yang salah.
 4. Probe kelayakan bisa diulang per kamera (`temp/scripts/intrusion_face_probe.py`, tidak
    di-commit; hasil terakhir `temp/logs/intrusion-face-id/probe.md`: kamera 363 gelap, 0 frame

@@ -34,11 +34,12 @@ def wants_identity(db: Session, ev: Event) -> bool:
     return zone.behavior_flag("intrusion", "face_id", default=False)
 
 
-def _identify_with_name(db: Session, vector: list[float], quality: float | None) -> dict:
-    """match_strict + nama karyawan; pemetaan status recognized|unknown|not_visible."""
-    if quality is not None and quality < face.settings.face_min_quality:
-        f = {"status": "not_visible", "reason": "low_quality"}
-        return f
+def _identify_with_name(db: Session, vector: list[float]) -> dict:
+    """match_strict + nama karyawan; pemetaan status recognized|unknown|not_visible.
+
+    Tanpa gerbang quality: rumus quality berbasis lebar tidak memprediksi kecocokan (data klip 1-3 m);
+    keputusan ada pada ambang ketat + margin top-1/top-2.
+    """
     res = face.match_strict(vector, quality=None)
     if res.reason == "matched":
         name = None
@@ -56,11 +57,24 @@ def _identify_with_name(db: Session, vector: list[float], quality: float | None)
     return {k: v for k, v in out.items() if v is not None}
 
 
-def _same_face(existing: dict | None, incoming: dict) -> bool:
+_RANK = {"unverified": 0, "not_visible": 1, "unknown": 2, "recognized": 3}
+
+
+def _improves(existing: dict | None, new: dict) -> bool:
+    """Pembaruan progresif tidak pernah menurunkan hasil: status lebih tinggi, atau status sama dengan skor lebih tinggi."""
+    if not isinstance(existing, dict) or existing.get("status") not in _RANK:
+        return True
+    old_rank, new_rank = _RANK[existing["status"]], _RANK.get(new["status"], 0)
+    if new_rank != old_rank:
+        return new_rank > old_rank
+    return (new.get("score") or 0.0) > (existing.get("score") or 0.0) + 1e-6
+
+
+def _caption_changes(existing: dict | None, new: dict) -> bool:
+    """Teks caption berubah hanya bila status atau karyawan berbeda (skor saja tidak mengedit Telegram)."""
     if not isinstance(existing, dict):
-        return False
-    return existing.get("status") == incoming.get("status") and \
-        existing.get("employee_id") == incoming.get("employee_id")
+        return True
+    return existing.get("status") != new.get("status") or existing.get("employee_id") != new.get("employee_id")
 
 
 def _safe_crop_path(path) -> bool:
@@ -84,21 +98,26 @@ def handle_face_result(db: Session, data: dict) -> None:
         stats = msg.stats or {}
         rejects = stats.get("rejects") or {}
         if vector is not None:
-            face_dict = _identify_with_name(db, vector, msg.quality)
+            face_dict = _identify_with_name(db, vector)
         elif stats.get("faces", 0) == 0:
             face_dict = {"status": "not_visible", "reason": "no_face"}
         else:
             reason = max(rejects, key=rejects.get) if rejects else "no_face"
             face_dict = {"status": "not_visible", "reason": reason}
-        if _same_face((ev.payload or {}).get("face"), face_dict):
-            return  # duplikat / hasil sama: tanpa edit kedua
+        existing = (ev.payload or {}).get("face")
+        if not _improves(existing, face_dict):
+            return  # duplikat atau hasil yang tidak lebih baik: abaikan
+        changes_caption = _caption_changes(existing, face_dict)
         payload = {**(ev.payload or {}), "face": face_dict}
-        if _safe_crop_path(msg.crop_path) and not (ev.payload or {}).get("crop_path"):
-            payload["crop_path"] = msg.crop_path
+        if _safe_crop_path(msg.crop_path):
+            payload["crop_path"] = msg.crop_path  # crop mengikuti hasil terbaik
         ev.payload = payload  # dict baru → perubahan JSON terdeteksi
-        db.query(Alert).filter(Alert.event_id == ev.id).update(
-            {"face_synced": False}, synchronize_session=False)
+        if changes_caption:
+            db.query(Alert).filter(Alert.event_id == ev.id).update(
+                {"face_synced": False}, synchronize_session=False)
         db.commit()
+        if not changes_caption:
+            return  # skor/crop lebih baik, teks caption sama: tanpa siaran dan tanpa edit kedua
         try:
             import asyncio
             asyncio.run(hub.broadcast({"kind": "face", "event_id": ev.id,
