@@ -188,6 +188,20 @@ test('modal koreksi menawarkan status no_entry', async () => {
 })
 
 
+test('dropdown Status di modal Koreksi tidak menampilkan placeholder {n}', async () => {
+  stubFetch()
+  renderPage()
+
+  await userEvent.click(await screen.findByTestId('at-row-12'))
+  await screen.findByTestId('ov-note')
+  const options = within(document.getElementById('ov-status')!)
+    .getAllByRole('option')
+    .map((o) => o.textContent)
+
+  expect(options.some((o) => o?.includes('{n}'))).toBe(false)
+  expect(options).toContain('TELAT')
+})
+
 test('admin: tombol Koreksi hanya untuk baris no_exit/no_entry dan membuka modal', async () => {
   stubFetch(ME, RANGE_ROWS)
   renderPage()
