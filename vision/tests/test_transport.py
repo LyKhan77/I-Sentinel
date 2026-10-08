@@ -167,3 +167,19 @@ def test_backlog_reports_queue_size(transport):
     transport._client.publish_rc = 1  # broker putus → masuk antrean
     transport.publish_event({"event_id": "x"})
     assert transport.backlog() == 1
+
+
+def test_publish_face_uses_face_topic_qos1_and_queues_when_disconnected(transport):
+    """publish_face ke isentinel/events/face QoS1; broker putus → antrean disk (gaya publish_event)."""
+    transport._client.connected = False
+    transport.publish_face({"event_id": "ev-1", "embedding": None})
+    assert transport._client.published == []
+    assert transport._queue.size() == 1
+    seq, item = transport._queue.pop()
+    assert item == {"_topic": "isentinel/events/face", "data": {"event_id": "ev-1", "embedding": None}}
+
+    transport._client.connected = True
+    transport.publish_face({"event_id": "ev-2"})
+    topic, payload, qos, retain = transport._client.published[0]
+    assert topic == "isentinel/events/face" and qos == 1
+    assert json.loads(payload) == {"event_id": "ev-2"}

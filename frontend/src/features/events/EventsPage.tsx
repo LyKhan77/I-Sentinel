@@ -202,6 +202,11 @@ export default function EventsPage() {
       if (typeof msg.event_id === 'number' && selected?.id === msg.event_id) setAiTick((value) => value + 1)
       return
     }
+    if (msg?.kind === 'face') {
+      // hasil identitas wajah intrusion tertulis → refresh merge supaya payload.face terlihat
+      refresh('merge')
+      return
+    }
     if (msg?.kind === 'alert') {
       // broadcast status akhir alert (alert_dispatcher) → update chip tanpa reload
       const status = msg.status
@@ -255,6 +260,22 @@ export default function EventsPage() {
     return '—'
   }
 
+  // Identitas intrusion critical: string tampil, atau null bila payload.face tidak ada.
+  const identityRow = (p: Record<string, unknown> | null): string | null => {
+    const face = p?.face
+    if (typeof face !== 'object' || face === null) return null
+    const f = face as Record<string, unknown>
+    const score = typeof f.score === 'number' ? ` · ${f.score.toFixed(2)}` : ''
+    switch (f.status) {
+      case 'recognized':
+        return t('events.identity.recognized', { name: String(f.name ?? '') }) + score
+      case 'unknown': return t('events.identity.unknown')
+      case 'not_visible': return t('events.identity.notVisible')
+      case 'unverified': return t('events.identity.unverified')
+      default: return null
+    }
+  }
+
   // pencarian teks tetap client-side atas hasil server yang sudah terfilter
   const needle = query.trim().toLowerCase()
   const filtered = events.filter((e) => {
@@ -287,8 +308,7 @@ export default function EventsPage() {
     return () => { alive = false }
   }, [eventParam, loading, inList])
   const cropPath = typeof selected?.payload?.crop_path === 'string' ? selected.payload.crop_path : null
-  const isAttendance = selected?.type === 'attendance'
-  // event system (node offline/pulih, health alert) tidak punya media: panel Bukti menggantikan tab
+  const isAttendance = selected?.type === 'attendance'  // event system (node offline/pulih, health alert) tidak punya media: panel Bukti menggantikan tab
   const isSystem = selected?.type === 'system'
   const title = selected ? (isSystem ? eventTitle(selected, t) : selected.type) : ''
   const where = selected ? eventWhere(selected, t, camNameById) : ''
@@ -563,7 +583,7 @@ export default function EventsPage() {
               ) : (
                 <>
                   <div className="ev-tabstrip" role="tablist">
-                {DETAIL_TABS.filter((tb) => (tb.id === 'crop' ? isAttendance : tb.id !== 'clip' || !isAttendance)).map((tb) => {
+                {DETAIL_TABS.filter((tb) => (tb.id === 'crop' ? isAttendance || cropPath != null : tb.id !== 'clip' || !isAttendance)).map((tb) => {
                   const off = tb.id === 'crop' && !cropPath
                   return (
                     <button
@@ -655,6 +675,12 @@ export default function EventsPage() {
                   <div className="ev-meta">
                     <dt className="ev-meta__k">{t('events.col.face')}</dt>
                     <dd className="ev-meta__v" data-testid="event-face-match">{faceMatch(selected.payload)}</dd>
+                  </div>
+                )}
+                {identityRow(selected.payload) && (
+                  <div className="ev-meta">
+                    <dt className="ev-meta__k">{t('events.identity')}</dt>
+                    <dd className="ev-meta__v" data-testid="event-identity">{identityRow(selected.payload)}</dd>
                   </div>
                 )}
                 <div className="ev-meta">

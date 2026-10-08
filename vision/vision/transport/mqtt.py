@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 
 EVENTS_TOPIC = "isentinel/events"
 MEDIA_TOPIC = "isentinel/events/media"
+FACE_TOPIC = "isentinel/events/face"
 
 
 class MqttTransport:
@@ -80,6 +81,10 @@ class MqttTransport:
 
     def publish_media(self, payload: dict) -> None:
         self._publish(MEDIA_TOPIC, payload)
+
+    def publish_face(self, payload: dict) -> None:
+        """Hasil identitas intrusion critical (satu pesan per event_id), QoS1 + antrean disk."""
+        self._publish(FACE_TOPIC, payload)
 
     def publish_heartbeat(self, hb: dict) -> None:
         self._client.publish(

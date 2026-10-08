@@ -360,6 +360,8 @@ const dicts = {
     'live.faceGate.score': 'skor rendah',
     'live.faceGate.yaw': 'menyamping',
     'live.faceGate.blur': 'buram',
+    'live.faceGate.pitch': 'menunduk/mendongak',
+    'live.faceGate.quality': 'kualitas rendah',
     'live.trackId': 'ID {n}',
     'live.clickUnfocus': 'Klik untuk kembali ke grid',
     'live.noSnapshot': 'Snapshot tidak tersedia',
@@ -384,6 +386,11 @@ const dicts = {
     'events.col.type': 'Tipe',
     'events.col.face': 'Wajah',
     'events.face.unknown': 'Tidak dikenal',
+    'events.identity': 'Identitas',
+    'events.identity.recognized': 'Dikenali: {name}',
+    'events.identity.unknown': 'Wajah terlihat, tidak dikenali',
+    'events.identity.notVisible': 'Wajah tidak terlihat jelas',
+    'events.identity.unverified': 'Identitas tidak terverifikasi',
     'events.face.cooldown': 'sudah tercatat (cooldown)',
     'events.face.alreadyIn': 'sudah absen masuk hari ini',
     'events.col.severity': 'Severity',
@@ -511,6 +518,8 @@ const dicts = {
     'zones.speedLimit': 'Batas kecepatan (m/s)',
     'zones.telegram': 'Kirim Telegram',
     'zones.telegramUnknown': 'Kirim wajah tidak dikenal',
+    'zones.faceId': 'Cari identitas wajah',
+    'zones.faceIdHint': 'Kamera mencari identitas setelah alert critical terkirim dan menyimpan crop wajah terbaik sebagai bukti (butuh pencahayaan dan wajah yang cukup jelas; menambah satu pembacaan stream utama kamera ini). Hasil diedit ke caption Telegram dan tampil di Inbox.',
     'zones.record': 'Catat absensi',
     'zones.recordOffHint': 'Hanya mendeteksi wajah: tidak ada rekap absensi. Event tetap masuk Inbox dan Telegram.',
     'zones.mediaRequired': 'Aktifkan Snapshot atau Clip — event tanpa media tidak berguna dan akan terhapus.',
@@ -1271,6 +1280,8 @@ const dicts = {
     'live.faceGate.score': 'low score',
     'live.faceGate.yaw': 'turned away',
     'live.faceGate.blur': 'blurry',
+    'live.faceGate.pitch': 'tilted up/down',
+    'live.faceGate.quality': 'low quality',
     'live.trackId': 'ID {n}',
     'live.clickUnfocus': 'Click to return to grid',
     'live.noSnapshot': 'Snapshot unavailable',
@@ -1295,6 +1306,11 @@ const dicts = {
     'events.col.type': 'Type',
     'events.col.face': 'Face',
     'events.face.unknown': 'Unknown',
+    'events.identity': 'Identity',
+    'events.identity.recognized': 'Recognized: {name}',
+    'events.identity.unknown': 'Face seen, not recognized',
+    'events.identity.notVisible': 'Face not clearly visible',
+    'events.identity.unverified': 'Identity unverified',
     'events.face.cooldown': 'already recorded (cooldown)',
     'events.face.alreadyIn': 'already checked in today',
     'events.col.severity': 'Severity',
@@ -1422,6 +1438,8 @@ const dicts = {
     'zones.speedLimit': 'Speed limit (m/s)',
     'zones.telegram': 'Send Telegram',
     'zones.telegramUnknown': 'Send unknown faces',
+    'zones.faceId': 'Look up face identity',
+    'zones.faceIdHint': 'The camera looks up identity after the critical alert is sent and keeps the best face crop as evidence (needs adequate lighting and a reasonably clear face; adds one main-stream read for this camera). The result is edited into the Telegram caption and shown in the Inbox.',
     'zones.record': 'Record attendance',
     'zones.recordOffHint': 'Face detection only: no attendance record. Events still reach the Inbox and Telegram.',
     'zones.mediaRequired': 'Enable Snapshot or Clip — events without media are useless and will be deleted.',
@@ -1830,7 +1848,7 @@ const dicts = {
 export type Locale = keyof typeof dicts
 export type TKey = keyof (typeof dicts)['id']
 
-type I18nCtx = { locale: Locale; setLocale: (l: Locale) => void; t: (key: TKey) => string }
+type I18nCtx = { locale: Locale; setLocale: (l: Locale) => void; t: (key: TKey, params?: Record<string, string>) => string }
 
 const Ctx = createContext<I18nCtx | null>(null)
 
@@ -1852,7 +1870,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
     setLocaleState(l)
   }, [])
-  const t = useCallback((key: TKey) => dicts[locale][key] ?? key, [locale])
+  const t = useCallback((key: TKey, params?: Record<string, string>) => {
+    let out: string = dicts[locale][key] ?? key
+    if (params) for (const [k, v] of Object.entries(params)) out = out.replaceAll(`{${k}}`, v)
+    return out
+  }, [locale])
   return <Ctx.Provider value={{ locale, setLocale, t }}>{children}</Ctx.Provider>
 }
 

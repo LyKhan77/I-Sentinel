@@ -26,6 +26,8 @@ x-api-environment: &api-environment
   CAMERA_SECRETS_FILE: /secrets/camera-secrets.json
   COOKIE_SECURE: "false"
   RETENTION_DAYS: ${RETENTION_DAYS}
+  FACE_ID_THRESHOLD: ${FACE_ID_THRESHOLD:-0.50}
+  FACE_ID_MARGIN: ${FACE_ID_MARGIN:-0.10}
 
 services:
   postgres:

@@ -19,6 +19,7 @@ class Alert(Base):
     message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     message_photo: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     ai_synced: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    face_synced: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     event: Mapped["Event"] = relationship(lazy="joined")

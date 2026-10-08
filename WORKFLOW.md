@@ -121,6 +121,14 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
    Kegagalan AI tidak mengubah event atau pengiriman alert. Caption `ok` ikut diedit
    ke alert Telegram yang sudah terkirim (§10), atau langsung ada bila alert terkirim
    setelah caption selesai.
+6. **Face ID (intrusion critical, saklar `face_id`, default mati)**: setelah alert terkirim,
+   node mengirim satu pesan `isentinel/events/face` (wajah dikaitkan dengan person yang
+   memicu event). API mencocokkan dengan ambang ketat dan menulis `payload.face`:
+   `recognized` (nama karyawan), `unknown` (wajah terlihat, tidak cocok), atau `not_visible`
+   (tidak ada wajah yang bisa diperiksa) — crop wajah terbaik tersimpan sebagai bukti manual
+   (tab Crop di Inbox, retensi `snapshot_days`). Tanpa pesan dalam 20 dtk → `unverified`.
+   Caption Telegram diedit dengan baris Identitas; alert tidak pernah ditunda atau disupresi
+   dan yang tidak dikenali tetap diperiksa manual.
 
 ## 8. Event Inbox
 
@@ -225,6 +233,8 @@ Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
    broadcast ke Inbox. Alert `sent` ber-foto menyimpan `message_id`; bila caption AI sudah/kembali
    `ok`, `alert_ai.sync_ai_caption` mengedit pesan sekali untuk menambah baris `🤖 AI:`
    (alert teks-saja, `rate_limited`, `failed`, atau tanpa `message_id` tidak pernah diedit).
+   Baris Identitas (face ID, §7 langkah 6) diedit oleh `sync_face_caption` dengan klaim
+   `face_synced` dan lock yang sama — kedua edit bersama tidak saling menimpa.
 
 Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert kesehatan dengan toggle ON (§14).
 

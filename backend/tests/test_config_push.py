@@ -391,3 +391,17 @@ def test_zone_payload_excludes_ai_fields(db):
     db.commit()
     payload = config_push.build_node_config(db, node)["cameras"][0]["zones"][0]
     assert "ai_caption" not in payload and "ai_prompt" not in payload
+
+
+def test_config_push_passes_face_id_raw(db):
+    """face_id diteruskan apa adanya (bool true) ke node — saklar dibaca vision."""
+    from app.models.camera import Camera
+    from app.models.zone import Zone as ZoneModel
+    n = _node(db)
+    cam = _cam(db, n.id)
+    z = ZoneModel(camera_id=cam.id, name="Lorong", type="behavior",
+                  polygon=[[0, 0], [1, 0], [1, 1]],
+                  behaviors=[{"kind": "intrusion", "trigger_seconds": 0, "face_id": True}])
+    db.add(z); db.commit()
+    zones = {z["name"]: z for z in config_push.build_node_config(db, n)["cameras"][0]["zones"]}
+    assert zones["Lorong"]["behaviors"][0]["face_id"] is True

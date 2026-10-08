@@ -320,3 +320,52 @@ def test_caption_attendance_detected_entry_and_exit(direction, label):
         "<b>Zona</b>: Z", "<b>Waktu</b>: 25 Sep 2026 11:42:07 WIB",
     ]
     assert "CHECK IN" not in text
+
+
+# --- intrusion face identity row -------------------------------------------
+
+def _face(status, **extra):
+    face = {"status": status}
+    face.update(extra)
+    return {"face": face}
+
+
+@pytest.mark.parametrize("status,text", [
+    ("recognized", "Dikenali: Budi"),
+    ("unknown", "Wajah terlihat, tidak dikenali"),
+    ("not_visible", "Wajah tidak terlihat jelas"),
+    ("unverified", "Identitas tidak terverifikasi"),
+])
+def test_format_caption_identity_row_for_each_status(status, text):
+    ev = _event(payload=_face(status, name="Budi", employee_id=1, score=0.83))
+    lines = telegram.format_caption(ev, "Lorong", None, None, tz=WIB).splitlines()
+    assert f"<b>Identitas</b>: {text}" in lines
+
+
+def test_format_caption_identity_recognized_escapes_name():
+    ev = _event(payload=_face("recognized", name="Budi <3"))
+    text = telegram.format_caption(ev, "Lorong", None, None, tz=WIB)
+    assert "Dikenali: Budi &lt;3" in text
+
+
+def test_format_caption_identity_absent_for_other_types_and_statuses():
+    att = _event(type="attendance", payload=_face("recognized", name="Budi"))
+    assert "Identitas" not in telegram.format_caption(att, "C", None, None, tz=WIB)
+    bogus = _event(payload={"face": {"status": "weird"}})
+    assert "Identitas" not in telegram.format_caption(bogus, "C", None, None, tz=WIB)
+    plain = _event(payload={"face": None})
+    assert "Identitas" not in telegram.format_caption(plain, "C", None, None, tz=WIB)
+
+
+def test_format_caption_identity_row_after_level_and_before_ai():
+    ev = _event(payload=_face("unknown"))
+    lines = telegram.format_caption(ev, "C", None, "http://app.test", tz=WIB,
+                                    ai_text="Berjalan.").splitlines()
+    level = lines.index("<b>Level</b>: WARNING")
+    assert lines[level + 1] == "<b>Identitas</b>: Wajah terlihat, tidak dikenali"
+
+
+def test_format_caption_identity_keeps_caption_bounded():
+    ev = _event(payload=_face("recognized", name="N" * 500, employee_id=1))
+    text = telegram.format_caption(ev, "C" * 500, None, "http://h", tz=WIB)
+    assert telegram._u16(text) <= telegram.CAPTION_MAX

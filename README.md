@@ -249,6 +249,17 @@ dengan garis ambang dan penanda waktu event — tanpa tab media dan tanpa menung
 `/monitoring/history` (mode `from`/`to`, jendela maks 6 jam) — trennya hanya tersedia ≤ 7 hari. Alur lengkap:
 `WORKFLOW.md §8`.
 
+## Face ID pada intrusion critical (opsional, default mati)
+
+Saklar **Cari identitas wajah** (`face_id`) pada behavior Intrusi zona `critical`. Setelah alert
+critical terkirim (alert tidak pernah ditunda), node mengirim satu pesan susulan hasil wajah:
+caption Telegram diedit dengan baris **Identitas** (`Dikenali: <nama>` / `Wajah terlihat, tidak
+dikenali` / `Wajah tidak terlihat jelas` / `Identitas tidak terverifikasi`), crop wajah terbaik
+tersimpan sebagai bukti manual di tab Crop Inbox (retensi `snapshot_days`). Kamera tidak perlu
+zona attendance (worker wajah dibuat otomatis untuk zona ber-`face_id`); hasil pengenalan sangat tergantung pencahayaan dan ukuran
+wajah — yang tidak dikenali tetap diperiksa manual. Ambang melalui `FACE_ID_THRESHOLD` dan
+`FACE_ID_MARGIN` di `docker/.env` (ubah → recreate `api`). Runbook: `docs/runbooks/intrusion-face-id.md`.
+
 ## Caption AI dan Tanya AI (opsional)
 
 Fitur MVP tersedia di kode, **belum diuji di server/UI/LLM nyata**. Default `LLM_ENABLED=false`:

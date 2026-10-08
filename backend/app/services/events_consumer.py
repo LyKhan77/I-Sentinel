@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 EVENTS_TOPIC = "isentinel/events"
 MEDIA_TOPIC = "isentinel/events/media"
+FACE_TOPIC = "isentinel/events/face"
 DETECTIONS_PREFIX = "isentinel/detections/"
 LWT_TOPIC = "isentinel/nodes/+/lwt"
 HEARTBEAT_TOPIC = "isentinel/nodes/+/heartbeat"
@@ -86,6 +87,13 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                 except Exception:
                     db.rollback()
                     logger.exception("AI caption hook failed for event %s", ev.event_id)
+                try:
+                    from app.services import intrusion_face
+                    if intrusion_face.wants_identity(db, ev):
+                        intrusion_face.schedule_unverified(ev.event_id)
+                except Exception:
+                    db.rollback()
+                    logger.exception("identity fallback schedule failed for event %s", ev.event_id)
                 asyncio.run(hub.broadcast(EventOut.model_validate(ev).model_dump(mode="json")))
         elif topic == MEDIA_TOPIC:
             event_id = data.get("event_id")
@@ -112,6 +120,9 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             # saat snapshot masih None) — label ulang dari payload yang tersimpan.
             if data.get("snapshot_path") and ev.type == "attendance":
                 attendance.annotate_event_snapshot(ev)
+        elif topic == FACE_TOPIC:
+            from app.services import intrusion_face
+            intrusion_face.handle_face_result(db, data if isinstance(data, dict) else {})
         elif topic.startswith("isentinel/nodes/") and topic.endswith("/heartbeat"):
             name = topic.split("/")[2]
             node = db.query(Node).filter_by(name=name).first()
@@ -186,8 +197,8 @@ class EventConsumer:
                 time.sleep(5)
 
     def _subscriptions(self):
-        return [(EVENTS_TOPIC, 1), (MEDIA_TOPIC, 1), ("isentinel/detections/+", 0),
-                (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
+        return [(EVENTS_TOPIC, 1), (MEDIA_TOPIC, 1), (FACE_TOPIC, 1),
+                ("isentinel/detections/+", 0), (LWT_TOPIC, 1), (HEARTBEAT_TOPIC, 0)]
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         connected.set()

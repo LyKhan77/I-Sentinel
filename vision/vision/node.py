@@ -11,11 +11,12 @@ import uuid
 from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
-from .analyzers.base import Analyzer, wall_time
+from .analyzers.base import Analyzer, ground_point, point_in_polygon, wall_time
 from .face_quality import FaceSettings
 from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
 from . import hardware
+from .intrusion_face import ErrorThrottle, IntrusionRegistry
 from .pipeline.detector import PersonDetector
 from .pipeline.source import FrameSource
 from .pipeline.tracker import ByteTracker
@@ -99,7 +100,8 @@ class _PartialTrack:
 class CameraWorker(threading.Thread):
     def __init__(self, camera_cfg, detector_factory, transport, stop_event, node_id,
                  analyzers: list[Analyzer] | None = None, recorder=None,
-                 emit_person_detect: bool = False, motion: dict | None = None):
+                 emit_person_detect: bool = False, motion: dict | None = None,
+                 registry=None, ident_zones: list[dict] | tuple = ()):
         super().__init__(daemon=True, name=f"cam-{camera_cfg.camera_id}")
         self.camera_cfg = camera_cfg
         self.camera_id = camera_cfg.camera_id
@@ -124,6 +126,9 @@ class CameraWorker(threading.Thread):
         )
         self.events: list[dict] = []  # test hook
         self.source = None
+        self.registry = registry
+        self.ident_zones = list(ident_zones)
+        self._ident_err = ErrorThrottle()  # identitas opsional: gagal = terisolasi, deteksi tetap jalan
         self.frames = 0          # frame diproses (heartbeat: fps jendela)
         self.motion_skipped = 0  # frame dilewati motion gate (heartbeat: skip %)
 
@@ -150,6 +155,15 @@ class CameraWorker(threading.Thread):
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if frame.data is not None:
+                    frame_h, frame_w = frame.data.shape[:2]
+                else:
+                    frame_w, frame_h = DEFAULT_W, DEFAULT_H
+                if self.registry is not None:
+                    try:
+                        self._touch_ident(tracks, frame.ts, frame_w, frame_h)
+                    except Exception:
+                        self._ident_err.log(log, "camera %s: identity touch failed (isolated)", cam_id)
                 if self.recorder is not None and tracks:
                     self.recorder.touch([t.id for t in tracks])
                 if tracks and self.transport is not None:
@@ -168,10 +182,6 @@ class CameraWorker(threading.Thread):
                             pass  # no cv2: ring stays empty, snapshots skipped
                     elif detections:
                         self.recorder.push_jpeg(frame.ts, b"")  # tests: no frame data
-                if frame.data is not None:
-                    frame_h, frame_w = frame.data.shape[:2]
-                else:
-                    frame_w, frame_h = DEFAULT_W, DEFAULT_H
                 for tr in tracks:
                     if tr.id not in seen:
                         seen.add(tr.id)
@@ -185,6 +195,14 @@ class CameraWorker(threading.Thread):
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
+                        if self.registry is not None and ev["type"] == "intrusion" \
+                                and ev["zone_id"] in {z["id"] for z in self.ident_zones}:
+                            try:
+                                self.registry.bind(ev["zone_id"], ev["payload"]["track_id"],
+                                                   ev["event_id"], frame.ts)
+                            except Exception:
+                                self._ident_err.log(log, "camera %s: identity bind failed (isolated)",
+                                                    cam_id)
                         media = getattr(az, "media", None)
                         if media is not None:
                             ev["snapshot"] = media.get("snapshot", True)
@@ -201,12 +219,35 @@ class CameraWorker(threading.Thread):
         if self.source is not None:
             self.source.close()
 
+    def _touch_ident(self, tracks, ts: float, frame_w: int, frame_h: int) -> None:
+        """Registry identitas: track segar (misses == 0) yang titik kakinya di zona ident."""
+        if not self.ident_zones:
+            return
+        for z in self.ident_zones:
+            poly = [tuple(p) for p in z["polygon"]]
+            for tr in tracks:
+                if tr.misses == 0 and point_in_polygon(ground_point(tr), poly):
+                    self.registry.touch(z["id"], tr.id, tr.bbox, ts)
+
 
 def attendance_zones(cam: CameraCfg) -> list[dict]:
     """Active attendance gates with valid direction, including legacy absensi."""
     return [z for z in cam.zones
             if z.get("direction") in ("entry", "exit")
             and any(b.get("kind") == "attendance" for b in behaviors_of(z))]
+
+
+def identity_zones(cam) -> list[dict]:
+    """Zona intrusion critical ber-face_id: true (identitas diukur di kamera itu)."""
+    out = []
+    for z in cam.zones if hasattr(cam, "zones") else cam.get("zones", []):
+        if z.get("severity") != "critical":
+            continue
+        for b in behaviors_of(z):
+            if b.get("kind") == "intrusion" and b.get("face_id") is True:
+                out.append(z)
+                break
+    return out
 
 
 def behaviors_of(z: dict) -> list[dict]:
@@ -448,6 +489,13 @@ class VisionNode:
         """Start detect and face workers with one shared recorder for this camera."""
         analyzers = self._make_analyzers(cam)
         gates = attendance_zones(cam) if self.face is not None else []
+        wanted = identity_zones(cam)
+        ident = wanted if self.face is not None else []
+        if wanted and not ident:
+            log.warning("camera %s: zona face_id tetapi model wajah tidak tersedia; identitas tidak aktif "
+                        "(alert critical akan ditandai unverified)", cam.camera_id)
+        # zona critical di ruang terlarang biasanya tanpa zona attendance: worker wajah tetap dibuat
+        registry = IntrusionRegistry() if ident else None
         run_yolo = bool(analyzers) or self.cfg.emit_person_detect
         if not run_yolo and not gates:
             return  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
@@ -466,14 +514,15 @@ class VisionNode:
                              threading.Event(), self.cfg.node_id,
                              analyzers=analyzers, recorder=recorder,
                              emit_person_detect=self.cfg.emit_person_detect,
-                             motion=cam.motion)
+                             motion=cam.motion, registry=registry,
+                             ident_zones=ident)
             w.source = self.source_factory(cam)
             w.start()
             self._workers.append(w)
-        if gates:
+        if gates or registry is not None:
             fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
                                 self.cfg.node_id, self._face_settings,
-                                recorder=recorder, motion=cam.motion)
+                                recorder=recorder, motion=cam.motion, registry=registry)
             fw.source = self.source_factory(
                 cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
             fw.start()

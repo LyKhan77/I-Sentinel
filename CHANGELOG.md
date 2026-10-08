@@ -3,6 +3,210 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — hasil uji lapangan di zona 15 (2026-10-08)
+
+- **Konteks:** deploy branch `feat/intrusion-face-id` ke `gspe-ai3` (tanpa merge ke `main`), user menguji lima event intrusion di zona 15 "Server" (kamera 363, critical, trigger 10 dtk, `face_id: true`). Data dari DB (`payload.face`, `payload.crop_path`, `alert`) dan crop yang dilihat langsung (kualitas/ukuran saja; tidak ada identifikasi dari wajah).
+- **Hasil:**
+
+  | Event | Jam WIB | Deploy | `payload.face` | Crop | Catatan |
+  |---|---|---|---|---|---|
+  | 4876 | 13:35:53 | `49b75b2` | `unverified` | tidak ada | kamera tanpa zona attendance aktif: tidak ada worker wajah (batasan v1, dihapus di `2b65346`) |
+  | 4878 | 13:49:31 | `2b65346` | `not_visible`, `small` | 86×96 | wajah ±54 px |
+  | 4880 | 13:54:57 | `2b65346` | `not_visible`, `small` | ada | jarak jauh |
+  | 4881 | 13:59:23 | `2b65346` | `unknown`, `no_match`, skor 0,327 | 166×218 | jarak dekat, wajah ±111 px, kepala menunduk; embedding hanya dari 3 frame pertama (diperbaiki di `fc99372`) |
+  | 4883 | 14:25:02 | `fc99372` | `unknown`, `no_match`, skor 0,370 | 158×197 | wajah ±99 px, hampir frontal |
+  | 4884 | 14:26:18 | `fc99372` | **`recognized`**, skor 0,576, margin 0,332 | 202×254 | wajah ±126 px, lebih dekat dan frontal |
+
+- **Terbukti:** jalur lengkap bekerja (pesan susulan node, pencocokan ketat, `payload.face`, `payload.crop_path`, tab Crop di Inbox, caption Telegram diedit; `face_synced` true di semua alert) dan `recognized` pertama berhasil dengan margin besar terhadap kandidat kedua. Keberhasilan bergantung pada ukuran dan frontalitas wajah: ±99 px frontal masih di bawah ambang 0,50, ±126 px frontal lolos.
+- **Belum terbukti:** tingkat false accept (belum ada uji impostor/non-karyawan), tingkat true accept (hanya 1 dari 3 uji jarak dekat), latensi caption identitas di Telegram (hanya flag DB), perilaku pada zona critical di ruang sebenarnya. Ambang `FACE_ID_THRESHOLD = 0,50` dan `FACE_ID_MARGIN = 0,10` tetap nilai awal; tidak diubah berdasar uji ini. ROADMAP `IFI` tetap `[~]`.
+- **Catatan terpisah:** AI caption event 4883 dan 4884 gagal `LLM timeout` (4878–4881 berhasil): endpoint LLM yang putus-putus, tidak terkait fitur ini.
+- **Rollback:** `ssh gspe-ai3`, `cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git checkout main && ./docker/setup.sh` (kolom 0023 aditif, tanpa downgrade).
+
+### Face ID pada intrusion critical — kandidat terbaik, flush saat berhenti, overlay mengikuti kepala orang (2026-10-08)
+
+- **Konteks:** uji lapangan kedua dan ketiga (deploy `2b65346`): event 4878 `not_visible/small` (crop 86×96 px, wajah ±54 px) dan uji jarak dekat event 4881 (13:59:23) `unknown/no_match`, skor 0,327 terhadap galeri 7 karyawan (crop 166×218, wajah ±111 px, kepala menunduk; mesin API sendiri memberi skor 0,27). Masukan user: pengenalan terlalu cepat sehingga kandidat terbaik belum ditemukan, dan overlay debugger tidak boleh mengikuti status zona. Penyebab pertama adalah perbaikan review sebelumnya (H2) yang membatasi embedding ke `min_frames` (3) **pertama**, yaitu frame paling awal dan paling buruk, serta pengiriman segera setelah 3 frame. Penyebab kedua: label kotak wajah memakai gerbang attendance, jadi pada worker identitas-saja (zona kosong) semua wajah berlabel `zone`.
+- **Perubahan:** `IdentCollector` menyimpan **BEST_K = 5 embedding terbaik berdasar kualitas** (embed hanya bila mengalahkan K terbaik), mengirim hasil di akhir jendela 8 dtk setelah event atau saat person pergi (tidak lagi setelah 3 frame), dan memilih crop berdasar lebar × skor × (1 − yaw) × (1 − pitch) sehingga yang dipilih wajah paling frontal. `flush()` mengirim hasil sebagian saat worker berhenti (config berubah/shutdown). `observe` mengembalikan label overlay per wajah; `FaceGateWorker` memakainya: wajah di kepala orang berlabel hasil gerbang identitas (kualitas atau `small`/`score`/`yaw`/`pitch`/`blur`/`quality`); worker tanpa zona attendance tidak menggambar wajah lain; kamera ber-zona attendance tetap berlabel zone untuk wajah yang bukan kandidat identitas. Frontend: kode `pitch` dan `quality` diterjemahkan di overlay. `UNVERIFIED_AFTER_S` 15 → 20 dtk (jendela 8 dtk + unggah crop ≤ ±6 dtk + antrean MQTT).
+- **Bukti:** RED (vision) `7 failed, 35 passed` (`assert 3 == 5`, pengiriman dini, crop terlebar bukan terfrontal, `observe` mengembalikan `None`, `flush` belum ada, overlay `6 == 3`) lalu `6 failed` di tes worker saat jendela diterapkan tanpa flush; RED vitest `2 failed` (kode `pitch`/`quality` belum diterjemahkan). Satu asersi lama tentang keadaan internal registry setelah worker selesai (`reg.active(11.0)`) dihapus karena flush kini melepas entri. GREEN suite berurutan: backend `950 passed, 1 deselected`, vision `323 passed, 3 deselected` (317 + 6), docker `77 passed`, vitest `38 files / 496 passed` (494 + 2), build exit 0, lint 24 warning. Log di `temp/logs/intrusion-face-id/review4-*.txt`.
+- **Dampak:** hasil identitas tiba ±8 dtk setelah event (lebih lambat dari sebelumnya, lebih banyak kesempatan menemukan wajah frontal). Memori kolektor tetap terbatas (K vektor per orang). Tanpa perubahan kontrak, migrasi, atau backend selain konstanta timer. BELUM diuji ulang di lapangan.
+- **Rollback:** revert commit ini dan rebuild `vision`, `api`, `web`.
+
+### Face ID pada intrusion critical — uji lapangan pertama: batasan zona attendance dihapus (2026-10-08)
+
+- **Konteks:** uji user di zona 15 "Server" (kamera 363, critical, `face_id: true`, trigger 10 dtk; deploy branch `49b75b2`) menghasilkan satu event (4876, 13:35:53): alert terkirim berfoto, caption diedit `Identitas tidak terverifikasi`, `payload.face = {"status": "unverified"}`, tanpa `crop_path`. Penyebab (DB + log `vision`): zona attendance satu-satunya di kamera 363 (zona 19) kini `active = false`, sehingga node tidak membuat `FaceGateWorker` dan mencatat `face_id zone tanpa worker wajah (zona attendance); identitas tidak aktif`; API menandai `unverified` setelah 15 dtk (sesuai desain v1). Pipeline identitas sendiri belum teruji di lapangan.
+- **Perubahan:** `VisionNode._start_camera` kini membuat `IntrusionRegistry` dan `FaceGateWorker` untuk kamera dengan zona critical ber-`face_id` **tanpa syarat zona attendance** (worker berzona kosong: tanpa event absensi, hanya identitas dan crop). Bila model wajah tidak tersedia, dicatat peringatan `zona face_id tetapi model wajah tidak tersedia` (sebelumnya diam). Teks bantuan toggle UI, README, ARCHITECTURE, dan runbook menyesuaikan. Spec §2 (batas "kamera critical tanpa zona attendance") tidak diubah karena spec/plan adalah catatan; keputusan ini tercatat di sini.
+- **Bukti:** RED `test_start_camera_face_id_without_attendance_zone_still_gets_a_face_worker` (`assert ['CameraWorker'] == ['CameraWorker', 'FaceGateWorker']`; menggantikan tes lama yang mengunci batasan) dan `test_start_camera_warns_when_face_id_zone_but_face_model_unavailable` (`assert False`); `test_face_worker_without_attendance_zones_sends_identity_but_no_attendance_event` lulus sejak awal (worker sudah mendukung zona kosong; jaga regresi). GREEN suite vision `317 passed, 3 deselected`; vitest `38 files / 494 passed`, build exit 0, lint 24 warning (teks i18n saja). Log di `temp/logs/intrusion-face-id/review3-*.txt`.
+- **Dampak:** kamera critical ber-`face_id` membaca stream utama sendiri (dekode 1080p tetap berjalan; SCRFD hanya saat ada gerakan atau orang di zona). Tanpa perubahan backend, migrasi, atau kontrak.
+- **Catatan terpisah:** AI caption event 4876 dan "Tanya AI" gagal `LLM timeout` (tabel `event_ai`; keberhasilan terakhir 2026-10-07): masalah endpoint LLM, bukan fitur ini. Belum ada retry otomatis.
+- **Rollback:** revert commit ini dan rebuild `vision` + `web`.
+
+### Face ID pada intrusion critical — perbaikan review sesi perencanaan (2026-10-08)
+
+- **Konteks:** review `560b590` oleh sesi perencanaan (suite diulang berurutan: backend `947`, vision `307`, docker `77`, vitest `494`, build exit 0, lint 24 warning, sama dengan laporan executor). Empat temuan diperbaiki lewat TDD atas persetujuan user; M3 (`with_for_update` pada event) dan temuan Low dicatat sebagai follow-up.
+- **H1 isolasi:** kegagalan di jalur identitas (`IdentCollector.observe/drain`, `_ident_step`, `CameraWorker._touch_ident`, `registry.bind`) mematikan `FaceGateWorker` (absensi) atau `CameraWorker` (event intrusion itu sendiri hilang bila `bind` melempar). Kini tiap panggilan dibungkus `try/except` dengan log terbatas (`ErrorThrottle`, sekali per 60 dtk). `st.rejects[code]` tidak lagi `KeyError` untuk kode tak terduga (`"zone"`).
+- **H2 kolektor:** setelah pesan terkirim, track yang masih berdiam di zona terus dikumpulkan (reproduksi: 100 frame berarti 100 panggilan embed dan 100 vektor tertahan) dan state orang yang pergi tidak dibuang. Kini `IntrusionRegistry` mengingat kunci yang sudah selesai (touch/bind diabaikan), pengumpulan embedding dibatasi `min_frames`, dan `drain` membuang state tanpa entri registry.
+- **M1 caption:** caption dirender di luar `_edit_lock`, sehingga caption basi yang menunggu lock bisa menimpa yang lengkap. Kini klaim dulu, lalu render dari keadaan DB terbaru di dalam lock (`_render_fresh`: `expire_all` + `build_caption` + `commit` sebelum I/O). Tes `test_concurrent_edits_are_serialised` sebelumnya tetap lulus tanpa lock (mutasi membuktikannya); ditulis ulang dengan penghitung konkurensi.
+- **M2:** `identify()` yang tidak dipakai di `services/intrusion_face.py` dihapus.
+- **Bukti:** RED vision `8 failed, 27 passed` (`assert 23 == 3`, `assert 30 == 3`, state tertinggal, `KeyError: 'zone'`, absensi dan event intrusion hilang saat identitas melempar); GREEN `35 passed`, suite vision `315 passed, 3 deselected`. RED backend `3 failed, 7 passed` (`assert ([False] and False)`, caption tanpa baris Identitas); GREEN `65 passed` pada berkas terkait, suite backend `950 passed, 1 deselected` (947 + 3 tes), docker `77 passed`. Mutasi: hapus lock membuat 4 tes merah (termasuk tes serialisasi yang baru), render di luar lock membuat 3 merah; keduanya dikembalikan. Log mentah di `temp/logs/intrusion-face-id/review-*.txt` dan `review2-*.txt`.
+- **Dampak:** tanpa perubahan kontrak, migrasi, atau UI. Frontend tidak disentuh (vitest `494`, build, lint tidak diulang). BELUM diuji di server nyata.
+- **Rollback:** revert dua commit perbaikan ini (`a7dca26` dan commit backend sesudahnya).
+
+### Face ID pada intrusion critical — T9 dokumen + verifikasi akhir (2026-10-08)
+
+- **Konteks:** menutup siklus T1–T8 (`5b49fc5`…`ef43997`) fitur identitas wajah pada alert intrusion
+  `critical` (spec `c6733af` + plan `5d5cf8f` + revisi `1181229`). ROADMAP sengaja `[~]`: kode
+  selesai, **BELUM diuji di server nyata** — menunggu review, deploy, uji lapangan, dan kalibrasi
+  ambang.
+- **Perubahan:** `ARCHITECTURE.md` — baris topik `isentinel/events/face` + alur face ID pada bagian
+  vision dan Alur utama. `WORKFLOW.md` — langkah 6 alur Event behavior (empat hasil identitas) dan
+  butir §10 Alert Telegram (edit `sync_face_caption` dengan klaim `face_synced`).
+  `docs/runbooks/intrusion-face-id.md` (baru) — cara menyalakan, membaca hasil, kalibrasi, retensi
+  crop, rollback, prasyarat GPU container `vision`. `README.md` — bagian fitur singkat.
+  `ROADMAP.md` — baris `IFI` `[~]`. `CHANGELOG.md` — entri ini.
+- **Bukti:** suite berurutan pada HEAD executor (log mentah `temp/logs/intrusion-face-id/final-*.txt`):
+  ```text
+  backend: 947 passed, 1 deselected, 561 warnings in 173.80s (0:02:53)   (baseline 904)
+  vision:  307 passed, 3 deselected, 2 warnings in 13.76s                (baseline 273)
+  docker:  77 passed in 9.05s                                            (baseline 76 + tes guard)
+  vitest:  Test Files 38 passed (38) · Tests 494 passed (494)            (baseline 36/487)
+  build:   ✓ built in 3.15s                                              exit 0
+  lint:    24 warnings / 16 pasangan file-rule identik baseline
+  ```
+  Naik hanya karena tes baru; tes lama tidak diubah (guard statis: 0 baris `-` pada
+  `test_face_worker.py`, `test_node.py`, `test_alert_ai.py`, `test_telegram.py`).
+- **Dampak:** dokumentasi dan lulusan verifikasi akhir; tidak ada perubahan kode.
+- **Rollback:** revert commit ini.
+
+### Face ID pada intrusion critical — T8 frontend (2026-10-08)
+
+- **Konteks:** backend T1–T7 sudah mengirim `payload.face` dan `payload.crop_path`; UI perlu saklar,
+  tampilan hasil, dan refresh realtime.
+- **Perubahan:** `api/zones.ts` — `Behavior.face_id?: boolean`. `ZonesPage.tsx` — `Toggle`
+  `zone-face-id-intrusion` (hanya behavior `intrusion`, default mati) + paragraf bantuan
+  `zones.faceIdHint`. `EventsPage.tsx` — baris `event-identity` untuk `payload.face` (empat status,
+  skor tampil untuk semua peran), tab Crop tampil untuk event apa pun ber-`crop_path` (perilaku
+  attendance tidak berubah), cabang WS `kind: "face"` → `refresh('merge')`. `i18n.tsx` — kunci
+  `zones.faceId(Hint)` dan `events.identity.*` di kedua kamus; `t()` menerima parameter `{name}`.
+- **Bukti:** vitest `38 files / 494 passed` (tes baru: toggle default-off dan simpan `face_id: true`,
+  toggle tidak tampil untuk loitering, baris identitas empat status + tanpa `payload.face`, WS face
+  memicu refresh, tab Crop intrusion tampil/tidak tampil); build exit 0; lint 24 warning, pasangan
+  identik. RED benar (toggle/baris/tab tidak ditemukan) sebelum implementasi.
+- **Dampak:** operator menyalakan fitur per zona dan membaca hasilnya di Telegram/Inbox.
+- **Rollback:** revert commit ini.
+
+### Face ID pada intrusion critical — T7 retensi crop (2026-10-08)
+
+- **Konteks:** crop wajah intrusion (`payload.crop_path`, T2/T6) berisiko dihapus sapuan retensi
+  sebagai "orphan" mengikuti `attendance_days` sementara path tertinggal di DB.
+- **Perubahan:** `services/retention.py` — `_expire_crops` menerima `event_type` (default
+  `attendance`, perilaku lama utuh); `sweep` menjalankannya juga untuk `intrusion` dengan cutoff
+  `snapshot_days`; `parts` dan nama jenis `_media_free_after` bertambah satu elemen; himpunan
+  `referenced` sapuan orphan menyertakan `payload.crop_path` event `attendance` dan `intrusion`.
+- **Bukti:** RED `test_sweep_does_not_treat_referenced_intrusion_crop_as_orphan`: file crop intrusion
+  (mtime 60 hari, event 2 hari) TERHAPUS sebagai orphan sebelum fix. GREEN: `test_retention.py` 25
+  passed termasuk tiga tes baru (kedaluwarsa `snapshot_days` + null path + `media_expired`, bukan
+  orphan, dry-run tak menyentuh); suite backend penuh hijau.
+- **Dampak:** bukti manual intrusion bertahan sesuai retensi snapshot, tidak mengubah retensi absensi.
+- **Rollback:** revert commit ini.
+
+### Face ID pada intrusion critical — T6 consumer pesan susulan (2026-10-08)
+
+- **Konteks:** node mengirim hasil wajah ke `isentinel/events/face`; API perlu mencocokkan ketat,
+  menyimpan `payload.face`/`crop_path`, memetakan `unverified`, dan menolak flag zona non-bool.
+- **Perubahan:** `services/intrusion_face.py` (baru) — `wants_identity`, `handle_face_result`
+  (embedding di-pop sebelum validasi/penyimpanan; tidak pernah melempar; duplikat diabaikan; hasil
+  nyata menimpa `unverified` + reset `face_synced`; `crop_path` hanya `crops/...` tanpa `..`),
+  `finalize_unverified` + `schedule_unverified` (Timer daemon 15 dtk, sesi DB sendiri).
+  `schemas/intrusion_face.py` (baru) — `FaceResultIn`. `events_consumer.py` — `FACE_TOPIC`,
+  langganan `(FACE_TOPIC, 1)`, cabang handler, jadwal fallback di cabang EVENTS
+  (`wants_identity` → `schedule_unverified`). `schemas/zone.py` — `face_id` masuk tuple flag bool.
+- **Bukti:** RED ImportError; GREEN `test_intrusion_face_api.py` 12 tes (pemetaan status dan `reason`
+  dominan, embedding tak pernah ada di payload/WS, duplikat, penimpaan `unverified`, path tidak aman
+  diabaikan, broadcast `kind:"face"`, langganan topik, guard `wants_identity` per severity/saklar),
+  plus 422 flag non-bool di `test_zones_api.py` dan `face_id` raw di `test_config_push.py`;
+  suite backend `944 passed`.
+- **Dampak:** alert critical yang fiturnya aktif selalu berakhir salah satu dari empat hasil.
+- **Rollback:** revert commit ini.
+
+### Face ID pada intrusion critical — T5 caption identitas + migrasi 0023 (2026-10-08)
+
+- **Konteks:** hasil identitas harus sampai ke Telegram: baris `Identitas` pada caption alert foto,
+  sekali, aman terhadap edit bersamaan dari worker AI.
+- **Perubahan:** `alembic/versions/0023_alert_face_synced.py` (baru; `alert.face_synced` Boolean
+  NOT NULL default false) + `models/alert.py`. `services/telegram.py` — `format_caption` menambah
+  baris `("Identitas", …)` setelah Level untuk event `intrusion` ber-`payload.face` (empat teks,
+  status asing diabaikan, nama ter-escape, tetap dalam batas 1024 UTF-16).
+  `services/alert_ai.py` — `_edit_lock` modul; `sync_ai_caption` membungkus I/O Telegram dengan
+  lock; `sync_face_caption` (guard tanpa syarat teks AI, skip `identity_skipped_text_only` untuk
+  alert teks, skip bila identitas belum ada — consumer yang memanggil ulang; klaim atomik
+  `face_synced` + commit sebelum I/O; `_release` kolom face saat gagal).
+  `services/alert_dispatcher.py` — `has_face` dihitung sebelum snapshot; `face_synced = has_face and
+  sent`; pasca-kirim `db.refresh(event)` lalu `sync_ai_caption` dan `sync_face_caption`.
+- **Bukti:** RED (kolom/fitur belum ada); GREEN `test_migration_0023.py` dua siklus + uji bertumpuk
+  di atas 0022; `test_telegram.py` +10 tes caption; `test_face_alert_sync.py` 7 tes (edit dengan AI
+  + identitas, tanpa AI, klaim sekali + rilis saat gagal, noop kedua kali, skip teks, kedua urutan,
+  dua thread serial oleh lock dan `not db.in_transaction()` selama I/O); dispatcher dua tes
+  (identitas awal tanpa edit kedua; face tertulis setelah caption dirender → edit pasca-kirim).
+- **Dampak:** dua sumber edit (AI, identitas) bekerja pada urutan apa pun tanpa saling menimpa.
+- **Rollback:** revert commit ini; kolom 0023 aditif aman dibiarkan.
+
+### Face ID pada intrusion critical — T4 pencocokan ketat (2026-10-08)
+
+- **Konteks:** salah-cocok lebih berbahaya daripada tidak dikenal: butuh ambang ketat + margin
+  top-1/top-2 di API.
+- **Perubahan:** `services/face.py` — `MatchResult.margin` (default `None`, terakhir agar pemanggil
+  posisional lama tetap cocok), `FaceGallery.top2` (satu pass, terbaik per karyawan, maks dua
+  karyawan), `match_strict` (`low_quality|no_match|ambiguous|matched`; tanpa runner-up
+  `top2 = 0.0`). `core/config.py` — `face_id_threshold = 0.50`, `face_id_margin = 0.10` (nilai awal,
+  dikalibrasi lapangan). `docker/compose.yml` — dua env itu di anchor `x-api-environment`.
+- **Bukti:** RED ImportError + compose guard merah; GREEN `test_face_strict.py` 8 tes + guard compose
+  (`api` dan `retention` menerima default resolve, `vision` tidak); suite backend `912 passed`.
+- **Dampak:** identitas hanya `recognized` bila top1 ≥ ambang dan menang margin — ragu = tidak dikenal.
+- **Rollback:** revert commit ini.
+
+### Face ID pada intrusion critical — T3 identity_zones (2026-10-08)
+
+- **Konteks:** fitur hanya boleh aktif pada kamera yang memenuhi syarat; sisanya persis perilaku lama.
+- **Perubahan:** `node.py` — `identity_zones(cam)` (zona `critical` dengan behavior `intrusion`
+  ber-`face_id is True`; string `"true"` ditolak); `_start_camera` membuat `IntrusionRegistry` bersama
+  hanya bila ada ident zone **dan** worker wajah; ident tanpa worker wajah → peringatan sekali dan
+  fitur tidak aktif; registry/ident diteruskan sebagai keyword opsional ke kedua worker.
+- **Bukti:** RED ImportError; GREEN `test_node_intrusion_face.py` 6 tes (parametrize severity/saklar,
+  registry dibagi dua worker, tanpa face_id → tanpa registry, warning tanpa attendance, toggle
+  face_id hanya merestart kamera itu); suite vision `307 passed`.
+- **Dampak:** saklar per zona aman; kamera lain tidak tersentuh (dibuktikan tes restart per kamera).
+- **Rollback:** revert commit ini.
+
+### Face ID pada intrusion critical — T2 kabel worker + transport (2026-10-08)
+
+- **Konteks:** registry harus diisi CameraWorker dan dikosongkan jadi pesan oleh FaceGateWorker;
+  loop frame tidak boleh menunggu unggahan crop.
+- **Perubahan:** `transport/mqtt.py` — `FACE_TOPIC` + `publish_face` (QoS1, antrean disk).
+  `face_worker.py` — keyword `registry`; bypass motion gate selama `registry.active`; `observe` di
+  `_process` memakai deteksi SCRFD yang sama; `_ident_step` pada jalur proses/idle/motion-skip;
+  pengiriman per pesan di thread daemon `ident-ship-<camera>` (pop `_crop`, unggah
+  `upload_bytes(crop, "crop", timeout=3.0, retries=1)`, publish; gagal unggah tetap kirim), join
+  maks 5 dtk di `finally`. `node.py` — `registry` + `ident_zones`; `touch` untuk track `misses == 0`
+  yang titik kakinya di polygon; `bind` saat event intrusion zona ident terbit.
+- **Bukti:** RED (keyword `registry` dan `publish_face` tidak ada); GREEN
+  `test_intrusion_face_workers.py` 13 tes + tes transport QoS1/antrean; tanpa registry jalur lama
+  persis (`FakeTransport` tanpa `publish_face` tidak error); suite vision `301 passed`.
+- **Dampak:** inti integrasi berjalan tanpa mengubah gerbang attendance yang ada.
+- **Rollback:** revert commit ini.
+
+### Face ID pada intrusion critical — T1 modul intrusion_face (2026-10-08)
+
+- **Konteks:** fondasi murni tanpa CUDA: registry person TTL 3 dtk, asosiasi kepala 40%, pitch,
+  crop JPEG, kolektor embedding per event.
+- **Perubahan:** `vision/vision/intrusion_face.py` (baru) + `tests/test_intrusion_face.py` (17 tes).
+  Kolektor memisahkan hitungan penolakan dari `_funnel` attendance; kandidat crop diranking
+  `lebar_px × skor` tanpa melihat hasil gerbang; pesan `drain` siap setelah `min_frames`, jendela
+  8 dtk, atau person hilang; `_crop` di-pop pemanggil.
+- **Bukti:** RED `ModuleNotFoundError: vision.intrusion_face`; GREEN 17/17; dua mutasi terbukti
+  merah dan dikembalikan (`HEAD_FRAC 0.40→1.0` merah tes torso; jendela `>=`→`>` merah setelah tes
+  jaga entri segar); suite vision `290 passed` (273 + 17).
+- **Dampak:** logika identitas dapat diuji tanpa GPU sebelum dikabel ke worker.
+- **Rollback:** revert commit ini.
+
 ### Deploy `web` modal Koreksi ke `gspe-ai3` dan cek UI Exit awal sebagian (2026-10-08)
 
 - **Konteks:** `f8d370a` (merge `fix/attendance-late-label`, `c9a52aa`) di-deploy atas persetujuan user: `git pull --ff-only` lalu `./docker/setup.sh` di clone Docker; hanya container `web` dibuat ulang (`api`, `retention`, `vision`, `go2rtc`, `mosquitto`, `postgres` tidak berubah). Tanpa migrasi.
