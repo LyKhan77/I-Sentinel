@@ -3,6 +3,17 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — perbaikan review sesi perencanaan (2026-10-08)
+
+- **Konteks:** review `560b590` oleh sesi perencanaan (suite diulang berurutan: backend `947`, vision `307`, docker `77`, vitest `494`, build exit 0, lint 24 warning, sama dengan laporan executor). Empat temuan diperbaiki lewat TDD atas persetujuan user; M3 (`with_for_update` pada event) dan temuan Low dicatat sebagai follow-up.
+- **H1 isolasi:** kegagalan di jalur identitas (`IdentCollector.observe/drain`, `_ident_step`, `CameraWorker._touch_ident`, `registry.bind`) mematikan `FaceGateWorker` (absensi) atau `CameraWorker` (event intrusion itu sendiri hilang bila `bind` melempar). Kini tiap panggilan dibungkus `try/except` dengan log terbatas (`ErrorThrottle`, sekali per 60 dtk). `st.rejects[code]` tidak lagi `KeyError` untuk kode tak terduga (`"zone"`).
+- **H2 kolektor:** setelah pesan terkirim, track yang masih berdiam di zona terus dikumpulkan (reproduksi: 100 frame berarti 100 panggilan embed dan 100 vektor tertahan) dan state orang yang pergi tidak dibuang. Kini `IntrusionRegistry` mengingat kunci yang sudah selesai (touch/bind diabaikan), pengumpulan embedding dibatasi `min_frames`, dan `drain` membuang state tanpa entri registry.
+- **M1 caption:** caption dirender di luar `_edit_lock`, sehingga caption basi yang menunggu lock bisa menimpa yang lengkap. Kini klaim dulu, lalu render dari keadaan DB terbaru di dalam lock (`_render_fresh`: `expire_all` + `build_caption` + `commit` sebelum I/O). Tes `test_concurrent_edits_are_serialised` sebelumnya tetap lulus tanpa lock (mutasi membuktikannya); ditulis ulang dengan penghitung konkurensi.
+- **M2:** `identify()` yang tidak dipakai di `services/intrusion_face.py` dihapus.
+- **Bukti:** RED vision `8 failed, 27 passed` (`assert 23 == 3`, `assert 30 == 3`, state tertinggal, `KeyError: 'zone'`, absensi dan event intrusion hilang saat identitas melempar); GREEN `35 passed`, suite vision `315 passed, 3 deselected`. RED backend `3 failed, 7 passed` (`assert ([False] and False)`, caption tanpa baris Identitas); GREEN `65 passed` pada berkas terkait, suite backend `950 passed, 1 deselected` (947 + 3 tes), docker `77 passed`. Mutasi: hapus lock membuat 4 tes merah (termasuk tes serialisasi yang baru), render di luar lock membuat 3 merah; keduanya dikembalikan. Log mentah di `temp/logs/intrusion-face-id/review-*.txt` dan `review2-*.txt`.
+- **Dampak:** tanpa perubahan kontrak, migrasi, atau UI. Frontend tidak disentuh (vitest `494`, build, lint tidak diulang). BELUM diuji di server nyata.
+- **Rollback:** revert dua commit perbaikan ini (`a7dca26` dan commit backend sesudahnya).
+
 ### Face ID pada intrusion critical — T9 dokumen + verifikasi akhir (2026-10-08)
 
 - **Konteks:** menutup siklus T1–T8 (`5b49fc5`…`ef43997`) fitur identitas wajah pada alert intrusion

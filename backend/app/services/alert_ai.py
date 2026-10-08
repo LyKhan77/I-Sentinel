@@ -37,6 +37,19 @@ def build_caption(db: Session, alert: Alert, ai: str | None) -> str:
         zone.name if zone else None, telegram.app_url(db), ai_text=ai)
 
 
+def _render_fresh(db: Session, alert_id: int, event_id: int) -> str:
+    """Caption dari keadaan DB terbaru; dipanggil di dalam ``_edit_lock``, lalu menutup transaksi baca.
+
+    Render di dalam lock: edit yang menunggu lock tidak boleh mengirim caption basi sesudah edit lain
+    mengirim yang lengkap; AI atau identitas yang tiba selagi menunggu ikut tampil.
+    """
+    db.expire_all()  # sesi memuat objek sekali (expire_on_commit=False); tulisan thread lain tak terlihat
+    alert = db.get(Alert, alert_id)
+    caption = build_caption(db, alert, ai_text(db, event_id))
+    db.commit()  # tutup transaksi baca sebelum I/O jaringan
+    return caption
+
+
 def _release(db: Session, alert_id: int, column: str) -> None:
     """Return a failed claim so a later caller (dispatcher or worker) can try again."""
     try:
@@ -68,7 +81,6 @@ def sync_ai_caption(db: Session, event_id: int) -> bool:
     text = ai_text(db, event_id)
     if not token or not text:
         return False
-    caption = build_caption(db, alert, text)
     alert_id, chat_id, message_id = alert.id, alert.chat_id, alert.message_id  # baca sebelum commit
     claimed = db.query(Alert).filter(Alert.id == alert_id, Alert.ai_synced.is_(False)).update(
         {"ai_synced": True}, synchronize_session=False)
@@ -77,6 +89,7 @@ def sync_ai_caption(db: Session, event_id: int) -> bool:
         return False
     try:
         with _edit_lock:
+            caption = _render_fresh(db, alert_id, event_id)
             status, error = telegram.edit_caption(token, chat_id, message_id, caption)
     except Exception as exc:
         # str(exception) bisa memuat nilai apa pun (mis. token di pesan); log tanpa detail
@@ -111,7 +124,6 @@ def sync_face_caption(db: Session, event_id: int) -> bool:
     token = telegram.get_token()
     if not token:
         return False
-    caption = build_caption(db, alert, ai_text(db, event_id))
     alert_id, chat_id, message_id = alert.id, alert.chat_id, alert.message_id
     claimed = db.query(Alert).filter(Alert.id == alert_id, Alert.face_synced.is_(False)).update(
         {"face_synced": True}, synchronize_session=False)
@@ -120,6 +132,7 @@ def sync_face_caption(db: Session, event_id: int) -> bool:
         return False
     try:
         with _edit_lock:
+            caption = _render_fresh(db, alert_id, event_id)
             status, error = telegram.edit_caption(token, chat_id, message_id, caption)
     except Exception as exc:
         logger.error("telegram identity sync failed for event %s: %s", event_id, type(exc).__name__)

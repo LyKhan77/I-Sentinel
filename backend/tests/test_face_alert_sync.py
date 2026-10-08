@@ -132,43 +132,80 @@ def test_ai_edit_after_face_edit_renders_both_lines(db, ready):
 
 
 def test_concurrent_edits_are_serialised(db, ready, monkeypatch):
-    """Dua edit bersamaan (worker AI + identitas) tidak saling menimpa: serial oleh _edit_lock."""
+    """Dua edit bersamaan (worker AI + identitas) tidak boleh berada di dalam Telegram bersamaan."""
     alert, calls, _ = ready
     alert.event.payload = {"face": _face("recognized", name="Budi")}
-    db.commit()
-
-    release = threading.Event()
-    entered = threading.Event()
-    real_edit = telegram.edit_caption
-
-    def slow_edit(*a, **k):
-        entered.set()
-        release.wait(3)
-        return real_edit(*a, **k)
-
-    monkeypatch.setattr(telegram, "edit_caption", slow_edit)
-
-    done = {}
-
-    def run(fn):
-        done["out"] = fn(db, alert.event_id)
-
-    t_ai = threading.Thread(target=run, args=(alert_ai.sync_ai_caption,))
-    # beri teks AI agar jalur AI lolos guard
     db.add(EventAi(event_id=alert.event_id, kind="caption", channel="auto",
                    status="ok", answer="Orang berjalan"))
     db.commit()
+
+    guard = threading.Lock()
+    state = {"inside": 0, "max": 0}
+    release, first_inside = threading.Event(), threading.Event()
+    real_edit = telegram.edit_caption
+
+    def tracked_edit(*a, **k):
+        with guard:
+            state["inside"] += 1
+            state["max"] = max(state["max"], state["inside"])
+        first_inside.set()
+        release.wait(3)
+        try:
+            return real_edit(*a, **k)
+        finally:
+            with guard:
+                state["inside"] -= 1
+
+    monkeypatch.setattr(telegram, "edit_caption", tracked_edit)
+    t_ai = threading.Thread(target=alert_ai.sync_ai_caption, args=(db, alert.event_id))
+    t_face = threading.Thread(target=alert_ai.sync_face_caption, args=(db, alert.event_id))
     t_ai.start()
-    assert entered.wait(3)
-    t_face = threading.Thread(target=run, args=(alert_ai.sync_face_caption,))
+    assert first_inside.wait(3)
     t_face.start()
-    time.sleep(0.2)
-    assert len(calls) == 0, "edit kedua harus menunggu lock thread pertama"
+    time.sleep(0.3)  # edit kedua mencapai Telegram sekarang bila tidak ada lock
+    assert state["max"] == 1, "edit kedua harus menunggu edit pertama selesai"
     release.set()
     t_ai.join(5)
     t_face.join(5)
-    assert not alert_ai._edit_lock.locked()
-    statuses = [json.loads(c.data)["caption"] for c in calls]
-    assert any("🤖 <b>AI</b>" in c for c in statuses)
-    assert any("<b>Identitas</b>" in c for c in statuses)
-    assert any("🤖 <b>AI</b>" in c and "<b>Identitas</b>" in c for c in statuses)
+    assert state["max"] == 1 and not alert_ai._edit_lock.locked()
+    assert "<b>Identitas</b>" in json.loads(calls[-1].data)["caption"]
+
+
+@pytest.mark.parametrize("sync", ["sync_ai_caption", "sync_face_caption"])
+def test_caption_is_rendered_while_holding_the_edit_lock(db, ready, monkeypatch, sync):
+    """Render di dalam lock: caption basi yang menunggu lock tidak boleh menimpa yang lengkap."""
+    alert, calls, _ = ready
+    alert.event.payload = {"face": _face("unknown")}
+    db.add(EventAi(event_id=alert.event_id, kind="caption", channel="auto",
+                   status="ok", answer="Orang berjalan"))
+    db.commit()
+    seen = []
+    real_build = alert_ai.build_caption
+
+    def spy(*a, **k):
+        seen.append(alert_ai._edit_lock.locked())
+        return real_build(*a, **k)
+
+    monkeypatch.setattr(alert_ai, "build_caption", spy)
+    assert getattr(alert_ai, sync)(db, alert.event_id) is True
+    assert seen and all(seen)
+
+
+def test_ai_edit_renders_identity_that_arrived_while_waiting_for_the_lock(db, ready):
+    alert, calls, _ = ready
+    db.add(EventAi(event_id=alert.event_id, kind="caption", channel="auto",
+                   status="ok", answer="Orang berjalan"))  # teks AI ada, identitas belum
+    db.commit()
+    result = {}
+    alert_ai._edit_lock.acquire()  # edit lain sedang berjalan di Telegram
+    try:
+        t = threading.Thread(target=lambda: result.update(ok=alert_ai.sync_ai_caption(db, alert.event_id)))
+        t.start()
+        time.sleep(0.3)  # edit AI sudah mengklaim dan menunggu lock
+        alert.event.payload = {"face": _face("recognized", name="Budi")}
+        db.commit()
+    finally:
+        alert_ai._edit_lock.release()
+    t.join(5)
+    assert result.get("ok") is True
+    assert "<b>Identitas</b>: Dikenali: Budi" in json.loads(calls[0].data)["caption"]

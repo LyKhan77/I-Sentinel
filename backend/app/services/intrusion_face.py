@@ -34,22 +34,6 @@ def wants_identity(db: Session, ev: Event) -> bool:
     return zone.behavior_flag("intrusion", "face_id", default=False)
 
 
-def identify(vector: list[float], quality: float | None) -> dict:
-    """Pencocokan ketat → kamus payload.face (kunci kosong dihilangkan)."""
-    res = face.match_strict(vector, quality=quality)
-    out: dict = {"status": res.reason, "reason": res.reason}
-    if res.reason == "matched":
-        out["status"] = "recognized"
-        out["employee_id"] = res.employee_id
-        emp = None
-        if res.employee_id is not None:
-            emp = None  # diisi caller (punya session) bila perlu nama
-        out["name"] = None
-        out["score"] = res.score
-        out["margin"] = res.margin
-    return {k: v for k, v in out.items() if v is not None}
-
-
 def _identify_with_name(db: Session, vector: list[float], quality: float | None) -> dict:
     """match_strict + nama karyawan; pemetaan status recognized|unknown|not_visible."""
     if quality is not None and quality < face.settings.face_min_quality:
