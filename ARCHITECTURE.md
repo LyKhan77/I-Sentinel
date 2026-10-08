@@ -136,6 +136,17 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 - Satu worker per kamera yang punya **zona aktif**; kamera tanpa zona hanya tampil di Live View.
 - Analyzer: `intrusion`, `loitering`, `running`, `idle_zone`, `crowd`; wajah lewat `face_worker`
   pada zona attendance (gerbang kualitas: lebar, skor, yaw, blur).
+- **Face ID pada intrusion critical** (saklar `face_id` di behavior `intrusion`, default mati):
+  `identity_zones` mengumpulkan zona `critical` ber-`face_id: true`; bila kamera juga punya worker
+  wajah, `CameraWorker` mengisi `IntrusionRegistry` (titik kaki track di polygon) dan mem-bind
+  track ke `event_id` saat event intrusion terbit. `FaceGateWorker` memakai deteksi SCRFD yang
+  sama (`IdentCollector`): asosiasi wajah→kepala person (40% atas bbox), kandidat crop terbaik
+  (lebar × skor, bebas dari gerbang, diunggah ke `crops/`), gerbang kualitas sendiri (pitch,
+  kualitas ≥ 0,5; penolakan dipisah dari `_funnel` attendance), dan agregasi embedding.
+  Motion gate dilewati selama registry segar (TTL 3 dtk). Satu pesan `isentinel/events/face`
+  per event setelah `min_frames`, jendela 8 dtk, atau person hilang — dikirim thread pendek,
+  loop frame tidak menunggu unggahan crop. Kamera critical tanpa zona attendance tidak ikut
+  (peringatan sekali); API menandai alert itu `unverified` setelah 15 dtk.
 - Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.
   Motion gate bangun karena gerak dan terus memproses frame diam selama wajah masih terlihat.
   Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.
@@ -174,6 +185,7 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 | `isentinel/nodes/{node}/lwt` | node → API, retained | `online` saat connect, `offline` oleh broker saat putus |
 | `isentinel/events` | node → API | Event behavior/absensi |
 | `isentinel/events/media` | node → API | Path clip/snapshot setelah upload selesai |
+| `isentinel/events/face` | node → API | Hasil identitas wajah intrusion critical (satu pesan per event_id; embedding ditolak di consumer) |
 | `isentinel/detections/{node}` | node → API → WS | Kotak deteksi live untuk debugger |
 
 ### Attendance evidence dan flag zona
@@ -251,6 +263,13 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
    API mencocokkan ke galeri `face_embedding` (cosine ≥ `FACE_MATCH_THRESHOLD`) →
    `attendance_event` → `recompute_day` → `attendance_day`. `AttendanceCloser` membuat
    `absent`/`no_exit` setelah batas (selesai shift + `NO_EXIT_GRACE_MIN`).
+4. **Face ID pada intrusion critical**: alert terkirim (tidak ditunda) → pesan susulan
+   `isentinel/events/face` dari node → consumer meng-pop embedding, pencocokan ketat
+   (`FACE_ID_THRESHOLD` + margin top-1/top-2) → `payload.face` = `recognized|unknown|not_visible`
+   (+ `crop_path` bukti manual) → WS `kind:"face"` → `sync_face_caption` mengedit caption dengan
+   baris Identitas (lock bersama baris AI). Tanpa pesan dalam 15 dtk → `unverified` (timer
+   daemon; hilang bila API restart). Crop intrusion ikut
+   retensi `snapshot_days`, tidak dianggap orphan sebelum itu.
 4. **Caption AI → Telegram**: dispatcher menyimpan `message_id` saat alert `sent`, lalu
    `alert_ai.sync_ai_caption` (idempoten, dipanggil dispatcher dan `AiWorker`) mengedit
    caption alert ber-foto untuk menambah baris `🤖 AI:`; urutan apa pun menghasilkan tepat
