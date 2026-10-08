@@ -541,7 +541,7 @@ export default function AttendancePage() {
         />
         <Select id="ov-status" labelText={t('at.override.status')} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as AttendanceStatus })}>
           {STATUSES.map((s) => (
-            <SelectItem key={s} value={s} text={t(`at.status.${s}` as TKey)} />
+            <SelectItem key={s} value={s} text={t(s === 'late' ? 'at.status.lateOption' : (`at.status.${s}` as TKey))} />
           ))}
         </Select>
         <TextArea id="ov-note" data-testid="ov-note" labelText={t('at.override.note')} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />

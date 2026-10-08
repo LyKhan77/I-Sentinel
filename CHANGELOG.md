@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Modal Koreksi — opsi Status "Telat" tanpa placeholder `{n}` (2026-10-08)
+
+- **Konteks:** dari cek UI Exit awal, dropdown Status di modal "Koreksi absensi" menampilkan opsi `LATE {n} MIN` (EN) / `TELAT {n} MNT` (ID) dengan `{n}` mentah. `AttendancePage.tsx` memakai `t('at.status.late')` apa adanya untuk opsi, sedangkan badge di tabel (`statusLabel`) sudah mengganti `{n}` dengan `late_minutes` baris. Menit tidak bermakna pada opsi pilihan (menit dihitung server dari jam masuk dan shift), jadi opsi dibuat tanpa menit.
+- **Perubahan:** kunci i18n baru `at.status.lateOption` (`TELAT` / `LATE`) di kedua kamus; opsi `late` pada `Select` `ov-status` memakainya. Label badge di tabel tidak berubah.
+- **Bukti:** RED `dropdown Status di modal Koreksi tidak menampilkan placeholder {n}`: `AssertionError: expected true to be false` (ada opsi bermuatan `{n}`); GREEN `attendance.test.tsx` `20 passed`; suite berurutan: vitest `36 files / 488 passed` (487 + 1 tes baru), build exit 0 (`✓ built in 2.85s`), lint 24 warning (sama dengan baseline). Log mentah di `temp/logs/late-label/`.
+- **Dampak:** hanya teks opsi dropdown; tidak ada perubahan perilaku, API, atau data. BELUM dilihat di browser.
+- **Rollback:** revert commit ini.
+
 ### Exit awal — deploy `gspe-ai3` (2026-10-08)
 
 - **Konteks:** `5c2c21b` (merge `feat/exit-early-warning`, termasuk perbaikan review `d2ec2cb`) di-deploy atas persetujuan user: pull `main` lalu `./docker/setup.sh`; container `api`, `web`, dan `retention` (berbagi image `api`) dibuat ulang, `vision`, `go2rtc`, `mosquitto`, `postgres` tidak berubah. Tanpa migrasi.
