@@ -3,6 +3,20 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — kalibrasi awal dan ambang uji 0,35 / 0,15 di server (2026-10-08)
+
+- **Konteks:** user meminta tuning agar wajah pada jarak 1–2 m dikenali. Diagnostik read-only di container `api` (CPU, galeri 7 karyawan × 5 foto pendaftaran; skrip sekali pakai, hanya angka) memakai crop event 4881, 4883, 4884.
+- **Data:** impostor (skor terbaik terhadap non-pemilik, n = 35) median 0,225, p95 0,277, maksimum 0,280; genuine antar foto pendaftaran (n = 70) minimum 0,582, median 0,727. Crop jarak dekat, skor ke karyawan #1 (kandidat kedua): 4884 `0,534` (0,232), 4883 `0,387` (0,172), 4881 `0,272` (0,103); skor tersimpan node: 0,576 / 0,370 / 0,327. Pose (frontal) berpengaruh lebih besar daripada ukuran (4881: 111 px menunduk lebih rendah dari 4883: 96 px frontal). Upscaling ×2 tidak membantu; flip-averaging +0,01–0,02 (4881 −0,006) sehingga tidak dipasang. Asumsi: ketiga crop adalah orang yang sama (karyawan #1); belum ada uji non-karyawan.
+- **Perubahan di server (atas persetujuan user, bukan di repo):** `docker/.env` gspe-ai3 ditambah `FACE_ID_THRESHOLD=0.35` dan `FACE_ID_MARGIN=0.15` (default compose 0,50 / 0,10), lalu `api` dibuat ulang (`up -d --force-recreate api`); terverifikasi di container: `settings.face_id_threshold = 0.35`, `face_id_margin = 0.15`, `face_min_quality = 0.5`, `/api/v1/health` ok, alembic `0023`. Pada sampel di atas, ambang 0,35 mengenali 4883 dan 4884 (margin 0,215 dan 0,30) dan tidak 4881; jarak ke impostor maksimum pasangan pendaftaran hanya 0,07.
+- **Belum terbukti:** tingkat salah-orang pada orang asing di depan kamera (dasar impostor hanya pasangan pendaftaran; N kecil). Nilai ini adalah nilai uji, bukan hasil kalibrasi akhir; ROADMAP `IFI` tetap `[~]` sampai uji non-karyawan dan beberapa karyawan terdaftar selesai.
+- **Rollback:** hapus dua baris itu dari `docker/.env` server (atau set 0.50 / 0.10) lalu `docker compose -f docker/compose.yml up -d --force-recreate api`.
+
+### EEA ditutup — konfirmasi user atas chip Exit awal dan layar 390 px (2026-10-08)
+
+- **Konteks:** setelah catatan UI sebagian (`23bba64`), user mengonfirmasi lisan bahwa chip Exit awal tampil di sel exit dan tampilan 390 px tanpa overflow horizontal. ROADMAP `EEA` menjadi `[x]`.
+- **Bukti:** pernyataan user hari ini; tidak ada screenshot tambahan (screenshot 11:26 hanya memuat tombol Correct dan modal). Bukti lain tidak berubah: CSV dengan kolom `exit_early_min`, suite backend/frontend lulus.
+- **Rollback:** kembalikan baris ROADMAP `EEA` ke `[~]`.
+
 ### Face ID pada intrusion critical — hasil uji lapangan di zona 15 (2026-10-08)
 
 - **Konteks:** deploy branch `feat/intrusion-face-id` ke `gspe-ai3` (tanpa merge ke `main`), user menguji lima event intrusion di zona 15 "Server" (kamera 363, critical, trigger 10 dtk, `face_id: true`). Data dari DB (`payload.face`, `payload.crop_path`, `alert`) dan crop yang dilihat langsung (kualitas/ukuran saja; tidak ada identifikasi dari wajah).

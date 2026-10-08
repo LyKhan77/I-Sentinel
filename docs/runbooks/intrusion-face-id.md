@@ -43,6 +43,19 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
    di-commit; hasil terakhir `temp/logs/intrusion-face-id/probe.md`: kamera 363 gelap, 0 frame
    lolos gerbang penuh).
 
+### Keadaan kalibrasi saat ini (2026-10-08)
+
+- **Nilai uji di server `gspe-ai3`** (`docker/.env`, bukan di repo): `FACE_ID_THRESHOLD=0.35`,
+  `FACE_ID_MARGIN=0.15` (default compose 0,50 / 0,10). Ubah → **recreate** `api`.
+- **Dasar:** galeri 7 karyawan × 5 foto pendaftaran: impostor (skor terbaik non-pemilik, n = 35)
+  median 0,225, maksimum 0,280; genuine antar foto pendaftaran minimum 0,582. Crop jarak 1–2 m:
+  wajah ±96–125 px hampir frontal memberi skor 0,37–0,58 (kandidat kedua 0,17–0,23); wajah menunduk
+  (±111 px) hanya 0,27–0,33. Pose lebih menentukan daripada ukuran. Upscaling dan flip-averaging
+  tidak memberi manfaat berarti.
+- **Belum ada** uji non-karyawan di depan kamera: tingkat salah-orang belum terukur, jadi 0,35 adalah
+  nilai uji, bukan hasil kalibrasi akhir. Lengkapi dengan beberapa lintasan tiap karyawan terdaftar
+  dan beberapa orang tidak terdaftar pada jarak 1–2 m, lalu pilih ulang ambang dari data itu.
+
 ## Retensi crop intrusion
 
 Crop wajah intrusion di `crops/` mengikuti **`snapshot_days`** (bukan `attendance_days`) dan tidak
