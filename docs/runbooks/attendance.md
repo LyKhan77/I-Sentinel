@@ -19,6 +19,24 @@ tanggal / Per karyawan) dan mendukung koreksi manual oleh admin.
 - List API dan CSV menampilkan **status efektif**: `waiting` yang sudah lewat batas
   langsung tampil `no_exit` walau job belum jalan; baris ber-`override_note` tidak diubah.
 
+### Peringatan "Exit awal"
+
+- Baris `ontime`/`late` yang `last_exit`-nya lebih dari **60 menit** sebelum `shift.end_time`
+  pada tanggal baris (ambang `EXIT_EARLY_MIN`, dihitung saat API membaca — sama seperti pola
+  status efektif) menampilkan chip **Exit awal** di kolom exit dan angka menitnya pada kolom
+  terakhir CSV `exit_early_min`. Status, durasi, dan tile ringkasan tidak berubah: ini tanda
+  untuk diperiksa, bukan status baru.
+- `last_exit` adalah exit **terakhir** hari itu (exit boleh berulang, yang tercatat tetap yang
+  paling akhir). Chip karena itu berarti salah satu dari dua hal, dan sistem tidak bisa
+  membedakan keduanya: karyawan memang pulang awal, **atau** exit sore tidak terdeteksi
+  (kamera exit terlewat, orang lewat pintu lain) sehingga yang tersisa exit makan siang.
+- Menindaklanjuti: cek Inbox untuk event `attendance` arah `exit` milik karyawan pada hari itu.
+  Exit sore yang tidak terdeteksi → koreksi jam keluarnya; pulang awal yang sah → cukup isi
+  catatan. Keduanya lewat **Koreksi** di bawah.
+- Peringatan tidak muncul bila `override_note` terisi (termasuk `import`), status bukan
+  `ontime`/`late`, karyawan tanpa shift, `last_exit` kosong, atau jam shift pada tanggal baris
+  belum lewat saat dibaca — exit makan siang di hari berjalan tidak ikut ditandai.
+
 ## Penutupan hari otomatis (`AttendanceCloser`)
 
 - Thread latar di proses API: `close_due` tiap **15 menit** (`CLOSE_INTERVAL_S = 900`),
@@ -55,10 +73,16 @@ idempoten — start ulang tidak menduplikasi baris.
 4. Baris hasil koreksi (dan baris hasil import CSV — `override_note='import'`) tidak
    ditimpa job penutupan. Event absensi **baru** untuk hari itu tetap menghitung ulang
    baris (perilaku lama; koreksi yang perlu dipertahankan harus diinput ulang setelahnya).
+5. Catatan apa pun juga menghapus chip **Exit awal** pada baris itu — di daftar maupun CSV —
+   karena nilainya sudah diputuskan manusia.
 
 ## Import/export CSV
 
 - Export (`/api/v1/attendance/rekap.csv`): status **efektif**, urutan kronologis menaik.
+- Kolom terakhir `exit_early_min` (menit antara exit terakhir dan jam shift selesai, kosong bila
+  tidak berlaku). Import membaca per nama kolom dan mengabaikan kolom tak dikenal, jadi CSV lama
+  tanpa kolom ini maupun CSV hasil ekspor baru sama-sama diterima; nilai `exit_early_min` tidak
+  pernah ditulis ke database.
 - Import: upsert per `(employee_code, date)`; `first_entry` kosong + `last_exit` terisi
   → status `no_entry`; `override_note` di-set `import` sehingga baris tidak ditimpa job.
 

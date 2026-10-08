@@ -3,6 +3,22 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Peringatan exit awal pada rekap attendance — T3 dokumen + verifikasi akhir (2026-10-08)
+
+- **Konteks:** menutup siklus T1–T2 (`b51bbb5` backend, `c916cb6` frontend) dengan alur pemakaian dan prosedur operasional. ROADMAP sengaja tetap `[~]`: belum di-push, belum di-deploy, belum dilihat user di browser.
+- **Perubahan:** `WORKFLOW.md` §12 butir 3 — chip **Exit awal** pada rekap dan kolom CSV-nya, status tidak berubah, keputusan akhir lewat **Koreksi**. `ARCHITECTURE.md` baris domain Absensi — semantik `exit_early_min`, kelima syarat, ambang 60 menit, dan catatan tanpa kolom DB baru/migrasi. `docs/runbooks/attendance.md` — subbagian **Peringatan "Exit awal"** (peringatan bisa berarti pulang awal *atau* exit sore tidak terdeteksi dan sistem tidak bisa membedakan; `last_exit` tetap exit terakhir walau exit berulang; langkah cek event `exit` di Inbox lalu Koreksi; kapan peringatan tidak muncul), butir 5 di *Koreksi manual*, dan kolom `exit_early_min` di *Import/export CSV*. `ROADMAP.md` — baris `EEA` `[~]` dengan angka tes.
+- **Bukti:** suite berurutan pada tree ini (log mentah `temp/logs/exit-early-warning/t5-*.txt`):
+  ```text
+  backend: 904 passed, 1 deselected, 559 warnings in 170.64s (0:02:50)   exit 0
+  vitest:  Test Files 36 passed (36) · Tests 485 passed (485)            exit 0
+  build:   ✓ built in 3.04s                                              exit 0
+  lint:    Found 24 warnings and 0 errors (16 pasangan file-rule identik baseline)
+  docker:  76 passed in 9.29s                                            exit 0  (tidak disentuh)
+  ```
+  Sesuai target handoff §3: backend 896 → 904 dan frontend 483 → 485 hanya karena tes baru, docker sama persis, build exit 0, tanpa warning lint baru.
+- **Dampak:** tidak ada perubahan kode atau kontrak; dokumen mengikuti perilaku yang sudah diimplementasikan di T1–T2.
+- **Rollback:** revert commit ini.
+
 ### Peringatan exit awal pada rekap attendance — T2 frontend: chip "Exit awal" (2026-10-08)
 
 - **Konteks:** lanjutan Task 1 — peringatan API `exit_early_min` harus terlihat di halaman rekap supaya admin bisa memutuskan lewat **Koreksi**. Spec/plan: `docs/superpowers/specs/2026-10-08-exit-early-warning-design.md` + `docs/superpowers/plans/2026-10-08-exit-early-warning.md`.
