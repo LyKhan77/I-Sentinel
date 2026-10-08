@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — uji ambang 0,35/0,15 dan analisis klip (2026-10-08)
+
+- **Konteks:** dua uji karyawan terdaftar pada jarak 1–2 m dengan ambang uji server 0,35 / margin 0,15: event 4885 (14:57:21) `unknown`, skor **0,3498** (kurang 0,0002 dari ambang) dan event 4886 (14:58:18) `recognized`, skor 0,410, margin 0,220. Pada 4885 user berjalan mencari titik terbaik. Klip keempat event jarak dekat (4883–4886, 1080p) dianalisis frame demi frame di container `api` (read-only; SCRFD + ArcFace seperti jalur node; hanya angka).
+- **Temuan 1, jendela waktu:** agregasi K=5 terbaik atas **seluruh klip** (gerbang node) memberi 4883 `0,564` (aktual node 0,370), 4884 `0,529` (0,576), 4885 `0,446` (0,350), 4886 `0,444` (0,410), margin ke kandidat kedua selalu ≥ 0,25. Selisih terbesar muncul saat user bergerak mencari titik terbaik: frame terbaik datang **setelah** jendela node (dwell sebelum event + 8 dtk sesudahnya) berakhir. K=3…12 hampir sama (K=all sedikit lebih rendah pada klip berderau); K bukan tuas utama.
+- **Temuan 2, proksi kualitas lemah:** korelasi skor per frame ke karyawan #1 (n = 126): lebar −0,28, `det` +0,45, pitch −0,40, yaw −0,02, blur +0,07, `quality` −0,06. Top-5 menurut `quality` rata-rata hanya +0,03–0,04 di atas rata-rata semua frame (oracle +0,12–0,15). Frame sempit tetapi frontal dan tajam (55–61 px, gerbang `small`) kadang memberi skor tertinggi (0,50–0,56); pose (pitch) lebih berpengaruh daripada ukuran. Dua klip saja: tidak cukup untuk mengganti proksi.
+- **Implikasi:** pada ambang 0,50 bahkan agregasi seluruh klip hanya mengenali 4883 dan 4884; pada 0,35–0,40 keempatnya dikenali. Genuine 0,44–0,56 lawan kandidat kedua 0,10–0,25. Belum ada uji non-karyawan, jadi ambang tetap nilai uji.
+- **Belum dikerjakan:** pembaruan identitas progresif (terus mengumpulkan selagi orang berada di zona dan mengirim pembaruan bila membaik), uji non-karyawan.
+
 ### Face ID pada intrusion critical — kalibrasi awal dan ambang uji 0,35 / 0,15 di server (2026-10-08)
 
 - **Konteks:** user meminta tuning agar wajah pada jarak 1–2 m dikenali. Diagnostik read-only di container `api` (CPU, galeri 7 karyawan × 5 foto pendaftaran; skrip sekali pakai, hanya angka) memakai crop event 4881, 4883, 4884.
