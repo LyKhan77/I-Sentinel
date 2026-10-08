@@ -3,6 +3,25 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — hasil uji lapangan di zona 15 (2026-10-08)
+
+- **Konteks:** deploy branch `feat/intrusion-face-id` ke `gspe-ai3` (tanpa merge ke `main`), user menguji lima event intrusion di zona 15 "Server" (kamera 363, critical, trigger 10 dtk, `face_id: true`). Data dari DB (`payload.face`, `payload.crop_path`, `alert`) dan crop yang dilihat langsung (kualitas/ukuran saja; tidak ada identifikasi dari wajah).
+- **Hasil:**
+
+  | Event | Jam WIB | Deploy | `payload.face` | Crop | Catatan |
+  |---|---|---|---|---|---|
+  | 4876 | 13:35:53 | `49b75b2` | `unverified` | tidak ada | kamera tanpa zona attendance aktif: tidak ada worker wajah (batasan v1, dihapus di `2b65346`) |
+  | 4878 | 13:49:31 | `2b65346` | `not_visible`, `small` | 86×96 | wajah ±54 px |
+  | 4880 | 13:54:57 | `2b65346` | `not_visible`, `small` | ada | jarak jauh |
+  | 4881 | 13:59:23 | `2b65346` | `unknown`, `no_match`, skor 0,327 | 166×218 | jarak dekat, wajah ±111 px, kepala menunduk; embedding hanya dari 3 frame pertama (diperbaiki di `fc99372`) |
+  | 4883 | 14:25:02 | `fc99372` | `unknown`, `no_match`, skor 0,370 | 158×197 | wajah ±99 px, hampir frontal |
+  | 4884 | 14:26:18 | `fc99372` | **`recognized`**, skor 0,576, margin 0,332 | 202×254 | wajah ±126 px, lebih dekat dan frontal |
+
+- **Terbukti:** jalur lengkap bekerja (pesan susulan node, pencocokan ketat, `payload.face`, `payload.crop_path`, tab Crop di Inbox, caption Telegram diedit; `face_synced` true di semua alert) dan `recognized` pertama berhasil dengan margin besar terhadap kandidat kedua. Keberhasilan bergantung pada ukuran dan frontalitas wajah: ±99 px frontal masih di bawah ambang 0,50, ±126 px frontal lolos.
+- **Belum terbukti:** tingkat false accept (belum ada uji impostor/non-karyawan), tingkat true accept (hanya 1 dari 3 uji jarak dekat), latensi caption identitas di Telegram (hanya flag DB), perilaku pada zona critical di ruang sebenarnya. Ambang `FACE_ID_THRESHOLD = 0,50` dan `FACE_ID_MARGIN = 0,10` tetap nilai awal; tidak diubah berdasar uji ini. ROADMAP `IFI` tetap `[~]`.
+- **Catatan terpisah:** AI caption event 4883 dan 4884 gagal `LLM timeout` (4878–4881 berhasil): endpoint LLM yang putus-putus, tidak terkait fitur ini.
+- **Rollback:** `ssh gspe-ai3`, `cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git checkout main && ./docker/setup.sh` (kolom 0023 aditif, tanpa downgrade).
+
 ### Face ID pada intrusion critical — kandidat terbaik, flush saat berhenti, overlay mengikuti kepala orang (2026-10-08)
 
 - **Konteks:** uji lapangan kedua dan ketiga (deploy `2b65346`): event 4878 `not_visible/small` (crop 86×96 px, wajah ±54 px) dan uji jarak dekat event 4881 (13:59:23) `unknown/no_match`, skor 0,327 terhadap galeri 7 karyawan (crop 166×218, wajah ±111 px, kepala menunduk; mesin API sendiri memberi skor 0,27). Masukan user: pengenalan terlalu cepat sehingga kandidat terbaik belum ditemukan, dan overlay debugger tidak boleh mengikuti status zona. Penyebab pertama adalah perbaikan review sebelumnya (H2) yang membatasi embedding ke `min_frames` (3) **pertama**, yaitu frame paling awal dan paling buruk, serta pengiriman segera setelah 3 frame. Penyebab kedua: label kotak wajah memakai gerbang attendance, jadi pada worker identitas-saja (zona kosong) semua wajah berlabel `zone`.
