@@ -16,6 +16,7 @@ export type Behavior = {
   telegram?: boolean // kosong = ikut flag zona / default off
   telegram_unknown?: boolean // kosong = true
   record?: boolean // kosong = true
+  face_id?: boolean // intrusion critical: cari identitas wajah (kamera dengan worker wajah)
 }
 
 export type Schedule = { days: number[]; start: string; end: string }

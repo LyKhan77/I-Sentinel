@@ -549,7 +549,22 @@ export default function ZonesPage() {
                                 toggled={b.telegram ?? selected.telegram}
                                 onToggle={(v) => setBehavior(kind, { telegram: v })}
                               />
+                              {kind === 'intrusion' && (
+                                <Toggle
+                                  id="zone-face-id-intrusion"
+                                  size="sm"
+                                  labelText={t('zones.faceId')}
+                                  toggled={b.face_id ?? false}
+                                  onToggle={(v) => setBehavior(kind, { face_id: v })}
+                                />
+                              )}
                             </div>
+                          )}
+                          {b && kind === 'intrusion' && b.face_id && (
+                            <p data-testid={`zone-face-id-hint-${kind}`}
+                              style={{ margin: '0 0 0 24px', fontSize: 12, color: 'var(--cds-text-secondary)' }}>
+                              {t('zones.faceIdHint')}
+                            </p>
                           )}
                           {b && noMedia(b) && (
                             <p role="alert" data-testid={`zone-media-warning-${kind}`}
