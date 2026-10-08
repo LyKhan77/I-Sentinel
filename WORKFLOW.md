@@ -257,6 +257,13 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
 3. Status: tepat waktu/telat (entry + exit), **Di dalam** (`waiting`), **Tanpa exit** (`no_exit`),
    **Tanpa entry** (`no_entry`), **Tidak hadir** (`absent`). Batas hari = selesai shift +
    `NO_EXIT_GRACE_MIN` (60 menit).
+   Baris `ontime`/`late` yang exit terakhirnya lebih dari 60 menit sebelum jam shift selesai ditandai
+   chip **Exit awal** (mis. `Exit 3j 57m sebelum shift selesai`) di kolom exit rekap, dan ikut muncul
+   sebagai kolom terakhir `exit_early_min` pada CSV ekspor. Peringatan dihitung saat dibaca — status,
+   durasi, dan tile ringkasan tidak berubah. Exit boleh berulang sehingga yang dipakai exit **terakhir**:
+   chip bisa berarti pulang awal **atau** exit sore yang tidak terlintas kamera. Admin yang memutuskan —
+   buka **Koreksi** (tombol di sel status baris berperingatan, atau klik barisnya) dan isi catatan; `override_note` (termasuk hasil impor) menghapus peringatan dari
+   daftar dan CSV.
 4. `AttendanceCloser` tiap 15 menit (catch-up 7 hari saat start) membuat `absent` untuk karyawan aktif
    terjadwal yang tidak terdeteksi dan menutup `waiting` lewat batas menjadi `no_exit`.
 5. Admin mengoreksi baris (tombol **Koreksi**, catatan wajib) → `override_note` → baris tidak diubah

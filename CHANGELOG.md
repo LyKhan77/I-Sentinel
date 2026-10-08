@@ -3,6 +3,49 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Exit awal — perbaikan review: tombol Koreksi untuk baris berperingatan (2026-10-08)
+
+- **Konteks:** review sesi perencanaan atas `c2e91bd`. Spec, WORKFLOW, dan runbook menyuruh admin "membuka Koreksi" untuk menindaklanjuti chip Exit awal, tetapi tombol Koreksi hanya dirender untuk `no_exit`/`no_entry`. Baris `ontime`/`late` berperingatan hanya bisa dikoreksi dengan mengklik barisnya, tanpa petunjuk visual.
+- **Perubahan:** `AttendancePage.tsx`: tombol Koreksi (admin) juga tampil bila `exit_early_min != null`. Dua tes baru di `attendance.test.tsx`; `WORKFLOW.md`, runbook, dan baris ROADMAP EEA disesuaikan.
+- **Bukti:** RED `admin: baris ber-peringatan Exit awal punya tombol Koreksi yang membuka modal`: `Unable to find an element by: [data-testid="fix-12"]`; tes viewer dibuktikan lewat mutasi (hapus `isAdmin &&` membuat tes viewer lama dan baru merah, dikembalikan). GREEN terarah `19 passed`; suite: frontend `36 files / 487 passed`, build exit 0, lint 24 warning dengan pasangan identik baseline.
+- **Dampak:** admin melihat jalan tindak lanjut yang jelas di baris berperingatan; viewer tetap tanpa tombol. BELUM diuji di server nyata.
+- **Rollback:** revert commit ini.
+
+### Peringatan exit awal pada rekap attendance — T3 dokumen + verifikasi akhir (2026-10-08)
+
+- **Konteks:** menutup siklus T1–T2 (`b51bbb5` backend, `c916cb6` frontend) dengan alur pemakaian dan prosedur operasional. ROADMAP sengaja tetap `[~]`: belum di-push, belum di-deploy, belum dilihat user di browser.
+- **Perubahan:** `WORKFLOW.md` §12 butir 3 — chip **Exit awal** pada rekap dan kolom CSV-nya, status tidak berubah, keputusan akhir lewat **Koreksi**. `ARCHITECTURE.md` baris domain Absensi — semantik `exit_early_min`, kelima syarat, ambang 60 menit, dan catatan tanpa kolom DB baru/migrasi. `docs/runbooks/attendance.md` — subbagian **Peringatan "Exit awal"** (peringatan bisa berarti pulang awal *atau* exit sore tidak terdeteksi dan sistem tidak bisa membedakan; `last_exit` tetap exit terakhir walau exit berulang; langkah cek event `exit` di Inbox lalu Koreksi; kapan peringatan tidak muncul), butir 5 di *Koreksi manual*, dan kolom `exit_early_min` di *Import/export CSV*. `ROADMAP.md` — baris `EEA` `[~]` dengan angka tes.
+- **Bukti:** suite berurutan pada tree ini (log mentah `temp/logs/exit-early-warning/t5-*.txt`):
+  ```text
+  backend: 904 passed, 1 deselected, 559 warnings in 170.64s (0:02:50)   exit 0
+  vitest:  Test Files 36 passed (36) · Tests 485 passed (485)            exit 0
+  build:   ✓ built in 3.04s                                              exit 0
+  lint:    Found 24 warnings and 0 errors (16 pasangan file-rule identik baseline)
+  docker:  76 passed in 9.29s                                            exit 0  (tidak disentuh)
+  ```
+  Sesuai target handoff §3: backend 896 → 904 dan frontend 483 → 485 hanya karena tes baru, docker sama persis, build exit 0, tanpa warning lint baru.
+- **Dampak:** tidak ada perubahan kode atau kontrak; dokumen mengikuti perilaku yang sudah diimplementasikan di T1–T2.
+- **Rollback:** revert commit ini.
+
+### Peringatan exit awal pada rekap attendance — T2 frontend: chip "Exit awal" (2026-10-08)
+
+- **Konteks:** lanjutan Task 1 — peringatan API `exit_early_min` harus terlihat di halaman rekap supaya admin bisa memutuskan lewat **Koreksi**. Spec/plan: `docs/superpowers/specs/2026-10-08-exit-early-warning-design.md` + `docs/superpowers/plans/2026-10-08-exit-early-warning.md`.
+- **Perubahan:** `src/api/attendance.ts` — `AttendanceRow.exit_early_min?: number | null` (opsional agar fixture tes lama dan respons tanpa field tetap lolos `tsc -b`). `src/features/attendance/AttendancePage.tsx` — chip di sel exit di bawah jam (`data-testid={exit-early-<id>}`, amber `#f1c21b`, font 11 seperti `StatusBadge`), hanya dirender bila field terisi. `src/app/i18n.tsx` — satu kunci baru `at.exitEarly` (`id` + `en`), durasi memakai ulang `at.duration.hm`. Tidak ada CSS baru.
+- **Tes:** 2 tes baru di `src/__tests__/attendance.test.tsx` — teks persis `Exit 3j 57m sebelum shift selesai` untuk `{ ...ROWS[1], exit_early_min: 237 }`, dan tidak ada chip untuk `null` maupun baris fixture lama tanpa field (Review Focus 5).
+- **Bukti:** RED `1 failed | 16 passed` — `Unable to find [testId] exit-early-12` (chip belum ada). Tes penjaga kedua lulus sejak awal karena menguji perilaku yang memang sudah benar; dibuktikan bisa gagal lewat mutasi sementara `!= null` → `!== undefined` (tes "tidak tampil bila null" merah, tes tampilan tetap hijau) lalu dikembalikan — `temp/logs/exit-early-warning/mutation-t2.txt`. Suite berurutan pada kode final: vitest `Test Files 36 passed (36)`, `Tests 485 passed (485)`, exit 0 (4× berturut-turut); build exit 0 (`✓ built in 2.96s`); lint `24 warnings and 0 errors` dengan 16 pasangan file-rule identik baseline. Catatan: run pertama setelah implementasi menunjukkan **1 kegagalan intermiten** (nama tes tidak tercatat karena keluaran dipotong `tail -8`); empat run berikutnya hijau semua dan tidak ada tes yang diubah.
+- **Dampak:** Hanya sel exit yang berubah tampil (satu baris tambahan di bawah jam); status, tile ringkasan, filter, dan modal koreksi tidak berubah. Chip sengaja tidak diberi `whiteSpace: nowrap` agar bisa berganti baris dan tidak memaksa kolom melebar di 390 px — nol overflow horizontal masih perlu diverifikasi user di browser.
+- **Rollback:** revert commit ini; tanpa migrasi.
+
+### Peringatan exit awal pada rekap attendance — T1 backend (2026-10-08)
+
+- **Konteks:** `recompute_day` menyimpan `last_exit = max(semua exit)`, sehingga exit makan siang yang tidak diikuti exit sore tetap membuat baris tampak lengkap. Sistem tidak bisa membedakan "pulang awal" dari "exit sore tidak terlintas kamera" — hanya admin yang bisa memutuskan. Keputusan user: **peringatan tanpa mengubah status** (opsi B, `docs/superpowers/specs/2026-10-08-exit-early-warning-design.md` + plan `2026-10-08-exit-early-warning.md`).
+- **Baseline ulang sebelum Task 1** (`d40d0f1`, suite berurutan; keluaran mentah `temp/logs/exit-early-warning/preflight*.txt`): backend `896 passed, 1 deselected, 551 warnings in 161.62s`; vitest `36 berkas / 483 passed`, exit 0; build exit 0; lint `24 warnings and 0 errors` dengan 16 pasangan file-rule identik dengan `baseline-lint.txt`; docker `76 passed` (keluaran perencana, tidak disentuh). Sama persis dengan acuan §3 handoff.
+- **Perubahan:** `services/attendance.py` — konstanta `EXIT_EARLY_MIN = 60` dan fungsi murni `exit_early_min(row, shift, now=None)` mengikuti pola `effective_status` (dihitung saat baca, tanpa migrasi, tanpa setelan): hanya untuk status tersimpan `ontime`/`late`, `override_note` kosong, shift dan `last_exit` ada, waktu baca sudah lewat `shift.end_time` pada `row.date`, dan selisih **lebih dari** 60 menit. `api/attendance.py` — field `exit_early_min` di `_row_dict` (satu tempat untuk daftar harian/rentang/per karyawan dan respons `PATCH`) serta kolom terakhir `CSV_COLUMNS` + selnya di `export_csv` (kosong bila `None`). Impor tidak diubah.
+- **Tes:** 4 unit di `test_attendance_logic.py` (237 menit; batas 60 → None dan 61 → 61; tunggu jam shift selesai; tujuh keadaan None termasuk `override_note="import"` dan exit sesudah shift) dan 4 API di `test_attendance_api.py` (field daftar, kolom CSV terakhir, impor mengabaikan kolom, `PATCH` catatan → None). Satu-satunya perubahan tes lama: dict persis di `test_csv_export_rows` menambah `"exit_early_min": ""` (kolom baru memang bagian kontrak ekspor).
+- **Bukti:** RED `9 failed, 67 passed` — 4 `AttributeError: module 'app.services.attendance' has no attribute 'exit_early_min'`, 3 `KeyError: 'exit_early_min'`, 2 `AssertionError` (dict ekspor dan header CSV); seluruhnya karena fitur belum ada, bukan galat impor. Mutasi sementara `>` → `>=` membuat tes batas merah dan `< end` → `<= end` membuat tes "tunggu shift selesai" merah, keduanya lalu dikembalikan. GREEN terarah `76 passed`. Suite backend penuh: `904 passed, 1 deselected, 559 warnings in 164.73s` (896 + 8 tes baru).
+- **Dampak:** Status, `compute_status`, `recompute_day`, `AttendanceCloser`, tile ringkasan, filter, dan Telegram tidak berubah. Pembaca CSV pihak ketiga yang menghitung jumlah kolom perlu penyesuaian (kolom baru hanya di akhir); impor internal membaca per nama kolom sehingga CSV lama dan CSV hasil ekspor baru sama-sama lolos, dan baris hasil impor (`override_note='import'`) tidak diberi peringatan.
+- **Rollback:** revert commit ini; tanpa migrasi dan tanpa setelan baru. BELUM diuji di server nyata.
+
 ### Node apply per kamera — deploy dan verifikasi server `gspe-ai3` (2026-10-07)
 
 - **Konteks:** `ad93bf0` (merge `feat/node-apply-per-camera`, termasuk perbaikan review `27cecf8`) di-deploy atas persetujuan user: pull `main` di clone Docker lalu `./docker/setup.sh`; hanya container `vision` dibuat ulang (`api`, `web`, `go2rtc`, `mosquitto`, `postgres` tidak berubah). Pasca-deploy: `/api/v1/health` ok, kode baru ada di container.

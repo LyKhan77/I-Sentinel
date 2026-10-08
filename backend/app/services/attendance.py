@@ -24,6 +24,7 @@ LOCAL_TZ = datetime.now().astimezone().tzinfo  # tz server (WIB +07)
 VALID_DIRECTIONS = {"entry", "exit"}
 CLOSE_INTERVAL_S = 900
 CLOSE_DAYS_BACK = 7
+EXIT_EARLY_MIN = 60
 
 
 def _local(dt: datetime | None) -> datetime | None:
@@ -71,6 +72,26 @@ def effective_status(row, shift, now: datetime | None = None) -> str:
         return row.status
     now = _local(now) or datetime.now(LOCAL_TZ)
     return "no_exit" if now >= deadline(shift, row.date) else "waiting"
+
+
+def exit_early_min(row, shift, now: datetime | None = None) -> int | None:
+    """Menit antara exit terakhir dan jam shift selesai pada baris `ontime`/`late` yang pulangnya
+    lebih dari `EXIT_EARLY_MIN` menit awal; selain itu None.
+
+    Dihitung saat baca seperti `effective_status` — status tersimpan tidak pernah diubah. None untuk
+    baris ber-`override_note` (sudah diputuskan manusia, termasuk hasil impor), karyawan tanpa shift,
+    dan hari yang jam shift-nya belum lewat (exit makan siang di hari berjalan bukan anomali).
+    Exit terakhir bisa saja sore yang tidak terlintas kamera, bukan pulang awal.
+    """
+    if shift is None or row.last_exit is None or row.status not in ("ontime", "late"):
+        return None
+    if (row.override_note or "").strip():
+        return None
+    end = _shift_dt(shift, row.date, shift.end_time)
+    if (_local(now) or datetime.now(LOCAL_TZ)) < end:
+        return None
+    gap = round((end - _local(row.last_exit)).total_seconds() / 60)
+    return gap if gap > EXIT_EARLY_MIN else None
 
 
 def recompute_day(db, employee_id: int, day, now: datetime | None = None) -> AttendanceDay:

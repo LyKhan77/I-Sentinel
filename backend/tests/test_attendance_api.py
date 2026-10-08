@@ -63,6 +63,14 @@ def _fixture_employee(db, code="E1", name="Budi"):
     return e, sh
 
 
+def _move_exit_earlier(db, employee_id, hh=12, mm=3):
+    """Pindahkan `last_exit` baris rekap (fixture default 16:05 = sesudah shift selesai)."""
+    row = db.query(AttendanceDay).filter_by(employee_id=employee_id, date=DAY).one()
+    row.last_exit = _at(hh, mm)
+    db.commit()
+    return row
+
+
 # --- (a) GET list -----------------------------------------------------------
 
 def test_list_today(client, db):
@@ -131,6 +139,7 @@ def test_csv_export_rows(client, db):
         "status": "ontime",
         "late_minutes": "0",
         "override_note": "",
+        "exit_early_min": "",
     }
     # tanpa biometrik
     assert not any("vector" in k or "biometric" in k for k in rows[0])
@@ -336,3 +345,60 @@ def test_import_exit_without_entry_is_no_entry(client, db):
     row = db.query(AttendanceDay).filter_by(employee_id=e.id, date=date(2025, 1, 7)).one()
     assert row.status == "no_entry"
     assert row.duration_min is None and row.late_minutes is None
+
+
+# --- (f) peringatan exit awal: turunan saat baca, status tidak berubah ------
+
+def test_list_exposes_exit_early_min(client, db):
+    early, _ = _fixture_employee(db)
+    _fixture_employee(db, code="E2", name="Siti")  # exit 16:05 = sesudah shift selesai
+    _move_exit_earlier(db, early.id)
+    rows = client.get(f"/api/v1/attendance?date={DAY.isoformat()}", headers=_headers(client)).json()
+    assert {r["employee_code"]: r["exit_early_min"] for r in rows} == {"E1": 237, "E2": None}
+
+
+def test_csv_export_has_exit_early_min_as_last_column(client, db):
+    early, _ = _fixture_employee(db)
+    _fixture_employee(db, code="E2", name="Siti")
+    _move_exit_earlier(db, early.id)
+    h = _headers(client)
+    res = client.get(f"/api/v1/attendance/rekap.csv?from={DAY}&to={DAY}", headers=h)
+    assert next(csv.reader(io.StringIO(res.text)))[-1] == "exit_early_min"
+    assert [(r["employee_code"], r["exit_early_min"]) for r in _export(client, h)] == [
+        ("E1", "237"), ("E2", ""),
+    ]
+
+
+def test_import_ignores_exit_early_min_column(client, db):
+    """Kolom hasil ekspor dibaca sebagai kolom tak dikenal: nilai rekap tidak berubah (Review Focus 4)."""
+    e, _ = _fixture_employee(db)
+    _move_exit_earlier(db, e.id)
+    h = _headers(client)
+    rows = _export(client, h)
+    assert rows[0]["exit_early_min"] == "237"
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+    w.writeheader()
+    w.writerows([{**r, "exit_early_min": "999"} for r in rows])
+
+    r = client.post("/api/v1/attendance/import",
+                    files={"file": ("rekap.csv", buf.getvalue().encode(), "text/csv")}, headers=h)
+    assert r.status_code == 200
+    assert r.json() == {"updated": 1, "created": 0, "skipped": 0}
+
+    day = db.query(AttendanceDay).filter_by(employee_id=e.id, date=DAY).one()
+    assert day.last_exit.strftime("%H:%M") == "12:03"
+    assert day.status == "ontime"
+    assert day.override_note == "import"
+    assert _export(client, h)[0]["exit_early_min"] == ""  # baris terkoreksi tidak diberi peringatan
+
+
+def test_patch_with_note_clears_exit_early_min(client, db):
+    e, _ = _fixture_employee(db)
+    day = _move_exit_earlier(db, e.id)
+    h = _headers(client)
+    listed = client.get(f"/api/v1/attendance?date={DAY.isoformat()}", headers=h).json()
+    assert listed[0]["exit_early_min"] == 237
+    r = client.patch(f"/api/v1/attendance/{day.id}", json={"override_note": "pulang cepat"}, headers=h)
+    assert r.status_code == 200
+    assert r.json()["exit_early_min"] is None
