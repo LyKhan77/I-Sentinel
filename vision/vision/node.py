@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
-from .analyzers.base import Analyzer, wall_time
+from .analyzers.base import Analyzer, ground_point, point_in_polygon, wall_time
 from .face_quality import FaceSettings
 from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
@@ -99,7 +99,8 @@ class _PartialTrack:
 class CameraWorker(threading.Thread):
     def __init__(self, camera_cfg, detector_factory, transport, stop_event, node_id,
                  analyzers: list[Analyzer] | None = None, recorder=None,
-                 emit_person_detect: bool = False, motion: dict | None = None):
+                 emit_person_detect: bool = False, motion: dict | None = None,
+                 registry=None, ident_zones: list[dict] | tuple = ()):
         super().__init__(daemon=True, name=f"cam-{camera_cfg.camera_id}")
         self.camera_cfg = camera_cfg
         self.camera_id = camera_cfg.camera_id
@@ -124,6 +125,8 @@ class CameraWorker(threading.Thread):
         )
         self.events: list[dict] = []  # test hook
         self.source = None
+        self.registry = registry
+        self.ident_zones = list(ident_zones)
         self.frames = 0          # frame diproses (heartbeat: fps jendela)
         self.motion_skipped = 0  # frame dilewati motion gate (heartbeat: skip %)
 
@@ -150,6 +153,12 @@ class CameraWorker(threading.Thread):
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if frame.data is not None:
+                    frame_h, frame_w = frame.data.shape[:2]
+                else:
+                    frame_w, frame_h = DEFAULT_W, DEFAULT_H
+                if self.registry is not None:
+                    self._touch_ident(tracks, frame.ts, frame_w, frame_h)
                 if self.recorder is not None and tracks:
                     self.recorder.touch([t.id for t in tracks])
                 if tracks and self.transport is not None:
@@ -168,10 +177,6 @@ class CameraWorker(threading.Thread):
                             pass  # no cv2: ring stays empty, snapshots skipped
                     elif detections:
                         self.recorder.push_jpeg(frame.ts, b"")  # tests: no frame data
-                if frame.data is not None:
-                    frame_h, frame_w = frame.data.shape[:2]
-                else:
-                    frame_w, frame_h = DEFAULT_W, DEFAULT_H
                 for tr in tracks:
                     if tr.id not in seen:
                         seen.add(tr.id)
@@ -185,6 +190,10 @@ class CameraWorker(threading.Thread):
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
+                        if self.registry is not None and ev["type"] == "intrusion" \
+                                and ev["zone_id"] in {z["id"] for z in self.ident_zones}:
+                            self.registry.bind(ev["zone_id"], ev["payload"]["track_id"],
+                                               ev["event_id"], frame.ts)
                         media = getattr(az, "media", None)
                         if media is not None:
                             ev["snapshot"] = media.get("snapshot", True)
@@ -200,6 +209,16 @@ class CameraWorker(threading.Thread):
     def stop(self):
         if self.source is not None:
             self.source.close()
+
+    def _touch_ident(self, tracks, ts: float, frame_w: int, frame_h: int) -> None:
+        """Registry identitas: track segar (misses == 0) yang titik kakinya di zona ident."""
+        if not self.ident_zones:
+            return
+        for z in self.ident_zones:
+            poly = [tuple(p) for p in z["polygon"]]
+            for tr in tracks:
+                if tr.misses == 0 and point_in_polygon(ground_point(tr), poly):
+                    self.registry.touch(z["id"], tr.id, tr.bbox, ts)
 
 
 def attendance_zones(cam: CameraCfg) -> list[dict]:

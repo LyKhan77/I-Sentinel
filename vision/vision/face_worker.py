@@ -15,6 +15,7 @@ from statistics import median
 
 from .face_quality import (FaceSettings, aggregate, blur_score, crop_box, gate_code,
                            quality, yaw_ratio)
+from .intrusion_face import IdentCollector, IntrusionRegistry
 from .motion import FrameMotionGate
 from .pipeline.detector import Detection
 from .pipeline.tracker import ByteTracker
@@ -61,7 +62,7 @@ class FaceGateWorker(threading.Thread):
 
     def __init__(self, camera_id: int, zones: list[dict], face, transport, node_id: str,
                  settings: FaceSettings, recorder=None, motion: dict | None = None,
-                 max_age_s: float = 3.0):
+                 max_age_s: float = 3.0, registry: IntrusionRegistry | None = None):
         super().__init__(daemon=True, name=f"face-{camera_id}")
         self.camera_id = camera_id
         self.zones = zones
@@ -90,6 +91,10 @@ class FaceGateWorker(threading.Thread):
         self.motion_skipped = 0
         self._in_zone: dict[int, float] = {}
         self._funnel = self._empty_funnel()
+        # registry ≠ None → kamera ini juga menjalankan identitas intrusion critical
+        self.collector = (IdentCollector(registry, face, settings, camera_id, node_id)
+                          if registry is not None else None)
+        self._ident_threads: list[threading.Thread] = []
 
     def run(self) -> None:
         """Consume source until stopped; event/media finalization runs separately."""
@@ -107,17 +112,20 @@ class FaceGateWorker(threading.Thread):
                     if self._tracker.lost_ids:
                         self._publish([])
                     self._expire()
+                    self._ident_step(time.monotonic(), idle=True)
                     continue
                 self.frames += 1
                 if frame.data is None:
                     continue
                 moving = self.motion_gate is None or self.motion_gate.update(frame.data, frame.ts)
-                if not moving and not self._faces_shown:
+                if not moving and not self._faces_shown and not (
+                        self.collector is not None and self.collector.registry.active(frame.ts)):
                     self.motion_skipped += 1
                     self._tracker.update([], frame.ts)
                     if self._tracker.lost_ids:
                         self._publish([])
                     self._expire()
+                    self._ident_step(frame.ts, idle=True)
                     continue
                 self._process(frame)
         except Exception:
@@ -126,6 +134,37 @@ class FaceGateWorker(threading.Thread):
         finally:
             self._pending_events.put(None)
             finalizer.join()
+            self.join_ident_threads(5.0)
+
+    def join_ident_threads(self, timeout: float = 5.0) -> None:
+        """Join thread pengirim hasil identitas yang belum selesai (maks total `timeout` dtk)."""
+        deadline = time.monotonic() + timeout
+        for th in self._ident_threads:
+            th.join(timeout=max(0.0, deadline - time.monotonic()))
+        self._ident_threads = [th for th in self._ident_threads if th.is_alive()]
+
+    def _ident_step(self, now: float, idle: bool = False) -> None:
+        """Drain hasil identitas dan kirim lewat thread pendek per pesan (loop frame tak menunggu)."""
+        if self.collector is None:
+            return
+        if idle:
+            self.collector.registry.prune(now)
+        for msg in self.collector.drain(now):
+            th = threading.Thread(target=self._ship_ident, args=(msg,), daemon=True,
+                                  name=f"ident-ship-{self.camera_id}")
+            self._ident_threads.append(th)
+            th.start()
+
+    def _ship_ident(self, msg: dict) -> None:
+        """Unggah crop (bila ada) lalu publish pesan identitas; kegagalan unggah tidak menahan pesan."""
+        crop = msg.pop("_crop", None)
+        msg["crop_path"] = None
+        if crop and self.recorder is not None:
+            try:
+                msg["crop_path"] = self.recorder.upload_bytes(crop, "crop", timeout=3.0, retries=1)
+            except Exception:
+                log.warning("camera %s: ident crop upload failed", self.camera_id, exc_info=True)
+        self.transport.publish_face(msg)
 
     def stop(self) -> None:
         """Stop consuming frames and close capture without waiting for inference."""
@@ -159,6 +198,8 @@ class FaceGateWorker(threading.Thread):
             faces = []
         dets = [Detection(bbox=(f.bbox[0] / w, f.bbox[1] / h, f.bbox[2] / w, f.bbox[3] / h),
                           conf=f.score) for f in faces]
+        if self.collector is not None and frame.data is not None:
+            self.collector.observe(faces, frame.data, w, h, frame.ts)
         by_bbox = {d.bbox: f for d, f in zip(dets, faces)}
         tracks = self._tracker.update(dets, frame.ts)
         boxes, passed = [], []
@@ -190,6 +231,7 @@ class FaceGateWorker(threading.Thread):
         for tid, f, zone, aligned, q in passed:
             self._accumulate(tid, f, zone, aligned, q, frame)
         self._expire()
+        self._ident_step(frame.ts)
 
     def _publish(self, boxes: list[dict]) -> None:
         if self.transport is None:
