@@ -422,3 +422,16 @@ def test_behavior_record_flag_roundtrip_and_validation(client):
             "behaviors": behaviors,
         }, headers=h)
         assert r.status_code == 200 and r.json()["behaviors"] == behaviors
+
+
+def test_behavior_face_id_flag_roundtrip_and_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    behaviors = [{"kind": "intrusion", "trigger_seconds": 0, "face_id": True}]
+    r = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                           "behaviors": behaviors}, headers=h)
+    assert r.status_code == 200 and r.json()["behaviors"] == behaviors
+    bad = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"], "type": "behavior",
+                                             "behaviors": [{"kind": "intrusion", "face_id": "true"}]},
+                      headers=h)
+    assert bad.status_code == 422

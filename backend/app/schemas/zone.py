@@ -21,7 +21,7 @@ def _validate_behaviors(v: list | None) -> list | None:
         speed = b.get("speed_limit_mps")
         if speed is not None and (not isinstance(speed, (int, float)) or isinstance(speed, bool) or speed < 0):
             raise ValueError("speed_limit_mps must be a number >= 0")
-        for flag in ("snapshot", "clip", "telegram", "telegram_unknown", "record"):
+        for flag in ("snapshot", "clip", "telegram", "telegram_unknown", "record", "face_id"):
             if flag in b and not isinstance(b[flag], bool):
                 raise ValueError(f"{flag} must be a boolean")
         # event = bukti visual: tanpa media event langsung jadi card kosong (dan terhapus retensi).
