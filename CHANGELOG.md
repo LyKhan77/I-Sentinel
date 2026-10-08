@@ -3,6 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Exit awal — deploy `gspe-ai3` (2026-10-08)
+
+- **Konteks:** `5c2c21b` (merge `feat/exit-early-warning`, termasuk perbaikan review `d2ec2cb`) di-deploy atas persetujuan user: pull `main` lalu `./docker/setup.sh`; container `api`, `web`, dan `retention` (berbagi image `api`) dibuat ulang, `vision`, `go2rtc`, `mosquitto`, `postgres` tidak berubah. Tanpa migrasi.
+- **Terverifikasi di server:** `/api/v1/health` ok; `EXIT_EARLY_MIN = 60` dan `exit_early_min` ada di container `api`; `index.html` dikirim dengan `Cache-Control: no-cache` (tidak perlu hard refresh); fungsi dijalankan pada data nyata: 28 baris rekap, 2 berperingatan (dua baris `late` dengan exit terakhir lebih dari 60 menit sebelum shift selesai, sama dengan temuan sebelum fitur ini).
+- **BELUM diuji:** tampilan chip dan tombol Koreksi di browser (termasuk layar 390 px, nol overflow horizontal), unduhan CSV dengan kolom `exit_early_min` di server, dan perilaku zona waktu pada Postgres untuk jam shift nyata di luar dua baris di atas. Status ROADMAP tetap `[~]` sampai user memeriksa UI.
+- **Rollback:** `ssh gspe-ai3`, `cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git checkout 67cd400 && ./docker/setup.sh` (tanpa migrasi).
+
 ### Exit awal — perbaikan review: tombol Koreksi untuk baris berperingatan (2026-10-08)
 
 - **Konteks:** review sesi perencanaan atas `c2e91bd`. Spec, WORKFLOW, dan runbook menyuruh admin "membuka Koreksi" untuk menindaklanjuti chip Exit awal, tetapi tombol Koreksi hanya dirender untuk `no_exit`/`no_entry`. Baris `ontime`/`late` berperingatan hanya bisa dikoreksi dengan mengklik barisnya, tanpa petunjuk visual.
