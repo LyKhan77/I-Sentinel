@@ -3,6 +3,23 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — uji kamera 357 setelah 2K dan gerbang relatif (2026-10-08)
+
+- **Konteks:** user mengubah kamera 357 "Lorong Manager" menjadi 2K 15 fps, Max. bitrate 8192 kbps (terverifikasi `ffprobe` pada `cam_357_main`: H.264 Main, **2560×1440, 15 fps**), dengan server di branch `feat/intrusion-face-progressive` @ `2cedca8` (gerbang identitas relatif, lebar ≥ 60 px, pembaruan progresif, ambang uji 0,35 / margin 0,15, `ai_fps` 15).
+- **Hasil (DB, kamera 357):**
+
+  | Event | Jam WIB | Orang | `payload.face` | Crop |
+  |---|---|---|---|---|
+  | 4899 | 16:36:27 | karyawan | `recognized`, skor 0,444, margin 0,267 | 118×142 |
+  | 4900 | 16:37:01 | karyawan | `recognized`, skor 0,586, margin 0,339 | 135×153 |
+  | 4901 | 16:37:50 | karyawan | `recognized` (karyawan #5), skor 0,639, margin 0,444 | 140×179 |
+  | 4902 | 16:39:12 | non-karyawan | `unknown`, `no_match`, skor 0,222 | 117×156 |
+  | 4903 | 16:42:03 | karyawan, jarak 2 m+ | `recognized`, skor 0,452, margin 0,252 | 100×123 |
+
+- **Terbukti:** semua karyawan dikenali (skor 0,444–0,639; margin ≥ 0,25), non-karyawan tidak (skor 0,222; sebelumnya 0,243 agregat dan 0,298 frame tunggal maks); alert dan caption tersinkron (`face_synced` true di semua). Crop 100–140 px lebar berarti wajah ±62–88 px (padding 30%), sehingga uji 2 m+ dikenali pada wajah ±62 px, di dekat batas 60 px.
+- **Belum terbukti:** tingkat salah-orang (baru 2 non-karyawan di dua sesi), jarak 3 m, dan pengaruh resolusi 2K secara terpisah dari jarak/pose (jarak uji tidak seragam). Ambang 0,35 / 0,15 tetap nilai uji; ROADMAP `IFI` tetap `[~]`.
+- **Rollback:** tidak ada perubahan kode pada entri ini (hanya konfigurasi kamera dan catatan).
+
 ### Face ID pada intrusion critical — gerbang identitas relatif untuk jarak sampai ±3 m (2026-10-08)
 
 - **Konteks:** uji kamera 357 (fps 15) memberi 4 event dari 4 percobaan, tetapi hanya uji pertama dikenali; uji mundur/maju `not_visible/small` dan uji non-karyawan `not_visible/blur` sehingga tidak ada skor impostor. Analisis klip (dibatasi CPU): pada keempat klip tidak ada frame yang lolos gerbang lama (lebar ≥ 80 px, blur ≥ 120); tanpa gerbang blur dengan peringkat `det × blur` dan lebar ≥ 60 px, karyawan 0,427–0,483 (margin 0,26–0,29) dan non-karyawan 0,243 (margin 0,01). Variansi Laplacian pada crop 112×112 bergantung pada ukuran wajah asli (median 28–73 untuk wajah 76–88 px di kamera 357 lawan 150–230 untuk 100–120 px di kamera 363), padahal skor per frame di 357 justru lebih tinggi (median 0,42 lawan 0,36): label "buram" menyesatkan. Kebutuhan user: akurasi tinggi sampai ±3 m dan frame terbaik saat orang berjalan.
