@@ -276,6 +276,18 @@ def format_caption(event, camera_name: str, zone_name: str | None, app_url: str 
     rows.append(("Waktu", ts.strftime("%d %b %Y %H:%M:%S %Z").strip()))
     if event.type != "attendance":
         rows.append(("Level", str(event.severity or "").upper()))
+    if event.type == "intrusion" and isinstance(payload.get("face"), dict) and \
+            payload["face"].get("status"):
+        face = payload["face"]
+        name = face.get("name")
+        identity = {
+            "recognized": f"Dikenali: {name}" if name else "Dikenali",
+            "unknown": "Wajah terlihat, tidak dikenali",
+            "not_visible": "Wajah tidak terlihat jelas",
+            "unverified": "Identitas tidak terverifikasi",
+        }.get(face["status"])
+        if identity:
+            rows.append(("Identitas", identity))
     lines = [title, ""] + [f"<b>{k}</b>: {val(v)}" for k, v in rows]
     if app_url:
         lines += ["", f"🎥 Lihat event: {val(app_url)}/events?event={event.id}"]

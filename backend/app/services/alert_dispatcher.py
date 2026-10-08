@@ -167,6 +167,7 @@ class AlertDispatcher:
             return
         event = alert.event
         ai = alert_ai.ai_text(db, alert.event_id)
+        has_face = bool((event.payload or {}).get("face")) if event is not None else False
         caption = alert_ai.build_caption(db, alert, ai)
         photo = self._snapshot(db, event)
         db.commit()  # tutup transaksi baca sebelum I/O jaringan; token tidak tersimpan di objek alert
@@ -176,13 +177,21 @@ class AlertDispatcher:
         alert.message_id = getattr(result, "message_id", None)
         alert.message_photo = getattr(result, "photo", photo is not None)
         alert.ai_synced = bool(ai) and status == "sent"
+        # True bila identitas sudah dirender (tidak perlu sync lagi) — bila belum, tetap False:
+        # sync pasca-kirim + consumer MQTT memanggil sync_face_caption setelah face tertulis.
+        alert.face_synced = has_face and status == "sent"
         db.commit()
         _broadcast_status(alert.event_id, alert.status)
         if status == "sent":  # tutup race: caption bisa selesai di antara format dan commit status
             try:
+                db.refresh(event)  # sesi memuat event sekali; hasil consumer MQTT tak terlihat tanpa refresh
                 alert_ai.sync_ai_caption(db, alert.event_id)
             except Exception:
                 logger.exception("ai caption sync failed for event %s", alert.event_id)
+            try:
+                alert_ai.sync_face_caption(db, alert.event_id)
+            except Exception:
+                logger.exception("identity caption sync failed for event %s", alert.event_id)
 
 
 dispatcher = AlertDispatcher()

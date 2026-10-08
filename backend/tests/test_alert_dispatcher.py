@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -290,3 +291,46 @@ def test_broadcast_failure_does_not_break_process(db, tmp_path, sent, monkeypatc
     _dispatcher().process(alert.id, db)
     db.refresh(alert)
     assert alert.status == "sent"
+
+
+def test_initial_caption_with_face_marks_face_synced_and_skips_second_edit(db, tmp_path, sent, monkeypatch):
+    """payload.face sudah ada saat caption awal dibangun: face_synced=True, tanpa edit kedua."""
+    calls_edit = []
+    monkeypatch.setattr(alert_ai, "sync_face_caption", lambda db_, eid: calls_edit.append(eid) or False)
+    alert = _alert(db, tmp_path, monkeypatch)
+    ev = db.get(Event, alert.event_id)
+    ev.payload = {"face": {"status": "recognized", "name": "Budi"}}
+    db.commit()
+    _dispatcher().process(alert.id, db)
+    db.refresh(alert)
+    assert alert.status == "sent"
+    assert alert.face_synced is True
+    assert "<b>Identitas</b>: Dikenali: Budi" in sent[0]["caption"]
+    assert calls_edit == [alert.event_id]  # dipanggil, tapi klaim sudah true → tanpa edit jaringan
+
+
+def test_face_written_after_caption_built_is_edited_after_send(db, tmp_path, sent, monkeypatch):
+    """payload.face ditulis consumer SETELAH caption dirender: tanpa db.refresh, sync tak melihatnya."""
+    alert = _alert(db, tmp_path, monkeypatch)
+    ev = db.get(Event, alert.event_id)
+
+    def fake_deliver(token, chat_id, caption, photo=None, **kw):
+        return telegram.Delivery("sent", None, 321, photo is not None)
+
+    monkeypatch.setattr(telegram, "deliver", fake_deliver)
+    original_build = alert_ai.build_caption
+
+    def build_then_write(db_, alert_, ai_):
+        caption = original_build(db_, alert_, ai_)
+        ev.payload = {"face": {"status": "unknown"}}  # simulasi race consumer MQTT
+        db_.commit()
+        return caption
+
+    monkeypatch.setattr(alert_ai, "build_caption", build_then_write)
+    edits = []
+    monkeypatch.setattr(telegram, "edit_caption",
+                        lambda *a, **k: edits.append(a) or ("edited", None))
+    _dispatcher().process(alert.id, db)
+    db.refresh(alert)
+    assert alert.status == "sent" and alert.face_synced is True
+    assert len(edits) == 1 and "<b>Identitas</b>" in edits[0][3]
