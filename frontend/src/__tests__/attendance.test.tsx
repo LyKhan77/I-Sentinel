@@ -273,3 +273,21 @@ test('filter yang menyaring semua baris menampilkan pesan khusus, bukan "belum a
   expect(screen.queryByTestId('at-row-31')).not.toBeInTheDocument()
   expect(screen.getByText('Tidak ada baris yang cocok dengan filter')).toBeInTheDocument()
 })
+
+test('chip Exit awal tampil dengan durasi bila exit_early_min terisi', async () => {
+  stubFetch(ME, ROWS.map((r) => (r.id === 12 ? { ...r, exit_early_min: 237 } : r)))
+  renderPage()
+
+  await screen.findByText('Rian Wijaya')
+  expect(screen.getByTestId('exit-early-12')).toHaveTextContent('Exit 3j 57m sebelum shift selesai')
+})
+
+test('chip Exit awal tidak tampil bila null atau tidak ada', async () => {
+  stubFetch(ME, ROWS.map((r) => (r.id === 12 ? { ...r, exit_early_min: null } : r)))
+  renderPage()
+
+  await screen.findByText('Rian Wijaya')
+  expect(screen.queryByTestId('exit-early-12')).not.toBeInTheDocument()
+  // baris lain fixture lama tidak punya field sama sekali (Review Focus 5)
+  expect(screen.queryAllByTestId(/exit-early-/)).toHaveLength(0)
+})

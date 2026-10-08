@@ -257,6 +257,9 @@ export default function AttendancePage() {
     return t('at.duration.hm').replace('{h}', String(Math.floor(r.duration_min / 60))).replace('{m}', String(r.duration_min % 60))
   }
 
+  const exitEarlyLabel = (min: number) =>
+    t('at.exitEarly').replace('{d}', t('at.duration.hm').replace('{h}', String(Math.floor(min / 60))).replace('{m}', String(min % 60)))
+
   const hadir = rows.filter((r) => r.status === 'ontime' || r.status === 'late').length
   const ontime = rows.filter((r) => r.status === 'ontime').length
   const late = rows.filter((r) => r.status === 'late').length
@@ -466,7 +469,17 @@ export default function AttendancePage() {
                   </TableCell>
                   <TableCell>{r.shift_name ?? '—'}</TableCell>
                   <TableCell style={{ fontFamily: 'monospace' }}>{hhmm(r.first_entry)}</TableCell>
-                  <TableCell style={{ fontFamily: 'monospace' }}>{hhmm(r.last_exit)}</TableCell>
+                  <TableCell style={{ fontFamily: 'monospace' }}>
+                    {hhmm(r.last_exit)}
+                    {r.exit_early_min != null && (
+                      <div
+                        data-testid={`exit-early-${r.id}`}
+                        style={{ fontSize: 11, padding: '2px 8px', marginTop: 4, border: '1px solid #f1c21b', color: '#f1c21b', display: 'inline-block' }}
+                      >
+                        {exitEarlyLabel(r.exit_early_min)}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <span data-testid={`at-dur-${r.id}`}>{duration(r)}</span>
                   </TableCell>

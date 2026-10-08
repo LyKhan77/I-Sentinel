@@ -3,6 +3,15 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Peringatan exit awal pada rekap attendance — T2 frontend: chip "Exit awal" (2026-10-08)
+
+- **Konteks:** lanjutan Task 1 — peringatan API `exit_early_min` harus terlihat di halaman rekap supaya admin bisa memutuskan lewat **Koreksi**. Spec/plan: `docs/superpowers/specs/2026-10-08-exit-early-warning-design.md` + `docs/superpowers/plans/2026-10-08-exit-early-warning.md`.
+- **Perubahan:** `src/api/attendance.ts` — `AttendanceRow.exit_early_min?: number | null` (opsional agar fixture tes lama dan respons tanpa field tetap lolos `tsc -b`). `src/features/attendance/AttendancePage.tsx` — chip di sel exit di bawah jam (`data-testid={exit-early-<id>}`, amber `#f1c21b`, font 11 seperti `StatusBadge`), hanya dirender bila field terisi. `src/app/i18n.tsx` — satu kunci baru `at.exitEarly` (`id` + `en`), durasi memakai ulang `at.duration.hm`. Tidak ada CSS baru.
+- **Tes:** 2 tes baru di `src/__tests__/attendance.test.tsx` — teks persis `Exit 3j 57m sebelum shift selesai` untuk `{ ...ROWS[1], exit_early_min: 237 }`, dan tidak ada chip untuk `null` maupun baris fixture lama tanpa field (Review Focus 5).
+- **Bukti:** RED `1 failed | 16 passed` — `Unable to find [testId] exit-early-12` (chip belum ada). Tes penjaga kedua lulus sejak awal karena menguji perilaku yang memang sudah benar; dibuktikan bisa gagal lewat mutasi sementara `!= null` → `!== undefined` (tes "tidak tampil bila null" merah, tes tampilan tetap hijau) lalu dikembalikan — `temp/logs/exit-early-warning/mutation-t2.txt`. Suite berurutan pada kode final: vitest `Test Files 36 passed (36)`, `Tests 485 passed (485)`, exit 0 (4× berturut-turut); build exit 0 (`✓ built in 2.96s`); lint `24 warnings and 0 errors` dengan 16 pasangan file-rule identik baseline. Catatan: run pertama setelah implementasi menunjukkan **1 kegagalan intermiten** (nama tes tidak tercatat karena keluaran dipotong `tail -8`); empat run berikutnya hijau semua dan tidak ada tes yang diubah.
+- **Dampak:** Hanya sel exit yang berubah tampil (satu baris tambahan di bawah jam); status, tile ringkasan, filter, dan modal koreksi tidak berubah. Chip sengaja tidak diberi `whiteSpace: nowrap` agar bisa berganti baris dan tidak memaksa kolom melebar di 390 px — nol overflow horizontal masih perlu diverifikasi user di browser.
+- **Rollback:** revert commit ini; tanpa migrasi.
+
 ### Peringatan exit awal pada rekap attendance — T1 backend (2026-10-08)
 
 - **Konteks:** `recompute_day` menyimpan `last_exit = max(semua exit)`, sehingga exit makan siang yang tidak diikuti exit sore tetap membuat baris tampak lengkap. Sistem tidak bisa membedakan "pulang awal" dari "exit sore tidak terlintas kamera" — hanya admin yang bisa memutuskan. Keputusan user: **peringatan tanpa mengubah status** (opsi B, `docs/superpowers/specs/2026-10-08-exit-early-warning-design.md` + plan `2026-10-08-exit-early-warning.md`).

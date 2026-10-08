@@ -15,6 +15,8 @@ export type AttendanceRow = {
   late_minutes: number | null
   override_note: string | null
   shift_name: string | null
+  /** Peringatan turunan dari API: menit antara exit terakhir dan jam shift selesai, > 60 menit. */
+  exit_early_min?: number | null
 }
 
 export type AttendanceParams = { date?: string; from?: string; to?: string; employee_id?: number }
