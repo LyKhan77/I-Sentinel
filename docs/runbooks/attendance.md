@@ -32,7 +32,7 @@ tanggal / Per karyawan) dan mendukung koreksi manual oleh admin.
   (kamera exit terlewat, orang lewat pintu lain) sehingga yang tersisa exit makan siang.
 - Menindaklanjuti: cek Inbox untuk event `attendance` arah `exit` milik karyawan pada hari itu.
   Exit sore yang tidak terdeteksi → koreksi jam keluarnya; pulang awal yang sah → cukup isi
-  catatan. Keduanya lewat **Koreksi** di bawah.
+  catatan. Keduanya lewat **Koreksi** di bawah (tombol Koreksi tampil di sel status baris berperingatan; admin juga bisa mengklik barisnya).
 - Peringatan tidak muncul bila `override_note` terisi (termasuk `import`), status bukan
   `ontime`/`late`, karyawan tanpa shift, `last_exit` kosong, atau jam shift pada tanggal baris
   belum lewat saat dibaca — exit makan siang di hari berjalan tidak ikut ditandai.

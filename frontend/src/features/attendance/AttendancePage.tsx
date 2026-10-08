@@ -486,7 +486,7 @@ export default function AttendancePage() {
                   <TableCell>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <StatusBadge status={r.status} label={statusLabel(r)} />
-                      {isAdmin && (r.status === 'no_exit' || r.status === 'no_entry') && (
+                      {isAdmin && (r.status === 'no_exit' || r.status === 'no_entry' || r.exit_early_min != null) && (
                         <Button
                           kind="ghost"
                           size="sm"

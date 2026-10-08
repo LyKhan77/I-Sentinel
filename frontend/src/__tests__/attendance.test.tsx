@@ -291,3 +291,22 @@ test('chip Exit awal tidak tampil bila null atau tidak ada', async () => {
   // baris lain fixture lama tidak punya field sama sekali (Review Focus 5)
   expect(screen.queryAllByTestId(/exit-early-/)).toHaveLength(0)
 })
+
+test('admin: baris ber-peringatan Exit awal punya tombol Koreksi yang membuka modal', async () => {
+  stubFetch(ME, ROWS.map((r) => (r.id === 12 ? { ...r, exit_early_min: 237 } : r)))
+  renderPage()
+
+  await screen.findByText('Rian Wijaya')
+  expect(screen.queryByTestId('fix-11')).not.toBeInTheDocument() // ontime biasa tetap tanpa tombol
+  await userEvent.click(screen.getByTestId('fix-12'))
+  expect(await screen.findByTestId('ov-note')).toBeInTheDocument()
+})
+
+test('viewer: baris ber-peringatan Exit awal tanpa tombol Koreksi', async () => {
+  stubFetch(VIEWER, ROWS.map((r) => (r.id === 12 ? { ...r, exit_early_min: 237 } : r)))
+  renderPage()
+
+  await screen.findByText('Rian Wijaya')
+  expect(screen.getByTestId('exit-early-12')).toBeInTheDocument()
+  expect(screen.queryByTestId('fix-12')).not.toBeInTheDocument()
+})

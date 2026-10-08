@@ -262,7 +262,7 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
    sebagai kolom terakhir `exit_early_min` pada CSV ekspor. Peringatan dihitung saat dibaca — status,
    durasi, dan tile ringkasan tidak berubah. Exit boleh berulang sehingga yang dipakai exit **terakhir**:
    chip bisa berarti pulang awal **atau** exit sore yang tidak terlintas kamera. Admin yang memutuskan —
-   buka **Koreksi** dan isi catatan; `override_note` (termasuk hasil impor) menghapus peringatan dari
+   buka **Koreksi** (tombol di sel status baris berperingatan, atau klik barisnya) dan isi catatan; `override_note` (termasuk hasil impor) menghapus peringatan dari
    daftar dan CSV.
 4. `AttendanceCloser` tiap 15 menit (catch-up 7 hari saat start) membuat `absent` untuk karyawan aktif
    terjadwal yang tidak terdeteksi dan menutup `waiting` lewat batas menjadi `no_exit`.

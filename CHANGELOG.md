@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Exit awal — perbaikan review: tombol Koreksi untuk baris berperingatan (2026-10-08)
+
+- **Konteks:** review sesi perencanaan atas `c2e91bd`. Spec, WORKFLOW, dan runbook menyuruh admin "membuka Koreksi" untuk menindaklanjuti chip Exit awal, tetapi tombol Koreksi hanya dirender untuk `no_exit`/`no_entry`. Baris `ontime`/`late` berperingatan hanya bisa dikoreksi dengan mengklik barisnya, tanpa petunjuk visual.
+- **Perubahan:** `AttendancePage.tsx`: tombol Koreksi (admin) juga tampil bila `exit_early_min != null`. Dua tes baru di `attendance.test.tsx`; `WORKFLOW.md`, runbook, dan baris ROADMAP EEA disesuaikan.
+- **Bukti:** RED `admin: baris ber-peringatan Exit awal punya tombol Koreksi yang membuka modal`: `Unable to find an element by: [data-testid="fix-12"]`; tes viewer dibuktikan lewat mutasi (hapus `isAdmin &&` membuat tes viewer lama dan baru merah, dikembalikan). GREEN terarah `19 passed`; suite: frontend `36 files / 487 passed`, build exit 0, lint 24 warning dengan pasangan identik baseline.
+- **Dampak:** admin melihat jalan tindak lanjut yang jelas di baris berperingatan; viewer tetap tanpa tombol. BELUM diuji di server nyata.
+- **Rollback:** revert commit ini.
+
 ### Peringatan exit awal pada rekap attendance — T3 dokumen + verifikasi akhir (2026-10-08)
 
 - **Konteks:** menutup siklus T1–T2 (`b51bbb5` backend, `c916cb6` frontend) dengan alur pemakaian dan prosedur operasional. ROADMAP sengaja tetap `[~]`: belum di-push, belum di-deploy, belum dilihat user di browser.
