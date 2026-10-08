@@ -17,6 +17,7 @@
 - `exit_early_min` hanya untuk status tersimpan `ontime`/`late`, `override_note` kosong (setelah `strip`), shift ada, `last_exit` ada, waktu baca ≥ `shift.end_time` pada `row.date` (lokal), dan `last_exit` sebelum shift selesai.
 - CSV: kolom `exit_early_min` hanya di **akhir** `CSV_COLUMNS`; impor tidak diubah (membaca per nama kolom).
 - Frontend: semua string lewat `src/app/i18n.tsx` (`id` dan `en`); Carbon + gaya inline seperti `StatusBadge`; tipe `exit_early_min?: number | null` (opsional supaya fixture tes lama tetap valid).
+- Tes lama tidak diubah kecuali satu dict yang disebut di Task 1 (`test_csv_export_rows`).
 - Commit Conventional Commits, satu per task, **tanpa atribusi AI** (AGENTS.md §9; abaikan trailer `Co-Authored-By` bawaan). Jangan `push`.
 - Tiap task menambah satu entri `CHANGELOG.md` (terbaru di atas; format entri yang ada) dalam commit yang sama.
 - Jangan `uv sync`, `uv lock`, atau membuat ulang venv. Suite berurutan. Backend: `cd backend && .venv/bin/python -m pytest tests -q -m "not gpu and not llm"`; frontend: `cd frontend && env -u NODE_ENV npx vitest run`, `npm run build`, `npm run lint`.
@@ -66,6 +67,7 @@
     - `test_csv_export_has_exit_early_min_as_last_column`: header terakhir `exit_early_min`; nilai `237` untuk baris di atas dan kosong untuk baris lain.
     - `test_import_ignores_exit_early_min_column`: ekspor → ubah nilai kolom itu menjadi `999` → impor → baris tidak berubah dan `skipped == 0` (Review Focus 4); impor CSV lama (header tanpa kolom itu) tetap lulus (tes impor yang ada).
     - `test_patch_with_note_clears_exit_early_min`: `PATCH` catatan pada baris ber-`exit_early_min` → respons `exit_early_min is None` (Review Focus 3).
+  - **Satu-satunya perubahan pada tes lama:** `test_csv_export_rows` membandingkan dict kolom ekspor secara persis; tambahkan `"exit_early_min": ""` pada dict yang diharapkan (kolom baru memang bagian kontrak, kriteria 4). Tes lama lain, termasuk `test_import_roundtrip`, tidak boleh diubah dan harus lulus apa adanya.
 - [ ] **Step 2: Jalankan** `cd backend && .venv/bin/python -m pytest tests/test_attendance_logic.py tests/test_attendance_api.py -q` — Expected: FAIL (`exit_early_min` belum ada / `KeyError`), bukan galat impor.
 - [ ] **Step 3: Implementasi** sesuai Interfaces.
 - [ ] **Step 4: Jalankan** seluruh suite backend — Expected: PASS; jumlah naik hanya karena tes baru.
