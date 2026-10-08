@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — uji jarak 6,2 m pada kamera 357 (2026-10-08)
+
+- **Konteks:** user mengukur 16:46:57: tinggi kamera 2,8 m, jarak lantai kamera ke titik berdiri 6,2 m (jarak pandang ±6,3 m). Event 4905: `recognized` (karyawan #1), skor **0,595**, margin **0,395**; crop 101×130.
+- **Analisis klip (dibatasi CPU, 1 fps):** di titik berdiri wajah ±79–85 px pada 2560×1440, deteksi 0,84–0,88, ketajaman (variansi Laplacian) 134–425, skor per frame ke karyawan #1 0,53–0,59; agregasi 5 terbaik offline 0,581 (node 0,595). Dari 83 px pada 6,3 m: f_px ≈ 3.490 px, HFOV ≈ 40° (setara lensa ±8 mm).
+- **Implikasi:** pada kamera 357 jarak ±3 m (target MVP) menghasilkan wajah ±170 px, jauh di atas kebutuhan; batas 60 px ada di ±8,7 m (prediksi, belum diukur). Wajah ±83 px di stream 2K/8 Mbps jauh lebih tajam (blur 134–425) daripada wajah 82–88 px di stream 1080p (28–73), jadi resolusi dan bitrate memberi lebih dari sekadar piksel. Perkiraan jarak uji 1080p sebelumnya ("1–2 m") kemungkinan lebih jauh dari perkiraan (≈4,6 m berdasar f_px). Pedoman jarak vs lensa disimpan di `temp/data/cctv-source-settings.txt` §8 (lokal).
+- **Belum terbukti:** satu non-karyawan di sesi ini dan dua keseluruhan; jarak > 6,3 m; jarak sampai 8–9 m. ROADMAP `IFI` tetap `[~]`.
+- **Rollback:** tidak ada perubahan kode pada entri ini.
+
 ### Face ID pada intrusion critical — uji kamera 357 setelah 2K dan gerbang relatif (2026-10-08)
 
 - **Konteks:** user mengubah kamera 357 "Lorong Manager" menjadi 2K 15 fps, Max. bitrate 8192 kbps (terverifikasi `ffprobe` pada `cam_357_main`: H.264 Main, **2560×1440, 15 fps**), dengan server di branch `feat/intrusion-face-progressive` @ `2cedca8` (gerbang identitas relatif, lebar ≥ 60 px, pembaruan progresif, ambang uji 0,35 / margin 0,15, `ai_fps` 15).
