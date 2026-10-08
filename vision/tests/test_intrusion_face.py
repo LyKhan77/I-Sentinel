@@ -257,3 +257,57 @@ def test_collector_stats_counts_are_isolated_from_attendance_funnel():
     collector.observe([face(width=40.0)], None, 1920, 1080, 10.0)
     msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
     assert set(msg["stats"]["rejects"]) == {"small", "score", "yaw", "pitch", "blur", "quality"}
+
+
+def test_collector_ignores_person_after_result_was_sent():
+    """Orang yang masih di zona setelah pesan terkirim tidak dikumpulkan lagi (tanpa embed berulang)."""
+    registry = IntrusionRegistry()
+    emb = FakeEmbedder()
+    collector = _collector(registry, embedder=emb)
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    for i in range(3):
+        collector.observe([face()], None, 1920, 1080, 10.0 + i * 0.1)
+    assert len(collector.drain(10.5)) == 1
+    calls_after_send = emb.embed_calls
+    for i in range(20):  # CameraWorker terus men-touch track yang sama selama orangnya berdiam
+        now = 11.0 + i * 0.1
+        registry.touch(5, 1, BBOX, now)
+        collector.observe([face()], None, 1920, 1080, now)
+        assert collector.drain(now) == []
+    assert emb.embed_calls == calls_after_send
+    assert registry.entries() == []
+
+
+def test_collector_caps_embeddings_per_person_at_min_frames():
+    registry = IntrusionRegistry()
+    emb = FakeEmbedder()
+    collector = _collector(registry, embedder=emb)
+    registry.touch(5, 1, BBOX, 10.0)  # belum terikat: masih masa dwell sebelum trigger
+    for i in range(30):
+        collector.observe([face()], None, 1920, 1080, 10.0 + i * 0.05)
+    assert emb.embed_calls == FaceSettings().min_frames
+    registry.bind(5, 1, "ev-1", 11.5)
+    msg = collector.drain(11.6)[0]
+    assert msg["stats"]["frames_used"] == FaceSettings().min_frames
+    assert msg["stats"]["faces"] == 30
+
+
+def test_collector_drops_state_of_person_who_left_before_event():
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    registry.touch(5, 1, BBOX, 10.0)
+    collector.observe([face()], None, 1920, 1080, 10.0)
+    assert collector.drain(10.0 + REGISTRY_TTL_S + 0.1) == []
+    assert collector._states == {}  # kebocoran memori adalah properti internal kolektor
+
+
+def test_collector_counts_unexpected_gate_code_instead_of_raising():
+    """Pusat wajah di luar frame (kode gate 'zone') tidak boleh melempar KeyError."""
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, (-0.30, 0.10, 0.10, 0.95), 10.0)  # area kepala memuat x negatif
+    collector.observe([face(cx=-96.0, cy=200.0, width=120.0)], None, 1920, 1080, 10.0)
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["stats"]["rejects"]["zone"] == 1

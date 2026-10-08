@@ -7,6 +7,7 @@ Spec: docs/superpowers/specs/2026-10-08-intrusion-face-id-design.md §5.2.
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -23,6 +24,24 @@ IDENT_WINDOW_S = 8.0   # kirim hasil setelah sekian detik terikat event meski mi
 MAX_PITCH = 0.30       # deviasi pitch maksimum (menghadap bawah)
 IDENT_MIN_QUALITY = 0.5  # sama dengan face_min_quality API: frame yang pasti ditolak API tidak dihitung
 MIN_CROP_SCORE = 0.5   # keyakinan SCRFD minimum untuk kandidat crop bukti manual
+
+
+class ErrorThrottle:
+    """Catat exception di dalam blok `except` paling sering sekali per `every` dtk.
+
+    Jalur identitas bersifat opsional dan berjalan per frame: kegagalannya harus terisolasi dan
+    tidak boleh membanjiri log.
+    """
+
+    def __init__(self, every: float = 60.0):
+        self.every = every
+        self._last = float("-inf")
+
+    def log(self, logger, msg: str, *args) -> None:
+        now = time.monotonic()
+        if now - self._last >= self.every:
+            self._last = now
+            logger.exception(msg, *args)
 
 
 @dataclass
@@ -43,9 +62,14 @@ class IntrusionRegistry:
     def __init__(self):
         self._lock = threading.Lock()
         self._entries: dict[tuple[int, int], PersonEntry] = {}
+        # kunci yang hasilnya sudah dikirim: track yang masih berdiam di zona tidak dikumpulkan lagi
+        # ponytail: bertambah satu pasang int per event; kosong lagi saat kamera restart (registry baru)
+        self._finished: set[tuple[int, int]] = set()
 
     def touch(self, zone_id: int, track_id: int, bbox: tuple, ts: float) -> None:
         with self._lock:
+            if (zone_id, track_id) in self._finished:
+                return
             ent = self._entries.get((zone_id, track_id))
             if ent is None:
                 self._entries[(zone_id, track_id)] = PersonEntry(zone_id, track_id, tuple(bbox), ts)
@@ -55,6 +79,8 @@ class IntrusionRegistry:
 
     def bind(self, zone_id: int, track_id: int, event_id: str, ts: float) -> None:
         with self._lock:
+            if (zone_id, track_id) in self._finished:
+                return
             ent = self._entries.get((zone_id, track_id))
             if ent is None:
                 ent = PersonEntry(zone_id, track_id, (0.0, 0.0, 0.0, 0.0), ts)
@@ -78,6 +104,7 @@ class IntrusionRegistry:
     def release(self, zone_id: int, track_id: int) -> None:
         with self._lock:
             self._entries.pop((zone_id, track_id), None)
+            self._finished.add((zone_id, track_id))
 
 
 def _head_region(bbox: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
@@ -186,7 +213,7 @@ class IdentCollector:
                     else "quality" if quality(f.score, f.bbox[2] - f.bbox[0], yaw_ratio(f.kps))
                     < IDENT_MIN_QUALITY else None)
         if code is not None:
-            st.rejects[code] += 1
+            st.rejects[code] = st.rejects.get(code, 0) + 1  # kode tak terduga (mis. "zone") tetap dihitung
         width_px = f.bbox[2] - f.bbox[0]
         if f.score >= MIN_CROP_SCORE:
             rank = width_px * f.score
@@ -196,8 +223,8 @@ class IdentCollector:
                 if data is not None:
                     st.crop_rank = rank
                     st.crop = data
-        if code is not None:
-            return
+        if code is not None or len(st.vectors) >= self.settings.min_frames:
+            return  # ditolak, atau sudah cukup frame (tanpa embed berulang bagi orang yang berdiam)
         try:
             vec = self.face.embed(aligned)
         except Exception:
@@ -212,8 +239,11 @@ class IdentCollector:
     def drain(self, now: float) -> list[dict]:
         """Kirim pesan entri terikat yang siap; entri basi belum terikat dibuang tanpa pesan."""
         self.registry.prune(now)
+        entries = self.registry.entries()
+        live = {(e.zone_id, e.track_id) for e in entries}
+        self._states = {k: s for k, s in self._states.items() if k in live}  # orang yang sudah pergi
         out: list[dict] = []
-        for ent in self.registry.entries():
+        for ent in entries:
             key = (ent.zone_id, ent.track_id)
             if ent.event_id is None:
                 continue

@@ -3,6 +3,7 @@ import threading
 import time
 
 import numpy as np
+import pytest
 
 from vision.face import FaceDet
 from vision.face_quality import FaceSettings
@@ -212,3 +213,40 @@ def test_camera_worker_untouched_track_miss_not_touched():
     stale = type("T", (), {"id": 2, "bbox": (0.4, 0.3, 0.6, 0.9), "misses": 1})()
     w._touch_ident([fresh, stale], 100.0, 100, 100)
     assert [e.track_id for e in reg.entries()] == [1]
+
+
+# --- isolasi: kegagalan identitas tidak boleh mematikan absensi atau deteksi intrusion ---
+
+@pytest.mark.parametrize("method", ["observe", "drain"])
+def test_face_worker_keeps_attendance_alive_when_identity_raises(method, caplog):
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[face()]] * 3), t, "test-node", FaceSettings(),
+                       registry=seeded_registry(), max_age_s=0.5)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("identity bug")
+
+    setattr(w.collector, method, boom)
+    w.source = FrameSource.from_frames([FRAME] * 3, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert [e["type"] for e in t.events] == ["attendance"]
+    assert "face worker died" not in caplog.text
+
+
+class BrokenRegistry(IntrusionRegistry):
+    def __init__(self, method):
+        super().__init__()
+        setattr(self, method, self._boom)
+
+    @staticmethod
+    def _boom(*args, **kwargs):
+        raise RuntimeError("registry bug")
+
+
+@pytest.mark.parametrize("method", ["touch", "bind"])
+def test_camera_worker_still_publishes_intrusion_when_registry_raises(method, caplog):
+    t = FakeTransport()
+    _camera_worker(BrokenRegistry(method), IDENT_ZONE, [[(0.4, 0.3, 0.6, 0.9)]] * 3, transport=t)
+    assert any(ev["type"] == "intrusion" for ev in t.events)
+    assert "worker died" not in caplog.text

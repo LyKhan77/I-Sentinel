@@ -15,7 +15,7 @@ from statistics import median
 
 from .face_quality import (FaceSettings, aggregate, blur_score, crop_box, gate_code,
                            quality, yaw_ratio)
-from .intrusion_face import IdentCollector, IntrusionRegistry
+from .intrusion_face import ErrorThrottle, IdentCollector, IntrusionRegistry
 from .motion import FrameMotionGate
 from .pipeline.detector import Detection
 from .pipeline.tracker import ByteTracker
@@ -95,6 +95,7 @@ class FaceGateWorker(threading.Thread):
         self.collector = (IdentCollector(registry, face, settings, camera_id, node_id)
                           if registry is not None else None)
         self._ident_threads: list[threading.Thread] = []
+        self._ident_err = ErrorThrottle()  # identitas opsional: gagal = terisolasi, absensi tetap jalan
 
     def run(self) -> None:
         """Consume source until stopped; event/media finalization runs separately."""
@@ -147,13 +148,16 @@ class FaceGateWorker(threading.Thread):
         """Drain hasil identitas dan kirim lewat thread pendek per pesan (loop frame tak menunggu)."""
         if self.collector is None:
             return
-        if idle:
-            self.collector.registry.prune(now)
-        for msg in self.collector.drain(now):
-            th = threading.Thread(target=self._ship_ident, args=(msg,), daemon=True,
-                                  name=f"ident-ship-{self.camera_id}")
-            self._ident_threads.append(th)
-            th.start()
+        try:
+            if idle:
+                self.collector.registry.prune(now)
+            for msg in self.collector.drain(now):
+                th = threading.Thread(target=self._ship_ident, args=(msg,), daemon=True,
+                                      name=f"ident-ship-{self.camera_id}")
+                self._ident_threads.append(th)
+                th.start()
+        except Exception:
+            self._ident_err.log(log, "camera %s: identity step failed (isolated)", self.camera_id)
 
     def _ship_ident(self, msg: dict) -> None:
         """Unggah crop (bila ada) lalu publish pesan identitas; kegagalan unggah tidak menahan pesan."""
@@ -199,7 +203,11 @@ class FaceGateWorker(threading.Thread):
         dets = [Detection(bbox=(f.bbox[0] / w, f.bbox[1] / h, f.bbox[2] / w, f.bbox[3] / h),
                           conf=f.score) for f in faces]
         if self.collector is not None and frame.data is not None:
-            self.collector.observe(faces, frame.data, w, h, frame.ts)
+            try:
+                self.collector.observe(faces, frame.data, w, h, frame.ts)
+            except Exception:
+                self._ident_err.log(log, "camera %s: identity observe failed (isolated)",
+                                    self.camera_id)
         by_bbox = {d.bbox: f for d, f in zip(dets, faces)}
         tracks = self._tracker.update(dets, frame.ts)
         boxes, passed = [], []

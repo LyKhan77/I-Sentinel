@@ -16,7 +16,7 @@ from .face_quality import FaceSettings
 from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
 from . import hardware
-from .intrusion_face import IntrusionRegistry
+from .intrusion_face import ErrorThrottle, IntrusionRegistry
 from .pipeline.detector import PersonDetector
 from .pipeline.source import FrameSource
 from .pipeline.tracker import ByteTracker
@@ -128,6 +128,7 @@ class CameraWorker(threading.Thread):
         self.source = None
         self.registry = registry
         self.ident_zones = list(ident_zones)
+        self._ident_err = ErrorThrottle()  # identitas opsional: gagal = terisolasi, deteksi tetap jalan
         self.frames = 0          # frame diproses (heartbeat: fps jendela)
         self.motion_skipped = 0  # frame dilewati motion gate (heartbeat: skip %)
 
@@ -159,7 +160,10 @@ class CameraWorker(threading.Thread):
                 else:
                     frame_w, frame_h = DEFAULT_W, DEFAULT_H
                 if self.registry is not None:
-                    self._touch_ident(tracks, frame.ts, frame_w, frame_h)
+                    try:
+                        self._touch_ident(tracks, frame.ts, frame_w, frame_h)
+                    except Exception:
+                        self._ident_err.log(log, "camera %s: identity touch failed (isolated)", cam_id)
                 if self.recorder is not None and tracks:
                     self.recorder.touch([t.id for t in tracks])
                 if tracks and self.transport is not None:
@@ -193,8 +197,12 @@ class CameraWorker(threading.Thread):
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
                         if self.registry is not None and ev["type"] == "intrusion" \
                                 and ev["zone_id"] in {z["id"] for z in self.ident_zones}:
-                            self.registry.bind(ev["zone_id"], ev["payload"]["track_id"],
-                                               ev["event_id"], frame.ts)
+                            try:
+                                self.registry.bind(ev["zone_id"], ev["payload"]["track_id"],
+                                                   ev["event_id"], frame.ts)
+                            except Exception:
+                                self._ident_err.log(log, "camera %s: identity bind failed (isolated)",
+                                                    cam_id)
                         media = getattr(az, "media", None)
                         if media is not None:
                             ev["snapshot"] = media.get("snapshot", True)
