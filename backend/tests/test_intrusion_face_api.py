@@ -239,3 +239,64 @@ def test_schedule_unverified_only_for_critical_intrusion_with_face_id(db, critic
         "ts_event": datetime.now(timezone.utc).isoformat(), "payload": {},
     }).encode())
     assert len(calls) == 1
+
+
+# --- pembaruan progresif: hasil lebih baik menimpa, tidak pernah menurun -------------------
+
+UNKNOWN_LOW = [0.30, 0.9539392, 0.0, 0.0]   # cosine 0,30 ke galeri: di bawah ambang -> unknown
+UNKNOWN_HIGH = [0.45, 0.8930286, 0.0, 0.0]  # cosine 0,45: masih unknown, skor lebih tinggi
+MATCH = [1.0, 0.0, 0.0, 0.0]
+
+
+def _send(db, event, **over):
+    handle_message(db, ec.FACE_TOPIC, json.dumps(_msg(event.event_id, **over)).encode())
+    db.expire_all()
+
+
+def _count_syncs(monkeypatch):
+    called = []
+    monkeypatch.setattr(intrusion_face.alert_ai, "sync_face_caption",
+                        lambda db_, eid: called.append(eid) or True)
+    return called
+
+
+def test_better_result_replaces_a_worse_one_and_edits_the_caption_again(
+        db, critical_event, gallery, monkeypatch):
+    called = _count_syncs(monkeypatch)
+    _send(db, critical_event, embedding=UNKNOWN_LOW, crop_path="crops/2026/10/08/a.jpg", seq=0)
+    assert critical_event.payload["face"]["status"] == "unknown"
+    _send(db, critical_event, embedding=MATCH, crop_path="crops/2026/10/08/b.jpg", seq=1)
+    assert critical_event.payload["face"]["status"] == "recognized"
+    assert critical_event.payload["crop_path"] == "crops/2026/10/08/b.jpg"  # crop mengikuti hasil terbaik
+    assert called == [critical_event.id, critical_event.id]
+
+
+def test_a_worse_result_never_downgrades_a_recognized_one(db, critical_event, gallery, monkeypatch):
+    called = _count_syncs(monkeypatch)
+    _send(db, critical_event, embedding=MATCH, crop_path="crops/2026/10/08/a.jpg", seq=0)
+    _send(db, critical_event, embedding=UNKNOWN_LOW, crop_path="crops/2026/10/08/b.jpg", seq=1)
+    _send(db, critical_event, embedding=None, seq=2)  # tanpa wajah
+    assert critical_event.payload["face"]["status"] == "recognized"
+    assert critical_event.payload["crop_path"] == "crops/2026/10/08/a.jpg"
+    assert called == [critical_event.id]
+
+
+def test_same_status_with_a_higher_score_updates_the_payload_without_a_second_edit(
+        db, critical_event, gallery, monkeypatch):
+    called = _count_syncs(monkeypatch)
+    _send(db, critical_event, embedding=UNKNOWN_LOW, seq=0)
+    _send(db, critical_event, embedding=UNKNOWN_HIGH, crop_path="crops/2026/10/08/b.jpg", seq=1)
+    assert critical_event.payload["face"]["score"] == pytest.approx(0.45, abs=1e-3)
+    assert critical_event.payload["crop_path"] == "crops/2026/10/08/b.jpg"
+    assert called == [critical_event.id]  # teks caption sama: tanpa edit kedua
+    _send(db, critical_event, embedding=UNKNOWN_LOW, seq=2)  # skor lebih rendah: diabaikan
+    assert critical_event.payload["face"]["score"] == pytest.approx(0.45, abs=1e-3)
+
+
+def test_not_visible_is_upgraded_when_a_face_finally_shows_up(db, critical_event, gallery, monkeypatch):
+    called = _count_syncs(monkeypatch)
+    _send(db, critical_event, embedding=None, seq=0)
+    assert critical_event.payload["face"]["status"] == "not_visible"
+    _send(db, critical_event, embedding=UNKNOWN_LOW, seq=1)
+    assert critical_event.payload["face"]["status"] == "unknown"
+    assert called == [critical_event.id, critical_event.id]

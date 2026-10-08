@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — pembaruan identitas progresif (2026-10-08)
+
+- **Konteks:** analisis klip (entri berikutnya) menunjukkan frame terbaik sering datang setelah jendela 8 dtk karena orang bergerak mencari titik terbaik: agregasi seluruh klip memberi 0,446–0,564, sedangkan skor node 0,350–0,576 (4885 jatuh 0,0002 di bawah ambang). Keputusan user: pembaruan progresif.
+- **Perubahan (node):** `IdentCollector` tidak lagi selesai setelah hasil pertama. Selama orang masih di zona (maks `MAX_TRACK_S` = 90 dtk setelah event) pengumpulan berlanjut dan pembaruan (`seq` > 0) dikirim bila K terbaik berubah, dengan jeda minimum `UPDATE_EVERY_S` = 10 dtk dan maks `MAX_UPDATES` = 6; pembaruan akhir dikirim saat orang pergi atau worker berhenti (`flush`). Pekerjaan dan memori tetap terbatas: embed hanya bila frame mengalahkan K terbaik. Crop diunggah ulang hanya bila kandidat membaik. **(API):** `handle_face_result` menerima hanya hasil yang lebih baik (`recognized` > `unknown` > `not_visible` > `unverified`; status sama dengan skor lebih tinggi), memperbarui `payload.face` dan `crop_path`, dan mengedit caption lagi hanya bila status atau karyawan berubah; hasil yang lebih rendah tidak pernah menimpa. `FaceResultIn.seq` ditambah.
+- **Bukti:** RED vision `7 failed` (`KeyError: 'seq'`, fitur belum ada) lalu `30 passed` pada berkas kolektor; RED backend `3 failed` (`crops/.../a.jpg == b.jpg`, hasil `not_visible` menimpa `recognized`, skor tidak diperbarui). Dua tes lama diubah karena siklus hidup berubah: entri tetap dipantau setelah hasil pertama (`registry.entries()`), dan tes "abaikan orang setelah terkirim" diganti dengan tes pekerjaan terbatas. GREEN suite berurutan: backend `954 passed, 1 deselected` (950 + 4), vision `328 passed, 3 deselected` (323 + 5), docker `77 passed`, vitest `38 files / 497 passed`, build exit 0, lint 24 warning. Log di `temp/logs/intrusion-face-id/prog-*.txt`.
+- **Dampak:** caption bisa naik setelah alert (mis. `tidak dikenali` → `Dikenali: <nama>`) selama orang di zona; entri registry bertahan sampai 90 dtk sehingga motion gate dilewati selama itu (SCRFD jalan saat orang berada di zona). BELUM diuji di lapangan.
+- **Rollback:** revert commit ini dan rebuild `vision` + `api`.
+
 ### Face ID pada intrusion critical — uji ambang 0,35/0,15 dan analisis klip (2026-10-08)
 
 - **Konteks:** dua uji karyawan terdaftar pada jarak 1–2 m dengan ambang uji server 0,35 / margin 0,15: event 4885 (14:57:21) `unknown`, skor **0,3498** (kurang 0,0002 dari ambang) dan event 4886 (14:58:18) `recognized`, skor 0,410, margin 0,220. Pada 4885 user berjalan mencari titik terbaik. Klip keempat event jarak dekat (4883–4886, 1080p) dianalisis frame demi frame di container `api` (read-only; SCRFD + ArcFace seperti jalur node; hanya angka).

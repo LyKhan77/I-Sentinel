@@ -10,4 +10,5 @@ class FaceResultIn(BaseModel):
     embedding: list[float] | None = None
     quality: float | None = None
     crop_path: str | None = None
+    seq: int | None = None  # 0 = hasil pertama, >0 = pembaruan progresif
     stats: dict | None = None

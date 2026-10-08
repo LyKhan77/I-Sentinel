@@ -20,6 +20,9 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
 - **Caption Telegram**: baris `Identitas: Dikenali: <nama>` / `Wajah terlihat, tidak dikenali` /
   `Wajah tidak terlihat jelas` / `Identitas tidak terverifikasi` (empat hasil; `unverified` =
   pesan susulan tidak pernah datang dalam 20 detik — cek log consumer MQTT dan status worker face).
+  Hasil bisa **naik** selama orang masih di zona (maks 90 detik; mis. `Wajah terlihat, tidak dikenali` →
+  `Dikenali: <nama>` saat orang menemukan titik terbaik); tidak pernah turun, dan caption hanya diedit
+  lagi saat status berubah (skor/crop yang lebih baik diperbarui diam-diam di Inbox).
 - **Inbox**: baris Identitas di panel detail (`event-identity`), tab **Crop wajah** untuk event
   intrusion ber-`crop_path` (bukti manual untuk yang tidak dikenali).
 - **Live View, overlay debugger**: kotak wajah yang terhubung ke kepala orang (40% atas bbox person) diberi label hasil gerbang identitas, yaitu kualitas (`0.62`) atau penolakan `wajah terlalu kecil` / `skor rendah` / `menyamping` / `buram` / `menunduk/mendongak` / `kualitas rendah`, bukan status zona. Pada kamera tanpa zona attendance, wajah yang bukan kepala siapa pun tidak digambar. Kamera ber-zona attendance tetap memberi label `di luar zona` pada wajah yang bukan kandidat identitas.

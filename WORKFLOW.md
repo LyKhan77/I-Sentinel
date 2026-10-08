@@ -126,7 +126,9 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
    memicu event). API mencocokkan dengan ambang ketat dan menulis `payload.face`:
    `recognized` (nama karyawan), `unknown` (wajah terlihat, tidak cocok), atau `not_visible`
    (tidak ada wajah yang bisa diperiksa) — crop wajah terbaik tersimpan sebagai bukti manual
-   (tab Crop di Inbox, retensi `snapshot_days`). Tanpa pesan dalam 20 dtk → `unverified`.
+   (tab Crop di Inbox, retensi `snapshot_days`). Tanpa pesan dalam 20 dtk → `unverified`. Selama orang masih di zona (maks 90 dtk) hasil dapat diperbarui
+   bila titik terbaiknya datang belakangan; hasil hanya naik (tidak pernah turun) dan caption diedit lagi
+   hanya saat status berubah.
    Caption Telegram diedit dengan baris Identitas; alert tidak pernah ditunda atau disupresi
    dan yang tidak dikenali tetap diperiksa manual.
 
