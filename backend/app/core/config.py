@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     face_max_yaw: float = 0.35
     face_blur_min: float = 120.0
     face_min_frames: int = 3
+    # identitas intrusion critical: ambang ketat + margin top-1/top-2 (konservatif; kalibrasi lapangan)
+    face_id_threshold: float = 0.50
+    face_id_margin: float = 0.10
     attendance_cooldown_min: int = 5
     no_exit_grace_min: int = 60  # toleransi setelah jam shift usai sebelum status jadi no_exit
     # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)

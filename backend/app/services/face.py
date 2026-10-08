@@ -33,6 +33,7 @@ class MatchResult:
     score: float | None
     quality: float | None
     reason: str
+    margin: float | None = None
 
 
 def cosine(a, b) -> float:
@@ -170,6 +171,17 @@ class FaceGallery:
             return None
         return best_id, best_score
 
+    def top2(self, vector) -> list[tuple[int, float]]:
+        """Skor terbaik per karyawan (maksimum dua karyawan berbeda), terbaik dulu."""
+        best: dict[int, float] = {}
+        for employee_id, vectors in self._by_employee.items():
+            for v in vectors:
+                s = cosine(vector, v)
+                if employee_id not in best or s > best[employee_id]:
+                    best[employee_id] = s
+        ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+        return ranked[:2]
+
     def size(self) -> int:
         """Jumlah employee terdaftar (bukan jumlah vektor)."""
         return len(self._by_employee)
@@ -186,6 +198,25 @@ def refresh_gallery(db) -> FaceGallery:
     """Muat ulang gallery dari DB. Panggil di startup, setelah enroll, setelah delete/purge, setelah ubah `active`."""
     gallery.refresh(db)
     return gallery
+
+
+def match_strict(vector, quality: float | None = None) -> MatchResult:
+    """Pencocokan ketat intrusion: ambang ketat + margin top-1/top-2; ragu = tidak dikenal.
+
+    reason: low_quality|no_match|ambiguous|matched. `matched` hanya bila top1 ≥ face_id_threshold
+    dan top1 − top2 ≥ face_id_margin (tanpa runner-up dianggap top2 = 0.0).
+    """
+    if quality is not None and quality < settings.face_min_quality:
+        return MatchResult(None, None, quality, "low_quality")
+    top = gallery.top2(list(vector))
+    if not top or top[0][1] < settings.face_id_threshold:
+        return MatchResult(None, top[0][1] if top else None, quality, "no_match")
+    top1_id, top1 = top[0]
+    top2_score = top[1][1] if len(top) > 1 else 0.0
+    margin = top1 - top2_score
+    if margin < settings.face_id_margin:
+        return MatchResult(None, top1, quality, "ambiguous", margin)
+    return MatchResult(top1_id, top1, quality, "matched", margin)
 
 
 def match_vector(vector, quality: float | None = None) -> MatchResult:
