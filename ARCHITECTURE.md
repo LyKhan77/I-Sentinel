@@ -137,16 +137,17 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 - Analyzer: `intrusion`, `loitering`, `running`, `idle_zone`, `crowd`; wajah lewat `face_worker`
   pada zona attendance (gerbang kualitas: lebar, skor, yaw, blur).
 - **Face ID pada intrusion critical** (saklar `face_id` di behavior `intrusion`, default mati):
-  `identity_zones` mengumpulkan zona `critical` ber-`face_id: true`; bila kamera juga punya worker
-  wajah, `CameraWorker` mengisi `IntrusionRegistry` (titik kaki track di polygon) dan mem-bind
+  `identity_zones` mengumpulkan zona `critical` ber-`face_id: true`; kamera itu otomatis mendapat
+  `FaceGateWorker` (tanpa zona attendance pun), `CameraWorker` mengisi `IntrusionRegistry` (titik kaki track di polygon) dan mem-bind
   track ke `event_id` saat event intrusion terbit. `FaceGateWorker` memakai deteksi SCRFD yang
   sama (`IdentCollector`): asosiasi wajah→kepala person (40% atas bbox), kandidat crop terbaik
   (lebar × skor, bebas dari gerbang, diunggah ke `crops/`), gerbang kualitas sendiri (pitch,
   kualitas ≥ 0,5; penolakan dipisah dari `_funnel` attendance), dan agregasi embedding.
   Motion gate dilewati selama registry segar (TTL 3 dtk). Satu pesan `isentinel/events/face`
   per event setelah `min_frames`, jendela 8 dtk, atau person hilang — dikirim thread pendek,
-  loop frame tidak menunggu unggahan crop. Kamera critical tanpa zona attendance tidak ikut
-  (peringatan sekali); API menandai alert itu `unverified` setelah 15 dtk.
+  loop frame tidak menunggu unggahan crop. Kamera critical tanpa zona attendance memakai worker wajah
+  berzona kosong (tanpa event absensi); bila pesan tidak datang, API menandai alert itu
+  `unverified` setelah 15 dtk.
 - Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.
   Motion gate bangun karena gerak dan terus memproses frame diam selama wajah masih terlihat.
   Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.

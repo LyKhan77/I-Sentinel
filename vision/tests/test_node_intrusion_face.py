@@ -73,17 +73,32 @@ def test_start_camera_without_face_id_creates_no_registry(tmp_path, monkeypatch)
     node._stop_workers()
 
 
-def test_start_camera_face_id_without_attendance_zone_warns_and_skips(tmp_path, monkeypatch, caplog):
-    """Kamera critical ber-face_id tanpa zona attendance (worker wajah): peringatan, tanpa registry."""
+def test_start_camera_face_id_without_attendance_zone_still_gets_a_face_worker(tmp_path, monkeypatch):
+    """Zona critical di ruang terlarang biasanya tanpa zona attendance: worker wajah tetap dibuat."""
     z = zone_with(behaviors=[{"kind": "intrusion", "trigger_seconds": 0, "face_id": True}])
     node = _face_node(tmp_path, monkeypatch, [{"camera_id": 1, "source_url": "test://1", "zones": [z]}])
+    node._start_camera(node._cameras_from_config(
+        {"cameras": [{"camera_id": 1, "source_url": "test://1", "zones": [z]}]})[0])
+    kinds = sorted(type(w).__name__ for w in node._workers)
+    assert kinds == ["CameraWorker", "FaceGateWorker"]
+    cam = next(w for w in node._workers if type(w).__name__ == "CameraWorker")
+    face = next(w for w in node._workers if type(w).__name__ == "FaceGateWorker")
+    assert cam.registry is face.collector.registry and cam.registry is not None
+    assert face.zones == []  # tidak ada gerbang attendance: hanya identitas intrusion
+    node._stop_workers()
+
+
+def test_start_camera_warns_when_face_id_zone_but_face_model_unavailable(tmp_path, monkeypatch, caplog):
+    """Jalur diam yang membuat alert 'unverified' tanpa petunjuk: model wajah tidak termuat."""
     import logging
+    z = zone_with(behaviors=[{"kind": "intrusion", "trigger_seconds": 0, "face_id": True}])
+    node = _face_node(tmp_path, monkeypatch, [{"camera_id": 1, "source_url": "test://1", "zones": [z]}])
+    node.face = None
     with caplog.at_level(logging.WARNING, logger="vision.node"):
         node._start_camera(node._cameras_from_config(
-        {"cameras": [{"camera_id": 1, "source_url": "test://1", "zones": [z]}]})[0])
-    assert any("face_id" in r.message.lower() for r in caplog.records)
-    cams = [w for w in node._workers if type(w).__name__ == "CameraWorker"]
-    assert cams and cams[0].registry is None  # tanpa worker wajah → identitas tidak aktif
+            {"cameras": [{"camera_id": 1, "source_url": "test://1", "zones": [z]}]})[0])
+    assert any("face_id" in r.message and "camera 1" in r.message for r in caplog.records)
+    assert [type(w).__name__ for w in node._workers] == ["CameraWorker"]  # deteksi intrusion tetap jalan
     node._stop_workers()
 
 

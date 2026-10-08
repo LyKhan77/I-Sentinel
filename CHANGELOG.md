@@ -3,6 +3,15 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Face ID pada intrusion critical — uji lapangan pertama: batasan zona attendance dihapus (2026-10-08)
+
+- **Konteks:** uji user di zona 15 "Server" (kamera 363, critical, `face_id: true`, trigger 10 dtk; deploy branch `49b75b2`) menghasilkan satu event (4876, 13:35:53): alert terkirim berfoto, caption diedit `Identitas tidak terverifikasi`, `payload.face = {"status": "unverified"}`, tanpa `crop_path`. Penyebab (DB + log `vision`): zona attendance satu-satunya di kamera 363 (zona 19) kini `active = false`, sehingga node tidak membuat `FaceGateWorker` dan mencatat `face_id zone tanpa worker wajah (zona attendance); identitas tidak aktif`; API menandai `unverified` setelah 15 dtk (sesuai desain v1). Pipeline identitas sendiri belum teruji di lapangan.
+- **Perubahan:** `VisionNode._start_camera` kini membuat `IntrusionRegistry` dan `FaceGateWorker` untuk kamera dengan zona critical ber-`face_id` **tanpa syarat zona attendance** (worker berzona kosong: tanpa event absensi, hanya identitas dan crop). Bila model wajah tidak tersedia, dicatat peringatan `zona face_id tetapi model wajah tidak tersedia` (sebelumnya diam). Teks bantuan toggle UI, README, ARCHITECTURE, dan runbook menyesuaikan. Spec §2 (batas "kamera critical tanpa zona attendance") tidak diubah karena spec/plan adalah catatan; keputusan ini tercatat di sini.
+- **Bukti:** RED `test_start_camera_face_id_without_attendance_zone_still_gets_a_face_worker` (`assert ['CameraWorker'] == ['CameraWorker', 'FaceGateWorker']`; menggantikan tes lama yang mengunci batasan) dan `test_start_camera_warns_when_face_id_zone_but_face_model_unavailable` (`assert False`); `test_face_worker_without_attendance_zones_sends_identity_but_no_attendance_event` lulus sejak awal (worker sudah mendukung zona kosong; jaga regresi). GREEN suite vision `317 passed, 3 deselected`; vitest `38 files / 494 passed`, build exit 0, lint 24 warning (teks i18n saja). Log di `temp/logs/intrusion-face-id/review3-*.txt`.
+- **Dampak:** kamera critical ber-`face_id` membaca stream utama sendiri (dekode 1080p tetap berjalan; SCRFD hanya saat ada gerakan atau orang di zona). Tanpa perubahan backend, migrasi, atau kontrak.
+- **Catatan terpisah:** AI caption event 4876 dan "Tanya AI" gagal `LLM timeout` (tabel `event_ai`; keberhasilan terakhir 2026-10-07): masalah endpoint LLM, bukan fitur ini. Belum ada retry otomatis.
+- **Rollback:** revert commit ini dan rebuild `vision` + `web`.
+
 ### Face ID pada intrusion critical — perbaikan review sesi perencanaan (2026-10-08)
 
 - **Konteks:** review `560b590` oleh sesi perencanaan (suite diulang berurutan: backend `947`, vision `307`, docker `77`, vitest `494`, build exit 0, lint 24 warning, sama dengan laporan executor). Empat temuan diperbaiki lewat TDD atas persetujuan user; M3 (`with_for_update` pada event) dan temuan Low dicatat sebagai follow-up.

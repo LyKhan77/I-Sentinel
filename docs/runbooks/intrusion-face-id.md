@@ -5,8 +5,9 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
 
 ## Cara menyalakan (butuh persetujuan sebelum menulis ke server)
 
-1. Pastikan kamera sudah punya **zona attendance** (worker wajah aktif; di `gspe-ai3`: kamera 363
-   lewat zona 19) **dan** zona intrusion yang akan diawasi.
+1. Siapkan zona intrusion yang akan diawasi. Kamera tidak perlu punya zona attendance: kamera
+   dengan zona critical ber-`face_id` otomatis mendapat worker wajah sendiri (membaca stream utama
+   kamera itu; SCRFD hanya jalan saat ada gerakan atau orang di zona).
 2. Di **Konfigurasi → Zona**: zona intrusion → severity `critical` → behavior **Intrusi** →
    nyalakan **Cari identitas wajah** → Simpan. Kamera itu akan restart sendiri (apply per kamera)
    dan log `vision` menampilkan worker face dengan kolektor identitas.
@@ -22,6 +23,8 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
 - **Inbox**: baris Identitas di panel detail (`event-identity`), tab **Crop wajah** untuk event
   intrusion ber-`crop_path` (bukti manual untuk yang tidak dikenali).
 - **Log**: `identity_skipped_text_only` = alert terkirim sebagai teks, tidak bisa diedit (wajar).
+  `zona face_id tetapi model wajah tidak tersedia` (log `vision`) = model wajah tidak termuat
+  (`VISION_FACE_MODEL_DIR`/insightface); identitas tidak aktif dan alert critical berakhir `unverified`.
   `unverified` berulang di kamera critical → periksa `torch.cuda.device_count()` di container
   `vision` (container pernah kehilangan akses GPU dua kali, 2026-10-06 dan 2026-10-08; restart
   `vision` atas persetujuan bila 0).

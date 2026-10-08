@@ -255,8 +255,8 @@ Saklar **Cari identitas wajah** (`face_id`) pada behavior Intrusi zona `critical
 critical terkirim (alert tidak pernah ditunda), node mengirim satu pesan susulan hasil wajah:
 caption Telegram diedit dengan baris **Identitas** (`Dikenali: <nama>` / `Wajah terlihat, tidak
 dikenali` / `Wajah tidak terlihat jelas` / `Identitas tidak terverifikasi`), crop wajah terbaik
-tersimpan sebagai bukti manual di tab Crop Inbox (retensi `snapshot_days`). Kamera harus sudah
-punya zona attendance (worker wajah); hasil pengenalan sangat tergantung pencahayaan dan ukuran
+tersimpan sebagai bukti manual di tab Crop Inbox (retensi `snapshot_days`). Kamera tidak perlu
+zona attendance (worker wajah dibuat otomatis untuk zona ber-`face_id`); hasil pengenalan sangat tergantung pencahayaan dan ukuran
 wajah — yang tidak dikenali tetap diperiksa manual. Ambang melalui `FACE_ID_THRESHOLD` dan
 `FACE_ID_MARGIN` di `docker/.env` (ubah → recreate `api`). Runbook: `docs/runbooks/intrusion-face-id.md`.
 

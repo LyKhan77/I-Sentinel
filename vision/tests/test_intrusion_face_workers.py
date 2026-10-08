@@ -250,3 +250,16 @@ def test_camera_worker_still_publishes_intrusion_when_registry_raises(method, ca
     _camera_worker(BrokenRegistry(method), IDENT_ZONE, [[(0.4, 0.3, 0.6, 0.9)]] * 3, transport=t)
     assert any(ev["type"] == "intrusion" for ev in t.events)
     assert "worker died" not in caplog.text
+
+
+def test_face_worker_without_attendance_zones_sends_identity_but_no_attendance_event():
+    reg = seeded_registry()
+    t = FakeTransport()
+    w = FaceGateWorker(363, [], FakeFaces([[face()]] * 3), t, "test-node", FaceSettings(),
+                       registry=reg, max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 3, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    w.join_ident_threads(5.0)
+    assert t.events == []  # tanpa zona attendance: tidak ada event absensi
+    assert len(t.faces) == 1 and t.faces[0]["embedding"] is not None

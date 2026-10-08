@@ -489,12 +489,13 @@ class VisionNode:
         """Start detect and face workers with one shared recorder for this camera."""
         analyzers = self._make_analyzers(cam)
         gates = attendance_zones(cam) if self.face is not None else []
-        ident = identity_zones(cam) if self.face is not None else []
-        if ident and not gates:
-            log.warning("camera %s: face_id zone tanpa worker wajah (zona attendance); "
-                        "identitas tidak aktif", cam.camera_id)
-            ident = []
-        registry = IntrusionRegistry() if (ident and gates) else None
+        wanted = identity_zones(cam)
+        ident = wanted if self.face is not None else []
+        if wanted and not ident:
+            log.warning("camera %s: zona face_id tetapi model wajah tidak tersedia; identitas tidak aktif "
+                        "(alert critical akan ditandai unverified)", cam.camera_id)
+        # zona critical di ruang terlarang biasanya tanpa zona attendance: worker wajah tetap dibuat
+        registry = IntrusionRegistry() if ident else None
         run_yolo = bool(analyzers) or self.cfg.emit_person_detect
         if not run_yolo and not gates:
             return  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
@@ -518,7 +519,7 @@ class VisionNode:
             w.source = self.source_factory(cam)
             w.start()
             self._workers.append(w)
-        if gates:
+        if gates or registry is not None:
             fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
                                 self.cfg.node_id, self._face_settings,
                                 recorder=recorder, motion=cam.motion, registry=registry)
