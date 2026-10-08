@@ -1,6 +1,7 @@
 """Attendance logic — agregasi harian, handle_face_event, close_days. Tanpa insightface."""
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.camera import Camera
@@ -556,6 +557,59 @@ def test_effective_status_waiting_past_deadline_is_no_exit(db):
     row.override_note = "dikoreksi HR"
     assert attendance.effective_status(row, sh, now=_at(*MON, 18, 0)) == "waiting"  # koreksi manual tidak diubah
     assert attendance.effective_status(row, None, now=_at(*MON, 23, 0)) == "waiting"  # tanpa shift
+
+
+# --- exit awal: peringatan turunan saat baca, status tersimpan tidak berubah ----
+
+DAY_MON = date(*MON)
+
+
+def _ee_row(last_exit, status="ontime", override_note=None, day=DAY_MON):
+    """Baris duck-typed seperti AttendanceDay: hanya field yang dibaca exit_early_min."""
+    return SimpleNamespace(date=day, last_exit=last_exit, status=status, override_note=override_note)
+
+
+def _ee_shift(end="16:00"):
+    return SimpleNamespace(end_time=end)
+
+
+def test_exit_early_min_reports_minutes_before_shift_end():
+    row = _ee_row(_at(*MON, 12, 3), status="late")
+    assert attendance.exit_early_min(row, _ee_shift(), now=_at(*MON, 17, 0)) == 237
+
+
+def test_exit_early_min_boundary_is_strictly_more_than_60():
+    """Tepat 60 menit bukan peringatan; 61 menit sudah."""
+    shift = _ee_shift()
+    assert attendance.exit_early_min(_ee_row(_at(*MON, 15, 0)), shift, now=_at(*MON, 17, 0)) is None
+    assert attendance.exit_early_min(_ee_row(_at(*MON, 14, 59)), shift, now=_at(*MON, 17, 0)) == 61
+
+
+def test_exit_early_min_waits_for_shift_end():
+    """Hari berjalan: exit makan siang belum dianggap anomali sampai jam shift selesai."""
+    row, shift = _ee_row(_at(*MON, 12, 3)), _ee_shift()
+    assert attendance.exit_early_min(row, shift, now=_at(*MON, 14, 0)) is None
+    assert attendance.exit_early_min(row, shift, now=_at(*MON, 16, 0)) == 237
+    assert attendance.exit_early_min(row, shift, now=_at(*MON, 7, 0) + timedelta(days=1)) == 237
+
+
+def test_exit_early_min_none_when_not_applicable():
+    shift = _ee_shift()
+    now = _at(*MON, 17, 0)
+    early = _at(*MON, 12, 3)
+    cases = [
+        _ee_row(early, override_note="x"),
+        _ee_row(early, override_note="import"),
+        _ee_row(early, status="waiting"),
+        _ee_row(early, status="no_exit"),
+        _ee_row(early, status="no_entry"),
+        _ee_row(early, status="absent"),
+        _ee_row(None),
+        _ee_row(_at(*MON, 16, 30)),
+    ]
+    for row in cases:
+        assert attendance.exit_early_min(row, shift, now=now) is None, row
+    assert attendance.exit_early_min(_ee_row(early), None, now=now) is None
 
 
 def test_close_due_absent_only_after_deadline_and_workdays(db):

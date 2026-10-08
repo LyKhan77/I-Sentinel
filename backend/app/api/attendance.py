@@ -22,7 +22,7 @@ from app.services.attendance import LOCAL_TZ
 router = APIRouter(tags=["attendance"])
 
 CSV_COLUMNS = ["employee_code", "name", "date", "shift", "first_entry", "last_exit",
-               "duration_min", "status", "late_minutes", "override_note"]
+               "duration_min", "status", "late_minutes", "override_note", "exit_early_min"]
 VALID_STATUSES = {"ontime", "late", "waiting", "no_exit", "no_entry", "absent"}
 
 
@@ -71,6 +71,7 @@ def _row_dict(day: AttendanceDay, emp: Employee, now: datetime | None = None) ->
         "late_minutes": day.late_minutes,
         "override_note": day.override_note,
         "shift_name": emp.shift_name if emp else None,
+        "exit_early_min": attendance.exit_early_min(day, emp.shift if emp else None, now),
     }
 
 
@@ -117,6 +118,7 @@ def export_csv(
     w = csv.writer(buf)
     w.writerow(CSV_COLUMNS)
     for day, emp in _query_days(db, None, from_, to, None, desc=False):
+        early = attendance.exit_early_min(day, emp.shift)
         w.writerow([
             emp.employee_code, _csv_safe(emp.name), day.date.isoformat(), emp.shift_name or "",
             _hhmmss(day.first_entry), _hhmmss(day.last_exit),
@@ -124,6 +126,7 @@ def export_csv(
             attendance.effective_status(day, emp.shift, None),
             day.late_minutes if day.late_minutes is not None else "",
             _csv_safe(day.override_note or ""),
+            early if early is not None else "",
         ])
     return StreamingResponse(
         iter([buf.getvalue()]),
