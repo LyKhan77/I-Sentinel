@@ -281,7 +281,7 @@ def test_identity_only_worker_overlay_follows_the_person_not_the_zone():
     w.join(timeout=10)
     labels = _face_labels(t)
     assert len(labels) == 3 and "zone" not in labels  # satu wajah terasosiasi per frame, tanpa "zone"
-    assert all(lb == "0.90" for lb in labels)
+    assert all(lb == "120px" for lb in labels)
 
 
 def test_attendance_worker_with_identity_keeps_zone_label_for_other_faces():
@@ -294,4 +294,4 @@ def test_attendance_worker_with_identity_keeps_zone_label_for_other_faces():
     w.start()
     w.join(timeout=10)
     labels = _face_labels(t)
-    assert "zone" in labels and "0.90" in labels
+    assert "zone" in labels and "120px" in labels

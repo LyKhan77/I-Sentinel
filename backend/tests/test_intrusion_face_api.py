@@ -119,13 +119,13 @@ def test_face_result_unknown_ambiguous_not_visible_mapping(db, critical_event, g
     assert ev4.payload["face"]["status"] == "not_visible" and ev4.payload["face"]["reason"] == "no_face"
 
 
-def test_face_result_low_quality_maps_not_visible(db, critical_event, gallery, monkeypatch):
+def test_face_result_quality_no_longer_blocks_matching(db, critical_event, gallery, monkeypatch):
+    """Identitas diputuskan oleh ambang ketat + margin; rumus quality berbasis lebar tidak lagi menolak."""
     monkeypatch.setattr(face.settings, "face_min_quality", 0.9)
     handle_message(db, ec.FACE_TOPIC, json.dumps(
-        _msg(critical_event.event_id, embedding=[1.0, 0.0, 0.0, 0.0], quality=0.5)).encode())
+        _msg(critical_event.event_id, embedding=[1.0, 0.0, 0.0, 0.0], quality=0.2)).encode())
     db.refresh(critical_event)
-    assert critical_event.payload["face"]["status"] == "not_visible"
-    assert critical_event.payload["face"]["reason"] == "low_quality"
+    assert critical_event.payload["face"]["status"] == "recognized"
 
 
 def test_face_result_unknown_event_does_not_crash(db):

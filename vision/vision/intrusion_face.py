@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -22,8 +22,8 @@ HEAD_FRAC = 0.40       # area kepala = 40% atas bbox person
 HEAD_PAD = 0.10        # diperlebar 10% ke kiri/kanan/atas
 IDENT_WINDOW_S = 8.0   # kirim hasil setelah sekian detik terikat event meski min_frames belum tercapai
 MAX_PITCH = 0.30       # deviasi pitch maksimum (menghadap bawah)
-IDENT_MIN_QUALITY = 0.5  # sama dengan face_min_quality API: frame yang pasti ditolak API tidak dihitung
 MIN_CROP_SCORE = 0.5   # keyakinan SCRFD minimum untuk kandidat crop bukti manual
+IDENT_MIN_WIDTH_PX = 60.0  # lebar wajah minimum untuk identitas (jarak sampai ±3 m); data: lebar bukan penentu skor
 BEST_K = 5             # embedding terbaik (berdasar kualitas) yang dipertahankan per orang
 UPDATE_EVERY_S = 10.0   # jeda minimum antar-pembaruan identitas untuk orang yang masih di zona
 MAX_TRACK_S = 90.0     # berhenti mengumpulkan sekian detik setelah event
@@ -163,7 +163,7 @@ def _dummy_zone(zone_id: int) -> dict:
 
 @dataclass
 class _IdentState:
-    kept: list = field(default_factory=list)  # (kualitas, vektor): BEST_K terbaik, bukan K pertama
+    kept: list = field(default_factory=list)  # (ketajaman, kualitas, vektor): BEST_K terbaik, bukan K pertama
     crop_rank: float = -1.0
     crop: bytes | None = None
     rejects: dict = field(default_factory=lambda: dict.fromkeys(
@@ -189,6 +189,8 @@ class IdentCollector:
         self.registry = registry
         self.face = face
         self.settings = settings
+        # gerbang identitas: lebar minimum lebih longgar dan tanpa blur absolut (peringkat relatif per orang)
+        self._gate_settings = replace(settings, min_width_px=IDENT_MIN_WIDTH_PX, blur_min=0.0)
         self.camera_id = camera_id
         self.node_id = node_id
         self.encode = encode
@@ -213,25 +215,27 @@ class IdentCollector:
 
     def _reject_or_keep(self, f: FaceDet, ent: PersonEntry, st: _IdentState,
                         frame_data, frame_w: int, frame_h: int) -> str:
-        """Gerbang kualitas untuk embedding + kandidat crop (bebas dari hasil gerbang).
+        """Gerbang geometri untuk embedding + kandidat crop (crop bebas dari gerbang).
 
-        Mengembalikan label overlay: kode penolakan, atau kualitas ("0.62") bila lolos gerbang.
+        Gerbang: lebar >= `IDENT_MIN_WIDTH_PX`, skor deteksi, yaw, dan pitch. Tidak ada gerbang blur atau
+        quality absolut: variansi Laplacian dan lebar tidak memprediksi kecocokan antar-kamera, jadi K
+        frame terbaik dipilih relatif per orang dengan peringkat `det x ketajaman`.
+        Mengembalikan label overlay: kode penolakan, atau lebar wajah ("86px") bila lolos.
         """
         width_px = f.bbox[2] - f.bbox[0]
         yaw = yaw_ratio(f.kps)
         pitch = pitch_dev(f.kps)
         q = quality(f.score, width_px, yaw)
-        code, _zone = gate_code(f, frame_w, frame_h, [_dummy_zone(ent.zone_id)], self.settings)
-        aligned = None
+        code, _zone = gate_code(f, frame_w, frame_h, [_dummy_zone(ent.zone_id)], self._gate_settings)
+        if code is None and pitch > MAX_PITCH:
+            code = "pitch"
+        aligned, blur = None, 0.0
         if code is None:
             try:
                 aligned = self.face.align(frame_data, f.kps)
-                if blur_score(aligned) < self.settings.blur_min:
-                    code = "blur"
+                blur = blur_score(aligned)
             except Exception:
-                code = "blur"
-        if code is None:
-            code = "pitch" if pitch > MAX_PITCH else "quality" if q < IDENT_MIN_QUALITY else None
+                code = "blur"  # align gagal: frame tak bisa dipakai
         if code is not None:
             st.rejects[code] = st.rejects.get(code, 0) + 1  # kode tak terduga (mis. "zone") tetap dihitung
         if f.score >= MIN_CROP_SCORE:
@@ -244,10 +248,11 @@ class IdentCollector:
                     st.crop_rank = rank
                     st.crop = data
                     st.crop_dirty = True
-        label = code or f"{q:.2f}"
+        label = code or f"{width_px:.0f}px"
         if code is not None:
             return label
-        if len(st.kept) >= BEST_K and q <= min(k[0] for k in st.kept):
+        sharp = f.score * blur
+        if len(st.kept) >= BEST_K and sharp <= min(k[0] for k in st.kept):
             return label  # tidak mengalahkan K terbaik: tanpa embed berulang
         try:
             vec = self.face.embed(aligned)
@@ -255,21 +260,21 @@ class IdentCollector:
             return label
         if vec is None:
             return label
-        st.kept.append((q, vec))
+        st.kept.append((sharp, q, vec))
         if len(st.kept) > BEST_K:
             st.kept.remove(min(st.kept, key=lambda k: k[0]))
         st.dirty = True
         return label
 
     def _message(self, ent: PersonEntry, st: _IdentState, now: float) -> dict:
-        qualities = [q for q, _ in st.kept]
+        qualities = [q for _, q, _ in st.kept]
         msg = {
             "event_id": ent.event_id,
             "camera_id": self.camera_id,
             "node_id": self.node_id,
             "track_id": ent.track_id,
             "seq": st.sent,
-            "embedding": aggregate([v for _, v in st.kept], qualities) if st.kept else None,
+            "embedding": aggregate([v for _, _, v in st.kept], qualities) if st.kept else None,
             "quality": round(max(qualities), 3) if st.kept else None,
             "crop_path": None,
             "stats": {"faces": st.faces, "rejects": dict(st.rejects), "frames_used": len(st.kept)},
