@@ -138,13 +138,15 @@ def _expire_field(db: Session, root: str, field: str, cutoff: datetime, dry_run:
     return files, freed, expired
 
 
-def _expire_crops(db: Session, root: str, cutoff: datetime, dry_run: bool) -> tuple[int, int, list]:
-    """Crop wajah absensi (payload.crop_path) lebih tua dari cutoff: hapus file, null-kan path.
+def _expire_crops(db: Session, root: str, cutoff: datetime, dry_run: bool,
+                  event_type: str = "attendance") -> tuple[int, int, list]:
+    """Crop wajah (payload.crop_path) jenis event tertentu lebih tua dari cutoff.
 
-    ponytail: memindai payload event absensi lama di Python (JSON filter beda per dialek); pindah ke
-    filter JSON SQL bila baris absensi mencapai ratusan ribu.
+    attendance mengikuti attendance_days; intrusion mengikuti snapshot_days (bukti manual).
+    ponytail: memindai payload event lama di Python (JSON filter beda per dialek); pindah ke
+    filter JSON SQL bila baris mencapai ratusan ribu.
     """
-    rows = db.query(Event).filter(Event.type == "attendance", Event.ts_event < cutoff).all()
+    rows = db.query(Event).filter(Event.type == event_type, Event.ts_event < cutoff).all()
     expired = [ev for ev in rows if (ev.payload or {}).get("crop_path")]
     files = freed = 0
     seen: set[str] = set()
@@ -160,7 +162,7 @@ def _expire_crops(db: Session, root: str, cutoff: datetime, dry_run: bool) -> tu
         if not dry_run:
             ev.payload = {**ev.payload, "crop_path": None}  # dict baru → perubahan JSON terdeteksi
             ev.media_expired = True
-    if not dry_run and expired:
+    if not dry_run and expired and event_type == "attendance":
         _null_attendance_copies(db, [ev.event_id for ev in expired])
     return files, freed, expired
 
@@ -222,11 +224,13 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
         _expire_field(db, root, "snapshot_path", cutoffs["snapshot"], dry_run, attendance=False),
         _expire_field(db, root, "snapshot_path", cutoffs["attendance"], dry_run, attendance=True),
         _expire_crops(db, root, cutoffs["attendance"], dry_run),
+        # crop wajah intrusion = bukti manual critical, mengikuti retensi snapshot
+        _expire_crops(db, root, cutoffs["snapshot"], dry_run, event_type="intrusion"),
     ]
     files_deleted = sum(p[0] for p in parts)
     bytes_freed = sum(p[1] for p in parts)
     events_marked = len({ev.id for p in parts for ev in p[2]})
-    purge = _media_free_after(db, parts, ("clip", "clip", "snapshot", "snapshot", "crop"))
+    purge = _media_free_after(db, parts, ("clip", "clip", "snapshot", "snapshot", "crop", "crop"))
     if not dry_run:
         _delete_events(db, sorted(purge))  # card Events tanpa media ikut hilang (+ alert-nya)
         db.commit()
@@ -238,8 +242,9 @@ def sweep(db: Session, now: datetime | None = None, dry_run: bool = False) -> di
             referenced.add(clip)
         if snap:
             referenced.add(snap)
-    # crop yang masih dirujuk payload absensi bukan orphan (lapis 1 yang mengatur umurnya)
-    for (payload,) in db.query(Event.payload).filter(Event.type == "attendance"):
+    # crop yang masih dirujuk payload event (attendance atau intrusion) bukan orphan —
+    # umurninya diatur lapis 1; tanpa ini sapuan orphan menghapus crop intrusion.
+    for (payload,) in db.query(Event.payload).filter(Event.type.in_(("attendance", "intrusion"))):
         crop = (payload or {}).get("crop_path")
         if crop:
             referenced.add(crop)

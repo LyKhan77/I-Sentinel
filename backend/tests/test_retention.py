@@ -363,3 +363,54 @@ def test_delete_events_removes_event_ai(db):
     assert db.query(EventAi).count() == 0
     assert db.query(Alert).count() == 0
     assert db.get(Event, eid) is None
+
+
+def _intrusion_crop(db, ts, crop):
+    ev = Event(type="intrusion", severity="critical", ts_event=ts,
+               payload={"face": {"status": "unknown"}, "crop_path": crop})
+    db.add(ev); db.commit(); db.refresh(ev)
+    return ev
+
+
+def test_sweep_expires_old_intrusion_crop_with_snapshot_cutoff(db, tmp_path, monkeypatch):
+    """Crop intrusion kedaluwarsa mengikuti snapshot_days (bukan attendance_days)."""
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"snapshot_days": 7, "attendance_days": 90})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    crop = _mkfile(str(tmp_path), "crops/2026/09/05/x.jpg", age_days=10)
+    ev = _intrusion_crop(db, now - timedelta(days=10), "crops/2026/09/05/x.jpg")
+
+    r = retention.sweep(db, now=now)
+    assert not os.path.exists(crop)
+    assert r["events_deleted"] == 1  # medianya habis → card ikut dihapus
+    assert db.get(Event, ev.id) is None  # terhapus bersama file crop-nya
+
+
+def test_sweep_does_not_treat_referenced_intrusion_crop_as_orphan(db, tmp_path, monkeypatch):
+    """Crop intrusion yang masih dirujuk event baru bukan orphan walau mtime tua."""
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"snapshot_days": 30, "attendance_days": 7})
+    now = datetime.now(timezone.utc)
+    crop = _mkfile(str(tmp_path), "crops/x/kept.jpg", age_days=60)  # file tua, event baru
+    ev = _intrusion_crop(db, now - timedelta(days=2), "crops/x/kept.jpg")
+
+    r = retention.sweep(db, now=now)
+    assert os.path.exists(crop)
+    db.refresh(ev)
+    assert ev.payload["crop_path"] == "crops/x/kept.jpg"
+
+
+def test_sweep_dry_run_leaves_intrusion_crop_untouched(db, tmp_path, monkeypatch):
+    from app.services import storage_settings
+    monkeypatch.setattr(retention.settings, "storage_root", str(tmp_path))
+    storage_settings.put(db, {"snapshot_days": 7})
+    now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+    crop = _mkfile(str(tmp_path), "crops/d.jpg", age_days=10)
+    ev = _intrusion_crop(db, now - timedelta(days=10), "crops/d.jpg")
+
+    r = retention.sweep(db, now=now, dry_run=True)
+    assert os.path.exists(crop)
+    db.refresh(ev)
+    assert ev.payload["crop_path"] == "crops/d.jpg" and ev.media_expired is False
