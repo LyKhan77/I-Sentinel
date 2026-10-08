@@ -3,6 +3,15 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Deploy `web` modal Koreksi ke `gspe-ai3` dan cek UI Exit awal sebagian (2026-10-08)
+
+- **Konteks:** `f8d370a` (merge `fix/attendance-late-label`, `c9a52aa`) di-deploy atas persetujuan user: `git pull --ff-only` lalu `./docker/setup.sh` di clone Docker; hanya container `web` dibuat ulang (`api`, `retention`, `vision`, `go2rtc`, `mosquitto`, `postgres` tidak berubah). Tanpa migrasi.
+- **Terverifikasi di server:** clone di `f8d370a`; `/api/v1/health` ok; `web` `Up (healthy)`, `/` mengembalikan 200; `index.html` `Cache-Control: no-cache`; bundle yang disajikan memuat kunci `at.status.lateOption`.
+- **Cek UI Exit awal oleh user (sebagian):** (1) CSV ekspor `rekap_absensi_2026-10-05_2026-10-08.csv` punya kolom terakhir `exit_early_min` dengan 12 baris, 2 berperingatan (EMP-001 = 115 menit, EMP-002 = 169 menit, keduanya 2026-10-07 `late`; sesuai perhitungan server sebelumnya). (2) Screenshot 11:26 (UI bahasa Inggris, tab Daily 2026-10-07): tombol **Correct** tampil pada dua baris `LATE 338 MIN` dan `LATE 355 MIN` yang berperingatan (dan pada baris `NO EXIT`), modal "Attendance correction" terbuka dengan jam masuk 14:23 dan jam keluar 15:35 yang cocok dengan CSV, dan dropdown Status menampilkan `LATE` tanpa `{n}` (perbaikan di atas sudah aktif).
+- **BELUM dikonfirmasi:** chip Exit awal di sel exit (tertutup overlay modal pada screenshot, jadi tidak terlihat) dan tampilan layar 390 px tanpa overflow horizontal. ROADMAP EEA tetap `[~]`.
+- **Dampak:** hanya UI web; tidak ada perubahan API, data, atau node.
+- **Rollback:** `ssh gspe-ai3`, `cd /home/gspe-ai3/project_cv/I-Sentinel-docker && git checkout 7e5d39c && ./docker/setup.sh` (tanpa migrasi).
+
 ### Modal Koreksi — opsi Status "Telat" tanpa placeholder `{n}` (2026-10-08)
 
 - **Konteks:** dari cek UI Exit awal, dropdown Status di modal "Koreksi absensi" menampilkan opsi `LATE {n} MIN` (EN) / `TELAT {n} MNT` (ID) dengan `{n}` mentah. `AttendancePage.tsx` memakai `t('at.status.late')` apa adanya untuk opsi, sedangkan badge di tabel (`statusLabel`) sudah mengganti `{n}` dengan `late_minutes` baris. Menit tidak bermakna pada opsi pilihan (menit dihitung server dari jam masuk dan shift), jadi opsi dibuat tanpa menit.
