@@ -16,6 +16,7 @@ from .face_quality import FaceSettings
 from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
 from . import hardware
+from .intrusion_face import IntrusionRegistry
 from .pipeline.detector import PersonDetector
 from .pipeline.source import FrameSource
 from .pipeline.tracker import ByteTracker
@@ -226,6 +227,19 @@ def attendance_zones(cam: CameraCfg) -> list[dict]:
     return [z for z in cam.zones
             if z.get("direction") in ("entry", "exit")
             and any(b.get("kind") == "attendance" for b in behaviors_of(z))]
+
+
+def identity_zones(cam) -> list[dict]:
+    """Zona intrusion critical ber-face_id: true (identitas diukur di kamera itu)."""
+    out = []
+    for z in cam.zones if hasattr(cam, "zones") else cam.get("zones", []):
+        if z.get("severity") != "critical":
+            continue
+        for b in behaviors_of(z):
+            if b.get("kind") == "intrusion" and b.get("face_id") is True:
+                out.append(z)
+                break
+    return out
 
 
 def behaviors_of(z: dict) -> list[dict]:
@@ -467,6 +481,12 @@ class VisionNode:
         """Start detect and face workers with one shared recorder for this camera."""
         analyzers = self._make_analyzers(cam)
         gates = attendance_zones(cam) if self.face is not None else []
+        ident = identity_zones(cam) if self.face is not None else []
+        if ident and not gates:
+            log.warning("camera %s: face_id zone tanpa worker wajah (zona attendance); "
+                        "identitas tidak aktif", cam.camera_id)
+            ident = []
+        registry = IntrusionRegistry() if (ident and gates) else None
         run_yolo = bool(analyzers) or self.cfg.emit_person_detect
         if not run_yolo and not gates:
             return  # tanpa zona aktif: live view saja (go2rtc), tanpa inferensi
@@ -485,14 +505,15 @@ class VisionNode:
                              threading.Event(), self.cfg.node_id,
                              analyzers=analyzers, recorder=recorder,
                              emit_person_detect=self.cfg.emit_person_detect,
-                             motion=cam.motion)
+                             motion=cam.motion, registry=registry,
+                             ident_zones=ident)
             w.source = self.source_factory(cam)
             w.start()
             self._workers.append(w)
         if gates:
             fw = FaceGateWorker(cam.camera_id, gates, self.face, self.transport,
                                 self.cfg.node_id, self._face_settings,
-                                recorder=recorder, motion=cam.motion)
+                                recorder=recorder, motion=cam.motion, registry=registry)
             fw.source = self.source_factory(
                 cam.model_copy(update={"source_url": main_stream_url(cam.source_url)}))
             fw.start()
