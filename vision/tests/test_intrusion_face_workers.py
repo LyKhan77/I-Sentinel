@@ -108,7 +108,6 @@ def test_face_worker_bypasses_motion_gate_while_registry_active():
     w.source = FrameSource.from_frames([FRAME] * 6, fps=10)
     w.start(); w.join(timeout=10)
     assert w.motion_skipped == 0
-    assert reg.active(11.0)
 
 
 def test_face_worker_publishes_one_face_result_after_bind():
@@ -263,3 +262,36 @@ def test_face_worker_without_attendance_zones_sends_identity_but_no_attendance_e
     w.join_ident_threads(5.0)
     assert t.events == []  # tanpa zona attendance: tidak ada event absensi
     assert len(t.faces) == 1 and t.faces[0]["embedding"] is not None
+
+
+# --- overlay debugger: label identitas mengikuti kepala orang, bukan status zona -----------
+
+def _face_labels(transport):
+    return [b["label"] for _cam, kind, boxes in transport.detections if kind == "face" for b in boxes]
+
+
+def test_identity_only_worker_overlay_follows_the_person_not_the_zone():
+    reg = seeded_registry()
+    t = FakeTransport()
+    stray = face(cx=200.0, cy=900.0)  # bukan kepala siapa pun
+    w = FaceGateWorker(363, [], FakeFaces([[face(), stray]] * 3), t, "test-node", FaceSettings(),
+                       registry=reg, max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 3, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    labels = _face_labels(t)
+    assert len(labels) == 3 and "zone" not in labels  # satu wajah terasosiasi per frame, tanpa "zone"
+    assert all(lb == "0.90" for lb in labels)
+
+
+def test_attendance_worker_with_identity_keeps_zone_label_for_other_faces():
+    reg = seeded_registry()
+    t = FakeTransport()
+    stray = face(cx=200.0, cy=900.0)  # di luar zona attendance dan bukan kepala orang
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[face(), stray]] * 3), t, "test-node", FaceSettings(),
+                       registry=reg, max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 3, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    labels = _face_labels(t)
+    assert "zone" in labels and "0.90" in labels

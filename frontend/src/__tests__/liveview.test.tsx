@@ -261,6 +261,32 @@ test('label kode gerbang wajah diterjemahkan', async () => {
   expect(screen.getByTestId('debug-overlay')).toHaveTextContent('wajah terlalu kecil')
 })
 
+test.each([['pitch', 'menunduk/mendongak'], ['quality', 'kualitas rendah']])(
+  'overlay wajah: kode gerbang identitas %s diterjemahkan', async (code, text) => {
+    const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
+    class FakeWS {
+      onmessage: ((ev: { data: string }) => void) | null = null
+      onerror: (() => void) | null = null
+      constructor(_url: string) { handlers.push(this as { onmessage?: (ev: { data: string }) => void }) }
+      close() {}
+      send() {}
+      addEventListener() {}
+      removeEventListener() {}
+    }
+    vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket)
+    vi.stubGlobal('fetch', stubFetch())
+    renderPage()
+    await screen.findByText('CAM-01')
+    await userEvent.click(screen.getByTestId('cam-tile-1'))
+    await act(async () => {
+      handlers[0].onmessage?.({ data: JSON.stringify({
+        type: 'detections', camera_id: 1, kind: 'face',
+        boxes: [{ id: 2, bbox_norm: [0.2, 0.2, 0.3, 0.3], label: code }],
+      }) })
+    })
+    expect(screen.getByTestId('debug-overlay')).toHaveTextContent(text)
+  })
+
 test('playerMode membaca transport aktif dari elemen video', () => {
   expect(playerMode({ srcObject: {} as MediaStream, src: '' })).toBe('WebRTC')
   expect(playerMode({ srcObject: null, src: 'blob:http://x/1' })).toBe('MSE')

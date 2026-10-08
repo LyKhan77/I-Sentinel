@@ -19,7 +19,7 @@ from app.ws.hub import hub
 logger = logging.getLogger(__name__)
 
 FACE_TOPIC = "isentinel/events/face"
-UNVERIFIED_AFTER_S = 15.0
+UNVERIFIED_AFTER_S = 20.0  # > jendela node (8 dtk) + unggah crop (<= ~6 dtk) + antrean MQTT
 # ponytail: timer unverified hilang bila API restart (alert tetap tanpa baris identitas);
 # upgrade ke sweeper periodik bila kasus itu terlihat sering di produksi.
 

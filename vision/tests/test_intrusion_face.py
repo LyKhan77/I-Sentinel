@@ -4,7 +4,7 @@ import pytest
 
 from vision.face import FaceDet
 from vision.face_quality import FaceSettings
-from vision.intrusion_face import (HEAD_FRAC, IDENT_MIN_QUALITY, IDENT_WINDOW_S, MAX_PITCH,
+from vision.intrusion_face import (BEST_K, HEAD_FRAC, IDENT_MIN_QUALITY, IDENT_WINDOW_S, MAX_PITCH,
                                    MIN_CROP_SCORE, REGISTRY_TTL_S, IdentCollector,
                                    IntrusionRegistry, associate, jpeg_crop, pitch_dev)
 
@@ -127,14 +127,16 @@ def _bind_entry(registry, track_id=1, bbox=(0.40, 0.30, 0.60, 1.00), event_id="e
     registry.bind(5, track_id, event_id, ts)
 
 
-def test_collector_emits_after_min_frames_with_embedding_and_releases_entry():
+def test_collector_emits_best_frames_at_window_end_and_releases_entry():
     registry = IntrusionRegistry()
     collector = _collector(registry)
     _bind_entry(registry)
     for i in range(3):
-        registry.touch(5, 1, BBOX, 10.0 + i)
-        collector.observe([face()], None, 1920, 1080, 10.0 + i)
-    msgs = collector.drain(11.0)
+        registry.touch(5, 1, BBOX, 10.0 + i * 0.1)
+        collector.observe([face()], None, 1920, 1080, 10.0 + i * 0.1)
+    assert collector.drain(11.0) == []  # belum keluar: masih mencari kandidat terbaik
+    registry.touch(5, 1, BBOX, 10.0 + IDENT_WINDOW_S - 0.1)  # orang masih di zona
+    msgs = collector.drain(10.0 + IDENT_WINDOW_S)
     assert len(msgs) == 1
     msg = msgs[0]
     assert msg["event_id"] == "ev-1" and msg["camera_id"] == 363 and msg["node_id"] == "n1"
@@ -268,10 +270,11 @@ def test_collector_ignores_person_after_result_was_sent():
     registry.touch(5, 1, BBOX, 10.0)
     for i in range(3):
         collector.observe([face()], None, 1920, 1080, 10.0 + i * 0.1)
-    assert len(collector.drain(10.5)) == 1
+    registry.touch(5, 1, BBOX, 10.0 + IDENT_WINDOW_S - 0.1)
+    assert len(collector.drain(10.0 + IDENT_WINDOW_S)) == 1
     calls_after_send = emb.embed_calls
     for i in range(20):  # CameraWorker terus men-touch track yang sama selama orangnya berdiam
-        now = 11.0 + i * 0.1
+        now = 19.0 + i * 0.1
         registry.touch(5, 1, BBOX, now)
         collector.observe([face()], None, 1920, 1080, now)
         assert collector.drain(now) == []
@@ -279,18 +282,58 @@ def test_collector_ignores_person_after_result_was_sent():
     assert registry.entries() == []
 
 
-def test_collector_caps_embeddings_per_person_at_min_frames():
+SCORES_DOWN = [0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.62]
+
+
+@pytest.mark.parametrize("scores,expected_embeds", [(SCORES_DOWN, BEST_K), (SCORES_DOWN[::-1], 8)])
+def test_collector_keeps_only_the_best_k_frames_by_quality(scores, expected_embeds):
+    """Frame awal biasanya terburuk (orang masih jauh): yang dipertahankan K terbaik, bukan K pertama."""
     registry = IntrusionRegistry()
     emb = FakeEmbedder()
     collector = _collector(registry, embedder=emb)
     registry.touch(5, 1, BBOX, 10.0)  # belum terikat: masih masa dwell sebelum trigger
-    for i in range(30):
-        collector.observe([face()], None, 1920, 1080, 10.0 + i * 0.05)
-    assert emb.embed_calls == FaceSettings().min_frames
-    registry.bind(5, 1, "ev-1", 11.5)
-    msg = collector.drain(11.6)[0]
-    assert msg["stats"]["frames_used"] == FaceSettings().min_frames
-    assert msg["stats"]["faces"] == 30
+    for i, sc in enumerate(scores):
+        collector.observe([face(score=sc)], None, 1920, 1080, 10.0 + i * 0.05)
+    registry.bind(5, 1, "ev-1", 10.5)
+    msg = collector.drain(10.5 + IDENT_WINDOW_S)[0]
+    assert emb.embed_calls == expected_embeds  # frame yang tidak mengalahkan K terbaik tidak di-embed
+    assert msg["stats"]["frames_used"] == BEST_K and msg["stats"]["faces"] == 8
+    assert msg["quality"] == pytest.approx(0.95)
+
+
+def test_collector_crop_prefers_frontal_face_over_wider_turned_one():
+    registry = IntrusionRegistry()
+    collector = _collector(registry, encode=FakeEncoder())
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    turned = [list(p) for p in FRONTAL]
+    turned[2][0] = 80  # hidung bergeser ke samping: yaw ≈ 0,5
+    collector.observe([face(width=100.0, kps=turned)], None, 1920, 1080, 10.0)  # lebih lebar, menoleh
+    collector.observe([face(width=70.0)], None, 1920, 1080, 10.1)               # lebih sempit, frontal
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["_crop"] == b"jpg-70"
+
+
+def test_collector_observe_returns_overlay_label_per_associated_face():
+    """Overlay debugger: label mengikuti gerbang identitas (kepala orang), bukan status zona."""
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    registry.touch(5, 1, BBOX, 10.0)
+    good, small, stray = face(width=120.0), face(width=40.0), face(cx=200.0, cy=900.0, width=120.0)
+    labels = collector.observe([good, small, stray], None, 1920, 1080, 10.0)
+    assert labels[id(good)] == "0.90" and labels[id(small)] == "small"
+    assert id(stray) not in labels  # bukan kepala siapa pun: tidak berlabel identitas
+
+
+def test_collector_flush_emits_bound_entries_without_waiting():
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    registry.touch(5, 2, BBOX, 10.0)  # belum terikat: tidak dikirim
+    collector.observe([face()], None, 1920, 1080, 10.0)
+    msgs = collector.flush()
+    assert [m["event_id"] for m in msgs] == ["ev-1"] and msgs[0]["embedding"] is not None
 
 
 def test_collector_drops_state_of_person_who_left_before_event():

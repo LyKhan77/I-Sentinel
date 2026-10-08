@@ -144,10 +144,11 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   (lebar × skor, bebas dari gerbang, diunggah ke `crops/`), gerbang kualitas sendiri (pitch,
   kualitas ≥ 0,5; penolakan dipisah dari `_funnel` attendance), dan agregasi embedding.
   Motion gate dilewati selama registry segar (TTL 3 dtk). Satu pesan `isentinel/events/face`
-  per event setelah `min_frames`, jendela 8 dtk, atau person hilang — dikirim thread pendek,
+  per event di akhir jendela 8 dtk setelah event atau saat person hilang (K=5 embedding terbaik berdasar
+  kualitas sejak orang masuk zona, bukan frame pertama; sisa dikirim saat worker berhenti) — dikirim thread pendek,
   loop frame tidak menunggu unggahan crop. Kamera critical tanpa zona attendance memakai worker wajah
   berzona kosong (tanpa event absensi); bila pesan tidak datang, API menandai alert itu
-  `unverified` setelah 15 dtk.
+  `unverified` setelah 20 dtk.
 - Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.
   Motion gate bangun karena gerak dan terus memproses frame diam selama wajah masih terlihat.
   Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.
@@ -268,7 +269,7 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
    `isentinel/events/face` dari node → consumer meng-pop embedding, pencocokan ketat
    (`FACE_ID_THRESHOLD` + margin top-1/top-2) → `payload.face` = `recognized|unknown|not_visible`
    (+ `crop_path` bukti manual) → WS `kind:"face"` → `sync_face_caption` mengedit caption dengan
-   baris Identitas (lock bersama baris AI). Tanpa pesan dalam 15 dtk → `unverified` (timer
+   baris Identitas (lock bersama baris AI). Tanpa pesan dalam 20 dtk → `unverified` (timer
    daemon; hilang bila API restart). Crop intrusion ikut
    retensi `snapshot_days`, tidak dianggap orphan sebelum itu.
 4. **Caption AI → Telegram**: dispatcher menyimpan `message_id` saat alert `sent`, lalu

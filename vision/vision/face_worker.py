@@ -133,6 +133,7 @@ class FaceGateWorker(threading.Thread):
             if not self.stop_event.is_set():
                 log.exception("camera %s: face worker died", self.camera_id)
         finally:
+            self._ident_step(time.monotonic(), flush=True)  # worker berhenti: kirim hasil sebagian
             self._pending_events.put(None)
             finalizer.join()
             self.join_ident_threads(5.0)
@@ -144,14 +145,14 @@ class FaceGateWorker(threading.Thread):
             th.join(timeout=max(0.0, deadline - time.monotonic()))
         self._ident_threads = [th for th in self._ident_threads if th.is_alive()]
 
-    def _ident_step(self, now: float, idle: bool = False) -> None:
+    def _ident_step(self, now: float, idle: bool = False, flush: bool = False) -> None:
         """Drain hasil identitas dan kirim lewat thread pendek per pesan (loop frame tak menunggu)."""
         if self.collector is None:
             return
         try:
             if idle:
                 self.collector.registry.prune(now)
-            for msg in self.collector.drain(now):
+            for msg in (self.collector.flush() if flush else self.collector.drain(now)):
                 th = threading.Thread(target=self._ship_ident, args=(msg,), daemon=True,
                                       name=f"ident-ship-{self.camera_id}")
                 self._ident_threads.append(th)
@@ -202,9 +203,10 @@ class FaceGateWorker(threading.Thread):
             faces = []
         dets = [Detection(bbox=(f.bbox[0] / w, f.bbox[1] / h, f.bbox[2] / w, f.bbox[3] / h),
                           conf=f.score) for f in faces]
+        ident_labels: dict[int, str] = {}  # label overlay wajah di kepala orang (bukan status zona)
         if self.collector is not None and frame.data is not None:
             try:
-                self.collector.observe(faces, frame.data, w, h, frame.ts)
+                ident_labels = self.collector.observe(faces, frame.data, w, h, frame.ts)
             except Exception:
                 self._ident_err.log(log, "camera %s: identity observe failed (isolated)",
                                     self.camera_id)
@@ -215,6 +217,13 @@ class FaceGateWorker(threading.Thread):
             f = by_bbox.get(tr.bbox)
             if f is None:
                 continue  # retained track without detection: no stale face overlay
+            ident_label = ident_labels.get(id(f))
+            if not self.zones:
+                # worker identitas-saja (tanpa zona attendance): hanya wajah di kepala orang yang digambar
+                if ident_label is not None:
+                    boxes.append({"id": tr.id, "bbox_norm": [round(v, 4) for v in tr.bbox],
+                                  "label": ident_label})
+                continue
             self._funnel["faces"] += 1
             code, zone = gate_code(f, w, h, self.zones, self.settings)
             aligned = None
@@ -232,7 +241,7 @@ class FaceGateWorker(threading.Thread):
                 self._funnel["rejects"][code] += 1
             q = quality(f.score, f.bbox[2] - f.bbox[0], yaw_ratio(f.kps))
             boxes.append({"id": tr.id, "bbox_norm": [round(v, 4) for v in tr.bbox],
-                          "label": code or f"{q:.2f}"})
+                          "label": ident_label or code or f"{q:.2f}"})
             if code is None:
                 passed.append((tr.id, f, zone, aligned, q))
         self._publish(boxes)  # overlay before ArcFace embedding and uploads

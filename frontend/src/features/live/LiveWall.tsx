@@ -242,7 +242,7 @@ const BOX_TTL_MS = 1000
 // dan disimpan sebentar: id track wajah mulai dari 1 lagi setelah node restart.
 const NAME_TTL_MS = 30000
 type FaceName = { name: string; at: number }
-const FACE_GATE_CODES = ['zone', 'small', 'score', 'yaw', 'blur'] as const
+const FACE_GATE_CODES = ['zone', 'small', 'score', 'yaw', 'blur', 'pitch', 'quality'] as const
 
 function DebugOverlay({ camId, showZones, showDetection, boxes, names }: {
   camId: number; showZones: boolean; showDetection: boolean; boxes: DetBox[]; names: Record<string, FaceName>
