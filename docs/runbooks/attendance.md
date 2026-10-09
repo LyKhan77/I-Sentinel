@@ -222,9 +222,10 @@ jendela heartbeat; heartbeat node lama tanpa corong menghasilkan null.
 ### Pemantauan pencocokan (query siap pakai)
 
 Jalankan di Postgres (`docker compose -f docker/compose.yml exec postgres psql -U isentinel -d isentinel`).
-Kolom diverifikasi dari `backend/app/models/event.py` (`type`, `camera_id`, `ts_event`, `payload` JSON);
-**belum dijalankan terhadap Postgres** (tidak ada Postgres di mesin eksekusi — validasi di server oleh sesi
-perencanaan). Ganti `interval '14 days'` sesuai kebutuhan dan `'Asia/Jakarta'` bila TZ server berbeda.
+Kolom diverifikasi dari `backend/app/models/event.py` (`type`, `camera_id`, `ts_event`, `payload`). Kolom
+`payload` bertipe `json` (bukan `jsonb`), jadi gunakan `->>` dan `IS NOT NULL`, bukan operator `?`; `round()`
+butuh `numeric`, sehingga hasil `percentile_cont` di-cast. Kedua query divalidasi 2026-10-09 di Postgres
+`gspe-ai3` dalam transaksi read-only (`PGOPTIONS="-c default_transaction_read_only=on"`). Ganti `interval '14 days'` sesuai kebutuhan dan `'Asia/Jakarta'` bila TZ server berbeda.
 
 ```sql
 -- 1) distribusi skor kecocokan + hitungan alasan per kamera per hari (jalur absensi)
@@ -233,12 +234,12 @@ SELECT camera_id,
        payload->>'match_reason'                                 AS reason,
        count(*)                                                 AS n,
        round(min((payload->>'face_score')::numeric), 3)         AS score_min,
-       round(percentile_cont(0.5) WITHIN GROUP (
-             ORDER BY (payload->>'face_score')::numeric), 3)     AS score_p50,
+       round((percentile_cont(0.5) WITHIN GROUP (
+             ORDER BY (payload->>'face_score')::numeric))::numeric, 3) AS score_p50,
        round(max((payload->>'face_score')::numeric), 3)         AS score_max
 FROM event
 WHERE type = 'attendance'
-  AND payload ? 'face_score'
+  AND payload->>'face_score' IS NOT NULL
   AND ts_event >= now() - interval '14 days'
 GROUP BY 1, 2, 3
 ORDER BY day DESC, camera_id, reason;

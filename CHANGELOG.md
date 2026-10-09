@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Pemusatan parameter pengenalan wajah — perbaikan review tahap 1 (2026-10-09)
+
+- **Konteks:** review sesi perencanaan atas `2292786` menemukan dua cacat. (1) Query pemantauan di `docs/runbooks/attendance.md` gagal di Postgres server (`ERROR: function round(double precision, integer) does not exist`; `percentile_cont` mengembalikan `double precision`) dan memakai `payload ? 'face_score'`, padahal `event.payload` bertipe `json` (bukan `jsonb`) sehingga operator `?` tidak berlaku. (2) `face_ident_window_s` boleh sampai 15 dtk, sedangkan jendela + unggah crop (≤ 6 dtk) + antrean MQTT ≈ 21 dtk melebihi `UNVERIFIED_AFTER_S` = 20 dtk: status `unverified` bisa mendahului hasil nyata dan caption Telegram diedit dua kali. Batas 1–15 berasal dari spec, bukan dari executor.
+- **Perubahan:** `DetectorSettingsIn.face_ident_window_s` `le=10` (UI `max=10`; spec §4 dikoreksi). Query runbook memakai `->> ... IS NOT NULL` dan cast `::numeric` pada median.
+- **Bukti:** RED benar: `test_identity_window_upper_bound_stays_below_unverified_timer` gagal `assert 200 == 422` (jendela 11 dtk diterima) dan tes UI `max` gagal (`max="15"` lawan `10`); sesudah perbaikan keduanya lulus. Suite berurutan: backend `971 passed / 1 deselected / 577 warnings` (baseline tahap 1 970), vision `338 passed / 3 deselected`, docker `77 passed`, frontend `38 berkas / 500 passed`, build exit 0, lint 24 warning / 16 pasangan identik baseline. Kedua query runbook (versi diperbaiki) dijalankan 2026-10-09 di Postgres `gspe-ai3` dalam transaksi read-only (`PGOPTIONS="-c default_transaction_read_only=on"`) dan menghasilkan baris; versi lama gagal di server dengan galat di atas.
+- **Dampak:** tidak ada perubahan perilaku untuk nilai tersimpan ≤ 10 dtk (nilai awal 8). Instalasi yang menyimpan > 10 lewat API sebelum perbaikan ini tidak ada (migrasi 0024 belum di-deploy).
+- **Rollback:** `git revert` commit perbaikan; migrasi tidak berubah.
+
 ### Pemusatan parameter pengenalan wajah — tahap 1 (2026-10-09)
 
 - **Konteks:** parameter pengenalan wajah tersebar di empat tempat (kolom `detector_setting`, env `Settings`, env `FACE_ID_*` compose/`.env`, konstanta kode node) dan dua algoritma (absensi lama melawan identitas intrusion) memakai angka berbeda untuk masukan yang sama. Tahap 1 memusatkan nilainya di baris `detector_setting` id=1 (dapat diubah di UI) **tanpa mengubah keputusan absensi**.
