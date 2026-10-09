@@ -18,8 +18,8 @@
 - Baris `detector_setting` id=1 boleh tidak ada: GET, config push, dan pencocokan memakai `Settings` (nilai awal sama dengan di atas; `face_id_margin` bawaan jadi 0.15).
 - Key hilang dari config push (backend lama) memakai nilai awal di node; node lama mengabaikan key tak dikenal.
 - Teks UI lewat `src/app/i18n.tsx` (`id` dan `en`), komponen Carbon, 390 px tanpa overflow horizontal.
-- Commit Conventional Commits berbahasa Indonesia, **tanpa atribusi AI** (AGENTS.md §9), jangan `push` sebelum semua task hijau. Suite dijalankan berurutan, bukan paralel. Tanpa secret di kode atau dokumen.
-- Executor berhenti di `git push` dari `feat/face-params-unify`; deploy, uji lapangan, dan merge dikerjakan sesi perencanaan.
+- Commit Conventional Commits berbahasa Indonesia, **tanpa atribusi AI** (AGENTS.md §9), commit tetap lokal. Suite dijalankan berurutan, bukan paralel. Tanpa secret di kode atau dokumen.
+- Executor berhenti di commit lokal dan laporan; review, `git push`, deploy, uji lapangan, dan merge dikerjakan sesi perencanaan.
 
 ## Review Focus
 
@@ -100,4 +100,4 @@
 - [ ] **Step 2: `ROADMAP.md`:** baris baru `FPU` (keselarasan parameter wajah) `[~]` dengan tahap 1 selesai dan tahap 2 menunggu bukti; **jangan** menutup `IFI`.
 - [ ] **Step 3: Suite penuh berurutan,** tempel hasil ke `CHANGELOG.md`: `cd backend && pytest tests -q -m "not gpu and not llm"`; `cd vision && pytest tests -q -m "not gpu"`; `pytest docker/tests -q`; `cd frontend && npx vitest run && npm run lint && npm run build`. Kegagalan apa pun dilaporkan dengan nama tesnya.
 - [ ] **Step 4: `CHANGELOG.md`:** satu entri per commit atau satu entri siklus (konteks, berkas, bukti, dampak termasuk ambang intrusion server 0,35 → 0,40, rollback `git revert` + `alembic downgrade -1`).
-- [ ] **Step 5: Commit** `docs: parameter pengenalan wajah terpusat di DB (tahap 1)` lalu `git push -u origin feat/face-params-unify`, dan berhenti.
+- [ ] **Step 5: Commit** `docs: parameter pengenalan wajah terpusat di DB (tahap 1)`, lalu berhenti dan serahkan laporan (tanpa push).
