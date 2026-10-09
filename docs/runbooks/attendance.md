@@ -335,8 +335,9 @@ Hasil ditempel di `CHANGELOG.md`/`ROADMAP.md`; keputusan membalik saklar ada di 
 ### Mengukur kecepatan dan hasil
 
 Query pemantauan berikut memakai kolom dari `backend/app/models/event.py`; `payload` bertipe `json`
-(pakai `->`/`->>`, bukan operator `?`) dan `round()` butuh `numeric`. **Belum divalidasi di Postgres —
-sesi perencanaan memvalidasi di server sebelum dipakai.**
+(pakai `->`/`->>`, bukan operator `?`) dan `round()` butuh `numeric`. **Divalidasi 2026-10-09** di Postgres
+`gspe-ai3` dalam transaksi read-only (`PGOPTIONS="-c default_transaction_read_only=on"`): kedua query
+dieksekusi tanpa galat; query kecepatan menghasilkan 0 baris karena belum ada event `unified`.
 
 ```sql
 -- 1) kecepatan event unified: distribusi zone_s dan collect_s (dtk) per kamera per hari
