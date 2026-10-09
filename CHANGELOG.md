@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Skrip replay: batas CPU onnxruntime dan batas waktu (2026-10-09)
+
+- **Konteks:** replay pertama di container `api` `gspe-ai3` (`nice -n 19 taskset -c 0-3`, `OMP_NUM_THREADS=2`, atas persetujuan user) memakai **±1600% CPU** (121 thread, `docker top`), load host naik 50 → 82, dan tetap berjalan setelah handle ssh dihentikan; proses berakhir sendiri sebelum `pkill` dijalankan (`pkill` tidak ada di image `api`). Layanan tetap sehat dan CPU `api` kembali ±1%; load turun ke 55 dalam ±1 menit. Ringkasan hilang karena koneksi terputus sebelum tercetak (32 crop terbaca "tanpa wajah" di log parsial; jumlah yang diproses tak diketahui). Penyebab: onnxruntime memasang afinitas threadnya sendiri dan mengabaikan `taskset` dan `OMP_NUM_THREADS`; pelajaran yang sama dengan insiden analisis klip 2026-10-08.
+- **Perubahan:** `backend/scripts/face_replay.py`: `cap_onnx_threads(threads)` menambal `onnxruntime.InferenceSession` agar `intra_op_num_threads` = `--threads` (bawaan 2), `inter_op` 1, tanpa spin, juga bila pemanggil memberi `sess_options`; `--max-seconds` (bawaan 300) menghentikan sendiri dan tetap mencetak ringkasan; ringkasan memuat `tanpa wajah: N` dan cetakan progres ber-`flush`. Runbook diperbarui (perintah, batas, aturan hentikan bila CPU > ±300%).
+- **Bukti:** RED benar (`AttributeError: ... has no attribute 'cap_onnx_threads'`, `SystemExit: 2` untuk `--max-seconds`, tidak ada `tanpa wajah`); 11 tes replay lulus; mutasi (`intra_op_num_threads` dihapus) → merah, dikembalikan. Efek CPU nyata baru terbukti di server (onnxruntime tidak terpasang di mesin lokal): wajib dipantau pada percobaan berikutnya.
+- **Dampak:** hanya skrip dan runbook; tidak ada perubahan produk. **Belum ada hasil replay**.
+- **Rollback:** `git revert`; tidak ada efek ke server.
+
 ### Keselarasan algoritma absensi — perbaikan review tahap 2 (2026-10-09)
 
 - **Konteks:** review sesi perencanaan atas `8eab439` menemukan dua cacat pada jalur `unified`. (1) **Latensi orang lewat cepat:** event hanya dikirim saat jendela (1,5 dtk) habis atau saat track hilang; `FaceGateWorker` memakai `ByteTracker` `max_age_s` 3,0 sehingga wajah yang terlihat < 1,5 dtk baru tercatat ±3 dtk sesudah terakhir terlihat (mode `legacy` mengirim dalam ±0,3–0,6 dtk), dan `zone_s` memakai timestamp frame terakhir sehingga **ukuran kecepatan menyembunyikan keterlambatan itu**. (2) `first_ts` diisi sebelum embed pertama berhasil: bila embed gagal/`None` sampai jendela habis, `_emit_due` mengirim dengan keranjang kosong, `aggregate([], [])` melempar galat yang ditelan finalizer, dan `done = True` mematikan track tanpa event.

@@ -307,9 +307,15 @@ Menguji ulang ambang/margin pada crop event nyata (bukan waktu jendela). Jalanka
 CPU dibatasi, dan **beri tahu user dulu** (analisis di server membebani CPU):
 
 ```bash
-docker compose -f docker/compose.yml exec api \
-    nice -n 19 taskset -c 0-3 python -m scripts.face_replay --days 14 --limit 200
+docker compose -f docker/compose.yml exec -T api \
+    nice -n 19 python -m scripts.face_replay --days 14 --limit 40 --threads 2 --max-seconds 120
 ```
+
+**Batas CPU:** `taskset` dan `OMP_NUM_THREADS` tidak membatasi onnxruntime (ia memasang afinitas threadnya
+sendiri; percobaan pertama 2026-10-09 memakai ±1600% CPU dan load host 50–80 walau `taskset -c 0-3`). Skrip
+membatasi sesi lewat `--threads` dan berhenti sendiri pada `--max-seconds` sambil tetap mencetak ringkasan.
+Mulai dengan `--limit` kecil, pantau `docker stats --no-stream` pada beberapa detik pertama, dan bila CPU
+`api` melebihi ±300% hentikan dengan membatalkan perintah (jangan membiarkannya selesai).
 
 Keluaran hanya ID (event dan karyawan) — tanpa nama, tanpa embedding. Syarat lolos spec §7.1:
 `same_pct` ≥ 98 (crop yang dikenali `legacy` tetap karyawan yang sama di 0,40 / 0,15) dan `flipped` 0
