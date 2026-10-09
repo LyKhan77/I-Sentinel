@@ -67,8 +67,8 @@ Bukti bahwa algoritma intrusion (tanpa gerbang blur/quality absolut, peringkat r
 - `docker/compose.yml` dan `.env.example`: `FACE_ID_THRESHOLD` dihapus; `FACE_ID_MARGIN` dan `FACE_MATCH_THRESHOLD` ditandai sebagai cadangan.
 
 **Vision:**
-- `vision/vision/intrusion_face.py`: dataclass beku `IdentSettings(min_width_px=60.0, max_pitch=0.30, best_k=5, window_s=8.0)` dengan `from_config(face: dict | None)` (key hilang memakai nilai awal, pola `FaceSettings.from_config`). Konstanta `IDENT_MIN_WIDTH_PX`, `MAX_PITCH`, `BEST_K`, `IDENT_WINDOW_S` hilang; `IdentCollector` menerima `IdentSettings`. `FaceSettings` tidak berubah.
-- `node.py` membangun `IdentSettings` dari config; plan harus memverifikasi bahwa perubahan blok `face` memicu muat ulang worker wajah (mekanisme untuk `FaceSettings` yang sudah ada).
+- `vision/vision/face_quality.py`: dataclass beku `IdentSettings(min_width_px=60.0, max_pitch=0.30, best_k=5, window_s=8.0)` dengan `from_config(ident: dict | None)` (key hilang memakai nilai awal), tertanam sebagai `FaceSettings.ident` dan dibaca `FaceSettings.from_config` dari `face["ident"]`. Nilai awalnya adalah konstanta `IDENT_MIN_WIDTH_PX`, `MAX_PITCH`, `BEST_K`, `IDENT_WINDOW_S` yang dipindah ke `face_quality.py` dan tetap dapat diimpor dari `vision.intrusion_face`. `IdentCollector` membaca `settings.ident` (parameter `settings: FaceSettings` yang sudah diterimanya).
+- Muat ulang worker sudah tercakup: `Node.apply_config` membandingkan `FaceSettings` lama dan baru (`node.py:445-448`) dan merestart worker wajah kamera terkait bila berbeda; karena `ident` bagian dari `FaceSettings`, perubahan nilai identitas ikut terdeteksi tanpa kode tambahan.
 
 **Frontend (`DetectionPage.tsx`, `api/detection.ts`, `i18n.tsx`):** kartu "Pengenalan wajah" dengan tiga grup: **Bersama** (skor deteksi, yaw, ambang kecocokan), **Identitas** (lebar min identitas, pitch, K, margin, jendela), **Absensi (lama)** (lebar, blur, jumlah frame). Teks lewat i18n (`id` dan `en`). Tanpa CSS baru selain token Carbon yang ada; 390 px tanpa overflow.
 
@@ -98,14 +98,19 @@ Mengikuti berkas yang ada. Tiap tes harus gagal pada bug yang masuk akal; rincia
 ## 7. Bukti tahap 2 sebelum saklar dibalik ke `unified`
 
 1. **Replay offline** (di `api` container, `nice -n 19 taskset -c 0-3`, satu klip/crop per proses, diumumkan dulu ke user — lihat memori `limit-cpu-for-server-diagnostics`): crop event absensi ≥ 14 hari terakhir. Syarat: ≥ 98% crop yang dikenali `legacy` tetap ke karyawan yang sama di 0,40 / 0,15; 0 berpindah ke karyawan lain; daftar `ambiguous` dan pasangan karyawannya dilaporkan; crop `no_match` lama yang kini cocok dilaporkan untuk dinilai manual. Replay hanya menguji aturan ambang/margin pada satu crop, bukan waktu jendela.
-2. **Uji lapangan** di kamera profil C (2K, 15 fps, Max. 8192 kbps): ≥ 5 karyawan × 10 lintasan → ≥ 95% tercatat, median ≤ 2 dtk, p95 ≤ 3 dtk, 0 salah-orang; ≥ 10 lintasan non-karyawan (≥ 3 orang) → 0 tercatat.
+2. **Uji lapangan** di kamera profil C (2K, 15 fps, Max. 8192 kbps). Angka dilaporkan per kategori, karena satu angka gabungan menyembunyikan batas fisik:
+   - **A. Berjalan normal menuju kamera, tanpa berhenti** (kategori penentu): ≥ 5 karyawan × 10 lintasan → ≥ 95% tercatat, median ≤ 2 dtk, p95 ≤ 3 dtk, 0 salah-orang.
+   - **B. Berhenti sebentar di titik absensi**: kriteria sama dengan A.
+   - **C. Menyamping atau menunduk (melihat ponsel)**: 5 lintasan per karyawan; hasil dicatat sebagai batas sistem (bukan kegagalan) dan dipakai untuk saran penempatan kamera. Syarat tetap: 0 salah-orang.
+   - **D. Non-karyawan**: ≥ 10 lintasan (≥ 3 orang), berjalan dan berhenti → 0 tercatat.
 3. Hasil ditempel di `CHANGELOG.md` dan `ROADMAP.md`; keputusan balik saklar ada di tangan user.
+4. **Pemantauan setelah `unified`:** runbook memuat query siap pakai untuk distribusi `match_score` dan rasio `match_reason` (`matched`, `no_match`, `ambiguous`) per kamera per hari dari tabel event; tanpa fitur atau tabel baru. Ambang dan galeri diuji ulang bila jumlah karyawan terdaftar berlipat.
 
 ## 8. Risiko dan rollback
 
 | Risiko | Mitigasi |
 |---|---|
-| Ambang intrusion naik 0,35 → 0,40; kelonggaran genuine hanya 0,044 (agregat terendah 0,444) | Dapat diubah di UI tanpa deploy; non-karyawan tambahan dicatat sebelum `IFI` ditutup |
+| Ambang intrusion naik 0,35 → 0,40; kelonggaran genuine hanya 0,044 (agregat terendah 0,444) dan baru dua non-karyawan teruji | Dapat diubah di UI tanpa deploy; baris `IFI` di ROADMAP tetap `[~]` sampai ≥ 3 non-karyawan teruji (kategori D di §7) |
 | Margin menolak karyawan kembar/mirip (`ambiguous`) → absensi terlewat | Daftar `ambiguous` di replay; koreksi admin tetap tersedia; saklar `legacy` |
 | Ketidaksesuaian versi: node baru dengan backend lama (atau sebaliknya) | Key hilang memakai nilai awal di kedua sisi; kontrak diuji |
 | Row `detector_setting` belum ada di instalasi baru | Fallback ke `Settings`, diuji |
