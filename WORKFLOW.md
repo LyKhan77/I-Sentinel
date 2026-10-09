@@ -263,7 +263,8 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
    `legacy` menerbitkan event setelah `face_min_frames` frame lolos gerbang lama (lebar 80, blur 120);
    `unified` memakai gerbang identitas (lebar 60, skor, yaw, pitch; tanpa gerbang blur) dan mengirim
    **tepat sekali per track** saat jendela `attendance_window_s` (bawaan 1,5 dtk) berlalu sejak kandidat
-   pertama atau track hilang, dengan embedding dari K frame terbaik. Detail: `docs/runbooks/attendance.md`.
+   pertama, atau 0,5 dtk tanpa kandidat baru (orang pergi), atau track hilang, dengan embedding dari K
+   frame terbaik. Detail: `docs/runbooks/attendance.md`.
 2. API mencocokkan ke galeri (cosine ≥ ambang kecocokan di Konfigurasi → Deteksi & Model → kartu
    **Pengenalan wajah** → grup Bersama; default 0,40, `FACE_MATCH_THRESHOLD` hanya cadangan bila baris
    setelan belum ada). Event ber-`payload.policy = "unified"` memakai `match_strict` (ambang + margin

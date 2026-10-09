@@ -286,7 +286,7 @@ Model → Advanced → kartu Pengenalan wajah → grup Mode absensi** dan berlak
 | | `legacy` (bawaan) | `unified` |
 |---|---|---|
 | Gerbang per wajah | lebar `face_min_width_px` (80), skor, yaw, **blur `face_blur_min`** (120) | lebar `face_ident_min_width_px` (60), skor, yaw, pitch `face_max_pitch`; **tanpa gerbang blur** |
-| Kapan event terbit | setelah `face_min_frames` (3) frame lolos | setelah jendela `face_attendance_window_s` berlalu sejak kandidat pertama, atau track hilang dengan ≥ 1 kandidat |
+| Kapan event terbit | setelah `face_min_frames` (3) frame lolos | setelah jendela `face_attendance_window_s` berlalu sejak vektor pertama, **atau** 0,5 dtk (`UNIFIED_GONE_S`) tanpa kandidat baru (orang pergi; tidak menunggu tracker 3 dtk), atau track hilang, dengan ≥ 1 vektor |
 | Embedding | agregat berbobot semua frame lolos | agregat berbobot K frame terbaik (`face_best_k`) berperingkat `skor × ketajaman` |
 | Keputusan API | `match_vector` (ambang saja) | `match_strict` (ambang 0,40 + margin 0,15); `ambiguous` = tidak dikenal |
 | Payload | tanpa `policy` | `policy: "unified"` + `face_stats.collect_s` dan `zone_s` |

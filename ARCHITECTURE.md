@@ -170,8 +170,8 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   (lebar 80, blur 120, `min_frames` 3) dan keputusan API `match_vector`; `unified` = gerbang identitas
   (lebar `ident.min_width_px`, skor, yaw, pitch; **tanpa gerbang blur**) dengan K frame terbaik
   berperingkat `skor × ketajaman` (kelas `BestK` bersama `IdentCollector`), kirim **tepat sekali per
-  track** saat `attendance_window_s` berlalu sejak kandidat pertama atau track hilang dengan ≥ 1
-  kandidat (K kandidat tidak memicu), payload `policy: "unified"` + `face_stats.collect_s`/`zone_s`.
+  track** saat `attendance_window_s` berlalu sejak vektor pertama, 0,5 dtk (`UNIFIED_GONE_S`) tanpa
+  kandidat baru, atau track hilang, dengan ≥ 1 vektor (K kandidat tidak memicu), payload `policy: "unified"` + `face_stats.collect_s`/`zone_s`.
   API memilih algoritma dari `payload.policy` event, **bukan** baris DB, supaya keputusan konsisten per
   event walau saklar dibalik saat event di perjalanan; `unified` memakai `match_strict` (ambang + margin,
   tanpa gerbang `low_quality`) dan hasil `ambiguous` diperlakukan seperti `no_match` (tanpa baris
