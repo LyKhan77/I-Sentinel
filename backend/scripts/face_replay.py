@@ -9,6 +9,11 @@ container `api` dengan CPU dibatasi dan beri tahu user lebih dulu (lihat memori
 
 Keluaran hanya ID event dan ID karyawan — tanpa nama, tanpa embedding. Syarat lolos spec §7.1:
 `same_pct` ≥ 98 dan `flipped` 0.
+
+Batas CPU: onnxruntime memasang afinitas threadnya sendiri, jadi `taskset` dan `OMP_NUM_THREADS` TIDAK
+membatasinya (percobaan 2026-10-09: ±1600% CPU walau `taskset -c 0-3`). Skrip membatasi sesi onnxruntime
+lewat `--threads` (bawaan 2) dan berhenti sendiri setelah `--max-seconds` (bawaan 300) sambil tetap
+mencetak ringkasan; mulai dengan `--limit` kecil dan pantau `docker stats` beberapa detik pertama.
 """
 from __future__ import annotations
 
@@ -39,6 +44,29 @@ def classify(legacy_employee_id: int | None, strict) -> str:
             return "flipped"
         return "ambiguous" if strict.reason == "ambiguous" else "lost"
     return "gained" if strict.employee_id is not None else "both_none"
+
+
+def cap_onnx_threads(threads: int) -> bool:
+    """Paksa semua sesi onnxruntime memakai `threads` thread intra-op (inter-op 1, tanpa spin).
+
+    Bila pemanggil tak memberi `sess_options` (cara insightface), dibuat baru; bila memberi, diubah.
+    Mengembalikan False bila onnxruntime tidak terpasang.
+    """
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        return False
+    original = ort.InferenceSession.__init__
+
+    def limited(self, path_or_bytes, sess_options=None, *args, **kwargs):
+        options = sess_options if sess_options is not None else ort.SessionOptions()
+        options.intra_op_num_threads = threads
+        options.inter_op_num_threads = 1
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        original(self, path_or_bytes, options, *args, **kwargs)
+
+    ort.InferenceSession.__init__ = limited
+    return True
 
 
 def summarize(rows: list[dict]) -> dict:
@@ -79,9 +107,13 @@ def _candidates(db, days: int, limit: int):
     return selected
 
 
-def _print_report(rows: list[dict], summary: dict, scanned: int) -> None:
+def _print_report(rows: list[dict], summary: dict, scanned: int, no_face: int = 0,
+                  stopped_after: float | None = None) -> None:
     counts = summary["counts"]
     print(f"event absensi ber-crop dalam jendela: {scanned}, direplay: {len(rows)}")
+    print(f"tanpa wajah: {no_face}")
+    if stopped_after is not None:
+        print(f"dihentikan: batas waktu {stopped_after:g} dtk tercapai; ringkasan hanya untuk yang sempat diproses")
     print("kategori: " + ", ".join(f"{key}={counts[key]}" for key in CATEGORIES))
     print(f"same_pct: {summary['same_pct']}% dari {summary['legacy_recognized']} event yang dikenali legacy")
     for row in rows:
@@ -100,10 +132,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--days", type=int, default=14, help="jendela event ke belakang (hari)")
     parser.add_argument("--limit", type=int, default=200, help="maksimum event diperiksa")
     parser.add_argument("--sleep", type=float, default=0.2, help="jeda antar crop (detik, pembatas CPU)")
+    parser.add_argument("--threads", type=int, default=2, help="thread intra-op onnxruntime (pembatas CPU)")
+    parser.add_argument("--max-seconds", type=float, default=300.0,
+                        help="berhenti sendiri setelah sekian detik dan tetap mencetak ringkasan")
     args = parser.parse_args(argv)
 
     # dibatasi sebelum model dimuat (onnxruntime membaca OMP saat import/init)
     os.environ.setdefault("OMP_NUM_THREADS", "2")
+    cap_onnx_threads(args.threads)
 
     db = SessionLocal()
     try:
@@ -112,7 +148,13 @@ def main(argv: list[str] | None = None) -> int:
         policy = face_policy.load(db)
         print(f"kebijakan: ambang {policy.match_threshold} margin {policy.match_margin}")
         rows: list[dict] = []
-        for ev, crop in selected:
+        no_face = 0
+        started = time.monotonic()
+        stopped_after = None
+        for done, (ev, crop) in enumerate(selected, start=1):
+            if time.monotonic() - started >= args.max_seconds:
+                stopped_after = args.max_seconds
+                break
             path = Path(settings.storage_root) / crop
             try:
                 faces = face.engine.embed(str(path))
@@ -120,7 +162,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"model wajah tidak tersedia: {exc}", file=sys.stderr)
                 return 2
             if not faces:
-                print(f"event={ev.event_id} dilewati: tidak ada wajah di crop")
+                no_face += 1
+                print(f"event={ev.event_id} dilewati: tidak ada wajah di crop", flush=True)
                 continue
             best = face._best_face(faces)
             rows.append({
@@ -128,8 +171,10 @@ def main(argv: list[str] | None = None) -> int:
                 "legacy_employee_id": (ev.payload or {}).get("employee_id"),
                 "strict": face.match_strict(best.vector, None, policy),
             })
+            if done % 20 == 0:
+                print(f"... {done}/{len(selected)} crop diproses", flush=True)
             time.sleep(max(0.0, args.sleep))
-        _print_report(rows, summarize(rows), len(selected))
+        _print_report(rows, summarize(rows), len(selected), no_face, stopped_after)
         return 0
     finally:
         db.close()

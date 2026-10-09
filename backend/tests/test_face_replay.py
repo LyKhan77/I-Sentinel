@@ -140,3 +140,123 @@ def test_main_reports_missing_model_with_nonzero_exit(db, tmp_path, monkeypatch,
 
     assert code != 0
     assert "model wajah" in err
+
+
+# --- batas CPU: onnxruntime memasang afinitas sendiri sehingga taskset/OMP_NUM_THREADS tidak membatasinya ---
+
+import sys
+import types
+
+import pytest
+
+_REAL_CAP = face_replay.cap_onnx_threads if hasattr(face_replay, "cap_onnx_threads") else None
+
+
+@pytest.fixture(autouse=True)
+def _no_global_ort_patch(monkeypatch):
+    """Tes `main` tidak boleh menambal onnxruntime nyata (bocor ke tes lain)."""
+    if _REAL_CAP is not None:
+        monkeypatch.setattr(face_replay, "cap_onnx_threads", lambda threads: None)
+
+
+def test_cap_onnx_threads_injects_session_options_even_when_caller_passes_none(monkeypatch):
+    seen = {}
+
+    class FakeOptions:
+        def __init__(self):
+            self.entries = {}
+
+        def add_session_config_entry(self, key, value):
+            self.entries[key] = value
+
+    class FakeSession:
+        def __init__(self, path_or_bytes, sess_options=None, providers=None, **kwargs):
+            seen["options"] = sess_options
+            seen["providers"] = providers
+
+    fake = types.SimpleNamespace(SessionOptions=FakeOptions, InferenceSession=FakeSession)
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake)
+
+    assert _REAL_CAP(2) is True
+    fake.InferenceSession("m.onnx", providers=["CPUExecutionProvider"])  # cara insightface memanggil
+
+    opts = seen["options"]
+    assert (opts.intra_op_num_threads, opts.inter_op_num_threads) == (2, 1)
+    assert opts.entries == {"session.intra_op.allow_spinning": "0"}
+    assert seen["providers"] == ["CPUExecutionProvider"]
+
+
+def test_cap_onnx_threads_overrides_options_passed_by_the_caller(monkeypatch):
+    seen = {}
+
+    class FakeOptions:
+        intra_op_num_threads = 0
+        inter_op_num_threads = 0
+
+        def add_session_config_entry(self, key, value):
+            pass
+
+    class FakeSession:
+        def __init__(self, path_or_bytes, sess_options=None, **kwargs):
+            seen["options"] = sess_options
+
+    monkeypatch.setitem(sys.modules, "onnxruntime",
+                        types.SimpleNamespace(SessionOptions=FakeOptions, InferenceSession=FakeSession))
+    _REAL_CAP(3)
+    own = FakeOptions()
+    sys.modules["onnxruntime"].InferenceSession("m.onnx", own)
+
+    assert seen["options"] is own and own.intra_op_num_threads == 3
+
+
+def test_cap_onnx_threads_without_onnxruntime_is_a_noop(monkeypatch):
+    monkeypatch.setitem(sys.modules, "onnxruntime", None)  # import gagal
+    assert _REAL_CAP(2) is False
+
+
+def test_main_caps_threads_before_any_model_call(db, tmp_path, monkeypatch, capsys):
+    a, b = _seed(db, tmp_path)
+    calls = []
+    monkeypatch.setattr(face_replay, "cap_onnx_threads", lambda threads: calls.append(("cap", threads)))
+    monkeypatch.setattr(face_replay, "SessionLocal", lambda: Session(bind=db.get_bind()))
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path))
+    vectors = {str(tmp_path / "crops" / "a.jpg"): A_VEC, str(tmp_path / "crops" / "b.jpg"): MID_VEC}
+    inner = _fake_embedder(vectors)
+
+    def embed(self, path):
+        calls.append(("embed", path))
+        return inner(self, path)
+
+    monkeypatch.setattr(face.FaceEngine, "embed", embed)
+    monkeypatch.setattr(face, "refresh_gallery", lambda db_: face.gallery)
+    face.gallery._by_employee = {a.id: [A_VEC], b.id: [[0.0, 1.0, 0.0, 0.0]]}
+
+    assert face_replay.main(["--sleep", "0", "--threads", "3"]) == 0
+    assert calls[0] == ("cap", 3) and calls[1][0] == "embed"
+
+
+def test_main_stops_at_max_seconds_and_still_prints_the_summary(db, tmp_path, monkeypatch, capsys):
+    a, b = _seed(db, tmp_path)
+    monkeypatch.setattr(face_replay, "SessionLocal", lambda: Session(bind=db.get_bind()))
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path))
+    monkeypatch.setattr(face.FaceEngine, "embed", _fake_embedder({}))  # tidak boleh dipanggil
+    monkeypatch.setattr(face, "refresh_gallery", lambda db_: face.gallery)
+
+    code = face_replay.main(["--sleep", "0", "--max-seconds", "0"])
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "batas waktu" in out and "direplay: 0" in out and "same_pct" in out
+
+
+def test_main_counts_crops_without_a_face(db, tmp_path, monkeypatch, capsys):
+    a, b = _seed(db, tmp_path)
+    monkeypatch.setattr(face_replay, "SessionLocal", lambda: Session(bind=db.get_bind()))
+    monkeypatch.setattr(settings, "storage_root", str(tmp_path))
+    monkeypatch.setattr(face.FaceEngine, "embed", lambda self, path: [])
+    monkeypatch.setattr(face, "refresh_gallery", lambda db_: face.gallery)
+
+    assert face_replay.main(["--sleep", "0"]) == 0
+    out = capsys.readouterr().out
+
+    assert "tanpa wajah: 3" in out  # _seed membuat tiga event ber-crop
