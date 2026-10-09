@@ -3,6 +3,15 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Pemusatan parameter pengenalan wajah — tahap 1 ter-deploy (2026-10-09)
+
+- **Konteks:** tahap 1 (`4919f5d..4b50440`) di-deploy ke `gspe-ai3` atas persetujuan user: `git checkout feat/face-params-unify` di clone Docker (sebelumnya `feat/intrusion-face-progressive` @ `2cedca8`), `./docker/setup.sh` (`api`, `vision`, `web`, `retention` dibuat ulang), lalu hanya `web` dibuat ulang untuk ikon info.
+- **Bukti (server, keluaran nyata):** `/api/v1/health` `{"status":"ok"}`; `alembic current` `0024 (head)`; baris `detector_setting` `face_match_threshold 0.4, face_match_margin 0.15, face_max_pitch 0.3, face_best_k 5, face_ident_min_width_px 60, face_ident_window_s 8` dengan `face_min_width_px 80` dan `face_blur_min 120` utuh; `torch.cuda.device_count()` 3 di `vision`; `started 7 worker(s) for 10 camera(s)`; 0 galat `api` dalam 3 menit; `web` sehat dan membalas 200 (bundel `index-D2Q8IpSM.js`). Query pemantauan runbook (versi diperbaiki) dijalankan read-only dan menghasilkan baris.
+- **Hasil dari user (pernyataan lisan, tanpa bukti tertulis):** event absensi terbaru sesudah deploy berhasil mengenali karyawan yang lewat. Ambang 0,40 dinyatakan OK dan dianggap cukup ideal untuk menghindari salah-kenal; uji intrusion lapangan sebelumnya (kamera 357, skenario lengkap, pada ambang 0,35 sebelum deploy) dinyatakan sudah dilakukan dan tidak diulang pasca-deploy.
+- **Belum terbukti:** jalur intrusion membaca ambang dari DB di server nyata (teramati hanya lewat tes otomatis, bukan event nyata); jumlah non-karyawan teruji tetap kecil (event tertulis: 2 orang), jarak tepat 3 m dan 8–9 m, dan lintasan berjalan terkontrol. `IFI` tetap `[~]`. Pengamatan server: absensi `legacy` pada 2026-10-09 di kamera 358 mencatat 11 `no_match` lawan 2 `matched` (penyebab belum diselidiki; salah satu alasan tahap 2).
+- **Dampak:** nilai efektif identitas intrusion di server 0,40 / 0,15 dari DB (sebelumnya 0,35 / 0,15 dari `.env`); `FACE_ID_THRESHOLD` di `docker/.env` tidak lagi dipakai; absensi tidak berubah.
+- **Rollback:** `docker compose exec api alembic downgrade -1`, `git checkout feat/intrusion-face-progressive`, `./docker/setup.sh`.
+
 ### Kartu "Pengenalan wajah": ikon info dengan penjelasan parameter (2026-10-09)
 
 - **Konteks:** setelah deploy tahap 1 user bertanya apa beda tiga grup (Bersama / Identitas / Absensi (lama)) dan meminta ikon informasi yang menjelaskan pengaruh tiap parameter saat di-hover.
