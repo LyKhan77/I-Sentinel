@@ -1111,6 +1111,17 @@ html {
 .det-actions { text-align: end; }
 .det-link { background: none; border: 0; padding: 0; font-size: 12px; cursor: pointer; color: var(--cds-link-primary); }
 .det-advanced { display: grid; gap: 16px; max-inline-size: 320px; margin-block-start: 16px; }
+.info-tip-label { display: inline-flex; align-items: center; gap: 4px; }
+.det-group-title { margin-block-start: 8px; }
+.info-tip-row { position: relative; }
+.info-tip-row > .info-tip { position: absolute; inset-block-start: 0; inset-inline-end: 0; }
+.info-tip__btn {
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: none;
+  color: var(--cds-icon-secondary); cursor: help;
+}
+.info-tip__btn:hover, .info-tip__btn:focus-visible { color: var(--cds-icon-primary); }
+.info-tip__btn:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: 2px; }
+.info-tip .cds--popover-content { max-inline-size: min(18rem, calc(100vw - 48px)); padding: 8px 12px; white-space: normal; }
 @media (max-width: 672px) { .det-global { grid-template-columns: 1fr 1fr; } .det-table { min-inline-size: 760px; } .det-page { overflow-x: auto; } }
 
 /* Enrollment (tab Karyawan | Shift) */

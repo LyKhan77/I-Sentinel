@@ -99,3 +99,22 @@ def test_face_settings_defaults_and_partial_config():
     assert FaceSettings.from_config(None) == FaceSettings()
     s = FaceSettings.from_config({"device": "cuda:2", "min_frames": 5})
     assert s.min_frames == 5 and s.min_width_px == 80.0 and s.blur_min == 120.0
+
+
+def test_ident_settings_defaults_and_partial_config():
+    from vision.face_quality import IdentSettings
+
+    assert IdentSettings.from_config(None) == IdentSettings()
+    s = IdentSettings.from_config({"best_k": 3})
+    assert s.best_k == 3 and isinstance(s.best_k, int)
+    assert (s.min_width_px, s.max_pitch, s.window_s) == (60.0, 0.30, 8.0)
+
+
+def test_face_settings_reads_ident_block_and_compares_unequal():
+    from vision.face_quality import IdentSettings
+
+    s = FaceSettings.from_config({"ident": {"window_s": 3.0, "best_k": "4"}})
+    assert s.ident == IdentSettings(window_s=3.0, best_k=4)
+    assert isinstance(s.ident.best_k, int)
+    assert FaceSettings.from_config({"ident": {"window_s": 3.0}}) != FaceSettings()
+    assert FaceSettings.from_config({"ident": {}}) == FaceSettings()

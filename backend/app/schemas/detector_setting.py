@@ -15,6 +15,12 @@ class DetectorSettingsIn(BaseModel):
     face_max_yaw: float = Field(gt=0, le=1)
     face_blur_min: float = Field(ge=0)
     face_min_frames: int = Field(ge=1, le=20)
+    face_match_threshold: float = Field(ge=0.1, le=0.99)
+    face_match_margin: float = Field(ge=0, le=0.5)
+    face_max_pitch: float = Field(ge=0.05, le=1)
+    face_best_k: int = Field(ge=1, le=10)
+    face_ident_min_width_px: float = Field(ge=16, le=1000)
+    face_ident_window_s: float = Field(ge=1, le=10)  # + unggah crop ≤ 6 dtk harus < UNVERIFIED_AFTER_S (20 dtk)
 
 
 class DetectorSettingsOut(DetectorSettingsIn):

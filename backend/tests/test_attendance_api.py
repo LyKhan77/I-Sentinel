@@ -402,3 +402,66 @@ def test_patch_with_note_clears_exit_early_min(client, db):
     r = client.patch(f"/api/v1/attendance/{day.id}", json={"override_note": "pulang cepat"}, headers=h)
     assert r.status_code == 200
     assert r.json()["exit_early_min"] is None
+
+
+# --- kebijakan pencocokan dari baris detector_setting (T2) ------------------
+
+def _policy_row(db, **over):
+    """Baris id=1 lengkap supaya policy bisa dibaca tanpa default kolom yang tak pernah di-flush."""
+    from app.models.detector_setting import DetectorSetting
+
+    values = {
+        "default_ai_fps": 5.0, "default_confidence": 0.4, "motion_enabled": True,
+        "motion_threshold": 25.0, "motion_min_area": 0.01, "motion_force_interval_s": 2.0,
+        "face_min_width_px": 80.0, "face_min_det_score": 0.6, "face_max_yaw": 0.35,
+        "face_blur_min": 120.0, "face_min_frames": 3,
+        "face_match_threshold": 0.40, "face_match_margin": 0.15, "face_max_pitch": 0.30,
+        "face_best_k": 5, "face_ident_min_width_px": 60.0, "face_ident_window_s": 8.0,
+    }
+    row = db.get(DetectorSetting, 1)
+    if row is None:
+        row = DetectorSetting(id=1, **values)
+        db.add(row)
+    for key, value in over.items():
+        setattr(row, key, value)
+    db.commit()
+    return row
+
+
+def test_embedding_match_follows_db_threshold(db):
+    """Ambang baris DB berlaku di jalur absensi tanpa restart; event berikutnya memakai nilai baru."""
+    import math
+    from app.models.event import Event
+    from app.models.face_embedding import FaceEmbedding
+    from app.services import face as face_mod
+
+    cam = Camera(name="Gate", host="127.0.0.1")
+    e = Employee(name="Budi", employee_code="E9")
+    db.add(cam)
+    db.add(e)
+    db.commit()
+    db.refresh(cam)
+    db.refresh(e)
+    db.add(FaceEmbedding(employee_id=e.id, vector=[1.0, 0.0, 0.0, 0.0], quality=0.9))
+    db.commit()
+    face_mod.gallery._by_employee = {e.id: [[1.0, 0.0, 0.0, 0.0]]}
+    query = [0.45, math.sqrt(1 - 0.45 ** 2), 0.0, 0.0]  # cos = 0.45
+
+    _policy_row(db, face_match_threshold=0.40)
+    matched = Event(event_id=str(uuid.uuid4()), type="attendance", camera_id=cam.id, severity="info",
+                    ts_event=_at(7, 10), payload={"direction": "entry", "embedding": query, "face_quality": 0.9})
+    db.add(matched)
+    db.commit()
+    row = attendance.handle_face_event(db, matched)
+    assert row is not None and row.employee_id == e.id
+    db.refresh(matched)
+    assert matched.payload["match_reason"] == "matched"
+
+    _policy_row(db, face_match_threshold=0.99)
+    rejected = Event(event_id=str(uuid.uuid4()), type="attendance", camera_id=cam.id, severity="info",
+                     ts_event=_at(7, 12), payload={"direction": "entry", "embedding": query, "face_quality": 0.9})
+    db.add(rejected)
+    db.commit()
+    assert attendance.handle_face_event(db, rejected) is None
+    db.refresh(rejected)
+    assert rejected.payload["match_reason"] == "no_match"

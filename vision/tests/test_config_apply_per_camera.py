@@ -259,6 +259,19 @@ def test_face_settings_change_restarts_only_cameras_with_a_face_worker(make_node
     assert all(w.settings.min_frames == 5 for w in workers(node, 1) if hasattr(w, "settings"))
 
 
+def test_face_ident_change_restarts_only_cameras_with_a_face_worker(make_node):
+    node = make_node()
+    cfg = {"cameras": [cam_cfg(1, attendance=True), cam_cfg(2)],
+           "face": {"ident": {"window_s": 8.0}}}
+    node.apply_config(cfg)
+    before1, before2 = workers(node, 1), workers(node, 2)
+    cfg["face"]["ident"]["window_s"] = 6.0
+    node.apply_config(cfg)
+    assert_replaced(before1, workers(node, 1))
+    assert_kept(before2, workers(node, 2))
+    assert all(w.settings.ident.window_s == 6.0 for w in workers(node, 1) if hasattr(w, "settings"))
+
+
 def test_failed_camera_start_does_not_block_others_and_reverted_config_restarts_it(make_node, monkeypatch):
     node = make_node()
     v1 = {"cameras": [cam_cfg(1), cam_cfg(2)]}

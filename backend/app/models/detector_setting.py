@@ -21,6 +21,12 @@ class DetectorSetting(Base):
     face_max_yaw: Mapped[float] = mapped_column(Float, nullable=False, default=0.35)
     face_blur_min: Mapped[float] = mapped_column(Float, nullable=False, default=120.0)
     face_min_frames: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    face_match_threshold: Mapped[float] = mapped_column(Float, nullable=False, default=0.40)
+    face_match_margin: Mapped[float] = mapped_column(Float, nullable=False, default=0.15)
+    face_max_pitch: Mapped[float] = mapped_column(Float, nullable=False, default=0.30)
+    face_best_k: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    face_ident_min_width_px: Mapped[float] = mapped_column(Float, nullable=False, default=60.0)
+    face_ident_window_s: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc), nullable=False,

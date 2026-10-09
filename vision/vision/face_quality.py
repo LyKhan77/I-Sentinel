@@ -13,6 +13,35 @@ from .analyzers.intrusion import point_in_polygon
 ARCFACE_SIZE = 112.0
 OUTLIER_COS = 0.5  # cosine di bawah ini dianggap embedding orang lain
 
+# Parameter identitas intrusion critical (dulu konstanta modul `intrusion_face`); nilai awal
+# dipakai saat sub-blok `face.ident` tidak ada di config push.
+IDENT_MIN_WIDTH_PX = 60.0  # lebar wajah minimum untuk identitas (jarak sampai ±3 m); data: lebar bukan penentu skor
+MAX_PITCH = 0.30           # deviasi pitch maksimum (menghadap bawah)
+BEST_K = 5                 # embedding terbaik (berdasar kualitas) yang dipertahankan per orang
+IDENT_WINDOW_S = 8.0       # kirim hasil setelah sekian detik terikat event meski min_frames belum tercapai
+
+
+@dataclass(frozen=True)
+class IdentSettings:
+    """Kebijakan kolektor identitas dari sub-blok `face.ident` (config push)."""
+
+    min_width_px: float = IDENT_MIN_WIDTH_PX
+    max_pitch: float = MAX_PITCH
+    best_k: int = BEST_K
+    window_s: float = IDENT_WINDOW_S
+
+    @classmethod
+    def from_config(cls, ident: dict | None) -> IdentSettings:
+        """Key yang hilang (backend lama) memakai nilai awal."""
+        ident = ident or {}
+        d = cls()
+        return cls(
+            min_width_px=float(ident.get("min_width_px", d.min_width_px)),
+            max_pitch=float(ident.get("max_pitch", d.max_pitch)),
+            best_k=int(ident.get("best_k", d.best_k)),
+            window_s=float(ident.get("window_s", d.window_s)),
+        )
+
 
 @dataclass(frozen=True)
 class FaceSettings:
@@ -21,6 +50,7 @@ class FaceSettings:
     max_yaw: float = 0.35
     blur_min: float = 120.0
     min_frames: int = 3
+    ident: IdentSettings = IdentSettings()
 
     @classmethod
     def from_config(cls, face: dict | None) -> FaceSettings:
@@ -33,6 +63,7 @@ class FaceSettings:
             max_yaw=float(face.get("max_yaw", d.max_yaw)),
             blur_min=float(face.get("blur_min", d.blur_min)),
             min_frames=int(face.get("min_frames", d.min_frames)),
+            ident=IdentSettings.from_config(face.get("ident")),
         )
 
 

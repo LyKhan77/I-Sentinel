@@ -284,6 +284,8 @@ def test_a_worse_result_never_downgrades_a_recognized_one(db, critical_event, ga
 def test_same_status_with_a_higher_score_updates_the_payload_without_a_second_edit(
         db, critical_event, gallery, monkeypatch):
     called = _count_syncs(monkeypatch)
+    # ambang dipin 0,50: data tes ini dibuat untuk ambang itu; bawaan produk kini 0,40
+    monkeypatch.setattr(face.settings, "face_match_threshold", 0.50)
     _send(db, critical_event, embedding=UNKNOWN_LOW, seq=0)
     _send(db, critical_event, embedding=UNKNOWN_HIGH, crop_path="crops/2026/10/08/b.jpg", seq=1)
     assert critical_event.payload["face"]["score"] == pytest.approx(0.45, abs=1e-3)
@@ -300,3 +302,41 @@ def test_not_visible_is_upgraded_when_a_face_finally_shows_up(db, critical_event
     _send(db, critical_event, embedding=UNKNOWN_LOW, seq=1)
     assert critical_event.payload["face"]["status"] == "unknown"
     assert called == [critical_event.id, critical_event.id]
+
+
+def test_identity_margin_follows_db_policy_row(db, critical_event, gallery):
+    """Margin top-1/top-2 dari baris detector_setting: 0,15 → ambiguous (unknown); 0,10 → recognized."""
+    from app.models.detector_setting import DetectorSetting
+    from app.models.employee import Employee
+
+    e2 = Employee(name="Siti", employee_code="E2")
+    db.add(e2)
+    db.commit()
+    db.refresh(e2)
+    runner_up = [0.88, 0.475, 0.0, 0.0]  # cos 0,88 ke MATCH → margin top-1/top-2 = 0,12
+    face.gallery._by_employee = {gallery.id: [MATCH], e2.id: [runner_up]}
+    row = DetectorSetting(
+        id=1, default_ai_fps=5.0, default_confidence=0.4, motion_enabled=True,
+        motion_threshold=25.0, motion_min_area=0.01, motion_force_interval_s=2.0,
+        face_min_width_px=80.0, face_min_det_score=0.6, face_max_yaw=0.35, face_blur_min=120.0,
+        face_min_frames=3, face_match_threshold=0.40, face_match_margin=0.15, face_max_pitch=0.30,
+        face_best_k=5, face_ident_min_width_px=60.0, face_ident_window_s=8.0,
+    )
+    db.add(row)
+    db.commit()
+
+    _send(db, critical_event, embedding=MATCH, seq=0)
+    assert critical_event.payload["face"]["status"] == "unknown"
+    assert critical_event.payload["face"]["reason"] == "ambiguous"
+
+    event2 = Event(event_id=str(uuid.uuid4()), type="intrusion", severity="critical",
+                   camera_id=critical_event.camera_id, zone_id=critical_event.zone_id,
+                   ts_event=datetime.now(timezone.utc), payload={})
+    db.add(event2)
+    db.commit()
+    row.face_match_margin = 0.10
+    db.commit()
+
+    _send(db, event2, embedding=MATCH, seq=0)
+    assert event2.payload["face"]["status"] == "recognized"
+    assert event2.payload["face"]["name"] == "Budi"

@@ -49,6 +49,12 @@ def build_node_config(db: Session, node: Node) -> dict:
         "max_yaw": gs.face_max_yaw if gs else settings.face_max_yaw,
         "blur_min": gs.face_blur_min if gs else settings.face_blur_min,
         "min_frames": gs.face_min_frames if gs else settings.face_min_frames,
+        "ident": {
+            "min_width_px": gs.face_ident_min_width_px if gs else settings.face_ident_min_width_px,
+            "max_pitch": gs.face_max_pitch if gs else settings.face_max_pitch,
+            "best_k": gs.face_best_k if gs else settings.face_best_k,
+            "window_s": gs.face_ident_window_s if gs else settings.face_ident_window_s,
+        },
     }
     cameras = []
     for cam in (

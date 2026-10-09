@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, NumberInput, Toggle } from '@carbon/react'
 import { listCameras, updateCamera, type Camera, type CameraPayload } from '../../api/cameras'
 import { getDetectorSettings, putDetectorSettings, type DetectorSettings } from '../../api/detection'
 import { listZones, type Zone } from '../../api/zones'
-import { useT } from '../../app/i18n'
+import { useT, type TKey } from '../../app/i18n'
+import InfoTip from '../../components/InfoTip'
 
 type DetectionPatch = Pick<CameraPayload, 'ai_fps' | 'confidence' | 'motion_enabled'>
 
@@ -22,8 +23,22 @@ function runsAi(z: Zone): boolean {
   return z.behaviors == null || kinds.length > 0
 }
 
+// Ikon info di luar <label>: teks tooltip tidak boleh ikut menjadi nama aksesibel input.
+function TipField({ labelKey, tipKey, children }: { labelKey: TKey; tipKey: TKey; children: ReactNode }) {
+  const { t } = useT()
+  return (
+    <div className="info-tip-row">
+      {children}
+      <InfoTip name={t(labelKey)} text={t(tipKey)} align="top-end" />
+    </div>
+  )
+}
+
 export default function DetectionPage() {
   const { t } = useT()
+  const withTip = (labelKey: TKey, tipKey: TKey) => (
+    <span className="info-tip-label">{t(labelKey)}<InfoTip name={t(labelKey)} text={t(tipKey)} /></span>
+  )
   const [cameras, setCameras] = useState<Camera[]>([])
   const [activeZones, setActiveZones] = useState<Map<number, number>>(new Map())
   const [settings, setSettings] = useState<DetectorSettings | null>(null)
@@ -81,6 +96,10 @@ export default function DetectionPage() {
       face_min_width_px: settings.face_min_width_px, face_min_det_score: settings.face_min_det_score,
       face_max_yaw: settings.face_max_yaw, face_blur_min: settings.face_blur_min,
       face_min_frames: settings.face_min_frames,
+      face_match_threshold: settings.face_match_threshold, face_match_margin: settings.face_match_margin,
+      face_max_pitch: settings.face_max_pitch, face_best_k: settings.face_best_k,
+      face_ident_min_width_px: settings.face_ident_min_width_px,
+      face_ident_window_s: settings.face_ident_window_s,
     }))
 
   return (
@@ -132,22 +151,64 @@ export default function DetectionPage() {
             onChange={(_, { value }) => setSettings({ ...settings, motion_threshold: Number(value) })} />
           <Toggle id="motion-enabled" labelText={t('detection.motion')} toggled={settings.motion_enabled}
             onToggle={(value) => setSettings({ ...settings, motion_enabled: value })} />
-          <h4>{t('detection.faceGroup')}</h4>
-          <NumberInput id="face-min-width" label={t('detection.faceMinWidth')} min={16} max={1000} step={1}
-            value={settings.face_min_width_px}
-            onChange={(_, { value }) => setSettings({ ...settings, face_min_width_px: Number(value) })} />
-          <NumberInput id="face-min-score" label={t('detection.faceMinScore')} min={0.1} max={0.99} step={0.05}
-            value={settings.face_min_det_score}
-            onChange={(_, { value }) => setSettings({ ...settings, face_min_det_score: Number(value) })} />
-          <NumberInput id="face-max-yaw" label={t('detection.faceMaxYaw')} min={0.05} max={1} step={0.05}
-            value={settings.face_max_yaw}
-            onChange={(_, { value }) => setSettings({ ...settings, face_max_yaw: Number(value) })} />
-          <NumberInput id="face-blur-min" label={t('detection.faceBlurMin')} min={0} step={10}
-            value={settings.face_blur_min}
-            onChange={(_, { value }) => setSettings({ ...settings, face_blur_min: Number(value) })} />
-          <NumberInput id="face-min-frames" label={t('detection.faceMinFrames')} min={1} max={20} step={1}
-            value={settings.face_min_frames}
-            onChange={(_, { value }) => setSettings({ ...settings, face_min_frames: Number(value) })} />
+          <h4 className="det-group-title">{withTip('detection.faceGroupShared', 'detection.tip.groupShared')}</h4>
+          <TipField labelKey="detection.faceMinScore" tipKey="detection.tip.faceMinScore">
+            <NumberInput id="face-min-score" label={t('detection.faceMinScore')} min={0.1} max={0.99} step={0.05}
+              value={settings.face_min_det_score}
+              onChange={(_, { value }) => setSettings({ ...settings, face_min_det_score: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceMaxYaw" tipKey="detection.tip.faceMaxYaw">
+            <NumberInput id="face-max-yaw" label={t('detection.faceMaxYaw')} min={0.05} max={1} step={0.05}
+              value={settings.face_max_yaw}
+              onChange={(_, { value }) => setSettings({ ...settings, face_max_yaw: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceMatchThreshold" tipKey="detection.tip.faceMatchThreshold">
+            <NumberInput id="face-match-threshold" label={t('detection.faceMatchThreshold')} min={0.1} max={0.99} step={0.01}
+              value={settings.face_match_threshold}
+              onChange={(_, { value }) => setSettings({ ...settings, face_match_threshold: Number(value) })} />
+          </TipField>
+          <h4 className="det-group-title">{withTip('detection.faceGroupIdent', 'detection.tip.groupIdent')}</h4>
+          <TipField labelKey="detection.faceIdentMinWidth" tipKey="detection.tip.faceIdentMinWidth">
+            <NumberInput id="face-ident-min-width" label={t('detection.faceIdentMinWidth')} min={16} max={1000} step={1}
+              value={settings.face_ident_min_width_px}
+              onChange={(_, { value }) => setSettings({ ...settings, face_ident_min_width_px: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceMaxPitch" tipKey="detection.tip.faceMaxPitch">
+            <NumberInput id="face-max-pitch" label={t('detection.faceMaxPitch')} min={0.05} max={1} step={0.05}
+              value={settings.face_max_pitch}
+              onChange={(_, { value }) => setSettings({ ...settings, face_max_pitch: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceBestK" tipKey="detection.tip.faceBestK">
+            <NumberInput id="face-best-k" label={t('detection.faceBestK')} min={1} max={10} step={1}
+              value={settings.face_best_k}
+              onChange={(_, { value }) => setSettings({ ...settings, face_best_k: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceMatchMargin" tipKey="detection.tip.faceMatchMargin">
+            <NumberInput id="face-match-margin" label={t('detection.faceMatchMargin')} min={0} max={0.5} step={0.01}
+              value={settings.face_match_margin}
+              onChange={(_, { value }) => setSettings({ ...settings, face_match_margin: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceIdentWindow" tipKey="detection.tip.faceIdentWindow">
+            <NumberInput id="face-ident-window" label={t('detection.faceIdentWindow')} min={1} max={10} step={1}
+              value={settings.face_ident_window_s}
+              onChange={(_, { value }) => setSettings({ ...settings, face_ident_window_s: Number(value) })} />
+          </TipField>
+          <h4 className="det-group-title">{withTip('detection.faceGroupAttendance', 'detection.tip.groupAttendance')}</h4>
+          <TipField labelKey="detection.faceMinWidth" tipKey="detection.tip.faceMinWidth">
+            <NumberInput id="face-min-width" label={t('detection.faceMinWidth')} min={16} max={1000} step={1}
+              value={settings.face_min_width_px}
+              onChange={(_, { value }) => setSettings({ ...settings, face_min_width_px: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceBlurMin" tipKey="detection.tip.faceBlurMin">
+            <NumberInput id="face-blur-min" label={t('detection.faceBlurMin')} min={0} step={10}
+              value={settings.face_blur_min}
+              onChange={(_, { value }) => setSettings({ ...settings, face_blur_min: Number(value) })} />
+          </TipField>
+          <TipField labelKey="detection.faceMinFrames" tipKey="detection.tip.faceMinFrames">
+            <NumberInput id="face-min-frames" label={t('detection.faceMinFrames')} min={1} max={20} step={1}
+              value={settings.face_min_frames}
+              onChange={(_, { value }) => setSettings({ ...settings, face_min_frames: Number(value) })} />
+          </TipField>
           <Button size="sm" onClick={save}>{t('detection.save')}</Button>
         </div>
       )}

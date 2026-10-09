@@ -277,7 +277,7 @@ def test_handle_face_event_with_node_embedding(db, monkeypatch):
 
     monkeypatch.setattr(attendance.face, "match_crop", _spy_match_crop)
     monkeypatch.setattr(attendance.face, "match_vector",
-                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+                        lambda vec, q=None, policy=None: MatchResult(e.id, 0.83, q, "matched"))
 
     ev = _raw_event(db, "entry", _at(*MON, 7, 10),
                     {"embedding": [0.1] * 512, "face_quality": 0.9})
@@ -292,7 +292,7 @@ def test_handle_face_event_low_quality_rejected(db, monkeypatch):
     _emp(db, _shift(db))
     _camera(db)
     monkeypatch.setattr(attendance.face, "match_vector",
-                        lambda vec, q=None: MatchResult(None, None, q, "low_quality"))
+                        lambda vec, q=None, policy=None: MatchResult(None, None, q, "low_quality"))
 
     ev = _raw_event(db, "entry", _at(*MON, 7, 10),
                     {"embedding": [0.1] * 512, "face_quality": 0.1})
@@ -319,11 +319,11 @@ def test_handle_face_event_fallback_crop_without_embedding(db, monkeypatch):
 
 
 def _matched_vec(eid, score=0.8):
-    return lambda vector, quality=None: MatchResult(eid, score, quality, "matched")
+    return lambda vector, quality=None, policy=None: MatchResult(eid, score, quality, "matched")
 
 
 def _no_match_vec():
-    return lambda vector, quality=None: MatchResult(None, None, quality, "no_match")
+    return lambda vector, quality=None, policy=None: MatchResult(None, None, quality, "no_match")
 
 
 VEC = {"embedding": [0.1] * 512, "face_quality": 0.8}
@@ -445,7 +445,7 @@ def test_handle_face_event_annotates_crop(tmp_path, db, monkeypatch):
     _camera(db)
     monkeypatch.setattr(settings, "storage_root", str(tmp_path))
     monkeypatch.setattr(attendance.face, "match_vector",
-                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+                        lambda vec, q=None, policy=None: MatchResult(e.id, 0.83, q, "matched"))
 
     p = tmp_path / "crops" / "x.jpg"
     p.parent.mkdir()
@@ -469,7 +469,7 @@ def test_handle_face_event_annotation_failure_not_fatal(tmp_path, db, monkeypatc
     _camera(db)
     monkeypatch.setattr(settings, "storage_root", str(tmp_path))
     monkeypatch.setattr(attendance.face, "match_vector",
-                        lambda vec, q=None: MatchResult(e.id, 0.83, q, "matched"))
+                        lambda vec, q=None, policy=None: MatchResult(e.id, 0.83, q, "matched"))
     ev = _raw_event(db, "entry", _at(*MON, 7, 10),
                     {"embedding": [0.1] * 512, "face_quality": 0.9,
                      "crop_path": "crops/nope.jpg"})

@@ -11,9 +11,23 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
 2. Di **Konfigurasi → Zona**: zona intrusion → severity `critical` → behavior **Intrusi** →
    nyalakan **Cari identitas wajah** → Simpan. Kamera itu akan restart sendiri (apply per kamera)
    dan log `vision` menampilkan worker face dengan kolektor identitas.
-3. Tanpa perubahan di server lain. `FACE_ID_THRESHOLD` (default `0.50`) dan `FACE_ID_MARGIN`
-   (default `0.10`) di `docker/.env` **wajib diikuti recreate `api`** (`docker compose up -d api`
-   --force-recreate`), bukan `restart` — Compose tidak membaca ulang env saat restart.
+3. **Parameter** ada di **Konfigurasi → Deteksi & Model → Advanced → kartu "Pengenalan wajah"**
+   (grup **Identitas**): ambang kecocokan, margin top-1/top-2, lebar minimum identitas, batas pitch,
+   K frame terbaik, dan jendela identitas. Nilai disimpan di baris `detector_setting` (migrasi 0024),
+   dipush ke node lewat config push, dan dipakai API pada event berikutnya — **tanpa deploy, tanpa
+   recreate `api`**. Env `FACE_ID_MARGIN` / `FACE_MATCH_THRESHOLD` hanya cadangan bila baris setelan
+   belum ada (instalasi baru), begitu pula `FACE_ID_MARGIN` di `docker/.env`.
+
+| Parameter | Letak sekarang | Nilai awal | Catatan |
+|---|---|---|---|
+| Ambang kecocokan | Grup **Bersama** (dipakai absensi + identitas) | 0,40 | Menggantikan `FACE_ID_THRESHOLD` (repo 0,50) dan env `FACE_MATCH_THRESHOLD` |
+| Margin top-1/top-2 | Grup **Identitas** | 0,15 | Menggantikan `FACE_ID_MARGIN` |
+| Lebar minimum identitas | Grup **Identitas** | 60 px | Dulu konstanta `IDENT_MIN_WIDTH_PX` di kode node |
+| Batas pitch / K / jendela | Grup **Identitas** | 0,30 / 5 / 8 dtk | Dulu konstanta `MAX_PITCH` / `BEST_K` / `IDENT_WINDOW_S` |
+| Gerbang absensi lama (lebar, blur, jumlah frame, yaw, skor) | Grup **Absensi (lama)** + **Bersama** | tetap | Tidak berubah pada tahap ini |
+
+   Interval pembaruan (10 dtk), maksimum pembaruan (6), batas lacak (90 dtk), dan `UNVERIFIED_AFTER_S`
+   (20 dtk) tetap konstanta kode di `vision/vision/intrusion_face.py` dan `app/services/intrusion_face.py`.
 
 ## Membaca hasil
 
@@ -25,7 +39,7 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
   lagi saat status berubah (skor/crop yang lebih baik diperbarui diam-diam di Inbox).
 - **Inbox**: baris Identitas di panel detail (`event-identity`), tab **Crop wajah** untuk event
   intrusion ber-`crop_path` (bukti manual untuk yang tidak dikenali).
-- **Live View, overlay debugger**: kotak wajah yang terhubung ke kepala orang (40% atas bbox person) diberi label hasil gerbang identitas, yaitu lebar wajah dalam piksel (`86px`, artinya lolos gerbang) atau penolakan `wajah terlalu kecil` (< 60 px) / `skor rendah` / `menyamping` / `menunduk/mendongak`, bukan status zona. Label `buram` dan `kualitas rendah` tidak muncul lagi untuk identitas: ketajaman hanya dipakai sebagai peringkat relatif, bukan gerbang. Pada kamera ber-zona attendance label absensi (`buram`, dst.) tetap memakai gerbang attendance. Pada kamera tanpa zona attendance, wajah yang bukan kepala siapa pun tidak digambar. Kamera ber-zona attendance tetap memberi label `di luar zona` pada wajah yang bukan kandidat identitas.
+- **Live View, overlay debugger**: kotak wajah yang terhubung ke kepala orang (40% atas bbox person) diberi label hasil gerbang identitas, yaitu lebar wajah dalam piksel (`86px`, artinya lolos gerbang) atau penolakan `wajah terlalu kecil` (< `face.ident.min_width_px`, awal 60 px) / `skor rendah` / `menyamping` / `menunduk/mendongak`, bukan status zona. Label `buram` dan `kualitas rendah` tidak muncul lagi untuk identitas: ketajaman hanya dipakai sebagai peringkat relatif, bukan gerbang. Pada kamera ber-zona attendance label absensi (`buram`, dst.) tetap memakai gerbang attendance. Pada kamera tanpa zona attendance, wajah yang bukan kepala siapa pun tidak digambar. Kamera ber-zona attendance tetap memberi label `di luar zona` pada wajah yang bukan kandidat identitas.
 - **Log**: `identity_skipped_text_only` = alert terkirim sebagai teks, tidak bisa diedit (wajar).
   `zona face_id tetapi model wajah tidak tersedia` (log `vision`) = model wajah tidak termuat
   (`VISION_FACE_MODEL_DIR`/insightface); identitas tidak aktif dan alert critical berakhir `unverified`.
@@ -37,19 +51,21 @@ terkirim (tanpa menunda atau menyupresi alert). Status: **belum diuji di server 
 
 1. Jalankan lintasan karyawan terdaftar (menghadap kamera) dan orang tidak terdaftar; catat
    `payload.face.score` tiap event (Inbox / DB).
-2. Pilih `FACE_ID_THRESHOLD` di atas sebaran skor impostor tertinggi; `FACE_ID_MARGIN` dari jarak
-   top-1/top-2 genuine. **Salah-orang harus nol dalam uji** — jangan menurunkan ambang agar
+2. Pilih **ambang kecocokan** (grup Bersama) di atas sebaran skor impostor tertinggi; **margin top-1/top-2**
+   (grup Identitas) dari jarak top-1/top-2 genuine. **Salah-orang harus nol dalam uji** — jangan menurunkan ambang agar
    pengenalan "berhasil" di kondisi gelap.
-3. `MAX_PITCH`, `IDENT_MIN_WIDTH_PX` (60 px) dan konstanta lain di `vision/vision/intrusion_face.py` (konstanta atas
-   berkas) hanya diubah bila statistik penolakan menunjukkan gerbang yang salah.
+3. Lebar minimum identitas, batas pitch, K, dan jendela kini di grup **Identitas** (tanpa deploy);
+   konstanta operasional lain (pembaruan 10 dtk, maksimum 6, lacak 90 dtk) tetap di `vision/vision/intrusion_face.py` dan
+   hanya diubah bila statistik penolakan menunjukkan gerbang yang salah.
 4. Probe kelayakan bisa diulang per kamera (`temp/scripts/intrusion_face_probe.py`, tidak
    di-commit; hasil terakhir `temp/logs/intrusion-face-id/probe.md`: kamera 363 gelap, 0 frame
    lolos gerbang penuh).
 
 ### Keadaan kalibrasi saat ini (2026-10-08)
 
-- **Nilai uji di server `gspe-ai3`** (`docker/.env`, bukan di repo): `FACE_ID_THRESHOLD=0.35`,
-  `FACE_ID_MARGIN=0.15` (default compose 0,50 / 0,10). Ubah → **recreate** `api`.
+- **Nilai efektif setelah migrasi 0024:** ambang 0,40 / margin 0,15 dari baris `detector_setting` (UI
+  Konfigurasi → Deteksi & Model), menggantikan nilai uji `.env` server 0,35 / 0,15. `FACE_ID_THRESHOLD`
+  tidak lagi dipakai; `FACE_ID_MARGIN` hanya cadangan bila baris belum ada. Ubah di UI, tanpa deploy.
 - **Dasar:** galeri 7 karyawan × 5 foto pendaftaran: impostor (skor terbaik non-pemilik, n = 35)
   median 0,225, maksimum 0,280; genuine antar foto pendaftaran minimum 0,582. Crop jarak 1–2 m:
   wajah ±96–125 px hampir frontal memberi skor 0,37–0,58 (kandidat kedua 0,17–0,23); wajah menunduk

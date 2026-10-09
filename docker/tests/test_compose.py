@@ -131,9 +131,9 @@ def test_llm_key_reaches_only_api(tmp_path):
 
 
 def test_api_and_retention_receive_face_id_thresholds_but_vision_does_not(services):
-    """FACE_ID_* hanya di api + retention (anchor x-api-environment); vision tidak cocokkan embedding."""
+    """FACE_ID_MARGIN hanya di api + retention (anchor x-api-environment); FACE_ID_THRESHOLD sudah tidak dipakai."""
     for name in ("api", "retention"):
         env = services[name]["environment"]
-        assert env["FACE_ID_THRESHOLD"] == "0.50", name  # resolve compose: default dipakai
-        assert env["FACE_ID_MARGIN"] == "0.10", name
+        assert env["FACE_ID_MARGIN"] == "0.15", name  # resolve compose: default dipakai
+        assert "FACE_ID_THRESHOLD" not in env, name
     assert "FACE_ID_THRESHOLD" not in services["vision"]["environment"]

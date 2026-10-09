@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from app.core.config import settings
 from app.models.employee import Employee
 from app.models.face_embedding import FaceEmbedding
+from app.services import face_policy
 
 logger = logging.getLogger(__name__)
 
@@ -158,8 +159,8 @@ class FaceGallery:
     def refresh(self, db) -> None:
         self.load(db)
 
-    def match(self, vector) -> tuple[int, float] | None:
-        """Skor tertinggi antar semua embedding; None bila < settings.face_match_threshold."""
+    def match(self, vector, threshold: float | None = None) -> tuple[int, float] | None:
+        """Skor tertinggi antar semua embedding; None bila < threshold (bawaan: settings.face_match_threshold)."""
         best_id = None
         best_score = -1.0
         for employee_id, vectors in self._by_employee.items():
@@ -167,7 +168,8 @@ class FaceGallery:
                 s = cosine(vector, v)
                 if s > best_score:
                     best_id, best_score = employee_id, s
-        if best_id is None or best_score < settings.face_match_threshold:
+        limit = settings.face_match_threshold if threshold is None else threshold
+        if best_id is None or best_score < limit:
             return None
         return best_id, best_score
 
@@ -200,33 +202,38 @@ def refresh_gallery(db) -> FaceGallery:
     return gallery
 
 
-def match_strict(vector, quality: float | None = None) -> MatchResult:
+def match_strict(vector, quality: float | None = None,
+                 policy: face_policy.FacePolicy | None = None) -> MatchResult:
     """Pencocokan ketat intrusion: ambang ketat + margin top-1/top-2; ragu = tidak dikenal.
 
-    reason: low_quality|no_match|ambiguous|matched. `matched` hanya bila top1 ≥ face_id_threshold
-    dan top1 − top2 ≥ face_id_margin (tanpa runner-up dianggap top2 = 0.0).
+    reason: low_quality|no_match|ambiguous|matched. `matched` hanya bila top1 ≥ policy.match_threshold
+    dan top1 − top2 ≥ policy.match_margin (tanpa runner-up dianggap top2 = 0.0).
+    `policy=None` memakai nilai `Settings` (pemanggil lama dan tes tidak pecah).
     """
+    policy = policy or face_policy.from_settings()
     if quality is not None and quality < settings.face_min_quality:
         return MatchResult(None, None, quality, "low_quality")
     top = gallery.top2(list(vector))
-    if not top or top[0][1] < settings.face_id_threshold:
+    if not top or top[0][1] < policy.match_threshold:
         return MatchResult(None, top[0][1] if top else None, quality, "no_match")
     top1_id, top1 = top[0]
     top2_score = top[1][1] if len(top) > 1 else 0.0
     margin = top1 - top2_score
-    if margin < settings.face_id_margin:
+    if margin < policy.match_margin:
         return MatchResult(None, top1, quality, "ambiguous", margin)
     return MatchResult(top1_id, top1, quality, "matched", margin)
 
 
-def match_vector(vector, quality: float | None = None) -> MatchResult:
+def match_vector(vector, quality: float | None = None,
+                 policy: face_policy.FacePolicy | None = None) -> MatchResult:
     """Cocokkan embedding dari node (Opsi B) ke gallery. reason: low_quality|matched|no_match.
 
-    quality = det_score dari node; threshold sama dengan match_crop.
+    quality = det_score dari node; ambang sama dengan match_crop, dari `policy` (bawaan: `Settings`).
     """
+    policy = policy or face_policy.from_settings()
     if quality is not None and quality < settings.face_min_quality:
         return MatchResult(None, None, quality, "low_quality")
-    hit = gallery.match(list(vector))
+    hit = gallery.match(list(vector), policy.match_threshold)
     if hit is None:
         return MatchResult(None, None, quality, "no_match")
     employee_id, score = hit
@@ -234,7 +241,11 @@ def match_vector(vector, quality: float | None = None) -> MatchResult:
 
 
 def match_crop(db, image_path: str) -> MatchResult:
-    """Embed satu crop lalu cocokkan ke gallery. reason: not_configured|no_face|low_quality|matched|no_match."""
+    """Embed satu crop lalu cocokkan ke gallery. reason: not_configured|no_face|low_quality|matched|no_match.
+
+    Ambang dari baris `detector_setting` (satu `face_policy.load` per panggilan; tanpa cache).
+    """
+    policy = face_policy.load(db)
     try:
         faces = engine.embed(image_path)
     except RuntimeError:
@@ -248,7 +259,7 @@ def match_crop(db, image_path: str) -> MatchResult:
     if face.quality < settings.face_min_quality:
         return MatchResult(None, None, face.quality, "low_quality")
 
-    hit = gallery.match(face.vector)
+    hit = gallery.match(face.vector, policy.match_threshold)
     if hit is None:
         return MatchResult(None, None, face.quality, "no_match")
 

@@ -4,6 +4,7 @@ import pytest
 
 from vision.face import FaceDet
 from vision.face_quality import FaceSettings
+from vision.face_quality import IdentSettings
 from vision.intrusion_face import (BEST_K, MAX_TRACK_S, MAX_UPDATES, UPDATE_EVERY_S, HEAD_FRAC, IDENT_MIN_WIDTH_PX, IDENT_WINDOW_S, MAX_PITCH,
                                    MIN_CROP_SCORE, REGISTRY_TTL_S, IdentCollector,
                                    IntrusionRegistry, associate, jpeg_crop, pitch_dev)
@@ -473,3 +474,61 @@ def test_collector_counts_unexpected_gate_code_instead_of_raising():
     collector.observe([face(cx=-96.0, cy=200.0, width=120.0)], None, 1920, 1080, 10.0)
     msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
     assert msg["stats"]["rejects"]["zone"] == 1
+
+
+# --- kebijakan identitas dari FaceSettings.ident (bukan konstanta modul) ---
+
+def _collector_with(registry, settings, embedder=None, encode=None):
+    return IdentCollector(registry, embedder or FakeEmbedder(), settings, 363, "n1",
+                          encode=encode or FakeEncoder())
+
+
+def test_collector_window_s_from_settings_controls_the_first_result():
+    registry = IntrusionRegistry()
+    collector = _collector_with(registry, FaceSettings(ident=IdentSettings(window_s=3.0)))
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    collector.observe([face()], None, 1920, 1080, 10.0)
+    registry.touch(5, 1, BBOX, 12.9)  # orang masih di zona, jendela belum lewat
+    assert collector.drain(12.9) == []
+    msgs = collector.drain(13.0)  # t0 + window_s
+    assert len(msgs) == 1 and msgs[0]["embedding"] is not None
+
+
+def test_collector_best_k_from_settings_limits_kept_frames():
+    registry = IntrusionRegistry()
+    collector = _collector_with(registry, FaceSettings(ident=IdentSettings(best_k=2)))
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    for i in range(4):
+        collector.observe([face(score=0.70 + 0.01 * i)], None, 1920, 1080, 10.0 + i * 0.1)
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["stats"]["frames_used"] == 2
+
+
+def test_collector_max_pitch_from_settings_rejects_light_pitch():
+    """Pitch 0,10 lolos di nilai awal 0,30 tetapi ditolak saat kebijakan 0,05."""
+    registry = IntrusionRegistry()
+    collector = _collector(registry)
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    collector.observe([face(kps=downslope_kps(90.0))], None, 1920, 1080, 10.0)
+    assert collector.drain(10.0 + IDENT_WINDOW_S)[0]["stats"]["frames_used"] == 1
+
+    registry2 = IntrusionRegistry()
+    strict = _collector_with(registry2, FaceSettings(ident=IdentSettings(max_pitch=0.05)))
+    _bind_entry(registry2, ts=10.0)
+    registry2.touch(5, 1, BBOX, 10.0)
+    strict.observe([face(kps=downslope_kps(90.0))], None, 1920, 1080, 10.0)
+    msg = strict.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["stats"]["frames_used"] == 0 and msg["stats"]["rejects"]["pitch"] == 1
+
+
+def test_collector_min_width_from_settings_rejects_smaller_faces():
+    registry = IntrusionRegistry()
+    collector = _collector_with(registry, FaceSettings(ident=IdentSettings(min_width_px=100.0)))
+    _bind_entry(registry, ts=10.0)
+    registry.touch(5, 1, BBOX, 10.0)
+    collector.observe([face(width=80.0)], None, 1920, 1080, 10.0)
+    msg = collector.drain(10.0 + IDENT_WINDOW_S)[0]
+    assert msg["stats"]["frames_used"] == 0 and msg["stats"]["rejects"]["small"] == 1
