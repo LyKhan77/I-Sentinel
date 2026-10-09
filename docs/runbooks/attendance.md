@@ -318,8 +318,11 @@ Mulai dengan `--limit` kecil, pantau `docker stats --no-stream` pada beberapa de
 `api` melebihi ±300% hentikan dengan membatalkan perintah (jangan membiarkannya selesai).
 
 Keluaran hanya ID (event dan karyawan) — tanpa nama, tanpa embedding. Syarat lolos spec §7.1:
-`same_pct` ≥ 98 (crop yang dikenali `legacy` tetap karyawan yang sama di 0,40 / 0,15) dan `flipped` 0
-(tidak ada yang pindah ke karyawan lain). Daftar `ambiguous` (beserta pasangan karyawannya) dan
+**`flipped` = 0** (tidak ada yang pindah ke karyawan lain) adalah gerbang keras. `same_pct` hanya informatif:
+crop event yang dikenali `legacy` sudah digambari `annotate_face_crop` (nama, skor, kotak), sehingga embedding
+ulangnya lebih rendah dan sebagian jatuh di bawah ambang (`lost`); replay pertama 2026-10-09 memberi 71,9%
+(23 dari 32) dengan `flipped` 0 dan `ambiguous` 0 (kriteria awal ≥ 98% diganti atas keputusan user; dugaan
+bias ini belum diukur). Baris vonis yang dicetak skrip masih memakai kriteria awal dan perlu diabaikan. Daftar `ambiguous` (beserta pasangan karyawannya) dan
 `gained` (dulu `no_match`, kini cocok) dinilai manual: `ambiguous` pada karyawan mirip berarti absensi
 berpotensi terlewat, `gained` bisa berarti perbaikan atau salah-orang. Skrip ini tidak menguji kecepatan
 (jendela).

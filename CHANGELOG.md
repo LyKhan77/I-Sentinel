@@ -3,6 +3,15 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Replay offline absensi: hasil pertama di server (2026-10-09)
+
+- **Konteks:** replay `--limit 600 --days 14 --threads 2 --max-seconds 300` (baca-saja, di container `api` `gspe-ai3`; CPU `api` ±154%, load host 8, layanan sehat) setelah deploy `f399998`; percobaan kecil sebelumnya (`--limit 40`): 40 crop, 14 direplay, `same` 5, `flipped` 0, 26 tanpa wajah. Log: `temp/logs/face-attendance-unified/replay-2.txt`, `replay-3.txt`.
+- **Hasil (replay besar):** 197 event ber-crop dari 600 event terbaru; direplay 92; **tanpa wajah 105 (53%)**; `same` 23, `flipped` **0**, `ambiguous` **0**, `lost` 9, `gained` 3, `both_none` 57; `same_pct` 71,9% dari 32 event yang dikenali `legacy`. Tiga event `gained` (margin 0,20–0,22) diserahkan ke user untuk dinilai manual di Inbox.
+- **Penilaian:** kriteria awal ≥ 98% **tidak tercapai**. Dugaan penyebab (belum diukur): crop event yang dikenali `legacy` digambari `annotate_face_crop` sehingga embedding ulangnya turun dan sebagian jatuh di bawah 0,40. **Atas keputusan user (2026-10-09) gerbang keras diubah menjadi `flipped = 0` (tercapai), `ambiguous` ditinjau (0), `same_pct` informatif**; spec §7.1 dan runbook diperbarui. Skrip belum disesuaikan: baris vonisnya masih memakai kriteria lama dan dicetak "belum lolos".
+- **Belum terbukti:** apakah `lost` memang akibat anotasi (butuh run diagnostik yang mencetak skor lama vs skor replay), apakah 3 `gained` karyawan sah, dan perilaku `unified` pada wajah kecil/buram yang tak pernah menjadi event `legacy` (hanya uji lapangan yang dapat membuktikannya). 53% crop tanpa wajah menunjukkan sebagian besar event `legacy` berkualitas rendah.
+- **Dampak:** tidak ada perubahan produk; saklar tetap `legacy` sampai user membaliknya untuk uji lapangan.
+- **Rollback:** tidak ada (hanya baca).
+
 ### Skrip replay: batas CPU onnxruntime dan batas waktu (2026-10-09)
 
 - **Konteks:** replay pertama di container `api` `gspe-ai3` (`nice -n 19 taskset -c 0-3`, `OMP_NUM_THREADS=2`, atas persetujuan user) memakai **±1600% CPU** (121 thread, `docker top`), load host naik 50 → 82, dan tetap berjalan setelah handle ssh dihentikan; proses berakhir sendiri sebelum `pkill` dijalankan (`pkill` tidak ada di image `api`). Layanan tetap sehat dan CPU `api` kembali ±1%; load turun ke 55 dalam ±1 menit. Ringkasan hilang karena koneksi terputus sebelum tercetak (32 crop terbaca "tanpa wajah" di log parsial; jumlah yang diproses tak diketahui). Penyebab: onnxruntime memasang afinitas threadnya sendiri dan mengabaikan `taskset` dan `OMP_NUM_THREADS`; pelajaran yang sama dengan insiden analisis klip 2026-10-08.
