@@ -207,6 +207,68 @@ test('jendela identitas dibatasi 10 detik di UI (sama dengan validasi backend)',
   expect(document.querySelector('#face-ident-window')).toHaveAttribute('max', '10')
 })
 
+// --- ikon informasi: tiap parameter dan judul grup punya tooltip penjelasan ---
+
+// [label di UI, potongan khas penjelasan]; potongan unik per parameter agar tooltip tertukar terdeteksi
+const TIPS: [string, string][] = [
+  ['Skor deteksi wajah minimum', 'Keyakinan bahwa kotak itu wajah'],
+  ['Batas menyamping (yaw, 0–1)', 'Seberapa menyamping'],
+  ['Ambang kecocokan (0–1)', 'Skor kemiripan minimum'],
+  ['Lebar wajah minimum identitas (px)', 'ditolak untuk identitas'],
+  ['Batas menunduk (pitch, 0–1)', 'menunduk atau mendongak'],
+  ['Jumlah frame terbaik (K)', 'dirata-rata menjadi satu embedding'],
+  ['Margin top-1/top-2 (identitas)', 'terbaik kedua'],
+  ['Jendela identitas (detik)', 'mengumpulkan frame setelah event'],
+  ['Lebar wajah minimum (px)', 'Gerbang absensi lama: wajah'],
+  ['Ambang ketajaman (blur)', 'variansi Laplacian'],
+  ['Jumlah frame wajah bagus (absensi lama)', 'Event absensi terbit'],
+  ['Bersama', 'dipakai bersama oleh absensi'],
+  ['Identitas', 'Hanya untuk Face ID intrusion critical'],
+  ['Absensi (lama)', 'Gerbang absensi yang berlaku sekarang'],
+]
+
+function tipText(button: HTMLElement): string {
+  const id = button.getAttribute('aria-describedby')
+  return (id && document.getElementById(id)?.textContent) || ''
+}
+
+test('tiap parameter wajah dan judul grup punya ikon info dengan penjelasan yang sesuai', async () => {
+  stubDetectionFetch()
+  render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.click(screen.getByText('Advanced'))
+  for (const [label, snippet] of TIPS) {
+    const button = screen.getByRole('button', { name: `Info: ${label}` })
+    expect(tipText(button), label).toContain(snippet)
+  }
+})
+
+test('ikon info membuka tooltip saat kursor di atasnya', async () => {
+  stubDetectionFetch()
+  render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.click(screen.getByText('Advanced'))
+  const button = screen.getByRole('button', { name: 'Info: Ambang kecocokan (0–1)' })
+  const box = button.closest('.cds--popover-container') as HTMLElement
+  expect(box).not.toHaveClass('cds--popover--open')
+  await userEvent.hover(button)
+  await waitFor(() => expect(box).toHaveClass('cds--popover--open'))
+})
+
+test('penjelasan ikon info tersedia dalam bahasa en', async () => {
+  localStorage.setItem('isentinel_locale', 'en')
+  try {
+    stubDetectionFetch()
+    render(detectionPage())
+    await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+    await userEvent.click(screen.getByText('Advanced'))
+    expect(tipText(screen.getByRole('button', { name: 'Info: Match threshold (0–1)' }))).toContain('Minimum similarity score')
+    expect(tipText(screen.getByRole('button', { name: 'Info: Identity' }))).toContain('Only for critical-intrusion Face ID')
+  } finally {
+    localStorage.removeItem('isentinel_locale')
+  }
+})
+
 test('label field baru tersedia dalam bahasa en', async () => {
   localStorage.setItem('isentinel_locale', 'en')
   try {
