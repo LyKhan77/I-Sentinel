@@ -194,7 +194,7 @@ def test_attendance_embedding_never_persisted_or_broadcast_when_matching_fails(d
     from app.services import attendance
     seen = {}
 
-    def boom(vector, quality=None):
+    def boom(vector, quality=None, policy=None):
         seen["len"] = len(vector)
         raise RuntimeError("matcher down")
 

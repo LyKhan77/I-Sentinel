@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
 from app.models import Alert, Employee, Event, Zone
 from app.schemas.intrusion_face import FaceResultIn
-from app.services import alert_ai, face
+from app.services import alert_ai, face, face_policy
 from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def _identify_with_name(db: Session, vector: list[float]) -> dict:
     Tanpa gerbang quality: rumus quality berbasis lebar tidak memprediksi kecocokan (data klip 1-3 m);
     keputusan ada pada ambang ketat + margin top-1/top-2.
     """
-    res = face.match_strict(vector, quality=None)
+    res = face.match_strict(vector, quality=None, policy=face_policy.load(db))
     if res.reason == "matched":
         name = None
         if res.employee_id is not None:

@@ -15,7 +15,7 @@ from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
 from app.models.event import Event
 from app.models.zone import Zone
-from app.services import face
+from app.services import face, face_policy
 from app.services.annotate import ORANGE, annotate_face_crop, annotate_snapshot
 
 logger = logging.getLogger(__name__)
@@ -233,7 +233,7 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
         return _save(db, event, payload, None)
 
     if embedding:
-        res = face.match_vector(embedding, payload.get("face_quality"))
+        res = face.match_vector(embedding, payload.get("face_quality"), face_policy.load(db))
     elif crop:
         res = face.match_crop(db, str(Path(settings.storage_root) / crop))
     else:
