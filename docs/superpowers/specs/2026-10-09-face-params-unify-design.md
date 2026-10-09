@@ -63,7 +63,7 @@ Bukti bahwa algoritma intrusion (tanpa gerbang blur/quality absolut, peringkat r
 - `backend/app/services/face_policy.py` (baru): dataclass beku `FacePolicy(match_threshold, match_margin)` dan `load(db) -> FacePolicy` yang membaca baris `id=1`; bila baris tidak ada, nilai dari `Settings` (env). `Settings` memberi nilai awal `face_match_threshold = 0.40` dan `face_id_margin = 0.15`; `face_id_threshold` dihapus.
 - `FaceGallery.match(vector, threshold)`, `match_vector(vector, quality, policy)`, `match_strict(vector, quality, policy)` dan `match_crop(db, path)` memakai ambang dari `policy`; parameter `policy` opsional (bawaan: dari `Settings`) agar pemanggil lama dan tes tidak pecah. `handle_face_event` dan `intrusion_face._identify_with_name` memanggil `face_policy.load(db)`.
 - `schemas/detector_setting.py`, `api/detector_settings.py` (`_effective`, `PUT`), `config_push.py` menambah kolom baru. Blok `face` di config push mendapat sub-blok `ident: {min_width_px, max_pitch, best_k, window_s}`.
-- Validasi: `match_threshold` 0,1–0,99, `match_margin` 0–0,5, `max_pitch` 0,05–1, `best_k` 1–10, `ident_min_width_px` 16–1000, `ident_window_s` 1–15 (harus tetap di bawah `UNVERIFIED_AFTER_S` = 20 dtk, kalau tidak status `unverified` mendahului hasil).
+- Validasi: `match_threshold` 0,1–0,99, `match_margin` 0–0,5, `max_pitch` 0,05–1, `best_k` 1–10, `ident_min_width_px` 16–1000, `ident_window_s` 1–10 (jendela + unggah crop ≤ 6 dtk + antrean MQTT harus muat di bawah `UNVERIFIED_AFTER_S` = 20 dtk; dengan 15 dtk status `unverified` bisa mendahului hasil nyata. Batas awal 1–15 dikoreksi saat review 2026-10-09).
 - `docker/compose.yml` dan `.env.example`: `FACE_ID_THRESHOLD` dihapus; `FACE_ID_MARGIN` dan `FACE_MATCH_THRESHOLD` ditandai sebagai cadangan.
 
 **Vision:**

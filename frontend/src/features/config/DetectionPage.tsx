@@ -159,7 +159,7 @@ export default function DetectionPage() {
           <NumberInput id="face-match-margin" label={t('detection.faceMatchMargin')} min={0} max={0.5} step={0.01}
             value={settings.face_match_margin}
             onChange={(_, { value }) => setSettings({ ...settings, face_match_margin: Number(value) })} />
-          <NumberInput id="face-ident-window" label={t('detection.faceIdentWindow')} min={1} max={15} step={1}
+          <NumberInput id="face-ident-window" label={t('detection.faceIdentWindow')} min={1} max={10} step={1}
             value={settings.face_ident_window_s}
             onChange={(_, { value }) => setSettings({ ...settings, face_ident_window_s: Number(value) })} />
           <h4>{t('detection.faceGroupAttendance')}</h4>

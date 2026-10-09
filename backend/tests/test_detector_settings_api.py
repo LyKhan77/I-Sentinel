@@ -95,6 +95,17 @@ def test_new_face_fields_out_of_range_rejected(client, field, value):
     assert got[field] == VALUES[field]
 
 
+def test_identity_window_upper_bound_stays_below_unverified_timer(client):
+    """Jendela + unggah crop (≤ 6 dtk) + antrean harus muat di bawah UNVERIFIED_AFTER_S (20 dtk)."""
+    headers = admin_headers(client)
+
+    over = client.put("/api/v1/detector-settings", json={**VALUES, "face_ident_window_s": 11.0}, headers=headers)
+    edge = client.put("/api/v1/detector-settings", json={**VALUES, "face_ident_window_s": 10.0}, headers=headers)
+
+    assert over.status_code == 422
+    assert edge.status_code == 200 and edge.json()["face_ident_window_s"] == 10.0
+
+
 def test_face_settings_validated(client):
     bad = {**VALUES, "face_min_frames": 0}
     response = client.put("/api/v1/detector-settings", json=bad, headers=admin_headers(client))

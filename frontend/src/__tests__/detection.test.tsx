@@ -199,6 +199,14 @@ test('kartu pengenalan wajah menampilkan tiga grup dan mengirim enam field baru'
   })
 })
 
+test('jendela identitas dibatasi 10 detik di UI (sama dengan validasi backend)', async () => {
+  stubDetectionFetch()
+  render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.click(screen.getByText('Advanced'))
+  expect(document.querySelector('#face-ident-window')).toHaveAttribute('max', '10')
+})
+
 test('label field baru tersedia dalam bahasa en', async () => {
   localStorage.setItem('isentinel_locale', 'en')
   try {

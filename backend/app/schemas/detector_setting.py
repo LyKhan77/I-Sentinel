@@ -20,7 +20,7 @@ class DetectorSettingsIn(BaseModel):
     face_max_pitch: float = Field(ge=0.05, le=1)
     face_best_k: int = Field(ge=1, le=10)
     face_ident_min_width_px: float = Field(ge=16, le=1000)
-    face_ident_window_s: float = Field(ge=1, le=15)
+    face_ident_window_s: float = Field(ge=1, le=10)  # + unggah crop ≤ 6 dtk harus < UNVERIFIED_AFTER_S (20 dtk)
 
 
 class DetectorSettingsOut(DetectorSettingsIn):
