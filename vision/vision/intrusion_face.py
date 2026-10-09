@@ -14,20 +14,19 @@ import numpy as np
 
 from .analyzers.base import point_in_polygon
 from .face import FaceDet
-from .face_quality import (FaceSettings, aggregate, blur_score, crop_box, gate_code,
-                           quality, yaw_ratio)
+from .face_quality import (BEST_K, IDENT_MIN_WIDTH_PX, IDENT_WINDOW_S, MAX_PITCH,
+                           FaceSettings, aggregate, blur_score, crop_box,
+                           gate_code, quality, yaw_ratio)
 
 REGISTRY_TTL_S = 3.0   # sama dengan max_age_s tracker; motion gate bisa melewatkan frame saat orang diam
 HEAD_FRAC = 0.40       # area kepala = 40% atas bbox person
 HEAD_PAD = 0.10        # diperlebar 10% ke kiri/kanan/atas
-IDENT_WINDOW_S = 8.0   # kirim hasil setelah sekian detik terikat event meski min_frames belum tercapai
-MAX_PITCH = 0.30       # deviasi pitch maksimum (menghadap bawah)
-MIN_CROP_SCORE = 0.5   # keyakinan SCRFD minimum untuk kandidat crop bukti manual
-IDENT_MIN_WIDTH_PX = 60.0  # lebar wajah minimum untuk identitas (jarak sampai ±3 m); data: lebar bukan penentu skor
-BEST_K = 5             # embedding terbaik (berdasar kualitas) yang dipertahankan per orang
-UPDATE_EVERY_S = 10.0   # jeda minimum antar-pembaruan identitas untuk orang yang masih di zona
-MAX_TRACK_S = 90.0     # berhenti mengumpulkan sekian detik setelah event
 MAX_UPDATES = 6        # pembaruan maksimum per event sesudah hasil pertama
+MIN_CROP_SCORE = 0.5   # keyakinan SCRFD minimum untuk kandidat crop bukti manual
+UPDATE_EVERY_S = 10.0  # jeda minimum antar-pembaruan identitas untuk orang yang masih di zona
+MAX_TRACK_S = 90.0     # berhenti mengumpulkan sekian detik setelah event
+# Identitas: lebar minimum, pitch, K terbaik, dan jendela kini kebijakan (`face.ident` →
+# `FaceSettings.ident`); konstanta tetap diekspor dari modul ini sebagai nilai awal (dipakai tes lama).
 
 
 class ErrorThrottle:
@@ -163,7 +162,7 @@ def _dummy_zone(zone_id: int) -> dict:
 
 @dataclass
 class _IdentState:
-    kept: list = field(default_factory=list)  # (ketajaman, kualitas, vektor): BEST_K terbaik, bukan K pertama
+    kept: list = field(default_factory=list)  # (ketajaman, kualitas, vektor): best_k terbaik, bukan K pertama
     crop_rank: float = -1.0
     crop: bytes | None = None
     rejects: dict = field(default_factory=lambda: dict.fromkeys(
@@ -179,7 +178,7 @@ class IdentCollector:
     """Kumpulkan embedding terbaik + kandidat crop per entri terikat; satu pesan per event.
 
     Frame awal biasanya terburuk (orang masih jauh atau menunduk), jadi hasil pertama dikirim di akhir
-    jendela (`IDENT_WINDOW_S` sesudah event) atau saat orang pergi. Titik terbaik sering datang
+    jendela (`settings.ident.window_s` sesudah event) atau saat orang pergi. Titik terbaik sering datang
     belakangan, jadi pengumpulan berlanjut selama orang di zona (maks `MAX_TRACK_S`) dan pembaruan
     dikirim bila K terbaik berubah (jeda `UPDATE_EVERY_S`, maks `MAX_UPDATES`); API tidak menurunkan hasil.
     """
@@ -189,8 +188,9 @@ class IdentCollector:
         self.registry = registry
         self.face = face
         self.settings = settings
-        # gerbang identitas: lebar minimum lebih longgar dan tanpa blur absolut (peringkat relatif per orang)
-        self._gate_settings = replace(settings, min_width_px=IDENT_MIN_WIDTH_PX, blur_min=0.0)
+        self._ident = settings.ident
+        # gerbang identitas: lebar minimum dari kebijakan dan tanpa blur absolut (peringkat relatif per orang)
+        self._gate_settings = replace(settings, min_width_px=self._ident.min_width_px, blur_min=0.0)
         self.camera_id = camera_id
         self.node_id = node_id
         self.encode = encode
@@ -217,7 +217,7 @@ class IdentCollector:
                         frame_data, frame_w: int, frame_h: int) -> str:
         """Gerbang geometri untuk embedding + kandidat crop (crop bebas dari gerbang).
 
-        Gerbang: lebar >= `IDENT_MIN_WIDTH_PX`, skor deteksi, yaw, dan pitch. Tidak ada gerbang blur atau
+        Gerbang: lebar >= `settings.ident.min_width_px`, skor deteksi, yaw, dan pitch. Tidak ada gerbang blur atau
         quality absolut: variansi Laplacian dan lebar tidak memprediksi kecocokan antar-kamera, jadi K
         frame terbaik dipilih relatif per orang dengan peringkat `det x ketajaman`.
         Mengembalikan label overlay: kode penolakan, atau lebar wajah ("86px") bila lolos.
@@ -227,7 +227,7 @@ class IdentCollector:
         pitch = pitch_dev(f.kps)
         q = quality(f.score, width_px, yaw)
         code, _zone = gate_code(f, frame_w, frame_h, [_dummy_zone(ent.zone_id)], self._gate_settings)
-        if code is None and pitch > MAX_PITCH:
+        if code is None and pitch > self._ident.max_pitch:
             code = "pitch"
         aligned, blur = None, 0.0
         if code is None:
@@ -252,7 +252,7 @@ class IdentCollector:
         if code is not None:
             return label
         sharp = f.score * blur
-        if len(st.kept) >= BEST_K and sharp <= min(k[0] for k in st.kept):
+        if len(st.kept) >= self._ident.best_k and sharp <= min(k[0] for k in st.kept):
             return label  # tidak mengalahkan K terbaik: tanpa embed berulang
         try:
             vec = self.face.embed(aligned)
@@ -261,7 +261,7 @@ class IdentCollector:
         if vec is None:
             return label
         st.kept.append((sharp, q, vec))
-        if len(st.kept) > BEST_K:
+        if len(st.kept) > self._ident.best_k:
             st.kept.remove(min(st.kept, key=lambda k: k[0]))
         st.dirty = True
         return label
@@ -305,7 +305,7 @@ class IdentCollector:
             gone = now - ent.seen_ts > REGISTRY_TTL_S
             age = now - (ent.bound_ts or now)
             if st.sent == 0:
-                if age < IDENT_WINDOW_S and not gone:
+                if age < self._ident.window_s and not gone:
                     continue
                 out.append(self._message(ent, st, now))
             else:

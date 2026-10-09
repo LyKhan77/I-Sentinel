@@ -53,6 +53,7 @@ def test_admin_put_persists_global_settings_and_config_uses_them(client, db):
     assert face == {
         "device": "", "min_width_px": 100.0, "min_det_score": 0.7,
         "max_yaw": 0.3, "blur_min": 90.0, "min_frames": 4,
+        "ident": {"min_width_px": 70.0, "max_pitch": 0.4, "best_k": 6, "window_s": 9.0},
     }
 
 
