@@ -40,7 +40,7 @@ Bukti bahwa algoritma intrusion (tanpa gerbang blur/quality absolut, peringkat r
 2. Node dan API membaca parameter dari baris `detector_setting` yang sama; env hanya cadangan saat baris tidak ada.
 3. Tahap 1 tidak mengubah keputusan absensi untuk masukan yang sama (diuji dengan masukan identik sebelum dan sesudah).
 4. Perubahan nilai di UI berlaku di node setelah config push dan di API pada event berikutnya, tanpa restart.
-5. Tahap 2: mode `unified` mengenali ≥ 95% karyawan dalam median ≤ 2 dtk (p95 ≤ 3 dtk), 0 salah-orang, 0 non-karyawan tercatat (bukti di §7).
+5. Tahap 2: mode `unified` mengenali ≥ 95% karyawan dalam median ≤ 2 dtk (p95 ≤ 3 dtk; diukur dari `face_stats.zone_s`: wajah pertama di zona sampai event dikirim), 0 salah-orang, 0 non-karyawan tercatat (bukti di §7).
 
 **Non-tujuan:** foto enrollment (`face_min_quality`, `face_dup_warn`), `attendance_cooldown_min`, interval pembaruan / maks pembaruan / batas lacak / `UNVERIFIED_AFTER_S` (batas operasional, tetap konstanta kode), deteksi wajah pada ROI kepala, hardening GPU container, Jetson.
 
@@ -76,14 +76,14 @@ Bukti bahwa algoritma intrusion (tanpa gerbang blur/quality absolut, peringkat r
 
 ## 5. Desain tahap 2 — keselarasan absensi (saklar)
 
-Migrasi `0025`: `face_attendance_mode` (`'legacy'` | `'unified'`, awal `legacy`) dan `face_attendance_window_s` (awal 2,0).
+Migrasi `0025`: `face_attendance_mode` (`'legacy'` | `'unified'`, awal `legacy`) dan `face_attendance_window_s` (awal **1,5**, rentang 0,5–3,0; koreksi dari 2,0 agar `zone_s` median ≤ 2 dtk masih tercapai).
 
 **Node (`FaceGateWorker`, mode `unified`):**
 - Gerbang per wajah: di dalam poligon zona (tetap), lebar ≥ `face_ident_min_width_px`, skor ≥ `face_min_det_score`, yaw ≤ `face_max_yaw`, pitch ≤ `face_max_pitch`. Tanpa gerbang blur absolut.
 - Per track: simpan `face_best_k` kandidat terbaik berperingkat `det × ketajaman` (logika peringkat yang sama dengan `IdentCollector`, dipakai bersama, bukan salinan).
-- Kirim event pada yang lebih dulu: K kandidat terkumpul, `face_attendance_window_s` sejak kandidat pertama, atau track hilang dengan ≥ 1 kandidat. Embedding = `aggregate` berbobot (sama seperti sekarang). Field event tidak berubah; payload mendapat `policy: "unified"` (tanpa field = `legacy`).
+- Kirim event pada yang lebih dulu: `face_attendance_window_s` berlalu sejak kandidat pertama, atau track hilang dengan ≥ 1 kandidat. **K kandidat terkumpul tidak memicu pengiriman** (koreksi 2026-10-09 atas rancangan awal): itu akan mengambil K frame pertama dan meniadakan pemilihan frame terbaik; pelajaran siklus intrusion ialah jendela pengamatan yang terlalu pendek merugikan. Embedding = `aggregate` berbobot (sama seperti sekarang). Payload mendapat `policy: "unified"` (tanpa field = `legacy`) dan `face_stats.collect_s` (kandidat pertama → kirim) serta `face_stats.zone_s` (wajah pertama di zona → kirim, dasar ukuran kecepatan).
 
-**API:** event dengan `policy == "unified"` dicocokkan lewat `match_strict` (ambang + margin); `ambiguous` diperlakukan seperti `no_match` (tidak tercatat, `match_reason="ambiguous"`, label snapshot "Unknown"). Event `legacy` tetap lewat `match_vector`. Memilih berdasarkan payload event menjamin keputusan konsisten per event walau saklar dibalik saat event di perjalanan. Jalur crop-saja (`match_crop`) tidak berubah.
+**API:** event dengan `policy == "unified"` dicocokkan lewat `match_strict(embedding, None, policy)` (ambang + margin, tanpa gerbang `low_quality`); `ambiguous` diperlakukan seperti `no_match` (tidak tercatat, `match_reason="ambiguous"`, label snapshot "Unknown", UI menampilkannya sebagai tidak dikenal); `payload.face_margin` disimpan untuk pemantauan. Event `legacy` tetap lewat `match_vector`. Memilih berdasarkan payload event menjamin keputusan konsisten per event walau saklar dibalik saat event di perjalanan. Jalur crop-saja (`match_crop`) tidak berubah.
 
 **UI:** saklar `face_attendance_mode` dan jendela absensi di kartu yang sama. Grup "Absensi (lama)" hanya berlaku di mode `legacy`; dihapus pada siklus pembersihan terpisah setelah `unified` stabil.
 
