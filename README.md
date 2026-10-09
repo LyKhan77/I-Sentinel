@@ -371,6 +371,14 @@ otomatis "Tidak hadir"/"Tanpa exit".
 **tidak pernah diubah** oleh job penutupan maupun status efektif — koreksi tetap
 terjaga sampai event absensi baru masuk untuk hari itu.
 
+**Dua algoritma wajah.** Zona attendance memakai gerbang lama (lebar 80 px, blur 120, 3 frame) secara
+default. Saklar **Algoritma absensi baru (unified)** di **Konfigurasi → Deteksi & Model → Advanced →
+kartu Pengenalan wajah → grup Mode absensi** mengalihkannya ke gerbang identitas (lebar 60 px, tanpa
+gerbang blur), K frame terbaik, dan jendela 1,5 dtk: lebih tahan terhadap wajah kecil atau buram, tetapi
+event baru terbit setelah jendela berlalu atau track hilang. Bawaannya tetap `legacy` sampai replay
+offline dan uji lapangan membuktikan; prosedur, syarat lolos, dan query pemantauannya ada di
+`docs/runbooks/attendance.md`.
+
 Detail operasional: `docs/runbooks/attendance.md`.
 
 ## Retensi & Storage

@@ -259,9 +259,18 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
 1. Karyawan lewat zona attendance → `face_worker` di node mengumpulkan frame wajah yang lolos gerbang
    kualitas → embedding + crop dikirim sebagai event `attendance` (arah entry/exit). Motion gate tetap
    diperbarui setiap frame; selama wajah terlihat, frame diam juga diproses pada FPS AI kamera.
+   Ada **dua jalur**, dipilih saklar **Mode absensi** di kartu Pengenalan wajah (bawaan `legacy`):
+   `legacy` menerbitkan event setelah `face_min_frames` frame lolos gerbang lama (lebar 80, blur 120);
+   `unified` memakai gerbang identitas (lebar 60, skor, yaw, pitch; tanpa gerbang blur) dan mengirim
+   **tepat sekali per track** saat jendela `attendance_window_s` (bawaan 1,5 dtk) berlalu sejak kandidat
+   pertama atau track hilang, dengan embedding dari K frame terbaik. Detail: `docs/runbooks/attendance.md`.
 2. API mencocokkan ke galeri (cosine ≥ ambang kecocokan di Konfigurasi → Deteksi & Model → kartu
    **Pengenalan wajah** → grup Bersama; default 0,40, `FACE_MATCH_THRESHOLD` hanya cadangan bila baris
-   setelan belum ada). Dengan **Catat absensi**
+   setelan belum ada). Event ber-`payload.policy = "unified"` memakai `match_strict` (ambang + margin
+   0,15; tanpa gerbang `low_quality`), selain itu jalur lama `match_vector`; keputusan mengikuti payload
+   event, bukan baris DB. Hasil `ambiguous` (dua karyawan mirip) diperlakukan seperti tidak dikenal:
+   tanpa baris absensi, snapshot "Unknown", tampil sebagai tidak dikenal di Inbox dan Live. Dengan
+   **Catat absensi**
    aktif (behavior `record=true`, default bila key hilang), cocok → `attendance_event` →
    `recompute_day` memperbarui `attendance_day`. Cooldown per karyawan+arah diperiksa dahulu;
    entry kedua hari lokal yang sama hanya evidence `already_in`, tanpa rekap baru, dan hanya bila karyawan

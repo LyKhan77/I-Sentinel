@@ -157,14 +157,27 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   berzona kosong (tanpa event absensi); bila pesan tidak datang, API menandai alert itu
   `unverified` setelah 20 dtk.
 - **Satu sumber parameter wajah**: baris `detector_setting` id=1 (UI **Konfigurasi → Deteksi & Model**,
-  kartu *Pengenalan wajah* dengan grup Bersama/Identitas/Absensi lama). Blok `face` pada config push memuat
-  pin `device`, gerbang absensi lama (`min_width_px`, `min_det_score`, `max_yaw`, `blur_min`, `min_frames`)
-  dan sub-blok `ident` (`min_width_px`, `max_pitch`, `best_k`, `window_s`); key yang hilang di node memakai
-  nilai awal. Pencocokan di API memakai `FacePolicy` (`services/face_policy.py`: `match_threshold`,
-  `match_margin`) dengan sumber yang sama — satu `load(db)` per event (absensi lewat `handle_face_event`,
-  identitas intrusion lewat `_identify_with_name`), **tanpa cache**, jadi perubahan UI berlaku pada event
-  berikutnya. Bila baris belum ada, keduanya jatuh ke env (`FACE_MATCH_THRESHOLD`, `FACE_ID_MARGIN`) dengan
-  nilai awal 0,40 / 0,15.
+  kartu *Pengenalan wajah* dengan grup Bersama/Identitas/Mode absensi/Absensi lama). Blok `face` pada
+  config push memuat pin `device`, gerbang absensi lama (`min_width_px`, `min_det_score`, `max_yaw`,
+  `blur_min`, `min_frames`), saklar absensi (`attendance_mode` `legacy`/`unified`, `attendance_window_s`
+  0,5–3,0 dtk) dan sub-blok `ident` (`min_width_px`, `max_pitch`, `best_k`, `window_s`); key yang hilang
+  di node memakai nilai awal (`attendance_mode` tak dikenal → `legacy`). Pencocokan di API memakai
+  `FacePolicy` (`services/face_policy.py`: `match_threshold`, `match_margin`) dengan sumber yang sama —
+  satu `load(db)` per event (absensi lewat `handle_face_event`, identitas intrusion lewat
+  `_identify_with_name`), **tanpa cache**, jadi perubahan UI berlaku pada event berikutnya. Bila baris
+  belum ada, keduanya jatuh ke env (`FACE_MATCH_THRESHOLD`, `FACE_ID_MARGIN`) dengan nilai awal 0,40 / 0,15.
+- **Dua jalur absensi** (`FaceGateWorker`, saklar `face.attendance_mode`): `legacy` = gerbang lama
+  (lebar 80, blur 120, `min_frames` 3) dan keputusan API `match_vector`; `unified` = gerbang identitas
+  (lebar `ident.min_width_px`, skor, yaw, pitch; **tanpa gerbang blur**) dengan K frame terbaik
+  berperingkat `skor × ketajaman` (kelas `BestK` bersama `IdentCollector`), kirim **tepat sekali per
+  track** saat `attendance_window_s` berlalu sejak kandidat pertama atau track hilang dengan ≥ 1
+  kandidat (K kandidat tidak memicu), payload `policy: "unified"` + `face_stats.collect_s`/`zone_s`.
+  API memilih algoritma dari `payload.policy` event, **bukan** baris DB, supaya keputusan konsisten per
+  event walau saklar dibalik saat event di perjalanan; `unified` memakai `match_strict` (ambang + margin,
+  tanpa gerbang `low_quality`) dan hasil `ambiguous` diperlakukan seperti `no_match` (tanpa baris
+  absensi, snapshot "Unknown", UI menampilkan tidak dikenal). `payload.face_margin` disimpan untuk
+  pemantauan. Perubahan mode/jendela merestart worker wajah kamera terkait; track yang sedang di dalam
+  jendela saat itu hilang (dicatat di runbook).
 - Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.
   Motion gate bangun karena gerak dan terus memproses frame diam selama wajah masih terlihat.
   Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.
@@ -182,7 +195,8 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   (memuat engine TensorRT) belum diukur. Clip aktif kamera tersebut dapat terpotong.
 - Restart penuh berlaku pada config pertama, perubahan model/nms/conf/imgsz/`device` detector,
   perubahan `device` face, atau galat tak terduga dalam diff. Perubahan `FaceSettings`
-  (lebar, skor, yaw, blur, jumlah frame, sub-blok `ident`) hanya merestart kamera yang memiliki worker face.
+  (lebar, skor, yaw, blur, jumlah frame, mode/jendela absensi, sub-blok `ident`) hanya merestart kamera
+  yang memiliki worker face.
 - Kamera yang gagal dimulai pada diff tidak dicatat di `_applied`, sehingga push berikutnya
   mencoba kembali, termasuk jika config kembali ke nilai sebelumnya. Antrean snapshot yang
   sudah tersedia digabung: hanya snapshot terakhir diterapkan, bukan setiap pesan satu per satu.

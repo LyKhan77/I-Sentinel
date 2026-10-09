@@ -276,6 +276,109 @@ menaikkan beban GPU; pantau sebelum tuning.
    bukan hanya restart. Tanpa migrasi; flag zona lama tetap memakai default.
    Kode ini **BELUM diuji di server nyata**. Fase 3b dua fase hanya diputuskan dari data uji.
 
+## Mode absensi unified (tahap 2)
+
+### Arti mode dan jendela
+
+Dua algoritma absensi hidup berdampingan. Saklar `face_attendance_mode` ada di **Konfigurasi → Deteksi &
+Model → Advanced → kartu Pengenalan wajah → grup Mode absensi** dan berlaku untuk semua kamera.
+
+| | `legacy` (bawaan) | `unified` |
+|---|---|---|
+| Gerbang per wajah | lebar `face_min_width_px` (80), skor, yaw, **blur `face_blur_min`** (120) | lebar `face_ident_min_width_px` (60), skor, yaw, pitch `face_max_pitch`; **tanpa gerbang blur** |
+| Kapan event terbit | setelah `face_min_frames` (3) frame lolos | setelah jendela `face_attendance_window_s` berlalu sejak kandidat pertama, atau track hilang dengan ≥ 1 kandidat |
+| Embedding | agregat berbobot semua frame lolos | agregat berbobot K frame terbaik (`face_best_k`) berperingkat `skor × ketajaman` |
+| Keputusan API | `match_vector` (ambang saja) | `match_strict` (ambang 0,40 + margin 0,15); `ambiguous` = tidak dikenal |
+| Payload | tanpa `policy` | `policy: "unified"` + `face_stats.collect_s` dan `zone_s` |
+
+Jendela `face_attendance_window_s` bawaan **1,5 dtk** (rentang 0,5–3). Naik: lebih banyak frame untuk
+dipilih, tetapi event lebih lambat. K kandidat terkumpul **tidak** memicu pengiriman — pemilihan frame
+terbaik butuh waktu. Mengubah mode atau jendela merestart worker wajah kamera terkait; **track yang
+sedang di dalam jendela saat itu hilang** (tidak ada event untuk track itu).
+
+Keputusan API ditentukan `payload.policy` event, bukan baris DB saat event diproses: event yang sudah
+dikirim tetap diputuskan dengan algoritma asalnya walau saklar dibalik di tengah jalan. Node lama
+(tanpa `policy`) dan node baru selalu bisa bercampur; payload `unified` ke API tahap 1 tetap diputuskan
+`legacy`, dan sebaliknya.
+
+### Replay offline sebelum membalik saklar
+
+Menguji ulang ambang/margin pada crop event nyata (bukan waktu jendela). Jalankan **di container `api`**,
+CPU dibatasi, dan **beri tahu user dulu** (analisis di server membebani CPU):
+
+```bash
+docker compose -f docker/compose.yml exec api \
+    nice -n 19 taskset -c 0-3 python -m scripts.face_replay --days 14 --limit 200
+```
+
+Keluaran hanya ID (event dan karyawan) — tanpa nama, tanpa embedding. Syarat lolos spec §7.1:
+`same_pct` ≥ 98 (crop yang dikenali `legacy` tetap karyawan yang sama di 0,40 / 0,15) dan `flipped` 0
+(tidak ada yang pindah ke karyawan lain). Daftar `ambiguous` (beserta pasangan karyawannya) dan
+`gained` (dulu `no_match`, kini cocok) dinilai manual: `ambiguous` pada karyawan mirip berarti absensi
+berpotensi terlewat, `gained` bisa berarti perbaikan atau salah-orang. Skrip ini tidak menguji kecepatan
+(jendela).
+
+### Uji lapangan kategori A–D (spec §7.2)
+
+Kamera profil C (2K, 15 fps). Catat hasil per kategori — satu angka gabungan menyembunyikan batas fisik.
+
+| Kategori | Skenario | Syarat |
+|---|---|---|
+| A (penentu) | jalan normal menuju kamera tanpa berhenti, ≥ 5 karyawan × 10 lintasan | ≥ 95% tercatat, median `zone_s` ≤ 2 dtk, p95 ≤ 3 dtk, 0 salah-orang |
+| B | berhenti sebentar di titik absensi | sama dengan A |
+| C | menyamping atau menunduk (melihat ponsel), 5 lintasan per karyawan | dicatat sebagai batas sistem (bukan kegagalan), tetap 0 salah-orang |
+| D | non-karyawan ≥ 10 lintasan (≥ 3 orang), berjalan dan berhenti | 0 tercatat |
+
+`zone_s` (wajah pertama di zona → event dikirim) ada di `payload.face_stats` tiap event `unified`.
+Hasil ditempel di `CHANGELOG.md`/`ROADMAP.md`; keputusan membalik saklar ada di tangan user.
+
+### Mengukur kecepatan dan hasil
+
+Query pemantauan berikut memakai kolom dari `backend/app/models/event.py`; `payload` bertipe `json`
+(pakai `->`/`->>`, bukan operator `?`) dan `round()` butuh `numeric`. **Belum divalidasi di Postgres —
+sesi perencanaan memvalidasi di server sebelum dipakai.**
+
+```sql
+-- 1) kecepatan event unified: distribusi zone_s dan collect_s (dtk) per kamera per hari
+SELECT camera_id,
+       (ts_event AT TIME ZONE 'Asia/Jakarta')::date AS day,
+       count(*)                                     AS n,
+       round((percentile_cont(0.5) WITHIN GROUP (
+             ORDER BY (payload->'face_stats'->>'zone_s')::numeric))::numeric, 2) AS zone_s_p50,
+       round((percentile_cont(0.95) WITHIN GROUP (
+             ORDER BY (payload->'face_stats'->>'zone_s')::numeric))::numeric, 2) AS zone_s_p95,
+       round((percentile_cont(0.5) WITHIN GROUP (
+             ORDER BY (payload->'face_stats'->>'collect_s')::numeric))::numeric, 2) AS collect_s_p50
+FROM event
+WHERE type = 'attendance'
+  AND payload->>'policy' = 'unified'
+  AND payload->'face_stats'->>'zone_s' IS NOT NULL
+  AND ts_event >= now() - interval '14 days'
+GROUP BY 1, 2
+ORDER BY day DESC, camera_id;
+
+-- 2) hasil keputusan + margin per kamera per hari (matched/no_match/ambiguous/cooldown/already_in)
+SELECT camera_id,
+       (ts_event AT TIME ZONE 'Asia/Jakarta')::date      AS day,
+       coalesce(payload->>'match_reason', '(kosong)')    AS reason,
+       count(*)                                          AS n,
+       round(min((payload->>'face_margin')::numeric), 3) AS margin_min,
+       round((percentile_cont(0.5) WITHIN GROUP (
+             ORDER BY (payload->>'face_margin')::numeric))::numeric, 3) AS margin_p50
+FROM event
+WHERE type = 'attendance'
+  AND ts_event >= now() - interval '14 days'
+GROUP BY 1, 2, 3
+ORDER BY day DESC, camera_id, n DESC;
+```
+
+### Membalik saklar dan rollback
+
+- **Balik ke `legacy`:** matikan **Algoritma absensi baru (unified)** di kartu Pengenalan wajah lalu
+  **Simpan setelan global**. Instan, tanpa deploy atau restart; event berikutnya memakai `legacy`.
+- **Rollback kode:** `git revert` commit tahap 2. Kolom DB boleh tetap ada; migrasi `0025` tidak dihapus.
+- Track yang sedang di dalam jendela hilang saat saklar dibalik; ulangi lintasan bila perlu.
+
 ## Troubleshooting
 
 | Gejala | Kemungkinan | Langkah |
