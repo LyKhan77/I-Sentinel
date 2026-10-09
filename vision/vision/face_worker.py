@@ -10,12 +10,12 @@ import queue
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from statistics import median
 
-from .face_quality import (FaceSettings, aggregate, blur_score, crop_box, gate_code,
+from .face_quality import (BestK, FaceSettings, aggregate, blur_score, crop_box, gate_code,
                            quality, yaw_ratio)
-from .intrusion_face import ErrorThrottle, IdentCollector, IntrusionRegistry
+from .intrusion_face import ErrorThrottle, IdentCollector, IntrusionRegistry, pitch_dev
 from .motion import FrameMotionGate
 from .pipeline.detector import Detection
 from .pipeline.tracker import ByteTracker
@@ -36,6 +36,11 @@ class _TrackState:
     best_q: float = -1.0
     best: dict | None = None
     done: bool = False
+    unified: bool = False              # jalur unified: gerbang identitas + K terbaik + jendela
+    keeper: BestK | None = None        # jalur unified: K kandidat terbaik (rank, quality, vector)
+    first_ts: float | None = None      # jalur unified: ts kandidat pertama
+    emit_ts: float = 0.0               # jalur unified: ts saat event dikirim
+    zone_start_ts: float | None = None  # jalur unified: ts wajah pertama di zona (diambil saat emit)
 
 
 def _jpeg(img) -> bytes:
@@ -91,6 +96,9 @@ class FaceGateWorker(threading.Thread):
         self.motion_skipped = 0
         self._in_zone: dict[int, float] = {}
         self._funnel = self._empty_funnel()
+        self._last_frame_ts = 0.0  # jalur unified: `_expire` tanpa timestamp memakai frame terakhir
+        # gerbang unified: lebar identitas + tanpa blur absolut (pitch dicek terpisah di `_gate_unified`)
+        self._unified_settings = replace(settings, min_width_px=settings.ident.min_width_px, blur_min=0.0)
         # registry ≠ None → kamera ini juga menjalankan identitas intrusion critical
         self.collector = (IdentCollector(registry, face, settings, camera_id, node_id)
                           if registry is not None else None)
@@ -196,6 +204,7 @@ class FaceGateWorker(threading.Thread):
 
     def _process(self, frame) -> None:
         h, w = frame.data.shape[:2]
+        self._last_frame_ts = frame.ts
         try:
             faces = self.face.detect_faces(frame.data)
         except Exception:
@@ -212,6 +221,7 @@ class FaceGateWorker(threading.Thread):
                                     self.camera_id)
         by_bbox = {d.bbox: f for d, f in zip(dets, faces)}
         tracks = self._tracker.update(dets, frame.ts)
+        unified = self.settings.attendance_mode == "unified"
         boxes, passed = [], []
         for tr in tracks:
             f = by_bbox.get(tr.bbox)
@@ -225,30 +235,53 @@ class FaceGateWorker(threading.Thread):
                                   "label": ident_label})
                 continue
             self._funnel["faces"] += 1
-            code, zone = gate_code(f, w, h, self.zones, self.settings)
-            aligned = None
-            if code is None:
-                try:
-                    aligned = self.face.align(frame.data, f.kps)
-                    if blur_score(aligned) < self.settings.blur_min:
+            aligned, blur = None, 0.0
+            if unified:
+                code, zone = self._gate_unified(f, w, h)
+                if code is None:
+                    try:
+                        aligned = self.face.align(frame.data, f.kps)
+                        blur = blur_score(aligned)  # hanya untuk peringkat, bukan gerbang
+                    except Exception:
+                        log.warning("camera %s: face align failed", self.camera_id, exc_info=True)
                         code = "blur"
-                except Exception:
-                    log.warning("camera %s: face align failed", self.camera_id, exc_info=True)
-                    code = "blur"
+            else:
+                code, zone = gate_code(f, w, h, self.zones, self.settings)
+                if code is None:
+                    try:
+                        aligned = self.face.align(frame.data, f.kps)
+                        if blur_score(aligned) < self.settings.blur_min:
+                            code = "blur"
+                    except Exception:
+                        log.warning("camera %s: face align failed", self.camera_id, exc_info=True)
+                        code = "blur"
             if code != "zone":
                 self._in_zone.setdefault(tr.id, frame.ts)
             if code is not None:
-                self._funnel["rejects"][code] += 1
+                # `.get`: kode `pitch` (khusus unified) hanya muncul di kamus bila benar-benar terjadi
+                self._funnel["rejects"][code] = self._funnel["rejects"].get(code, 0) + 1
             q = quality(f.score, f.bbox[2] - f.bbox[0], yaw_ratio(f.kps))
             boxes.append({"id": tr.id, "bbox_norm": [round(v, 4) for v in tr.bbox],
                           "label": ident_label or code or f"{q:.2f}"})
             if code is None:
-                passed.append((tr.id, f, zone, aligned, q))
+                passed.append((tr.id, f, zone, aligned, q, blur))
         self._publish(boxes)  # overlay before ArcFace embedding and uploads
-        for tid, f, zone, aligned, q in passed:
-            self._accumulate(tid, f, zone, aligned, q, frame)
+        for tid, f, zone, aligned, q, blur in passed:
+            if unified:
+                self._accumulate_unified(tid, f, zone, aligned, q, blur, frame)
+            else:
+                self._accumulate(tid, f, zone, aligned, q, frame)
+        if unified:
+            self._emit_due(frame.ts)
         self._expire()
         self._ident_step(frame.ts)
+
+    def _gate_unified(self, f, w: int, h: int) -> tuple[str | None, dict | None]:
+        """Gerbang absensi unified: zona, lebar identitas, skor, yaw, pitch — tanpa blur absolut."""
+        code, zone = gate_code(f, w, h, self.zones, self._unified_settings)
+        if code is None and pitch_dev(f.kps) > self._unified_settings.ident.max_pitch:
+            code = "pitch"
+        return code, zone
 
     def _publish(self, boxes: list[dict]) -> None:
         if self.transport is None:
@@ -282,11 +315,53 @@ class FaceGateWorker(threading.Thread):
         if len(st.vectors) >= self.settings.min_frames:
             self._emit(tid, st)
 
+    def _accumulate_unified(self, tid, f, zone, aligned, q, blur, frame) -> None:
+        """Kandidat unified: simpan K terbaik berperingkat `skor × ketajaman`; embed hanya bila mengalahkan."""
+        st = self._states.setdefault(tid, _TrackState(zone=zone))
+        if st.done:
+            return  # track tetap hidup sesudah kirim: tidak boleh event kedua
+        st.unified = True
+        keeper = st.keeper
+        if keeper is None:
+            keeper = st.keeper = BestK(self.settings.ident.best_k)
+        if st.first_ts is None:
+            st.first_ts = frame.ts  # jendela dihitung sejak kandidat pertama, bukan frame pertama
+        if q > st.best_q:
+            st.best_q = q
+            st.best = {"frame": frame.data, "bbox": f.bbox, "ts": frame.ts,
+                       "stats": {"width_px": round(f.bbox[2] - f.bbox[0]),
+                                 "det_score": round(f.score, 3),
+                                 "yaw": round(yaw_ratio(f.kps), 3),
+                                 "blur": round(blur, 1)}}
+        rank = f.score * blur
+        if not keeper.beats(rank):
+            return  # tidak mengalahkan K terbaik: tanpa embed berulang
+        try:
+            vec = self.face.embed(aligned)
+        except Exception:
+            log.warning("camera %s: face embed failed", self.camera_id, exc_info=True)
+            return
+        if vec is None:
+            return
+        if not len(keeper):
+            self._funnel["_ttfg"].append(frame.ts - self._in_zone.get(tid, st.first_ts))
+        keeper.add(rank, q, vec)
+
+    def _emit_due(self, now: float) -> None:
+        """Kirim track unified yang jendelanya sudah berlalu; track tetap hidup, jadi maksimum sekali."""
+        for tid, st in list(self._states.items()):
+            if not st.unified or st.done or st.first_ts is None:
+                continue
+            if now - st.first_ts >= self.settings.attendance_window_s:
+                st.emit_ts = now
+                self._emit(tid, st)
+
     def _expire(self) -> None:
         """Emit expired tracks with at least one good frame, exactly once."""
         for tid in self._tracker.lost_ids:
             st = self._states.pop(tid, None)
-            if st is not None and not st.done and st.vectors:
+            if st is not None and not st.done and (st.keeper if st.unified else st.vectors):
+                st.emit_ts = self._last_frame_ts  # `_expire` tidak punya timestamp frame sendiri
                 self._emit(tid, st)
             if tid in self._in_zone and (st is None or not st.vectors):
                 self._funnel["tracks_silent"] += 1
@@ -295,6 +370,11 @@ class FaceGateWorker(threading.Thread):
     def _emit(self, tid: int, st: _TrackState) -> None:
         st.done = True
         self._funnel["tracks_emitted"] += 1
+        if st.unified:
+            # `_finalize_event` membaca vectors/weights untuk agregat: isi dari K terbaik
+            st.vectors = [v for _, _, v in st.keeper.items]
+            st.weights = [q for _, q, _ in st.keeper.items]
+            st.zone_start_ts = self._in_zone.get(tid, st.first_ts)  # diambil sebelum `_expire` pop
         best, st.best = st.best, None
         if self.recorder is not None and (self._media_pending.is_set() or
                                           self._media_busy.is_set()):
@@ -356,6 +436,20 @@ class FaceGateWorker(threading.Thread):
                     abandoned.set()
                     log.warning("camera %s: face media timed out; event sent without media",
                                 self.camera_id)
+        payload = {
+            "track_id": tid,
+            "direction": st.zone.get("direction"),
+            "bbox_norm": [x1 / w, y1 / h, x2 / w, y2 / h],
+            "embedding": aggregate(st.vectors, st.weights),
+            "face_quality": round(st.best_q, 3),
+            "face_bbox": face_bbox,
+            "crop_path": crop_path,
+            "face_stats": {**best["stats"], "frames": len(st.vectors)},
+        }
+        if st.unified:
+            payload["policy"] = "unified"
+            payload["face_stats"]["collect_s"] = round(st.emit_ts - st.first_ts, 2)
+            payload["face_stats"]["zone_s"] = round(st.emit_ts - st.zone_start_ts, 2)
         ev = {
             "event_id": str(uuid.uuid4()),
             "type": "attendance",
@@ -364,16 +458,7 @@ class FaceGateWorker(threading.Thread):
             "zone_id": st.zone["id"],
             "severity": "info",
             "ts_event": _iso(ts),
-            "payload": {
-                "track_id": tid,
-                "direction": st.zone.get("direction"),
-                "bbox_norm": [x1 / w, y1 / h, x2 / w, y2 / h],
-                "embedding": aggregate(st.vectors, st.weights),
-                "face_quality": round(st.best_q, 3),
-                "face_bbox": face_bbox,
-                "crop_path": crop_path,
-                "face_stats": {**best["stats"], "frames": len(st.vectors)},
-            },
+            "payload": payload,
             "dedup_key": f"{self.camera_id}:attendance:face{tid}:{int(ts // DEDUP_BUCKET_S)}",
             "snapshot_path": snapshot_path,
             "clip_path": None,
