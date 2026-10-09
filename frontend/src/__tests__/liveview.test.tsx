@@ -337,6 +337,16 @@ test('wajah tak cocok diberi label Tidak dikenal', async () => {
   expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Tidak dikenal')
 })
 
+test('wajah ambiguous (dua karyawan mirip) diberi label Tidak dikenal', async () => {
+  const { faceBox, attendance } = faceNameSetup()
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+  await attendance({ track_id: 2, employee_id: null, match_reason: 'ambiguous' })
+  await faceBox()
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Tidak dikenal')
+})
+
 test('event attendance lama (polling awal) tidak menamai track baru dengan id sama', async () => {
   const { faceBox, attendance } = faceNameSetup()
   renderPage()

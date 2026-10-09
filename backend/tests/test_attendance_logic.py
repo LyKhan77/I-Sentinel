@@ -850,3 +850,67 @@ def test_already_in_not_suppressed_by_another_employee_being_seen(db, monkeypatc
     again = _raw_event(db, "entry", _at(*MON, 7, 16), VEC)
     attendance.handle_face_event(db, again)
     assert again.payload["match_reason"] == "already_in"  # B di 07:12 bukan bukti A masih terlihat
+
+
+# --- event unified: keputusan strict, margin, dan label `ambiguous` ----------
+
+def _ambiguous_vec():
+    return lambda vector, quality=None, policy=None: MatchResult(None, 0.5, quality, "ambiguous", 0.02)
+
+
+def test_unified_event_uses_strict_match_and_stores_margin(db, monkeypatch):
+    _camera(db)
+    e = _emp(db, _shift(db))
+    seen = {"quality": "unset", "vector_calls": 0}
+
+    def _strict(vector, quality=None, policy=None):
+        seen["quality"] = quality
+        return MatchResult(e.id, 0.83, quality, "matched", 0.31)
+
+    def _vector(vector, quality=None, policy=None):
+        seen["vector_calls"] += 1
+        return MatchResult(e.id, 0.83, quality, "matched")
+
+    monkeypatch.setattr(attendance.face, "match_strict", _strict)
+    monkeypatch.setattr(attendance.face, "match_vector", _vector)
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), {**VEC, "policy": "unified"})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None and row.employee_id == e.id
+    assert seen["vector_calls"] == 0  # unified tidak memakai match_vector
+    assert seen["quality"] is None  # tanpa gerbang low_quality
+    assert ev.payload["face_margin"] == 0.31
+
+
+def test_unified_ambiguous_event_has_no_row_and_unknown_label(db, monkeypatch):
+    calls = []
+    monkeypatch.setattr(attendance, "annotate_snapshot",
+                        lambda path, label, bbox, color=None: calls.append(label))
+    _camera(db)
+    _emp(db, _shift(db))
+    monkeypatch.setattr(attendance.face, "match_strict", _ambiguous_vec())
+    monkeypatch.setattr(attendance.face, "match_vector", _matched_vec(1))  # jalur lama tak boleh dipakai
+
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), {**VEC, "policy": "unified"})
+    ev.snapshot_path = "snapshots/s.jpg"
+    db.commit()
+    assert attendance.handle_face_event(db, ev) is None
+    assert db.query(AttendanceEvent).count() == 0
+    db.refresh(ev)
+    assert (ev.payload["employee_id"], ev.payload["match_reason"]) == (None, "ambiguous")
+    assert "embedding" not in ev.payload
+    assert calls == ["Unknown"]
+
+
+def test_annotate_event_snapshot_labels_ambiguous_unknown(db, monkeypatch):
+    calls = []
+    monkeypatch.setattr(attendance, "annotate_snapshot",
+                        lambda path, label, bbox, color=None: calls.append(label))
+    _camera(db)
+    ev = _raw_event(db, "entry", _at(*MON, 7, 10), {"match_reason": "ambiguous", "employee_id": None})
+    ev.snapshot_path = "snapshots/s.jpg"
+    db.commit()
+
+    attendance.annotate_event_snapshot(ev)
+
+    assert calls == ["Unknown"]

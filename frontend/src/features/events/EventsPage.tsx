@@ -256,7 +256,7 @@ export default function EventsPage() {
     if (name && p?.match_reason === 'cooldown') return `${name} · ${t('events.face.cooldown')}`
     if (name && p?.match_reason === 'already_in') return `${name} · ${t('events.face.alreadyIn')}`
     if (name) return name
-    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality') return t('events.face.unknown')
+    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality' || p?.match_reason === 'ambiguous') return t('events.face.unknown')
     return '—'
   }
 

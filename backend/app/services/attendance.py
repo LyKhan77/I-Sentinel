@@ -209,7 +209,7 @@ def annotate_event_snapshot(event) -> None:
     label diambil dari payload yang ia simpan (employee_name / match_reason).
     """
     payload = event.payload or {}
-    if payload.get("match_reason") == "no_match":
+    if payload.get("match_reason") in ("no_match", "ambiguous"):
         _label_snapshot(event, payload, "Unknown", ORANGE)
     elif payload.get("employee_id") is not None:
         _label_snapshot(event, payload, payload.get("employee_name") or "Unknown")
@@ -233,17 +233,24 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
         return _save(db, event, payload, None)
 
     if embedding:
-        res = face.match_vector(embedding, payload.get("face_quality"), face_policy.load(db))
+        policy = face_policy.load(db)
+        if payload.get("policy") == "unified":
+            # event unified: ambang + margin, tanpa gerbang low_quality (diputuskan saat event dibuat)
+            res = face.match_strict(embedding, None, policy)
+        else:
+            res = face.match_vector(embedding, payload.get("face_quality"), policy)
     elif crop:
         res = face.match_crop(db, str(Path(settings.storage_root) / crop))
     else:
         logger.info("attendance: event %s tanpa embedding dan crop — skip", event.event_id)
         return _save(db, event, payload, None)
 
+    if res.margin is not None:
+        payload["face_margin"] = round(res.margin, 3)
     if res.employee_id is None:
         payload["employee_id"] = None
         payload["match_reason"] = res.reason
-        if res.reason == "no_match":
+        if res.reason in ("no_match", "ambiguous"):
             _label_snapshot(event, payload, "Unknown", ORANGE)
         logger.info("attendance: event %s tidak cocok (%s)", event.event_id, res.reason)
         return _save(db, event, payload, None)

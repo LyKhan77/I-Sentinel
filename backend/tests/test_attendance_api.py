@@ -465,3 +465,96 @@ def test_embedding_match_follows_db_threshold(db):
     assert attendance.handle_face_event(db, rejected) is None
     db.refresh(rejected)
     assert rejected.payload["match_reason"] == "no_match"
+
+
+# --- keputusan event unified: match_strict + margin, `ambiguous` seperti tidak dikenal ---
+
+
+def _attendance_event(db, camera_id, payload_over=None):
+    from app.models.event import Event
+
+    payload = {"direction": "entry", "embedding": [1.0, 0.0, 0.0, 0.0], "face_quality": 0.9}
+    payload.update(payload_over or {})
+    ev = Event(event_id=str(uuid.uuid4()), type="attendance", camera_id=camera_id, severity="info",
+               ts_event=_at(7, 10), payload=payload)
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    return ev
+
+
+def _two_employees(db, second_vector):
+    from app.services import face as face_mod
+
+    cam = Camera(name="Gate", host="127.0.0.1")
+    db.add(cam)
+    a = Employee(name="Budi", employee_code="E1")
+    b = Employee(name="Siti", employee_code="E2")
+    db.add_all([a, b])
+    db.commit()
+    db.refresh(cam)
+    db.refresh(a)
+    db.refresh(b)
+    face_mod.gallery._by_employee = {a.id: [[1.0, 0.0, 0.0, 0.0]], b.id: [list(second_vector)]}
+    return cam, a, b
+
+
+def test_unified_close_second_employee_is_ambiguous_without_record(db):
+    cam, _a, _b = _two_employees(db, [0.995, 0.1, 0.0, 0.0])  # cos ≈ 0,995 → margin < 0,15
+    _policy_row(db)
+
+    ev = _attendance_event(db, cam.id, {"policy": "unified"})
+    assert attendance.handle_face_event(db, ev) is None
+    assert db.query(AttendanceEvent).count() == 0
+    db.refresh(ev)
+    assert (ev.payload["employee_id"], ev.payload["match_reason"]) == (None, "ambiguous")
+    assert "embedding" not in ev.payload
+
+
+def test_unified_matched_event_stores_face_margin(db):
+    cam, a, _b = _two_employees(db, [0.0, 1.0, 0.0, 0.0])  # ortogonal → margin 1,0
+    _policy_row(db)
+
+    ev = _attendance_event(db, cam.id, {"policy": "unified"})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None and row.employee_id == a.id
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "matched"
+    assert ev.payload["face_margin"] == pytest.approx(1.0)
+
+
+def test_unified_has_no_low_quality_gate(db):
+    """`unified` memakai match_strict tanpa gerbang `low_quality` (kualitas kecil tetap diputuskan)."""
+    cam, a, _b = _two_employees(db, [0.0, 1.0, 0.0, 0.0])
+    _policy_row(db)
+
+    ev = _attendance_event(db, cam.id, {"policy": "unified", "face_quality": 0.1})
+    row = attendance.handle_face_event(db, ev)
+    assert row is not None and row.employee_id == a.id
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "matched"
+
+
+def test_event_policy_decides_not_db_row(db):
+    """Payload menentukan algoritma: baris DB `legacy` + payload unified → strict; sebaliknya → match_vector."""
+    cam, _a, _b = _two_employees(db, [0.98, 0.199, 0.0, 0.0])  # margin 0,02: strict ambiguous, longgar matched
+
+    _policy_row(db, face_attendance_mode="legacy")
+    unified = _attendance_event(db, cam.id, {"policy": "unified"})
+    assert attendance.handle_face_event(db, unified) is None
+    assert unified.payload["match_reason"] == "ambiguous"
+
+    _policy_row(db, face_attendance_mode="unified")
+    plain = _attendance_event(db, cam.id)  # tanpa policy → perilaku lama
+    assert attendance.handle_face_event(db, plain) is not None
+    assert plain.payload["match_reason"] == "matched"
+
+
+def test_event_without_policy_keeps_low_quality_gate(db):
+    cam, _a, _b = _two_employees(db, [0.0, 1.0, 0.0, 0.0])
+    _policy_row(db)
+
+    ev = _attendance_event(db, cam.id, {"face_quality": 0.1})
+    assert attendance.handle_face_event(db, ev) is None
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "low_quality"

@@ -341,7 +341,8 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
     if (ev?.type === 'attendance' && ev.camera_id != null && p && typeof p.track_id === 'number'
       && ev.ts_event && Date.now() - Date.parse(ev.ts_event) < NAME_TTL_MS) {
       const name = typeof p.employee_name === 'string' ? p.employee_name
-        : p.match_reason === 'no_match' || p.match_reason === 'low_quality' ? t('events.face.unknown') : null
+        : p.match_reason === 'no_match' || p.match_reason === 'low_quality' || p.match_reason === 'ambiguous'
+          ? t('events.face.unknown') : null
       if (name) setFaceNames((prev) => ({ ...prev, [`${ev.camera_id}:${p.track_id}`]: { name, at: Date.now() } }))
     }
   })
