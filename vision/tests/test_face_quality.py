@@ -118,3 +118,29 @@ def test_face_settings_reads_ident_block_and_compares_unequal():
     assert isinstance(s.ident.best_k, int)
     assert FaceSettings.from_config({"ident": {"window_s": 3.0}}) != FaceSettings()
     assert FaceSettings.from_config({"ident": {}}) == FaceSettings()
+
+
+def test_best_k_keeps_top_ranks_and_ties_do_not_beat():
+    from vision.face_quality import BestK
+
+    k = BestK(2)
+    assert k.beats(0.1) is True  # belum penuh
+    k.add(3.0, 0.9, _unit(0))
+    k.add(1.0, 0.5, _unit(1))
+    k.add(2.0, 0.7, _unit(2))
+    assert [rank for rank, _, _ in k.items] == [3.0, 2.0]
+    assert len(k) == 2
+    assert k.items[1] == (2.0, 0.7, _unit(2))
+    assert k.beats(1.9) is False
+    assert k.beats(2.0) is False  # sama tidak mengalahkan
+    assert k.beats(2.1) is True
+    assert BestK(1).beats(-5.0) is True  # kapasitas satu selalu menerima yang pertama
+
+
+def test_face_settings_attendance_mode_from_config_and_defaults():
+    assert (FaceSettings().attendance_mode, FaceSettings().attendance_window_s) == ("legacy", 1.5)
+    s = FaceSettings.from_config({"attendance_mode": "unified", "attendance_window_s": 2.5})
+    assert (s.attendance_mode, s.attendance_window_s) == ("unified", 2.5)
+    assert FaceSettings.from_config({"attendance_mode": "x"}).attendance_mode == "legacy"
+    assert FaceSettings.from_config({}).attendance_mode == "legacy"
+    assert FaceSettings.from_config({"attendance_mode": "unified"}) != FaceSettings()
