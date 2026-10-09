@@ -9,7 +9,7 @@ import ConfigurationPage from '../features/config/ConfigurationPage'
 const ADMIN = { id: 1, username: 'admin', role: 'admin' }
 
 const camera = { id: 1, name: 'CAM-01', location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, main_path: null, sub_path: null, node_id: 1, source_id: null, location_group_id: null, credential_override_id: null, source: null, location_group: null, credential_override: null, enabled: true, status: 'online', probe_main: null, probe_sub: null, ai_fps: null, confidence: null, analyzers: null, motion_enabled: null }
-const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, face_min_width_px: 80, face_min_det_score: 0.6, face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3, face_match_threshold: 0.4, face_match_margin: 0.2, face_max_pitch: 0.4, face_best_k: 5, face_ident_min_width_px: 60, face_ident_window_s: 8, updated_at: '2026-09-22T00:00:00Z' }
+const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, face_min_width_px: 80, face_min_det_score: 0.6, face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3, face_match_threshold: 0.4, face_match_margin: 0.2, face_max_pitch: 0.4, face_best_k: 5, face_ident_min_width_px: 60, face_ident_window_s: 8, face_attendance_mode: 'legacy', face_attendance_window_s: 1.5, updated_at: '2026-09-22T00:00:00Z' }
 // kolom Status AI dihitung dari zona aktif, jadi tiap tes perlu stub /zones
 const zone = { id: 9, camera_id: 1, name: 'Z', type: 'behavior', polygon: [], behaviors: [], trigger_seconds: 0, active: true }
 
@@ -207,6 +207,62 @@ test('jendela identitas dibatasi 10 detik di UI (sama dengan validasi backend)',
   expect(document.querySelector('#face-ident-window')).toHaveAttribute('max', '10')
 })
 
+// --- grup "Mode absensi": toggle unified + jendela absensi ---
+
+test('grup mode absensi: toggle mati pada legacy dan jendela dibatasi 0,5–3', async () => {
+  stubDetectionFetch()
+  render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.click(screen.getByText('Advanced'))
+
+  expect(screen.getByText('Mode absensi')).toBeInTheDocument()
+  // Carbon Toggle = <button role="switch">, bukan checkbox
+  const toggle = screen.getByRole('switch', { name: 'Algoritma absensi baru (unified)' })
+  expect(toggle).toHaveAttribute('aria-checked', 'false')  // bawaan legacy
+  const window = document.querySelector('#face-attendance-window') as HTMLInputElement
+  expect(window).toHaveAttribute('min', '0.5')
+  expect(window).toHaveAttribute('max', '3')
+  expect(window.value).toBe('1.5')
+})
+
+test('menyalakan mode absensi dan mengubah jendela terkirim di PUT', async () => {
+  const calls = stubDetectionFetch()
+  render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.click(screen.getByText('Advanced'))
+
+  const toggle = screen.getByRole('switch', { name: 'Algoritma absensi baru (unified)' })
+  await userEvent.click(toggle)
+  expect(toggle).toHaveAttribute('aria-checked', 'true')
+  const window = document.querySelector('#face-attendance-window') as HTMLInputElement
+  await userEvent.clear(window)
+  await userEvent.type(window, '2')
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan setelan global' }))
+
+  await waitFor(() => {
+    const put = calls.find((c) => c.url.endsWith('/detector-settings') && c.init?.method === 'PUT')
+    expect(put).toBeTruthy()
+    const body = JSON.parse(String(put!.init!.body))
+    expect(body.face_attendance_mode).toBe('unified')
+    expect(body.face_attendance_window_s).toBe(2)
+  })
+})
+
+test('label grup dan kontrol mode absensi tersedia dalam bahasa en', async () => {
+  localStorage.setItem('isentinel_locale', 'en')
+  try {
+    stubDetectionFetch()
+    render(detectionPage())
+    await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+    await userEvent.click(screen.getByText('Advanced'))
+    expect(screen.getByText('Attendance mode')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'New attendance algorithm (unified)' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Attendance window (seconds)')).toBeInTheDocument()
+  } finally {
+    localStorage.removeItem('isentinel_locale')
+  }
+})
+
 // --- ikon informasi: tiap parameter dan judul grup punya tooltip penjelasan ---
 
 // [label di UI, potongan khas penjelasan]; potongan unik per parameter agar tooltip tertukar terdeteksi
@@ -223,8 +279,11 @@ const TIPS: [string, string][] = [
   ['Ambang ketajaman (blur)', 'variansi Laplacian'],
   ['Jumlah frame wajah bagus (absensi lama)', 'Event absensi terbit'],
   ['Bersama', 'dipakai bersama oleh absensi'],
-  ['Identitas', 'Hanya untuk Face ID intrusion critical'],
-  ['Absensi (lama)', 'Gerbang absensi yang berlaku sekarang'],
+  ['Identitas', 'mode absensi baru menyala'],
+  ['Absensi (lama)', 'hanya berlaku di mode absensi lama'],
+  ['Mode absensi', 'menggantikan gerbang absensi lama'],
+  ['Algoritma absensi baru (unified)', 'tanpa gerbang blur'],
+  ['Jendela absensi (detik)', 'awal 1,5 dtk'],
 ]
 
 function tipText(button: HTMLElement): string {
@@ -263,7 +322,7 @@ test('penjelasan ikon info tersedia dalam bahasa en', async () => {
     await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
     await userEvent.click(screen.getByText('Advanced'))
     expect(tipText(screen.getByRole('button', { name: 'Info: Match threshold (0–1)' }))).toContain('Minimum similarity score')
-    expect(tipText(screen.getByRole('button', { name: 'Info: Identity' }))).toContain('Only for critical-intrusion Face ID')
+    expect(tipText(screen.getByRole('button', { name: 'Info: Identity' }))).toContain('when the new attendance mode is on')
   } finally {
     localStorage.removeItem('isentinel_locale')
   }

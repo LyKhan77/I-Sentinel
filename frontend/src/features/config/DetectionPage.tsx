@@ -100,6 +100,8 @@ export default function DetectionPage() {
       face_max_pitch: settings.face_max_pitch, face_best_k: settings.face_best_k,
       face_ident_min_width_px: settings.face_ident_min_width_px,
       face_ident_window_s: settings.face_ident_window_s,
+      face_attendance_mode: settings.face_attendance_mode,
+      face_attendance_window_s: settings.face_attendance_window_s,
     }))
 
   return (
@@ -192,6 +194,17 @@ export default function DetectionPage() {
             <NumberInput id="face-ident-window" label={t('detection.faceIdentWindow')} min={1} max={10} step={1}
               value={settings.face_ident_window_s}
               onChange={(_, { value }) => setSettings({ ...settings, face_ident_window_s: Number(value) })} />
+          </TipField>
+          <h4 className="det-group-title">{withTip('detection.faceGroupAttendanceMode', 'detection.tip.groupAttendanceMode')}</h4>
+          <TipField labelKey="detection.attendanceMode" tipKey="detection.tip.attendanceMode">
+            <Toggle id="face-attendance-mode" labelText={t('detection.attendanceMode')}
+              toggled={settings.face_attendance_mode === 'unified'}
+              onToggle={(value) => setSettings({ ...settings, face_attendance_mode: value ? 'unified' : 'legacy' })} />
+          </TipField>
+          <TipField labelKey="detection.attendanceWindow" tipKey="detection.tip.attendanceWindow">
+            <NumberInput id="face-attendance-window" label={t('detection.attendanceWindow')} min={0.5} max={3} step={0.5}
+              value={settings.face_attendance_window_s}
+              onChange={(_, { value }) => setSettings({ ...settings, face_attendance_window_s: Number(value) })} />
           </TipField>
           <h4 className="det-group-title">{withTip('detection.faceGroupAttendance', 'detection.tip.groupAttendance')}</h4>
           <TipField labelKey="detection.faceMinWidth" tipKey="detection.tip.faceMinWidth">
