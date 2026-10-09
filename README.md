@@ -257,8 +257,10 @@ caption Telegram diedit dengan baris **Identitas** (`Dikenali: <nama>` / `Wajah 
 dikenali` / `Wajah tidak terlihat jelas` / `Identitas tidak terverifikasi`), crop wajah terbaik
 tersimpan sebagai bukti manual di tab Crop Inbox (retensi `snapshot_days`). Kamera tidak perlu
 zona attendance (worker wajah dibuat otomatis untuk zona ber-`face_id`); hasil pengenalan sangat tergantung pencahayaan dan ukuran
-wajah — yang tidak dikenali tetap diperiksa manual. Ambang melalui `FACE_ID_THRESHOLD` dan
-`FACE_ID_MARGIN` di `docker/.env` (ubah → recreate `api`). Runbook: `docs/runbooks/intrusion-face-id.md`.
+wajah — yang tidak dikenali tetap diperiksa manual. Ambang kecocokan dan margin diatur di
+**Konfigurasi → Deteksi & Model → Advanced → kartu "Pengenalan wajah"** (berlaku untuk absensi dan
+identitas intrusion; tanpa deploy atau recreate). `FACE_ID_MARGIN` di `docker/.env` hanya cadangan bila
+baris setelan belum ada. Runbook: `docs/runbooks/intrusion-face-id.md`.
 
 ## Caption AI dan Tanya AI (opsional)
 

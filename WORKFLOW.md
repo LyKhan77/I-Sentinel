@@ -259,7 +259,9 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
 1. Karyawan lewat zona attendance → `face_worker` di node mengumpulkan frame wajah yang lolos gerbang
    kualitas → embedding + crop dikirim sebagai event `attendance` (arah entry/exit). Motion gate tetap
    diperbarui setiap frame; selama wajah terlihat, frame diam juga diproses pada FPS AI kamera.
-2. API mencocokkan ke galeri (cosine ≥ `face_match_threshold`, default 0,40). Dengan **Catat absensi**
+2. API mencocokkan ke galeri (cosine ≥ ambang kecocokan di Konfigurasi → Deteksi & Model → kartu
+   **Pengenalan wajah** → grup Bersama; default 0,40, `FACE_MATCH_THRESHOLD` hanya cadangan bila baris
+   setelan belum ada). Dengan **Catat absensi**
    aktif (behavior `record=true`, default bila key hilang), cocok → `attendance_event` →
    `recompute_day` memperbarui `attendance_day`. Cooldown per karyawan+arah diperiksa dahulu;
    entry kedua hari lokal yang sama hanya evidence `already_in`, tanpa rekap baru, dan hanya bila karyawan

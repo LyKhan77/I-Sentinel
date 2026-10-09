@@ -140,12 +140,15 @@ tanpa absensi). Lebar minimum agar frame lolos kedua gerbang: `≈ 56 / (det_sco
 Karena itu default `face_min_width_px` 80 dengan `face_min_det_score` 0,6 meloloskan frame yang pasti
 ditolak API (contoh nyata: lebar 82 px, skor 0,64 → kualitas 0,45).
 
-**Parameter yang bisa diubah di UI** (Konfigurasi → Deteksi & Model → Advanced → "Wajah attendance", lalu
-**Simpan setelan global**; berlaku untuk **semua kamera**, jadi bila satu situs bercampur Kantor dan
+**Parameter yang bisa diubah di UI** (Konfigurasi → Deteksi & Model → Advanced → kartu **Pengenalan wajah**;
+grup **Bersama** = skor deteksi, yaw, ambang kecocokan; grup **Identitas** = parameter identitas intrusion;
+grup **Absensi (lama)** = lebar, blur, jumlah frame. Lalu
+**Simpan setelan global**; berlaku untuk **semua kamera** dan seluruh jalur pencocokan, jadi bila satu situs bercampur Kantor dan
 Industri, pakai kolom Industri). `ai_fps` per kamera ada di tabel kamera pada halaman yang sama.
 
 | Parameter | Default | Kantor | Industri | Alasan |
 |---|---|---|---|---|
+| `face_match_threshold` (grup Bersama) | 0,40 | 0,40 | 0,40–0,45 | Dipakai absensi **dan** identitas intrusion; naikkan hanya bila terbukti ada salah-orang |
 | `face_min_width_px` | 80 | 100 | 110 | Dari rumus: Kantor skor 0,7 dan yaw ≤0,20 → 100 px; Industri skor 0,65 dan yaw ≤0,20 → 108 px, dibulatkan 110 |
 | `face_min_det_score` | 0,6 | 0,7 | 0,65 | Frame ragu hampir selalu `low_quality`; Industri lebih longgar karena bayangan helm menurunkan skor |
 | `face_max_yaw` | 0,35 | 0,35 | 0,35 | ±30°; melonggarkan menambah risiko salah-orang, benahi sudut kamera |
@@ -153,10 +156,12 @@ Industri, pakai kolom Industri). `ai_fps` per kamera ada di tabel kamera pada ha
 | `face_min_frames` | 3 | 3 | 3 | Event tetap terbit saat track hilang dengan ≥1 frame bagus; menurunkannya hanya memotong 1–2 frame |
 | `ai_fps` (per kamera) | 5 | 5 | 8–10 | Industri: langkah cepat dan getaran perlu lebih banyak kesempatan frame tajam; beban GPU naik |
 
-**Tetap pada default di Docker** (env-only: `FACE_MATCH_THRESHOLD`, `FACE_MIN_QUALITY`,
-`ATTENDANCE_COOLDOWN_MIN` tidak diteruskan oleh `docker/compose.yml`, jadi tidak bisa diubah dari UI atau `.env`
-tanpa mengubah `docker/compose.yml`): `face_match_threshold` 0,40, `face_min_quality` 0,5, cooldown 5 menit. Naikkan
-`face_match_threshold` ke 0,45 hanya bila terbukti ada salah-orang di lokasi Industri (jumlah karyawan besar,
+**Tetap pada default di Docker** (env-only: `FACE_MIN_QUALITY` dan `ATTENDANCE_COOLDOWN_MIN` tidak
+diteruskan oleh `docker/compose.yml`, jadi tidak bisa diubah dari UI atau `.env` tanpa mengubah
+`docker/compose.yml`): `face_min_quality` 0,5 dan cooldown 5 menit. Ambang kecocokan bukan lagi env-only:
+nilai efektifnya dari baris `detector_setting` (kartu **Pengenalan wajah**, grup **Bersama**) dan berlaku pada
+event berikutnya; env `FACE_MATCH_THRESHOLD` hanya cadangan bila baris belum ada. Naikkan ambang
+ke 0,45 hanya bila terbukti ada salah-orang di lokasi Industri (jumlah karyawan besar,
 APD).
 
 **Kamera dan lingkungan:**
@@ -193,7 +198,8 @@ worker sedang mengumpulkan frame bagus (default 3) sebelum menerbitkan satu even
 Gunakan `face_stats` (width_px, det_score, yaw, blur, frames), label debugger, dan
 corong heartbeat untuk menentukan penyebab sebelum menyetel gerbang. Perubahan
 angka hanya setelah uji penerimaan server; siklus kode ini tidak mengubah default
-`FaceSettings` atau ambang cosine. Ubah `face_min_width_px` dan `face_min_det_score` **bersamaan** dengan memperhatikan
+`FaceSettings`. Ambang kecocokan dan margin kini di kartu **Pengenalan wajah** (berlaku pada event
+berikutnya, tanpa deploy), sedangkan `face_min_quality` tetap env-only. Ubah `face_min_width_px` dan `face_min_det_score` **bersamaan** dengan memperhatikan
 rumus kualitas di atas: menurunkan lebar saja membuat frame kecil menjadi event `low_quality`.
 `face_min_quality` bukan setelan UI (lihat "Tetap pada default di Docker").
 
@@ -212,6 +218,46 @@ jendela heartbeat; heartbeat node lama tanpa corong menghasilkan null.
 | `tracks_emitted` | Track yang menerbitkan event |
 | `tracks_silent` tinggi | Track masuk zona tanpa embedding lolos; periksa gerbang yang terlalu ketat |
 | `ttfg_median_s` | Median waktu masuk zona hingga embedding bagus pertama; bukan latensi end-to-end |
+
+### Pemantauan pencocokan (query siap pakai)
+
+Jalankan di Postgres (`docker compose -f docker/compose.yml exec postgres psql -U isentinel -d isentinel`).
+Kolom diverifikasi dari `backend/app/models/event.py` (`type`, `camera_id`, `ts_event`, `payload` JSON);
+**belum dijalankan terhadap Postgres** (tidak ada Postgres di mesin eksekusi — validasi di server oleh sesi
+perencanaan). Ganti `interval '14 days'` sesuai kebutuhan dan `'Asia/Jakarta'` bila TZ server berbeda.
+
+```sql
+-- 1) distribusi skor kecocokan + hitungan alasan per kamera per hari (jalur absensi)
+SELECT camera_id,
+       (ts_event AT TIME ZONE 'Asia/Jakarta')::date             AS day,
+       payload->>'match_reason'                                 AS reason,
+       count(*)                                                 AS n,
+       round(min((payload->>'face_score')::numeric), 3)         AS score_min,
+       round(percentile_cont(0.5) WITHIN GROUP (
+             ORDER BY (payload->>'face_score')::numeric), 3)     AS score_p50,
+       round(max((payload->>'face_score')::numeric), 3)         AS score_max
+FROM event
+WHERE type = 'attendance'
+  AND payload ? 'face_score'
+  AND ts_event >= now() - interval '14 days'
+GROUP BY 1, 2, 3
+ORDER BY day DESC, camera_id, reason;
+
+-- 2) rasio alasan (matched, no_match, ambiguous, cooldown, already_in) per kamera per hari
+SELECT camera_id,
+       (ts_event AT TIME ZONE 'Asia/Jakarta')::date      AS day,
+       coalesce(payload->>'match_reason', '(kosong)')    AS reason,
+       count(*)                                          AS n
+FROM event
+WHERE type = 'attendance'
+  AND ts_event >= now() - interval '14 days'
+GROUP BY 1, 2, 3
+ORDER BY day DESC, camera_id, n DESC;
+```
+
+Pada tahap 1 (`legacy`) absensi hanya memutuskan `matched`/`no_match` (plus `cooldown`/`already_in`
+pada pencatatan); `ambiguous` baru muncul setelah tahap 2 (mode `unified`) dijalankan. Ambang dan galeri
+diuji ulang bila jumlah karyawan terdaftar berlipat.
 
 `fps` dan `motion_skip_pct` berada di objek `ai` yang sama. Motion gate tetap
 update setiap frame; wajah terlihat mempertahankan pemrosesan frame diam, dan
