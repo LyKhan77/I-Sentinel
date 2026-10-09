@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,6 +22,8 @@ class DetectorSettingsIn(BaseModel):
     face_best_k: int = Field(ge=1, le=10)
     face_ident_min_width_px: float = Field(ge=16, le=1000)
     face_ident_window_s: float = Field(ge=1, le=10)  # + unggah crop ≤ 6 dtk harus < UNVERIFIED_AFTER_S (20 dtk)
+    face_attendance_mode: Literal["legacy", "unified"]
+    face_attendance_window_s: float = Field(ge=0.5, le=3.0)
 
 
 class DetectorSettingsOut(DetectorSettingsIn):

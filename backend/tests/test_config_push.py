@@ -208,6 +208,7 @@ def test_build_node_config_face_defaults_keep_device_pins(db):
     assert cfg["face"] == {
         "device": "cuda:2", "min_width_px": 80.0, "min_det_score": 0.6,
         "max_yaw": 0.35, "blur_min": 120.0, "min_frames": 3,
+        "attendance_mode": "legacy", "attendance_window_s": 1.5,
         "ident": {"min_width_px": 60.0, "max_pitch": 0.30, "best_k": 5, "window_s": 8.0},
     }
 
@@ -230,6 +231,28 @@ def test_build_node_config_face_ident_from_row(db):
     cfg = config_push.build_node_config(db, node)
 
     assert cfg["face"]["ident"] == {"min_width_px": 90.0, "max_pitch": 0.4, "best_k": 3, "window_s": 6.0}
+
+
+def test_build_node_config_face_attendance_from_row(db):
+    from app.models.detector_setting import DetectorSetting
+    from app.models.node import Node
+
+    node = Node(name="attendance-row")
+    db.add(node)
+    db.add(DetectorSetting(
+        id=1, default_ai_fps=5.0, default_confidence=0.4, motion_enabled=True,
+        motion_threshold=25.0, motion_min_area=0.01, motion_force_interval_s=2.0,
+        face_min_width_px=80.0, face_min_det_score=0.6, face_max_yaw=0.35, face_blur_min=120.0,
+        face_min_frames=3, face_match_threshold=0.40, face_match_margin=0.15, face_max_pitch=0.30,
+        face_best_k=5, face_ident_min_width_px=60.0, face_ident_window_s=8.0,
+        face_attendance_mode="unified", face_attendance_window_s=2.0,
+    ))
+    db.commit()
+
+    cfg = config_push.build_node_config(db, node)
+
+    assert cfg["face"]["attendance_mode"] == "unified"
+    assert cfg["face"]["attendance_window_s"] == 2.0
 
 
 def test_build_node_config_device_empty_when_unset(db):

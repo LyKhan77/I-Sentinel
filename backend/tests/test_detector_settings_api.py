@@ -30,10 +30,12 @@ VALUES = {
     "face_blur_min": 90.0, "face_min_frames": 4,
     "face_match_threshold": 0.45, "face_match_margin": 0.2, "face_max_pitch": 0.4,
     "face_best_k": 6, "face_ident_min_width_px": 70.0, "face_ident_window_s": 9.0,
+    "face_attendance_mode": "unified", "face_attendance_window_s": 2.0,
 }
 
 NEW_FACE_FIELDS = ("face_match_threshold", "face_match_margin", "face_max_pitch",
                    "face_best_k", "face_ident_min_width_px", "face_ident_window_s")
+ATTENDANCE_FIELDS = ("face_attendance_mode", "face_attendance_window_s")
 
 
 def test_admin_put_persists_global_settings_and_config_uses_them(client, db):
@@ -53,6 +55,7 @@ def test_admin_put_persists_global_settings_and_config_uses_them(client, db):
     assert face == {
         "device": "", "min_width_px": 100.0, "min_det_score": 0.7,
         "max_yaw": 0.3, "blur_min": 90.0, "min_frames": 4,
+        "attendance_mode": "unified", "attendance_window_s": 2.0,
         "ident": {"min_width_px": 70.0, "max_pitch": 0.4, "best_k": 6, "window_s": 9.0},
     }
 
@@ -70,6 +73,7 @@ def test_get_without_row_returns_env_defaults(client):
     assert response.json()["updated_at"] is not None
     assert (response.json()["face_min_width_px"], response.json()["face_min_frames"]) == (80.0, 3)
     assert tuple(response.json()[key] for key in NEW_FACE_FIELDS) == (0.40, 0.15, 0.30, 5, 60.0, 8.0)
+    assert tuple(response.json()[key] for key in ATTENDANCE_FIELDS) == ("legacy", 1.5)
 
 
 def test_new_face_fields_round_trip(client):
@@ -78,6 +82,38 @@ def test_new_face_fields_round_trip(client):
 
     got = client.get("/api/v1/detector-settings", headers=admin_headers(client)).json()
     assert {key: got[key] for key in NEW_FACE_FIELDS} == {key: VALUES[key] for key in NEW_FACE_FIELDS}
+    assert {key: got[key] for key in ATTENDANCE_FIELDS} == {key: VALUES[key] for key in ATTENDANCE_FIELDS}
+
+
+def test_attendance_mode_invalid_rejected_and_row_unchanged(client):
+    headers = admin_headers(client)
+    client.put("/api/v1/detector-settings", json=VALUES, headers=headers)
+
+    response = client.put("/api/v1/detector-settings", json={**VALUES, "face_attendance_mode": "x"}, headers=headers)
+
+    assert response.status_code == 422
+    assert client.get("/api/v1/detector-settings", headers=headers).json()["face_attendance_mode"] == "unified"
+
+
+@pytest.mark.parametrize("value", [0.4, 3.1])
+def test_attendance_window_out_of_range_rejected_and_row_unchanged(client, value):
+    headers = admin_headers(client)
+    client.put("/api/v1/detector-settings", json=VALUES, headers=headers)
+
+    response = client.put("/api/v1/detector-settings", json={**VALUES, "face_attendance_window_s": value},
+                          headers=headers)
+
+    assert response.status_code == 422
+    assert client.get("/api/v1/detector-settings", headers=headers).json()["face_attendance_window_s"] == 2.0
+
+
+def test_attendance_window_upper_bound_accepted(client):
+    headers = admin_headers(client)
+    response = client.put("/api/v1/detector-settings", json={**VALUES, "face_attendance_window_s": 3.0},
+                          headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["face_attendance_window_s"] == 3.0
 
 
 @pytest.mark.parametrize("field,value", [
