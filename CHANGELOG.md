@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Kartu "Pengenalan wajah": ikon info dengan penjelasan parameter (2026-10-09)
+
+- **Konteks:** setelah deploy tahap 1 user bertanya apa beda tiga grup (Bersama / Identitas / Absensi (lama)) dan meminta ikon informasi yang menjelaskan pengaruh tiap parameter saat di-hover.
+- **Perubahan:** komponen baru `frontend/src/components/InfoTip.tsx` (Carbon `Tooltip` + ikon `Information`, tampil saat hover atau fokus keyboard/ketuk), dipasang di 11 parameter (di luar `<label>` supaya teks tooltip tidak menjadi nama aksesibel input) dan 3 judul grup di `DetectionPage.tsx`. 28 kunci i18n baru (`detection.tip.*`, `detection.tipLabel`) di kamus `id` dan `en`: arti parameter, nilai awal, efek naik/turun, dan jalur pemakai (absensi/identitas). Gaya `.info-tip*` di `theme.scss` memakai token Carbon. Frontend saja: tanpa perubahan backend, node, atau migrasi.
+- **Bukti:** RED benar: 3 tes baru gagal `Unable to find an accessible element with the role "button" and name "Info: …"`; implementasi pertama menaruh ikon di dalam `<label>` sehingga 2 tes lama gagal (teks tooltip ikut menjadi isi label), lalu ikon dipindah ke luar label. Suite berurutan: vitest `38 berkas / 503 passed` (baseline 500), build exit 0, lint 24 warning / 16 pasangan identik baseline. Browser (Vite dev + API distub): 14 ikon, hover membuka tooltip 288 px; pada 390 px tooltip berada di dalam viewport (x 55–343) dan tanpa overflow horizontal. Screenshot lokal di `docs/evidence/face-tips-{390,1280}.png` (gitignored).
+- **Dampak:** hanya tampilan kartu; tidak ada perubahan nilai atau perilaku pengenalan.
+- **Rollback:** `git revert` commit ini lalu rebuild `web`.
+
 ### Pemusatan parameter pengenalan wajah — perbaikan review tahap 1 (2026-10-09)
 
 - **Konteks:** review sesi perencanaan atas `2292786` menemukan dua cacat. (1) Query pemantauan di `docs/runbooks/attendance.md` gagal di Postgres server (`ERROR: function round(double precision, integer) does not exist`; `percentile_cont` mengembalikan `double precision`) dan memakai `payload ? 'face_score'`, padahal `event.payload` bertipe `json` (bukan `jsonb`) sehingga operator `?` tidak berlaku. (2) `face_ident_window_s` boleh sampai 15 dtk, sedangkan jendela + unggah crop (≤ 6 dtk) + antrean MQTT ≈ 21 dtk melebihi `UNVERIFIED_AFTER_S` = 20 dtk: status `unverified` bisa mendahului hasil nyata dan caption Telegram diedit dua kali. Batas 1–15 berasal dari spec, bukan dari executor.
