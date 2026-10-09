@@ -9,7 +9,7 @@ import ConfigurationPage from '../features/config/ConfigurationPage'
 const ADMIN = { id: 1, username: 'admin', role: 'admin' }
 
 const camera = { id: 1, name: 'CAM-01', location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, main_path: null, sub_path: null, node_id: 1, source_id: null, location_group_id: null, credential_override_id: null, source: null, location_group: null, credential_override: null, enabled: true, status: 'online', probe_main: null, probe_sub: null, ai_fps: null, confidence: null, analyzers: null, motion_enabled: null }
-const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, face_min_width_px: 80, face_min_det_score: 0.6, face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3, updated_at: '2026-09-22T00:00:00Z' }
+const settings = { default_ai_fps: 5, default_confidence: 0.4, motion_enabled: true, motion_threshold: 25, motion_min_area: 0.01, motion_force_interval_s: 2, face_min_width_px: 80, face_min_det_score: 0.6, face_max_yaw: 0.35, face_blur_min: 120, face_min_frames: 3, face_match_threshold: 0.4, face_match_margin: 0.2, face_max_pitch: 0.4, face_best_k: 5, face_ident_min_width_px: 60, face_ident_window_s: 8, updated_at: '2026-09-22T00:00:00Z' }
 // kolom Status AI dihitung dari zona aktif, jadi tiap tes perlu stub /zones
 const zone = { id: 9, camera_id: 1, name: 'Z', type: 'behavior', polygon: [], behaviors: [], trigger_seconds: 0, active: true }
 
@@ -54,9 +54,9 @@ test('grup Wajah attendance di Advanced ikut tersimpan', async () => {
 
   expect(await screen.findByText('Deteksi & Model')).toBeInTheDocument()
   await userEvent.click(screen.getByText('Advanced'))
-  expect(screen.getByText('Wajah attendance')).toBeInTheDocument()
-  await userEvent.clear(screen.getByLabelText('Jumlah frame wajah bagus (K)'))
-  await userEvent.type(screen.getByLabelText('Jumlah frame wajah bagus (K)'), '5')
+  expect(screen.getByText('Absensi (lama)')).toBeInTheDocument()
+  await userEvent.clear(screen.getByLabelText('Jumlah frame wajah bagus (absensi lama)'))
+  await userEvent.type(screen.getByLabelText('Jumlah frame wajah bagus (absensi lama)'), '5')
   await userEvent.click(screen.getByRole('button', { name: 'Simpan setelan global' }))
   await waitFor(() => {
     const put = calls.find((c) => c.url.endsWith('/detector-settings') && c.init?.method === 'PUT')
@@ -169,4 +169,47 @@ test('perubahan yang masih tertunda tetap tersimpan saat halaman ditinggalkan', 
   expect(cameraPatches(calls)).toEqual([])
   unmount()
   await waitFor(() => expect(cameraPatches(calls)).toEqual([{ ai_fps: 9 }]))
+})
+
+// --- kartu "Pengenalan wajah": tiga grup dan enam field baru di PUT ---
+
+test('kartu pengenalan wajah menampilkan tiga grup dan mengirim enam field baru', async () => {
+  const calls = stubDetectionFetch()
+  render(detectionPage())
+  await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+  await userEvent.click(screen.getByText('Advanced'))
+  expect(screen.getByText('Bersama')).toBeInTheDocument()
+  expect(screen.getByText('Identitas')).toBeInTheDocument()
+  expect(screen.getByText('Absensi (lama)')).toBeInTheDocument()
+
+  const input = document.querySelector('#face-match-threshold') as HTMLInputElement
+  expect(input).not.toBeNull()
+  await userEvent.clear(input)
+  await userEvent.type(input, '0.45')
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan setelan global' }))
+
+  await waitFor(() => {
+    const put = calls.find((c) => c.url.endsWith('/detector-settings') && c.init?.method === 'PUT')
+    expect(put).toBeTruthy()
+    const body = JSON.parse(String(put!.init!.body))
+    expect(body).toMatchObject({
+      face_match_threshold: 0.45, face_match_margin: 0.2, face_max_pitch: 0.4,
+      face_best_k: 5, face_ident_min_width_px: 60, face_ident_window_s: 8,
+    })
+  })
+})
+
+test('label field baru tersedia dalam bahasa en', async () => {
+  localStorage.setItem('isentinel_locale', 'en')
+  try {
+    stubDetectionFetch()
+    render(detectionPage())
+    await waitFor(() => expect(document.querySelector('#fps-1')).not.toBeNull())
+    await userEvent.click(screen.getByText('Advanced'))
+    expect(screen.getByText('Identity')).toBeInTheDocument()
+    expect(screen.getByLabelText('Match threshold (0–1)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Best frames (K)')).toBeInTheDocument()
+  } finally {
+    localStorage.removeItem('isentinel_locale')
+  }
 })

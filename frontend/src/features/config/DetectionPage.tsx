@@ -81,6 +81,10 @@ export default function DetectionPage() {
       face_min_width_px: settings.face_min_width_px, face_min_det_score: settings.face_min_det_score,
       face_max_yaw: settings.face_max_yaw, face_blur_min: settings.face_blur_min,
       face_min_frames: settings.face_min_frames,
+      face_match_threshold: settings.face_match_threshold, face_match_margin: settings.face_match_margin,
+      face_max_pitch: settings.face_max_pitch, face_best_k: settings.face_best_k,
+      face_ident_min_width_px: settings.face_ident_min_width_px,
+      face_ident_window_s: settings.face_ident_window_s,
     }))
 
   return (
@@ -132,16 +136,36 @@ export default function DetectionPage() {
             onChange={(_, { value }) => setSettings({ ...settings, motion_threshold: Number(value) })} />
           <Toggle id="motion-enabled" labelText={t('detection.motion')} toggled={settings.motion_enabled}
             onToggle={(value) => setSettings({ ...settings, motion_enabled: value })} />
-          <h4>{t('detection.faceGroup')}</h4>
-          <NumberInput id="face-min-width" label={t('detection.faceMinWidth')} min={16} max={1000} step={1}
-            value={settings.face_min_width_px}
-            onChange={(_, { value }) => setSettings({ ...settings, face_min_width_px: Number(value) })} />
+          <h4>{t('detection.faceGroupShared')}</h4>
           <NumberInput id="face-min-score" label={t('detection.faceMinScore')} min={0.1} max={0.99} step={0.05}
             value={settings.face_min_det_score}
             onChange={(_, { value }) => setSettings({ ...settings, face_min_det_score: Number(value) })} />
           <NumberInput id="face-max-yaw" label={t('detection.faceMaxYaw')} min={0.05} max={1} step={0.05}
             value={settings.face_max_yaw}
             onChange={(_, { value }) => setSettings({ ...settings, face_max_yaw: Number(value) })} />
+          <NumberInput id="face-match-threshold" label={t('detection.faceMatchThreshold')} min={0.1} max={0.99} step={0.01}
+            value={settings.face_match_threshold}
+            onChange={(_, { value }) => setSettings({ ...settings, face_match_threshold: Number(value) })} />
+          <h4>{t('detection.faceGroupIdent')}</h4>
+          <NumberInput id="face-ident-min-width" label={t('detection.faceIdentMinWidth')} min={16} max={1000} step={1}
+            value={settings.face_ident_min_width_px}
+            onChange={(_, { value }) => setSettings({ ...settings, face_ident_min_width_px: Number(value) })} />
+          <NumberInput id="face-max-pitch" label={t('detection.faceMaxPitch')} min={0.05} max={1} step={0.05}
+            value={settings.face_max_pitch}
+            onChange={(_, { value }) => setSettings({ ...settings, face_max_pitch: Number(value) })} />
+          <NumberInput id="face-best-k" label={t('detection.faceBestK')} min={1} max={10} step={1}
+            value={settings.face_best_k}
+            onChange={(_, { value }) => setSettings({ ...settings, face_best_k: Number(value) })} />
+          <NumberInput id="face-match-margin" label={t('detection.faceMatchMargin')} min={0} max={0.5} step={0.01}
+            value={settings.face_match_margin}
+            onChange={(_, { value }) => setSettings({ ...settings, face_match_margin: Number(value) })} />
+          <NumberInput id="face-ident-window" label={t('detection.faceIdentWindow')} min={1} max={15} step={1}
+            value={settings.face_ident_window_s}
+            onChange={(_, { value }) => setSettings({ ...settings, face_ident_window_s: Number(value) })} />
+          <h4>{t('detection.faceGroupAttendance')}</h4>
+          <NumberInput id="face-min-width" label={t('detection.faceMinWidth')} min={16} max={1000} step={1}
+            value={settings.face_min_width_px}
+            onChange={(_, { value }) => setSettings({ ...settings, face_min_width_px: Number(value) })} />
           <NumberInput id="face-blur-min" label={t('detection.faceBlurMin')} min={0} step={10}
             value={settings.face_blur_min}
             onChange={(_, { value }) => setSettings({ ...settings, face_blur_min: Number(value) })} />
