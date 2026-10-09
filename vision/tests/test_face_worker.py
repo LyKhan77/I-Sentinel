@@ -595,3 +595,42 @@ def test_unified_ranking_embeds_only_frames_that_beat_the_worst_kept():
     assert ev["payload"]["face_stats"]["frames"] == 2
     # frame tajam ikut dalam agregat (vektor halus saja akan menghasilkan [1, 0, ...])
     assert ev["payload"]["embedding"][1] == pytest.approx(0.316, abs=0.01)
+
+
+# --- unified: orang pergi tidak menunggu tracker (max_age_s 3 dtk) dan jendela mulai dari embed pertama ---
+
+def run_unified(per_frame, max_age_s=3.0, engine=None, **settings):
+    """Worker unified dengan tracker lambat seperti produksi (max_age_s 3,0), bukan 0,5 milik `run_worker`."""
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], engine or FakeFaces(per_frame), t, "test-node", unified(**settings),
+                       max_age_s=max_age_s)
+    w.source = FrameSource.from_frames([FRAME] * len(per_frame), fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    return w, t
+
+
+def test_unified_quick_pass_is_sent_when_the_face_is_gone_not_after_the_tracker_gives_up():
+    # wajah terlihat 0,4 dtk lalu hilang; tracker baru melepas track setelah 3 dtk (belum tercapai di 1,4 dtk)
+    _, t = run_unified([[GOOD]] * 4 + [[]] * 10)
+    assert len(t.events) == 1
+    stats = t.events[0]["payload"]["face_stats"]
+    assert stats["frames"] == 4
+    assert 0.5 <= stats["zone_s"] < 2.0  # sudah termasuk jeda "wajah hilang", bukan hanya durasi terlihat
+
+
+def test_unified_short_gap_in_candidates_does_not_send_early():
+    # 0,3 dtk wajah tak lolos gerbang (terlalu kecil) di tengah: bukan "pergi"; jendela 1,0 dtk tetap berlaku
+    _, t = run_unified([[GOOD]] * 3 + [[face(width=40.0)]] * 3 + [[GOOD]] * 12, attendance_window_s=1.0)
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["face_stats"]["collect_s"] >= 1.0
+
+
+def test_unified_failed_embeds_do_not_start_the_window_or_kill_the_track():
+    # 12 embed pertama gagal (None): jendela 1,0 dtk tidak boleh habis dengan keranjang kosong dan menutup track
+    _, t = run_unified([[GOOD]] * 20 + [[]] * 8, engine=FakeFaces([[GOOD]] * 20 + [[]] * 8, vectors=[None] * 12),
+                        attendance_window_s=1.0)
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["face_stats"]["frames"] >= 1
+    assert len(t.events[0]["payload"]["embedding"]) == 512

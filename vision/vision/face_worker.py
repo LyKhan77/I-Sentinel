@@ -25,6 +25,9 @@ DEDUP_BUCKET_S = 10.0
 SNAPSHOT_W = 1280
 BOX_BGR = (255, 169, 120)  # #78a9ff
 MEDIA_WAIT_S = 1.1  # event deadline; slow upload falls back to event without media
+# unified: tanpa kandidat sebesar ini orang dianggap pergi dan event dikirim, tidak menunggu tracker
+# (max_age_s 3 dtk) melepas track; lebih pendek dari jendela tetapi lebih panjang dari celah gerbang biasa
+UNIFIED_GONE_S = 0.5
 EVENT_HISTORY_MAX = 32  # test hook only; do not retain lifetime biometric payloads
 
 
@@ -38,7 +41,8 @@ class _TrackState:
     done: bool = False
     unified: bool = False              # jalur unified: gerbang identitas + K terbaik + jendela
     keeper: BestK | None = None        # jalur unified: K kandidat terbaik (rank, quality, vector)
-    first_ts: float | None = None      # jalur unified: ts kandidat pertama
+    first_ts: float | None = None      # jalur unified: ts vektor pertama yang masuk keeper (awal jendela)
+    last_cand_ts: float | None = None  # jalur unified: ts kandidat lolos gerbang terakhir
     emit_ts: float = 0.0               # jalur unified: ts saat event dikirim
     zone_start_ts: float | None = None  # jalur unified: ts wajah pertama di zona (diambil saat emit)
 
@@ -120,7 +124,8 @@ class FaceGateWorker(threading.Thread):
                     self._tracker.update([], time.monotonic())
                     if self._tracker.lost_ids:
                         self._publish([])
-                    self._expire()
+                    self._emit_due(time.monotonic())
+                    self._expire(time.monotonic())
                     self._ident_step(time.monotonic(), idle=True)
                     continue
                 self.frames += 1
@@ -133,7 +138,8 @@ class FaceGateWorker(threading.Thread):
                     self._tracker.update([], frame.ts)
                     if self._tracker.lost_ids:
                         self._publish([])
-                    self._expire()
+                    self._emit_due(frame.ts)
+                    self._expire(frame.ts)
                     self._ident_step(frame.ts, idle=True)
                     continue
                 self._process(frame)
@@ -273,7 +279,7 @@ class FaceGateWorker(threading.Thread):
                 self._accumulate(tid, f, zone, aligned, q, frame)
         if unified:
             self._emit_due(frame.ts)
-        self._expire()
+        self._expire(frame.ts)
         self._ident_step(frame.ts)
 
     def _gate_unified(self, f, w: int, h: int) -> tuple[str | None, dict | None]:
@@ -321,11 +327,10 @@ class FaceGateWorker(threading.Thread):
         if st.done:
             return  # track tetap hidup sesudah kirim: tidak boleh event kedua
         st.unified = True
+        st.last_cand_ts = frame.ts  # tiap frame lolos gerbang, juga yang tak mengalahkan K terbaik
         keeper = st.keeper
         if keeper is None:
             keeper = st.keeper = BestK(self.settings.ident.best_k)
-        if st.first_ts is None:
-            st.first_ts = frame.ts  # jendela dihitung sejak kandidat pertama, bukan frame pertama
         if q > st.best_q:
             st.best_q = q
             st.best = {"frame": frame.data, "bbox": f.bbox, "ts": frame.ts,
@@ -346,22 +351,29 @@ class FaceGateWorker(threading.Thread):
         if not len(keeper):
             self._funnel["_ttfg"].append(frame.ts - self._in_zone.get(tid, st.first_ts))
         keeper.add(rank, q, vec)
+        if st.first_ts is None:
+            st.first_ts = frame.ts  # jendela mulai dari vektor pertama; embed gagal tidak memulai jendela
 
     def _emit_due(self, now: float) -> None:
-        """Kirim track unified yang jendelanya sudah berlalu; track tetap hidup, jadi maksimum sekali."""
+        """Kirim track unified yang jendelanya habis atau yang kandidatnya sudah berhenti (orang pergi).
+
+        Track tetap hidup sesudah kirim (`done`), jadi maksimum sekali; track tanpa vektor tidak dikirim.
+        """
         for tid, st in list(self._states.items()):
             if not st.unified or st.done or st.first_ts is None:
                 continue
-            if now - st.first_ts >= self.settings.attendance_window_s:
+            window_over = now - st.first_ts >= self.settings.attendance_window_s
+            gone = now - (st.last_cand_ts or st.first_ts) >= UNIFIED_GONE_S
+            if window_over or gone:
                 st.emit_ts = now
                 self._emit(tid, st)
 
-    def _expire(self) -> None:
+    def _expire(self, now: float | None = None) -> None:
         """Emit expired tracks with at least one good frame, exactly once."""
         for tid in self._tracker.lost_ids:
             st = self._states.pop(tid, None)
             if st is not None and not st.done and (st.keeper if st.unified else st.vectors):
-                st.emit_ts = self._last_frame_ts  # `_expire` tidak punya timestamp frame sendiri
+                st.emit_ts = now if now is not None else self._last_frame_ts
                 self._emit(tid, st)
             if tid in self._in_zone and (st is None or not st.vectors):
                 self._funnel["tracks_silent"] += 1
@@ -448,8 +460,8 @@ class FaceGateWorker(threading.Thread):
         }
         if st.unified:
             payload["policy"] = "unified"
-            payload["face_stats"]["collect_s"] = round(st.emit_ts - st.first_ts, 2)
-            payload["face_stats"]["zone_s"] = round(st.emit_ts - st.zone_start_ts, 2)
+            payload["face_stats"]["collect_s"] = round(max(0.0, st.emit_ts - st.first_ts), 2)
+            payload["face_stats"]["zone_s"] = round(max(0.0, st.emit_ts - st.zone_start_ts), 2)
         ev = {
             "event_id": str(uuid.uuid4()),
             "type": "attendance",
