@@ -258,7 +258,12 @@ export default function EventsPage() {
     if (name && p?.match_reason === 'cooldown') return `${name} · ${t('events.face.cooldown')}`
     if (name && p?.match_reason === 'already_in') return `${name} · ${t('events.face.alreadyIn')}`
     if (name) return name
-    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality' || p?.match_reason === 'ambiguous') return t('events.face.unknown')
+    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality' || p?.match_reason === 'ambiguous') {
+      // skor tertinggi ke galeri (diagnostik near-miss, jalur strict): seberapa dekat ke ambang
+      return typeof p?.face_top_score === 'number'
+        ? t('events.face.unknownTop', { score: p.face_top_score.toFixed(2) })
+        : t('events.face.unknown')
+    }
     return '—'
   }
 
