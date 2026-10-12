@@ -571,3 +571,23 @@ test('Catat absensi default aktif; OFF menampilkan hint dan mengirim record:fals
     { kind: 'attendance', trigger_seconds: 0, record: false },
   ]))
 })
+
+test('badge UJI tampil bila behavior alert MANA PUN sedang diuji, dengan kedaluwarsa terdekat', async () => {
+  const early = new Date(Date.now() + 2 * 3600_000).toISOString()
+  const late = new Date(Date.now() + 5 * 3600_000).toISOString()
+  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  await selectZone([
+    // behavior pertama tidak diuji: badge tetap harus tampil karena behavior kedua sedang diuji
+    zoneFix({ id: 10, behaviors: [
+      { kind: 'intrusion', trigger_seconds: 0, delivery: 'all' },
+      { kind: 'loitering', trigger_seconds: 30, delivery: 'test', test_until: early, revert_to: 'all' },
+    ] }),
+    zoneFix({ id: 11, name: 'Zona 3', behaviors: [
+      { kind: 'intrusion', trigger_seconds: 0, delivery: 'test', test_until: late, revert_to: 'all' },
+      { kind: 'loitering', trigger_seconds: 30, delivery: 'test', test_until: early, revert_to: 'inbox' },
+    ] }),
+  ])
+  expect(screen.getByTestId('zone-test-badge-10')).toHaveTextContent('UJI')
+  expect(screen.getByTestId('zone-test-badge-11')).toHaveTextContent(hhmm(early))
+  expect(screen.getByTestId('zone-test-badge-11')).not.toHaveTextContent(hhmm(late))
+})

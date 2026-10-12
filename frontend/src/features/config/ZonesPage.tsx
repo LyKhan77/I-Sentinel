@@ -154,10 +154,14 @@ export default function ZonesPage() {
     patchSelected({ behaviors: BEHAVIOR_KINDS.map(entry).filter((b): b is Behavior => b !== null) })
   }
 
-  /** Label badge UJI daftar zona; `null` bila tidak ada behavior alert yang sedang diuji. */
+  /** Label badge UJI daftar zona: behavior alert MANA PUN yang sedang diuji, kedaluwarsa terdekat; `null` bila tidak ada. */
   const zoneTestLabel = (z: Zone): string | null => {
-    const until = testUntil(z.behaviors.find((b) => (BEHAVIOR_KINDS as string[]).includes(b.kind)), nowMs)
-    if (!until) return null
+    const untils = z.behaviors
+      .filter((b) => (BEHAVIOR_KINDS as string[]).includes(b.kind))
+      .map((b) => testUntil(b, nowMs))
+      .filter((d): d is Date => d !== null)
+    if (untils.length === 0) return null
+    const until = untils.reduce((a, b) => (b < a ? b : a))
     const time = until.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
     return `${t('zones.testBadge')} · ${t('zones.testUntil').replace('{time}', time)}`
   }
