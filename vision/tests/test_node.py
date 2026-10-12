@@ -5,13 +5,14 @@ import threading
 import time
 import uuid
 from datetime import datetime
+from datetime import timedelta, timezone
 
 import numpy as np
 import pytest
 
 
 from vision.config import CameraCfg, NodeSettings
-from vision.node import CameraWorker, VisionNode, attendance_zones, main_stream_name, main_stream_url
+from vision.node import CameraWorker, VisionNode, attendance_zones, delivery_mode, main_stream_name, main_stream_url
 from vision.pipeline.detector import Detection, MockDetector
 from vision.pipeline.source import FrameSource
 
@@ -556,3 +557,143 @@ def test_camera_stats_face_motion_skip_pct(tmp_path):
     assert node._camera_stats(0.0)[0]["motion_skip_pct"] is None
     face.frames, face.motion_skipped = 40, 30
     assert node._camera_stats(10.0)[0]["motion_skip_pct"] == 75.0
+
+
+# --- Mode uji per behavior (delivery) ---------------------------------------
+
+INSIDE = (0.1, 0.1, 0.3, 0.4)
+OUTSIDE = (0.7, 0.7, 0.9, 0.9)
+TEST_ZONE = {
+    "id": 41, "name": "Lorong", "type": "behavior", "direction": None,
+    "polygon": [[0.0, 0.0], [0.5, 0.0], [0.5, 1.0], [0.0, 1.0]],  # separuh kiri frame
+    "snapshot": True, "clip": True,
+}
+
+
+class _FakeRecorder:
+    def __init__(self):
+        self.enqueued = []
+
+    def enqueue(self, ev):
+        self.enqueued.append(ev)
+
+    def touch(self, ids):
+        pass
+
+    def push_jpeg(self, ts, data):
+        pass
+
+
+class _FakeRegistry:
+    def __init__(self):
+        self.binds = []
+
+    def bind(self, *args):
+        self.binds.append(args)
+
+
+def _until(seconds: float) -> str:
+    return datetime.fromtimestamp(time.time() + seconds, tz=timezone.utc).isoformat()
+
+
+def _worker_with(behaviors, frames, telegram=False, recorder=None, registry=None):
+    """CameraWorker satu kamera dengan zona behavior; sumber = frames berisi bbox."""
+    zone = {**TEST_ZONE, "behaviors": behaviors, "telegram": telegram}
+    cam = {"camera_id": 7, "source_url": "test://7", "ai_fps": 5.0, "zones": [zone]}
+    node = _node_with(cam)
+    cfg = node._cameras_from_config({"cameras": [cam]})[0]
+    transport = FakeTransport()
+    worker = CameraWorker(cfg, lambda cid: script(frames), transport, threading.Event(), "n",
+                          analyzers=node._make_analyzers(cfg), recorder=recorder, registry=registry)
+    frame = np.zeros((4, 4, 3), dtype=np.uint8)
+    worker.source = FrameSource.from_frames([frame] * len(frames), fps=5.0)
+    return worker, transport
+
+
+def _person_labels(transport):
+    """Label overlay per frame: [{track_id: label}] dari publish_detections kind=person."""
+    return [{b["id"]: b["label"] for b in boxes}
+            for _, kind, boxes in transport.detections if kind == "person"]
+
+
+def test_delivery_mode_matches_api_rules():
+    assert delivery_mode(None, 0.0) == "all"
+    assert delivery_mode({"telegram": True}, 0.0) == "all"
+    assert delivery_mode({"telegram": False}, 0.0) == "inbox"
+    assert delivery_mode({"delivery": "inbox", "telegram": True}, 0.0) == "inbox"
+    now = time.time()
+    assert delivery_mode({"delivery": "test", "test_until": _until(3600), "revert_to": "inbox"}, now) == "test"
+    assert delivery_mode({"delivery": "test", "test_until": _until(-1), "revert_to": "inbox"}, now) == "inbox"
+    assert delivery_mode({"delivery": "test", "test_until": "besok"}, now) == "all"
+    assert delivery_mode({"delivery": "test", "test_until": _until(-1)}, now) == "all"
+
+
+def test_test_mode_suppresses_event_and_labels_only_the_triggering_track():
+    recorder, registry = _FakeRecorder(), _FakeRegistry()
+    worker, t = _worker_with(
+        [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+          "test_until": _until(3600), "revert_to": "all"}],
+        [[INSIDE, OUTSIDE], [INSIDE, OUTSIDE], [INSIDE, OUTSIDE]],
+        recorder=recorder, registry=registry)
+    worker.run()
+
+    assert t.events == [] and worker.events == []             # tanpa event sama sekali
+    assert recorder.enqueued == [] and registry.binds == []   # tanpa klip, tanpa bind identitas
+    labels = _person_labels(t)
+    assert labels[0] == {1: None, 2: None}                    # frame pemicu: label dipasang sesudah publish
+    assert labels[1] == {1: "test:intrusion", 2: None}        # hanya track yang memicu
+    assert labels[2] == {1: "test:intrusion", 2: None}
+
+
+def test_test_mode_label_expires_after_six_seconds():
+    worker, t = _worker_with(
+        [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+          "test_until": _until(3600), "revert_to": "all"}],
+        [[INSIDE]] * 40)  # 40 frame @5fps = 8 dtk
+    worker.run()
+
+    labels = _person_labels(t)
+    assert labels[1][1] == "test:intrusion"
+    assert labels[-1][1] is None
+    assert labels[0][1] is None
+
+
+def test_expired_test_mode_emits_again_without_restart():
+    worker, t = _worker_with(
+        [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+          "test_until": _until(-3600), "revert_to": "all"}],
+        [[INSIDE], [INSIDE]])
+    worker.run()
+
+    assert [ev["type"] for ev in t.events] == ["intrusion"]
+
+
+@pytest.mark.parametrize("delivery", ["inbox", "all"])
+def test_inbox_and_all_still_emit_events(delivery):
+    worker, t = _worker_with(
+        [{"kind": "intrusion", "trigger_seconds": 0, "delivery": delivery, "test_until": _until(-1)}],
+        [[INSIDE], [INSIDE]])
+    worker.run()
+
+    assert [ev["type"] for ev in t.events] == ["intrusion"]
+    assert all(v is None for frame in _person_labels(t) for v in frame.values())
+
+
+def test_other_behavior_in_the_same_zone_is_unaffected():
+    worker, t = _worker_with(
+        [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+          "test_until": _until(3600), "revert_to": "all"},
+         {"kind": "intrusion", "trigger_seconds": 0, "delivery": "all"}],
+        [[INSIDE], [INSIDE]])
+    worker.run()
+
+    assert len(t.events) == 1 and t.events[0]["type"] == "intrusion"
+
+
+def test_legacy_behavior_without_delivery_emits_as_before():
+    worker, t = _worker_with([{"kind": "intrusion", "trigger_seconds": 0, "telegram": True}],
+                             [[INSIDE], [INSIDE]])
+    worker.run()
+
+    assert [ev["type"] for ev in t.events] == ["intrusion"]
+    assert all(v is None for frame in _person_labels(t) for v in frame.values())
