@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Merge radio tujuan event absensi ke main (2026-10-12)
+
+- **Konteks:** `feat/attendance-delivery` (radio tujuan event dan Mode uji untuk absensi, perbaikan review, dan perbaikan radio yang mental kembali) ter-deploy di `gspe-ai3`; user mencoba UI dan memutuskan melanjutkan ke merge.
+- **Hasil dari user (pernyataan lisan):** UI diuji; satu laporan (Mode uji tak bisa diklik) diperbaiki dan di-deploy; instruksi "lanjut merge ke main dan kembalikan server" diberikan sesudah perbaikan, tanpa konfirmasi tertulis ulang atas perilaku radio pasca-perbaikan (diverifikasi di tes dan Chromium dengan API distub).
+- **Merge:** `--no-ff` ke `main` (tree identik dengan branch; 0 atribusi AI); server `gspe-ai3` dikembalikan ke `main`.
+- **Belum terbukti:** Mode uji absensi di kamera nyata (tanpa rekap/event/Telegram, label `UJI · Absensi`, kedaluwarsa 24 jam); non-karyawan tidak tercatat pada absensi `unified` (gerbang D).
+- **Rollback:** `git revert` merge; kunci JSON `delivery` yang sudah tersimpan diabaikan kode lama.
+
 ### Mode uji tampak tak bisa diklik: radio mental kembali (2026-10-12)
 
 - **Konteks:** setelah deploy radio absensi, user melapor "mode uji tidak bisa diclick pada type attendance". Penyebab: `effectiveDelivery` (klien) menganggap `delivery: 'test'` tanpa `test_until` sebagai uji kedaluwarsa dan mengembalikan `revert_to`/`all`. Pilihan yang baru diklik belum punya `test_until` (server menstempelnya saat Simpan), sehingga radio langsung menampilkan *Inbox + Telegram* lagi dan Mode uji tampak mati. Bug ini ada sejak radio behavior alert (Plan B) dan berlaku untuk semua kind; tes lama hanya memeriksa isi PATCH setelah Simpan, tidak status radio setelah klik.
