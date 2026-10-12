@@ -5,6 +5,7 @@ from app.api.deps import get_current_user, require_admin
 from app.models.zone import Zone
 from app.models.shift import Shift
 from app.schemas.zone import ZoneIn, ZonePatch, ZoneOut
+from app.services.zone_delivery import stamp_test_mode
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,8 @@ def list_zones(camera_id: int | None = None, user=Depends(get_current_user), db:
 
 @router.post("", response_model=ZoneOut)
 def create_zone(body: ZoneIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
-    zone = Zone(**body.model_dump())
+    # Mode uji: stempel `test_until` 24 jam saat zona dibuat (tak ada behaviors lama)
+    zone = Zone(**{**body.model_dump(), "behaviors": stamp_test_mode(body.behaviors, None)})
     _check_direction_conflict(db, zone)
     _check_shift(db, zone)
     db.add(zone); db.commit(); db.refresh(zone)
@@ -75,6 +77,10 @@ def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db:
     zone = db.get(Zone, zone_id)
     if not zone: raise HTTPException(404, "zone not found")
     changes = body.model_dump(exclude_unset=True)
+    # stempel dihitung SEBELUM atribut diisi (dibandingkan dengan behaviors lama) dan
+    # menghasilkan list baru — menyimpan perubahan lain tidak memperpanjang uji
+    if "behaviors" in changes:
+        changes["behaviors"] = stamp_test_mode(changes["behaviors"], zone.behaviors)
     for k, v in changes.items():
         setattr(zone, k, v)
     # zona attendance (dulu absensi) wajib direction — cek hasil gabungan patch + nilai lama

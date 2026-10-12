@@ -90,7 +90,7 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | Auth & user | `auth`, `users` | JWT HS256 di cookie httpOnly, `token_version` untuk cabut sesi, rate-limit login |
 | Kamera | `cameras`, `stream_sources`, `credential_profiles`, `location_groups`, `probe`, `live` | `probe`, `stream_endpoint`, `go2rtc`, `secret_store` |
 | Node & deteksi | `nodes`, `detector_settings` | `config_push`, `node_health`, `host_stats` |
-| Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `limit` ≤ 200, `offset` 0–10000 (paginasi halaman berikutnya, di luar rentang → 422) — semuanya difilter di server; urutan `ts_event DESC, id DESC` (pemutus seri deterministik antar-halaman); `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka; `GET /api/v1/events/{id}` → `EventOut` per id, 404 `"event not found"` untuk deep link `/events?event=<id>`) |
+| Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `q` ≤ 100 karakter (ILIKE atas `type`, `event_id`, `severity`, nama kamera via outerjoin, dan `CAST(payload AS TEXT)` — `%`/`_`/`\` di-escape; kosong/spasi diabaikan), `limit` ≤ 200, `offset` 0–10000 (paginasi halaman berikutnya, di luar rentang → 422) — semuanya difilter di server; urutan `ts_event DESC, id DESC` (pemutus seri deterministik antar-halaman); `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka; `GET /api/v1/events/{id}` → `EventOut` per id, 404 `"event not found"` untuk deep link `/events?event=<id>`) |
 | Alert | `alerts`, `telegram` | `alerting`, `alert_dispatcher`, `alert_ai`, `telegram` |
 | AI advisory (opsional) | `ai`, `ai_settings` (admin) | `ai_worker`, `ask_ai`, `llm_client`, `llm_config`, `ai_media`, `ai_prompts`; tidak terlibat dalam keputusan alert; caption `ok` diedit ke alert Telegram oleh `alert_ai` |
 | Absensi | `employees`, `shifts`, `enrollment`, `attendance` | `face`, `attendance` (`exit_early_min(row, shift, now)` — peringatan turunan yang dihitung saat baca, pola sama seperti `effective_status`: menit antara `last_exit` dan `shift.end_time` pada `row.date`, hanya bila status tersimpan `ontime`/`late`, `override_note` kosong (termasuk `import`), shift dan `last_exit` ada, waktu baca sudah lewat jam shift selesai, dan selisihnya **lebih dari** `EXIT_EARLY_MIN` (60 menit). Keluar sebagai field `exit_early_min` di semua endpoint rekap + respons `PATCH` dan sebagai kolom terakhir `rekap.csv` (kosong bila `None`); tidak mengubah status dan tidak menambah kolom DB/migrasi) |
@@ -157,14 +157,27 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   berzona kosong (tanpa event absensi); bila pesan tidak datang, API menandai alert itu
   `unverified` setelah 20 dtk.
 - **Satu sumber parameter wajah**: baris `detector_setting` id=1 (UI **Konfigurasi → Deteksi & Model**,
-  kartu *Pengenalan wajah* dengan grup Bersama/Identitas/Absensi lama). Blok `face` pada config push memuat
-  pin `device`, gerbang absensi lama (`min_width_px`, `min_det_score`, `max_yaw`, `blur_min`, `min_frames`)
-  dan sub-blok `ident` (`min_width_px`, `max_pitch`, `best_k`, `window_s`); key yang hilang di node memakai
-  nilai awal. Pencocokan di API memakai `FacePolicy` (`services/face_policy.py`: `match_threshold`,
-  `match_margin`) dengan sumber yang sama — satu `load(db)` per event (absensi lewat `handle_face_event`,
-  identitas intrusion lewat `_identify_with_name`), **tanpa cache**, jadi perubahan UI berlaku pada event
-  berikutnya. Bila baris belum ada, keduanya jatuh ke env (`FACE_MATCH_THRESHOLD`, `FACE_ID_MARGIN`) dengan
-  nilai awal 0,40 / 0,15.
+  kartu *Pengenalan wajah* dengan grup Bersama/Identitas/Mode absensi/Absensi lama). Blok `face` pada
+  config push memuat pin `device`, gerbang absensi lama (`min_width_px`, `min_det_score`, `max_yaw`,
+  `blur_min`, `min_frames`), saklar absensi (`attendance_mode` `legacy`/`unified`, `attendance_window_s`
+  0,5–3,0 dtk) dan sub-blok `ident` (`min_width_px`, `max_pitch`, `best_k`, `window_s`); key yang hilang
+  di node memakai nilai awal (`attendance_mode` tak dikenal → `legacy`). Pencocokan di API memakai
+  `FacePolicy` (`services/face_policy.py`: `match_threshold`, `match_margin`) dengan sumber yang sama —
+  satu `load(db)` per event (absensi lewat `handle_face_event`, identitas intrusion lewat
+  `_identify_with_name`), **tanpa cache**, jadi perubahan UI berlaku pada event berikutnya. Bila baris
+  belum ada, keduanya jatuh ke env (`FACE_MATCH_THRESHOLD`, `FACE_ID_MARGIN`) dengan nilai awal 0,40 / 0,15.
+- **Dua jalur absensi** (`FaceGateWorker`, saklar `face.attendance_mode`): `legacy` = gerbang lama
+  (lebar 80, blur 120, `min_frames` 3) dan keputusan API `match_vector`; `unified` = gerbang identitas
+  (lebar `ident.min_width_px`, skor, yaw, pitch; **tanpa gerbang blur**) dengan K frame terbaik
+  berperingkat `skor × ketajaman` (kelas `BestK` bersama `IdentCollector`), kirim **tepat sekali per
+  track** saat `attendance_window_s` berlalu sejak vektor pertama, 0,5 dtk (`UNIFIED_GONE_S`) tanpa
+  kandidat baru, atau track hilang, dengan ≥ 1 vektor (K kandidat tidak memicu), payload `policy: "unified"` + `face_stats.collect_s`/`zone_s`.
+  API memilih algoritma dari `payload.policy` event, **bukan** baris DB, supaya keputusan konsisten per
+  event walau saklar dibalik saat event di perjalanan; `unified` memakai `match_strict` (ambang + margin,
+  tanpa gerbang `low_quality`) dan hasil `ambiguous` diperlakukan seperti `no_match` (tanpa baris
+  absensi, snapshot "Unknown", UI menampilkan tidak dikenal). `payload.face_margin` disimpan untuk
+  pemantauan. Perubahan mode/jendela merestart worker wajah kamera terkait; track yang sedang di dalam
+  jendela saat itu hilang (dicatat di runbook).
 - Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.
   Motion gate bangun karena gerak dan terus memproses frame diam selama wajah masih terlihat.
   Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.
@@ -182,7 +195,8 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   (memuat engine TensorRT) belum diukur. Clip aktif kamera tersebut dapat terpotong.
 - Restart penuh berlaku pada config pertama, perubahan model/nms/conf/imgsz/`device` detector,
   perubahan `device` face, atau galat tak terduga dalam diff. Perubahan `FaceSettings`
-  (lebar, skor, yaw, blur, jumlah frame, sub-blok `ident`) hanya merestart kamera yang memiliki worker face.
+  (lebar, skor, yaw, blur, jumlah frame, mode/jendela absensi, sub-blok `ident`) hanya merestart kamera
+  yang memiliki worker face.
 - Kamera yang gagal dimulai pada diff tidak dicatat di `_applied`, sehingga push berikutnya
   mencoba kembali, termasuk jika config kembali ke nilai sebelumnya. Antrean snapshot yang
   sudah tersedia digabung: hanya snapshot terakhir diterapkan, bukan setiap pesan satu per satu.
@@ -206,8 +220,23 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 | `isentinel/events/face` | node → API | Hasil identitas wajah intrusion critical (satu pesan per event_id; embedding ditolak di consumer) |
 | `isentinel/detections/{node}` | node → API → WS | Kotak deteksi live untuk debugger |
 
-### Attendance evidence dan flag zona
+### Tujuan event per behavior (`delivery`) dan Mode uji
 
+Kunci JSON baru di `zone.behaviors[]` (tanpa migrasi): `delivery` ∈ {`all`, `inbox`, `test`} untuk kind
+alert (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`; `attendance` ditolak 422), `test_until`
+(ISO-8601 UTC, hanya saat `test`), `revert_to` ∈ {`all`, `inbox`} (hanya saat `test`). Validasi di
+`schemas/zone.py` (`_validate_behaviors`) dan aturan murni di `services/zone_delivery.py`:
+`effective_delivery(behavior, zone_telegram, now)` (tanpa `delivery` → diturunkan dari `telegram` item,
+lalu flag zona; `test` yang lewat `test_until` → `revert_to`, bawaan `all`), `stamp_test_mode(new, old)`
+dipanggil `create_zone`/`update_zone` **sebelum** atribut diisi: `test` baru/kedaluwarsa → `test_until =
+now + 24 jam` + `revert_to` = tujuan efektif sebelumnya; `test` yang sedang berjalan dipertahankan
+(menyimpan perubahan lain tidak memperpanjang uji); `delivery != test` membuang kunci uji. `alerting`
+memakai `effective_delivery(...) == "all"` sebagai gerbang Telegram, dan node memakai padanannya
+(`node.delivery_mode`, jam dinding) untuk menekan event. Node/API lama tetap kompatibel: `telegram` selalu
+ditulis `= (delivery === "all")` oleh UI, dan node lama yang mengabaikan `delivery` tetap tidak mengirim
+Telegram selama uji (API yang menolak).
+
+### Attendance evidence dan flag zona
 Flag `record` dan `telegram_unknown` disimpan sebagai boolean di JSON behavior `attendance`,
 tanpa migrasi. Key hilang atau `behaviors=null` memakai true; `direction` tetap wajib.
 Backend memberi `employee_id`, `employee_name`, `face_score`, dan `match_reason` setelah
@@ -275,8 +304,14 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
 1. **Konfigurasi**: admin menambah kamera (probe RTSP) → API menulis konfigurasi go2rtc →
    admin menggambar zona → `config_push` publish retained ke node → node menerapkan konfigurasi baru (worker kamera ditambah/diubah/dihentikan).
 2. **Event behavior**: analyzer memicu event → node upload snapshot/clip (pra-buffer mainstream) →
-   `ingest` menyimpan + dedup → WS broadcast → `alerting` memeriksa toggle, severity, dan rate-limit
-   → `alert_dispatcher` mengirim foto + caption ke grup Telegram.
+   `ingest` menyimpan + dedup → WS broadcast → `alerting` memeriksa tujuan efektif behavior (`delivery`),
+   severity, dan rate-limit
+   → `alert_dispatcher` mengirim foto + caption ke grup Telegram. Behavior ber-`delivery` efektif `test`
+   (Mode uji, `test_until` belum lewat) **tidak** memanggil `_merge_event`/`publish_event`/`recorder.enqueue`/
+   `registry.bind` di node; sebagai gantinya track pemicu ditandai `flash[track_id] = ("test:<tipe>", ts+6)`
+   dan label itu dikirim pada overlay `person` berikutnya (`publish_detections`, label `test:<tipe>` →
+   UI `UJI · <tipe>`). Kedaluwarsa dinilai ulang tiap frame dengan jam dinding (`delivery_mode`), jadi
+   tidak perlu restart.
 3. **Absensi**: `face_worker` mengumpulkan frame wajah bagus → embedding dikirim di payload →
    API mencocokkan ke galeri `face_embedding` (cosine ≥ `FacePolicy.match_threshold` dari baris `detector_setting`; `FACE_MATCH_THRESHOLD` hanya cadangan) →
    `attendance_event` → `recompute_day` → `attendance_day`. `AttendanceCloser` membuat

@@ -294,3 +294,99 @@ def test_list_events_camera_id_out_of_range_is_422(client):
     for bad in ("99999999999999999999", "2147483648"):
         assert client.get(f"/api/v1/events?camera_id={bad}", headers=h).status_code == 422
     assert client.get("/api/v1/events?camera_id=1", headers=h).status_code == 200
+
+# --- Plan A Task 1: parameter q (pencarian server di GET /events) ---
+
+def _post_event(client, **kw):
+    r = client.post("/internal/nodes/1/events", json=_payload(**kw), headers=_ingest_headers())
+    assert r.status_code == 200, r.text
+    return r.json()
+
+def _search_events(client, q, **params):
+    r = client.get("/api/v1/events", params={"q": q, **params}, headers=_admin_headers(client))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+def test_list_events_q_matches_employee_name_ignoring_case_and_padding(client):
+    _post_event(client, type="attendance", payload={"employee_name": "Budi Santoso"})
+    _post_event(client, type="attendance", payload={"employee_name": "Rina Wijaya"})
+    assert len(_search_events(client, "budi")) == 1
+    assert len(_search_events(client, "BUDI")) == 1
+    assert len(_search_events(client, "  budi  ")) == 1
+    assert _search_events(client, "siti") == []
+
+def test_list_events_q_matches_face_name_in_payload(client):
+    _post_event(client, type="intrusion", payload={"face": {"name": "Agus Setiawan"}})
+    _post_event(client, type="intrusion", payload={"x": 1})
+    hits = _search_events(client, "agus setiawan")
+    assert len(hits) == 1 and hits[0]["payload"]["face"]["name"] == "Agus Setiawan"
+
+def test_list_events_q_matches_camera_name_event_id_prefix_and_severity(client, db):
+    from app.models.camera import Camera
+    db.add(Camera(id=2, name="Lorong-9", host="1.2.3.5")); db.commit()
+    eid = "9a7c3e10-0000-4000-8000-00000000c0de"
+    _post_event(client, camera_id=2, event_id=eid, type="loitering", severity="critical")
+    _post_event(client, type="loitering")
+    assert [e["event_id"] for e in _search_events(client, "lorong-9")] == [eid]
+    assert [e["event_id"] for e in _search_events(client, "9a7c3e10")] == [eid]
+    assert [e["event_id"] for e in _search_events(client, "critical")] == [eid]
+
+def test_list_events_q_blank_is_ignored(client):
+    _post_event(client, type="intrusion")
+    _post_event(client, type="loitering")
+    assert len(_search_events(client, "")) == 2
+    assert len(_search_events(client, "   ")) == 2
+
+def test_list_events_q_wildcards_and_backslash_are_literal(client):
+    _post_event(client, type="crowd", payload={"count": "1000"})
+    _post_event(client, type="crowd", payload={"note": "dekat 100% penuh"})
+    _post_event(client, type="crowd", payload={"code": "a_b"})
+    _post_event(client, type="crowd", payload={"code": "axb"})
+    _post_event(client, type="crowd", payload={"path": "C:\\data"})
+    assert [e["payload"] for e in _search_events(client, "100%")] == [{"note": "dekat 100% penuh"}]
+    assert [e["payload"] for e in _search_events(client, "a_b")] == [{"code": "a_b"}]
+    assert [e["payload"] for e in _search_events(client, "\\")] == [{"path": "C:\\data"}]
+
+def test_list_events_q_max_length_is_100(client):
+    h = _admin_headers(client)
+    assert client.get("/api/v1/events", params={"q": "x" * 100}, headers=h).status_code == 200
+    assert client.get("/api/v1/events", params={"q": "x" * 101}, headers=h).status_code == 422
+
+def test_list_events_q_with_type_and_offset_pages_do_not_overlap(client):
+    for i in range(6):
+        _post_event(client, type="intrusion", payload={"zona": "gudang", "i": i})
+    for i in range(4):
+        _post_event(client, type="loitering", payload={"zona": "gudang", "i": i})
+    _post_event(client, type="intrusion", payload={"zona": "dermaga"})
+    everything = _search_events(client, "gudang", type="intrusion", limit=50)
+    assert len(everything) == 6
+    seen = []
+    for off in (0, 2, 4, 6):
+        seen += [e["event_id"] for e in _search_events(client, "gudang", type="intrusion", limit=2, offset=off)]
+    assert len(seen) == 6 and len(set(seen)) == 6
+    assert set(seen) == {e["event_id"] for e in everything}
+
+def test_list_events_q_finds_match_beyond_first_page(client):
+    from datetime import datetime, timezone, timedelta
+    base = datetime(2026, 10, 10, 8, 0, tzinfo=timezone.utc)
+    _post_event(client, type="attendance", payload={"employee_name": "Dewi Lestari"},
+                ts_event=(base - timedelta(days=1)).isoformat())
+    for i in range(59):
+        _post_event(client, type="attendance", payload={"employee_name": f"Karyawan {i}"},
+                    ts_event=(base - timedelta(minutes=i)).isoformat())
+    page1 = _search_events(client, "", limit=50)
+    assert len(page1) == 50 and all(e["payload"]["employee_name"] != "Dewi Lestari" for e in page1)
+    hits = _search_events(client, "dewi", limit=50)
+    assert len(hits) == 1 and hits[0]["payload"]["employee_name"] == "Dewi Lestari"
+
+
+def test_stats_today_counts_only_the_five_behavior_types(client):
+    # tile Dashboard "Event hari ini" menaut ke /events?type=security: angka dan daftar harus sama,
+    # jadi system, person_detect, dan attendance tidak dihitung
+    h = _admin_headers(client)
+    for ev_type in ("intrusion", "loitering", "system", "person_detect", "attendance"):
+        client.post("/internal/nodes/1/events", json=_payload(type=ev_type), headers=_ingest_headers())
+    s = client.get("/api/v1/events/stats/today", headers=h).json()
+    assert s["total"] == 2
+    assert set(s["by_type"]) == {"intrusion", "loitering"}
+    assert sum(s["by_hour"]) == sum(s["by_severity"].values()) == 2

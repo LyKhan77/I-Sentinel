@@ -13,6 +13,7 @@ from app.models.alert import Alert
 from app.models.event import Event
 from app.models.zone import Zone
 from app.services import alert_dispatcher
+from app.services.zone_delivery import effective_delivery
 from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
@@ -29,13 +30,18 @@ def _track(event: Event):
     return (event.payload or {}).get("track_id")
 
 
-def _telegram_on(zone: Zone, kind: str) -> bool:
-    """Toggle per behavior; item tanpa key → flag zona; zona pra-R5 (behaviors null) → flag zona."""
+def _telegram_on(zone: Zone, kind: str, now: datetime | None = None) -> bool:
+    """Tujuan efektif behavior; item tanpa key → flag zona; zona pra-R5 (behaviors null) → flag zona.
+
+    Mode uji tidak pernah sampai ke sini dari node baru (event ditekan di node), tetapi node
+    lama yang tetap mengirim tidak boleh menghasilkan Telegram selama uji berlaku. `now` ikut
+    dari pemanggil supaya kedaluwarsa dinilai dengan jam yang sama (dan bisa diuji).
+    """
     if zone.behaviors is None:
         return bool(zone.telegram)
     for b in zone.behaviors:
         if isinstance(b, dict) and b.get("kind") == kind:
-            return bool(b.get("telegram", zone.telegram))
+            return effective_delivery(b, bool(zone.telegram), now) == "all"
     return False
 
 
@@ -59,7 +65,7 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
     zone = db.get(Zone, event.zone_id) if event.zone_id else None
     if zone is None:
         return False, "no_zone"
-    if not _telegram_on(zone, event.type):
+    if not _telegram_on(zone, event.type, now):
         return False, "telegram_off"
     if event.type == "attendance":
         payload = event.payload or {}

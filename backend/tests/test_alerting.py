@@ -273,3 +273,39 @@ def test_attendance_detected_sent_and_not_rate_limited(db, queued):
         alerts.append(alerting.handle(db, ev, now=NOW + timedelta(seconds=seconds)))
     assert all(a is not None and a.status == "queued" and a.type == "attendance" for a in alerts)
     assert queued == [a.id for a in alerts]
+
+
+# --- Tujuan event per behavior (`delivery`) ---------------------------------
+
+def test_delivery_inbox_and_all_gate_telegram(db, queued):
+    """`delivery` menang atas flag `telegram` item dan flag zona."""
+    cam, zone = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "inbox"}], telegram=True)
+    assert alerting.should_alert(db, _event(db, cam, zone), now=NOW) == (False, "telegram_off")
+    cam2, zone2 = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "all"}], telegram=False)
+    assert alerting.should_alert(db, _event(db, cam2, zone2), now=NOW) == (True, "")
+
+
+def test_running_test_mode_suppresses_telegram(db, queued):
+    until = (NOW + timedelta(hours=2)).isoformat()
+    cam, zone = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+                            "test_until": until, "revert_to": "all"}], telegram=True)
+    assert alerting.should_alert(db, _event(db, cam, zone), now=NOW) == (False, "telegram_off")
+
+
+def test_expired_test_mode_follows_revert_to(db, queued):
+    past = (NOW - timedelta(minutes=1)).isoformat()
+    cam, zone = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+                            "test_until": past, "revert_to": "all"}], telegram=False)
+    assert alerting.should_alert(db, _event(db, cam, zone), now=NOW) == (True, "")
+    cam2, zone2 = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+                              "test_until": past, "revert_to": "inbox"}], telegram=True)
+    assert alerting.should_alert(db, _event(db, cam2, zone2), now=NOW) == (False, "telegram_off")
+
+
+def test_legacy_behavior_without_delivery_keeps_old_rules(db, queued):
+    cam, zone = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0, "telegram": True}], telegram=False)
+    assert alerting.should_alert(db, _event(db, cam, zone), now=NOW) == (True, "")
+    cam2, zone2 = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0}], telegram=False)
+    assert alerting.should_alert(db, _event(db, cam2, zone2), now=NOW) == (False, "telegram_off")
+    cam3, zone3 = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0}], telegram=True)
+    assert alerting.should_alert(db, _event(db, cam3, zone3), now=NOW) == (True, "")

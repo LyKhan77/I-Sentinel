@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, Integer
+from sqlalchemy import Boolean, DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -27,6 +27,8 @@ class DetectorSetting(Base):
     face_best_k: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     face_ident_min_width_px: Mapped[float] = mapped_column(Float, nullable=False, default=60.0)
     face_ident_window_s: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
+    face_attendance_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="legacy")
+    face_attendance_window_s: Mapped[float] = mapped_column(Float, nullable=False, default=1.5)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc), nullable=False,

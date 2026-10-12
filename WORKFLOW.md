@@ -90,15 +90,27 @@ menghapus riwayat event.
 1. Pilih kamera → gambar polygon di frame (klik titik, tutup di titik awal, drag untuk memindah).
 2. Isi nama, behavior (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`, atau attendance
    dengan arah `entry`/`exit`), severity, jadwal (**24/7**, **Jam tertentu**, **Ikut shift**).
-3. Per behavior: toggle **Snapshot**, **Clip**, **Telegram**. Behavior aktif wajib punya Snapshot atau
-   Clip (422 `needs snapshot or clip`); attendance wajib snapshot.
-4. **Simpan** → `zone` → config push → node hanya memulai ulang kamera yang berubah,
+3. Per behavior: toggle **Snapshot**, **Clip**, dan radio **Tujuan event** — **Inbox + Telegram**
+   (`delivery=all`), **Hanya Inbox** (`inbox`), atau **Mode uji** (`test`). Behavior aktif wajib punya
+   Snapshot atau Clip (422 `needs snapshot or clip`); attendance wajib snapshot dan **tidak** memakai
+   radio ini (punya toggle Telegram/Record sendiri). Menyimpan menulis `delivery` sekaligus menjaga
+   `telegram = (delivery === "all")` untuk node/API lama; zona lama tanpa `delivery` dibaca dari toggle
+   `telegram`-nya (true → Inbox + Telegram, false → Hanya Inbox) dan tidak diubah saat disimpan.
+4. **Mode uji** (24 jam): zona tetap dievaluasi di node, tetapi **tidak ada event, klip, atau Telegram**
+   dari behavior itu; track yang memicu diberi label `UJI · <tipe>` ±6 dtk di overlay Live View
+   (hanya bila Debug aktif). Memilih Mode uji pada zona severity **critical** membuka konfirmasi
+   ("alert keamanan zona ini berhenti selama uji, kembali otomatis dalam 24 jam"); membatalkan tidak
+   mengubah nilai. Server menstempel `test_until = sekarang + 24 jam` dan `revert_to` = tujuan sebelum
+   uji; menyimpan perubahan lain **tidak** memperpanjang uji. Setelah kedaluwarsa, node dan API kembali
+   ke `revert_to` **tanpa restart**. Daftar zona menampilkan badge **UJI · sampai HH:MM** selama uji
+   berlaku. Rincian operasional: `docs/runbooks/zone-test-mode.md`.
+5. **Simpan** → `zone` → config push → node hanya memulai ulang kamera yang berubah,
    bukan kamera lain; stream kamera itu tersambung ulang (<10 detik terukur untuk kamera worker face).
    Snapshot tertumpuk digabung ke yang terakhir; config pertama dan perubahan setelan global
    mengulang semua kamera.
-5. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
+6. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
 
-6. Opsional **Caption AI otomatis** per zona non-attendance: pilih **Bawaan** (instruksi per tipe)
+7. Opsional **Caption AI otomatis** per zona non-attendance: pilih **Bawaan** (instruksi per tipe)
    atau **Kustom** (maksimal 600 karakter). Lihat prompt bawaan melalui tautan di editor.
    AI hanya backend; field ini tidak dikirim ke vision melalui config push.
 Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam belum didukung.
@@ -137,23 +149,36 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 **Pengguna:** semua · **Halaman:** `/events`
 
 1. Daftar kiri: filter Tipe, Kamera, Severity, Rentang waktu, dan pencarian; data dari `GET /api/v1/events`
-   dan update realtime via WebSocket. Tipe/Kamera/Severity/Rentang difilter **di server** (lima sekaligus
-   jadi satu query), pencarian teks tetap di klien.
+   dan update realtime via WebSocket. Kelima filter — termasuk pencarian `q` — dikerjakan **di server**
+   dalam satu query, jadi hasilnya berlaku atas **semua halaman**: nama karyawan (`payload.employee_name`
+   absensi), nama hasil face ID (`payload.face.name`), nama kamera, tipe, ID, severity, dan teks payload
+   ikut dicari (tidak peka huruf besar; `%`, `_`, `\` diperlakukan literal; `q` kosong diabaikan, > 100
+   karakter ditolak 422). Pencarian klien tetap jalan sebagai **lapis kedua**: daftar yang sudah termuat
+   menyempit **instan** tanpa menunggu server, sedangkan permintaan server memakai salinan **ber-debounce
+   300 ms** (mengetik cepat = satu permintaan) dan haystack klien selalu ⊇ haystack server.
 2. **Filter hidup di URL** (`?type=&camera=&severity=&range=&q=`): deep link, reload, dan Back/Forward
    memulihkan filter; perubahan menulis URL dengan `replace` (riwayat tidak menumpuk) dan menjaga param lain
    termasuk `?event=`. Nilai tak valid di URL jatuh ke default tanpa error; nilai default tidak ditulis.
-   Opsi Tipe bertambah **"Keamanan (tanpa absensi)"** (`type=security` = semua tipe kecuali `attendance`,
-   dikirim sebagai daftar `type`) dan Rentang bertambah **Hari ini** (`range=today`, sejak 00:00 lokal) —
-   keduanya menyamakan semantik angka "Event hari ini" di Dashboard. Setiap dropdown punya opsi **Semua**
-   (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul begitu ada filter non-default —
-   menghapus kelima param filter, `?event=` tetap ada. Opsi Tipe statis (daftar tipe ingest, berlabel lokal),
-   bukan turunan event yang sedang termuat. Respons lama yang tiba belakangan dibuang.
+   Opsi Tipe **dikelompokkan** dengan urutan tetap: Semua · **Semua kecuali sistem** (`type=nosystem` =
+   semua tipe ingest kecuali `system`) · judul *Kelompok* (tidak dapat dipilih) · **Keamanan**
+   (`type=security` = lima tipe perilaku alert: intrusion, loitering, running, idle_zone, crowd — tanpa
+   `system`) · **Absensi** · **Sistem** · judul *Per perilaku* (tidak dapat dipilih) · Intrusion ·
+   Loitering · Running · Idle zone · Crowd. Opsi **Deteksi orang (debug)** dihapus dari dropdown —
+   tipe `person_detect` tetap valid di backend dan label, dan tautan lama `?type=person_detect` jatuh ke
+   Semua tanpa error. Rentang bertambah **Hari ini** (`range=today`, sejak 00:00 lokal). Setiap dropdown
+   punya opsi **Semua** (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul begitu ada filter
+   non-default — menghapus kelima param filter, `?event=` tetap ada. Opsi Tipe statis (daftar tipe ingest,
+   berlabel lokal), bukan turunan event yang sedang termuat. Respons lama yang tiba belakangan dibuang.
+   Catatan Dashboard: tile "Event hari ini" menautkan `/events?type=security&range=today` dan angkanya dari
+   `GET /events/stats/today`, yang kini menghitung tipe yang sama dengan grup `security` (lima perilaku;
+   tanpa `attendance`, `system`, `person_detect`), jadi angka tile sama dengan isi daftar yang dibuka.
 3. **Muat lebih banyak**: daftar memuat 200 event per halaman (`LIMIT`) dengan urutan `ts_event DESC, id DESC`.
    Saat halaman penuh, hitungan jadi `N+ event` + petunjuk dan tombol **Muat lebih banyak** mengambil halaman
    berikutnya (`offset`, digabung dengan dedupe `id` — event baru yang menggeser halaman tidak menduplikasi
-   baris). Daftar dibatasi **1000 baris** (`MAX_EVENTS`): setelah itu tombol diganti petunjuk batas dan filter
-   perlu dipersempit. Refetch klip tertunda (poll 5 dtk) menggabung halaman pertama tanpa membuang halaman
-   yang sudah dimuat; ganti filter mengganti daftar dan mereset halaman.
+   baris); halaman berikutnya membawa filter **dan `q`** yang sama. Daftar dibatasi **1000 baris** (`MAX_EVENTS`):
+   setelah itu tombol diganti petunjuk batas dan filter perlu dipersempit. Refetch klip tertunda (poll 5 dtk)
+   menggabung halaman pertama tanpa membuang halaman yang sudah dimuat; ganti filter mengganti daftar dan
+   mereset halaman. Event live (WebSocket/poll) hanya masuk bila lolos filter **dan** teks pencarian.
 4. Detail kanan — **event kamera**: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah,
    metadata, status alert Telegram (`queued/sent/failed/rate_limited/not_configured`, realtime).
 5. Detail kanan — **event system** (node offline/pulih, health alert): panel **Bukti** menggantikan tab media.
@@ -228,9 +253,14 @@ Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
 1. **Setup satu kali**: buat bot di @BotFather → tambahkan ke grup staf, kirim satu pesan →
    tempel token → **Simpan** → **Deteksi grup** → pilih grup → **Simpan** → **Kirim pesan uji**.
    Token disimpan di `CAMERA_SECRETS_FILE`, tidak pernah tampil lagi.
-2. Nyalakan toggle **Telegram** per behavior di zona (§6).
-3. Saat event: `alerting` memeriksa toggle, `ALERT_MIN_SEVERITY`, dan rate-limit (per kamera, zona,
+2. Tentukan **Tujuan event** per behavior di zona (§6): radio *Inbox + Telegram* / *Hanya Inbox* /
+   *Mode uji*. Tanpa `delivery` (zona lama), toggle `telegram` item/flag zona tetap dipakai.
+3. Saat event: `alerting` memeriksa tujuan efektif behavior (`all` saja yang dikirim), `ALERT_MIN_SEVERITY`,
+   dan rate-limit (per kamera, zona,
    tipe, track; critical tanpa batas, lainnya 2 menit) → baris `alert` berstatus `queued`.
+   Mode uji yang sedang berlaku tidak pernah mengirim Telegram (event-nya sendiri sudah ditekan di node;
+   node lama yang tetap mengirim juga ditolak di sini), dan setelah `test_until` lewat gate kembali ke
+   `revert_to` tanpa restart.
 4. `alert_dispatcher` (thread terpisah) mengirim foto + caption HTML → status `sent`/`failed` →
    broadcast ke Inbox. Alert `sent` ber-foto menyimpan `message_id`; bila caption AI sudah/kembali
    `ok`, `alert_ai.sync_ai_caption` mengedit pesan sekali untuk menambah baris `🤖 AI:`
@@ -259,9 +289,19 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
 1. Karyawan lewat zona attendance → `face_worker` di node mengumpulkan frame wajah yang lolos gerbang
    kualitas → embedding + crop dikirim sebagai event `attendance` (arah entry/exit). Motion gate tetap
    diperbarui setiap frame; selama wajah terlihat, frame diam juga diproses pada FPS AI kamera.
+   Ada **dua jalur**, dipilih saklar **Mode absensi** di kartu Pengenalan wajah (bawaan `legacy`):
+   `legacy` menerbitkan event setelah `face_min_frames` frame lolos gerbang lama (lebar 80, blur 120);
+   `unified` memakai gerbang identitas (lebar 60, skor, yaw, pitch; tanpa gerbang blur) dan mengirim
+   **tepat sekali per track** saat jendela `attendance_window_s` (bawaan 1,5 dtk) berlalu sejak kandidat
+   pertama, atau 0,5 dtk tanpa kandidat baru (orang pergi), atau track hilang, dengan embedding dari K
+   frame terbaik. Detail: `docs/runbooks/attendance.md`.
 2. API mencocokkan ke galeri (cosine ≥ ambang kecocokan di Konfigurasi → Deteksi & Model → kartu
    **Pengenalan wajah** → grup Bersama; default 0,40, `FACE_MATCH_THRESHOLD` hanya cadangan bila baris
-   setelan belum ada). Dengan **Catat absensi**
+   setelan belum ada). Event ber-`payload.policy = "unified"` memakai `match_strict` (ambang + margin
+   0,15; tanpa gerbang `low_quality`), selain itu jalur lama `match_vector`; keputusan mengikuti payload
+   event, bukan baris DB. Hasil `ambiguous` (dua karyawan mirip) diperlakukan seperti tidak dikenal:
+   tanpa baris absensi, snapshot "Unknown", tampil sebagai tidak dikenal di Inbox dan Live. Dengan
+   **Catat absensi**
    aktif (behavior `record=true`, default bila key hilang), cocok → `attendance_event` →
    `recompute_day` memperbarui `attendance_day`. Cooldown per karyawan+arah diperiksa dahulu;
    entry kedua hari lokal yang sama hanya evidence `already_in`, tanpa rekap baru, dan hanya bila karyawan
@@ -355,8 +395,8 @@ Layout status-first (revamp 2026-09-30): **strip status** sistem (summary Monito
 teks selalu ikut warna) → **4 tile KPI yang dapat diklik** — Kamera sehat→`/monitoring`, Event hari
 ini→`/events?type=security&range=today` (filter yang sama dengan angka tile: keamanan tanpa absensi, sejak
 tengah malam), Kehadiran hari ini→`/attendance`, Disk→`/configuration?tab=storage` → **chart event per jam**
-hari ini (`GET /api/v1/events/stats/today` — `by_hour`/`critical_by_hour`; tipe `attendance` TIDAK dihitung,
-angka tile adalah hitungan keamanan) → grid dua kolom: **8 event terbaru** (sumber realtime yang sama dengan
+hari ini (`GET /api/v1/events/stats/today` — `by_hour`/`critical_by_hour`; hanya lima tipe perilaku dihitung:
+`attendance`, `system`, dan `person_detect` TIDAK; angka tile adalah hitungan keamanan) → grid dua kolom: **8 event terbaru** (sumber realtime yang sama dengan
 lonceng — nama kamera, Tag severity dengan teks, thumbnail snapshot, tautan `/events?event=<id>`) |
 **masalah aktif** (maks 5, critical dulu; "Semua →" `/monitoring`) + **node ringkas** (status, health, GPU
 pertama util/VRAM; detail di Monitoring). Banner disk saat ≥ ambang tetap di atas. Data via `useDashboardData`

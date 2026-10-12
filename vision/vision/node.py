@@ -27,11 +27,44 @@ log = logging.getLogger(__name__)
 
 DEDUP_BUCKET_S = 10.0
 DEFAULT_W, DEFAULT_H = 640, 480
+# Lama label overlay Mode uji bertahan pada track pemicu (detik).
+FLASH_S = 6.0
 
 
 def _iso(ts: float) -> str:
     """Format epoch or live-frame monotonic timestamp in UTC."""
     return datetime.fromtimestamp(wall_time(ts), tz=timezone.utc).isoformat()
+
+
+def _wall_of(value) -> float | None:
+    """ISO-8601 (UTC beraksi zona atau tanpa offset) → epoch; `None` bila hilang/tak terbaca."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def delivery_mode(cfg: dict | None, now_wall: float) -> str:
+    """Tujuan efektif satu behavior menurut jam dinding node: `test` | `all` | `inbox`.
+
+    Padanan `effective_delivery` di API (node tidak mengimpor paket backend): Mode uji yang
+    sudah lewat `test_until` kembali ke `revert_to` tanpa restart. `cfg` = `analyzer.delivery_cfg`.
+    """
+    if not isinstance(cfg, dict):
+        return "all"
+    if cfg.get("delivery") == "test":
+        until = _wall_of(cfg.get("test_until"))
+        if until is not None and now_wall < until:
+            return "test"
+        return cfg.get("revert_to") if cfg.get("revert_to") in ("all", "inbox") else "all"
+    if cfg.get("delivery") in ("all", "inbox"):
+        return cfg["delivery"]
+    return "all" if cfg.get("telegram") else "inbox"
 
 
 def main_stream_name(source_url: str) -> str | None:
@@ -126,6 +159,7 @@ class CameraWorker(threading.Thread):
         )
         self.events: list[dict] = []  # test hook
         self.source = None
+        self._flash: dict[int, tuple[str, float]] = {}  # Mode uji: track_id → (label, sampai frame.ts)
         self.registry = registry
         self.ident_zones = list(ident_zones)
         self._ident_err = ErrorThrottle()  # identitas opsional: gagal = terisolasi, deteksi tetap jalan
@@ -155,6 +189,8 @@ class CameraWorker(threading.Thread):
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if self._flash:  # buang label uji basi, juga untuk track yang sudah pergi
+                    self._flash = {k: v for k, v in self._flash.items() if v[1] > frame.ts}
                 if frame.data is not None:
                     frame_h, frame_w = frame.data.shape[:2]
                 else:
@@ -168,7 +204,8 @@ class CameraWorker(threading.Thread):
                     self.recorder.touch([t.id for t in tracks])
                 if tracks and self.transport is not None:
                     self.transport.publish_detections(cam_id, [
-                        {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox], "label": None}
+                        {"id": t.id, "bbox_norm": [round(v, 4) for v in t.bbox],
+                         "label": self._flash_label(t.id, frame.ts)}
                         for t in tracks
                     ], kind="person")
                 if self.recorder is not None:
@@ -194,6 +231,13 @@ class CameraWorker(threading.Thread):
                                 self.recorder.enqueue(ev)
                 for az in self.analyzers:
                     for partial in az.on_frame(frame.ts, tracks, frame_w, frame_h):
+                        # Mode uji: zona tetap dievaluasi, tetapi tidak ada event, klip, atau
+                        # bind identitas — track pemicu diberi label overlay `test:<tipe>`.
+                        if delivery_mode(getattr(az, "delivery_cfg", None), time.time()) == "test":
+                            tid = (partial.get("payload") or {}).get("track_id")
+                            if tid is not None:
+                                self._flash[tid] = (f"test:{partial['type']}", frame.ts + FLASH_S)
+                            continue
                         ev = _merge_event(cam_id, self.node_id, partial, frame.ts)
                         if self.registry is not None and ev["type"] == "intrusion" \
                                 and ev["zone_id"] in {z["id"] for z in self.ident_zones}:
@@ -218,6 +262,16 @@ class CameraWorker(threading.Thread):
     def stop(self):
         if self.source is not None:
             self.source.close()
+
+    def _flash_label(self, track_id: int, ts: float) -> str | None:
+        """Label overlay Mode uji untuk track ini; label basi dibuang saat dibaca."""
+        flash = self._flash.get(track_id)
+        if flash is None:
+            return None
+        if flash[1] <= ts:
+            del self._flash[track_id]
+            return None
+        return flash[0]
 
     def _touch_ident(self, tracks, ts: float, frame_w: int, frame_h: int) -> None:
         """Registry identitas: track segar (misses == 0) yang titik kakinya di zona ident."""
@@ -331,6 +385,7 @@ class VisionNode:
         """Build person behavior analyzers; FaceGateWorker handles attendance separately."""
         out = []
         for z in cam.zones:
+            zone_telegram = bool(z.get("telegram"))
             for b in behaviors_of(z):
                 kind = b.get("kind")
                 if kind == "attendance":
@@ -347,11 +402,11 @@ class VisionNode:
                 else:
                     spec["trigger_seconds"] = b.get("trigger_seconds", 0) or 0
                 if kind == "intrusion":
-                    out.append(self._with_media(ANALYZERS["intrusion"](spec), media))
+                    out.append(self._with_delivery(self._with_media(ANALYZERS["intrusion"](spec), media), b, zone_telegram))
                 elif kind == "loitering":
                     # loitering: dwell = trigger behavior (legacy: loiter_seconds)
                     spec["loiter_seconds"] = spec["trigger_seconds"]
-                    out.append(self._with_media(ANALYZERS["loitering"](spec), media))
+                    out.append(self._with_delivery(self._with_media(ANALYZERS["loitering"](spec), media), b, zone_telegram))
                 elif kind == "running":
                     if b.get("speed_limit_mps") is not None:
                         spec["speed_limit_mps"] = b["speed_limit_mps"]
@@ -363,16 +418,27 @@ class VisionNode:
                             log.info("running analyzer skipped camera %s (no calibration)",
                                      cam.camera_id)
                     else:
-                        out.append(self._with_media(
-                            ANALYZERS["running"](spec, cam.meters_per_pixel), media))
+                        out.append(self._with_delivery(self._with_media(
+                            ANALYZERS["running"](spec, cam.meters_per_pixel), media), b, zone_telegram))
                 elif kind in ("idle_zone", "crowd"):
-                    out.append(self._with_media(ANALYZERS[kind](spec), media))
+                    out.append(self._with_delivery(self._with_media(ANALYZERS[kind](spec), media), b, zone_telegram))
         return out
 
     @staticmethod
     def _with_media(analyzer, media: dict):
         """Tempel flag snapshot/clip zona ke analyzer — dibawa worker ke event."""
         analyzer.media = media
+        return analyzer
+
+    @staticmethod
+    def _with_delivery(analyzer, behavior: dict, zone_telegram: bool):
+        """Tempel tujuan event behavior ke analyzer; worker membacanya untuk Mode uji."""
+        analyzer.delivery_cfg = {
+            "delivery": behavior.get("delivery"),
+            "test_until": behavior.get("test_until"),
+            "revert_to": behavior.get("revert_to"),
+            "telegram": behavior.get("telegram", zone_telegram),
+        }
         return analyzer
 
     def _wants_clip(self, analyzers: list) -> bool:

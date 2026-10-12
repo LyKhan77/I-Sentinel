@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from app.main import app
 from app.core.db import get_db
@@ -435,3 +436,83 @@ def test_behavior_face_id_flag_roundtrip_and_validation(client):
                                              "behaviors": [{"kind": "intrusion", "face_id": "true"}]},
                       headers=h)
     assert bad.status_code == 422
+
+
+# --- Tujuan event per behavior (delivery) dan Mode uji ----------------------
+
+def _zone_with(client, h, cam, behaviors, type_="behavior", **extra):
+    return client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam["id"], "type": type_, "behaviors": behaviors, **extra,
+    }, headers=h)
+
+
+def test_zone_delivery_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    # nilai delivery tak dikenal
+    assert _zone_with(client, h, cam, [{"kind": "intrusion", "delivery": "x"}]).status_code == 422
+    # revert_to tak sah
+    assert _zone_with(client, h, cam, [
+        {"kind": "intrusion", "delivery": "test", "revert_to": "telegram"}]).status_code == 422
+    # test_until bukan string ISO
+    assert _zone_with(client, h, cam, [
+        {"kind": "intrusion", "delivery": "test", "test_until": 12345}]).status_code == 422
+    # absensi punya record/telegram_unknown sendiri — delivery ditolak
+    r = client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam["id"], "type": "attendance", "direction": "entry",
+        "behaviors": [{"kind": "attendance", "delivery": "inbox"}],
+    }, headers=h)
+    assert r.status_code == 422
+
+
+def test_zone_test_mode_is_stamped_and_not_extended(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    r = _zone_with(client, h, cam, [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test"}])
+    assert r.status_code == 200
+    zone = r.json()
+    b = zone["behaviors"][0]
+    assert b["delivery"] == "test" and b["revert_to"] == "all"
+    until = datetime.fromisoformat(b["test_until"])
+    assert until.tzinfo is not None  # UTC beraksi zona
+    left = until - datetime.now(timezone.utc)
+    assert timedelta(hours=23, minutes=55) < left <= timedelta(hours=24)
+
+    # menyimpan perubahan lain tidak memperpanjang uji
+    assert client.patch(f"/api/v1/zones/{zone['id']}", json={"name": "z2"},
+                        headers=h).json()["behaviors"][0]["test_until"] == b["test_until"]
+    assert client.patch(f"/api/v1/zones/{zone['id']}", json={"behaviors": zone["behaviors"]},
+                        headers=h).json()["behaviors"][0]["test_until"] == b["test_until"]
+
+    # pindah ke inbox membuang kunci uji
+    r = client.patch(f"/api/v1/zones/{zone['id']}", json={"behaviors": [{"kind": "intrusion", "delivery": "inbox"}]},
+                     headers=h)
+    assert r.json()["behaviors"] == [{"kind": "intrusion", "delivery": "inbox"}]
+
+
+def test_zone_test_mode_remembers_previous_delivery(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    r = _zone_with(client, h, cam, [{"kind": "loitering", "trigger_seconds": 0, "delivery": "inbox"}])
+    zid = r.json()["id"]
+    r = client.patch(f"/api/v1/zones/{zid}", json={"behaviors": [{"kind": "loitering", "delivery": "test"}]},
+                     headers=h)
+    assert r.json()["behaviors"][0]["revert_to"] == "inbox"
+
+    # uji yang sudah kedaluwarsa lalu disimpan ulang sebagai test → 24 jam baru
+    expired = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    r = client.patch(f"/api/v1/zones/{zid}", json={"behaviors": [
+        {"kind": "loitering", "delivery": "test", "test_until": expired, "revert_to": "inbox"}]}, headers=h)
+    b = r.json()["behaviors"][0]
+    assert datetime.fromisoformat(b["test_until"]) > datetime.now(timezone.utc) + timedelta(hours=23)
+    assert b["revert_to"] == "inbox"
+
+
+def test_zone_legacy_behaviors_stay_untouched_without_delivery(client):
+    """Zona lama (tanpa `delivery`) tidak boleh berubah oleh stempel."""
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    behaviors = [{"kind": "intrusion", "trigger_seconds": 0, "telegram": True}]
+    r = _zone_with(client, h, cam, behaviors)
+    assert r.status_code == 200 and r.json()["behaviors"] == behaviors
+

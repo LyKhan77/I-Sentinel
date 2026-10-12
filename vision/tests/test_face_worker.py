@@ -483,3 +483,154 @@ def test_funnel_emitted_and_time_to_first_good_frame():
     assert f["tracks_emitted"] == 1
     assert f["tracks_silent"] == 0
     assert f["ttfg_median_s"] == pytest.approx(0.2, abs=0.01)
+
+
+# --- jalur absensi unified: gerbang identitas, K terbaik, jendela pendek ---
+
+SMOOTH = np.full((112, 112, 3), 128, np.uint8)
+
+
+def unified(**over):
+    return FaceSettings(attendance_mode="unified", **over)
+
+
+def test_unified_waits_for_the_window_even_after_k_candidates():
+    """K kandidat terkumpul tidak memicu kirim; event baru terbit setelah jendela (10 fps → 1,0 dtk)."""
+    t = FakeTransport()
+    eng = FakeFaces([[GOOD]] * 15)
+    w = FaceGateWorker(363, [ZONE], eng, t, "test-node", unified(attendance_window_s=1.0), max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 15, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    assert len(t.events) == 1
+    p = t.events[0]["payload"]
+    assert p["policy"] == "unified"
+    assert p["face_stats"]["frames"] <= 5
+    assert p["face_stats"]["collect_s"] >= 1.0  # bukan pada K kandidat (0,4 dtk) dan tidak lebih awal
+    assert p["face_stats"]["zone_s"] >= 1.0
+
+
+def test_unified_emits_exactly_once_when_window_elapses_then_track_is_lost():
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[GOOD]] * 15 + [[]] * 8), t, "test-node",
+                       unified(attendance_window_s=1.0), max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 23, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["face_stats"]["frames"] <= 5
+
+
+def test_unified_track_lost_before_window_emits_one_event():
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], FakeFaces([[GOOD]] * 3 + [[]] * 8), t, "test-node",
+                       unified(attendance_window_s=3.0), max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 11, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    assert len(t.events) == 1
+    p = t.events[0]["payload"]
+    assert p["policy"] == "unified"
+    assert p["face_stats"]["frames"] == 3
+    assert p["face_stats"]["collect_s"] < 3.0
+
+
+def test_unified_accepts_small_blurry_face_that_legacy_rejects():
+    """Pembeda: wajah 70 px dan buram (blur < 120) ditolak legacy, diterima unified (tanpa gerbang blur)."""
+    frames = [[face(width=70.0)]] * 5 + [[]] * 8
+    _, legacy_t, _ = run_worker(frames, engine=FakeFaces(frames, aligned=SMOOTH))
+    assert legacy_t.events == []
+
+    _, t, _ = run_worker(frames, engine=FakeFaces(frames, aligned=SMOOTH), settings=unified())
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["policy"] == "unified"
+
+
+def test_unified_rejects_small_and_pitched_faces_with_gate_labels():
+    _, t, eng = run_worker([[face(width=50.0)]] * 5 + [[]] * 8, settings=unified())
+    assert t.events == [] and eng.embed_calls == 0
+    assert set(labels(t)) == {"small"}
+
+    pitched = face()
+    pitched.kps[2, 1] += 40  # hidung turun → pitch_dev 0,8 > 0,30
+    w, t2, eng2 = run_worker([[pitched]] * 5 + [[]] * 8, settings=unified())
+    assert t2.events == [] and eng2.embed_calls == 0
+    assert set(labels(t2)) == {"pitch"}
+    assert w.take_funnel()["rejects"]["pitch"] > 0
+
+    legacy, _, _ = run_worker([[face(width=40.0)]] * 5)
+    assert set(legacy.take_funnel()["rejects"]) == {"zone", "small", "score", "yaw", "blur"}
+
+
+def test_unified_ranking_embeds_only_frames_that_beat_the_worst_kept():
+    class Alternating(FakeFaces):
+        """align() bergantian halus/tajam sesuai pola; embed() mengembalikan vektor sesuai gambar."""
+
+        def __init__(self, per_frame, kinds):
+            super().__init__(per_frame)
+            self.kinds = list(kinds)
+            self._i = -1
+
+        def align(self, img, kps):
+            self._i += 1
+            return SHARP if self.kinds[self._i % len(self.kinds)] == "sharp" else SMOOTH
+
+    kinds = ["smooth"] * 5 + ["sharp"]
+    frames = [[GOOD]] * 6 + [[]] * 8
+    eng = Alternating(frames, kinds)
+    eng.vectors = [E1, E1, [0.8, 0.6] + [0.0] * 510]
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], eng, t, "test-node",
+                       FaceSettings.from_config({"attendance_mode": "unified", "ident": {"best_k": 2}}),
+                       max_age_s=0.5)
+    w.source = FrameSource.from_frames([FRAME] * 14, fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    assert eng.embed_calls == 3  # dua frame halus mengisi K, lalu hanya frame tajam yang mengalahkan
+    ev = t.events[0]
+    assert ev["payload"]["face_stats"]["frames"] == 2
+    # frame tajam ikut dalam agregat (vektor halus saja akan menghasilkan [1, 0, ...])
+    assert ev["payload"]["embedding"][1] == pytest.approx(0.316, abs=0.01)
+
+
+# --- unified: orang pergi tidak menunggu tracker (max_age_s 3 dtk) dan jendela mulai dari embed pertama ---
+
+def run_unified(per_frame, max_age_s=3.0, engine=None, **settings):
+    """Worker unified dengan tracker lambat seperti produksi (max_age_s 3,0), bukan 0,5 milik `run_worker`."""
+    t = FakeTransport()
+    w = FaceGateWorker(363, [ZONE], engine or FakeFaces(per_frame), t, "test-node", unified(**settings),
+                       max_age_s=max_age_s)
+    w.source = FrameSource.from_frames([FRAME] * len(per_frame), fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    return w, t
+
+
+def test_unified_quick_pass_is_sent_when_the_face_is_gone_not_after_the_tracker_gives_up():
+    # wajah terlihat 0,4 dtk lalu hilang; tracker baru melepas track setelah 3 dtk (belum tercapai di 1,4 dtk)
+    _, t = run_unified([[GOOD]] * 4 + [[]] * 10)
+    assert len(t.events) == 1
+    stats = t.events[0]["payload"]["face_stats"]
+    assert stats["frames"] == 4
+    assert 0.5 <= stats["zone_s"] < 2.0  # sudah termasuk jeda "wajah hilang", bukan hanya durasi terlihat
+
+
+def test_unified_short_gap_in_candidates_does_not_send_early():
+    # 0,3 dtk wajah tak lolos gerbang (terlalu kecil) di tengah: bukan "pergi"; jendela 1,0 dtk tetap berlaku
+    _, t = run_unified([[GOOD]] * 3 + [[face(width=40.0)]] * 3 + [[GOOD]] * 12, attendance_window_s=1.0)
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["face_stats"]["collect_s"] >= 1.0
+
+
+def test_unified_failed_embeds_do_not_start_the_window_or_kill_the_track():
+    # 12 embed pertama gagal (None): jendela 1,0 dtk tidak boleh habis dengan keranjang kosong dan menutup track
+    _, t = run_unified([[GOOD]] * 20 + [[]] * 8, engine=FakeFaces([[GOOD]] * 20 + [[]] * 8, vectors=[None] * 12),
+                        attendance_window_s=1.0)
+    assert len(t.events) == 1
+    assert t.events[0]["payload"]["face_stats"]["frames"] >= 1
+    assert len(t.events[0]["payload"]["embedding"]) == 512

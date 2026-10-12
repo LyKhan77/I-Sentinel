@@ -30,6 +30,8 @@ def _effective(db: Session) -> DetectorSetting:
         face_best_k=settings.face_best_k,
         face_ident_min_width_px=settings.face_ident_min_width_px,
         face_ident_window_s=settings.face_ident_window_s,
+        face_attendance_mode=settings.face_attendance_mode,
+        face_attendance_window_s=settings.face_attendance_window_s,
         # fallback tidak pernah di-flush, jadi default kolom tak pernah jalan
         updated_at=datetime.now(timezone.utc),
     )

@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import ZoneEditor from '../components/ZoneEditor'
 import ZonesPage from '../features/config/ZonesPage'
+import { effectiveDelivery, testUntil } from '../features/config/zoneDelivery'
 import type { Zone } from '../api/zones'
 
 const CAM_BASE = { location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null }
@@ -350,16 +351,92 @@ test('kamera terpilih awal adalah yang sudah punya zona, bukan kamera pertama', 
   expect(screen.getByTestId('zone-rail-cam-1').getAttribute('aria-selected')).toBe('false')
 })
 
-test('Telegram per behavior default off, dikirim di item behaviors; toggle zona lama hilang', async () => {
+test('tujuan event per behavior: radio menggantikan toggle Telegram; Mode uji menulis delivery', async () => {
   const fetchMock = await selectZone([zoneFix({ behaviors: [{ kind: 'intrusion', trigger_seconds: 0 }] })])
   expect(document.getElementById('zone-telegram')).toBeNull()
-  const tg = document.getElementById('zone-telegram-intrusion')!
-  expect(tg).toHaveAttribute('aria-checked', 'false')
-  fireEvent.click(tg)
+  expect(document.getElementById('zone-telegram-intrusion')).toBeNull() // toggle lama hilang
+  const group = screen.getByTestId('zone-delivery-intrusion')
+  expect(group).toBeInTheDocument()
+  expect(document.getElementById('zone-delivery-intrusion-inbox')).toBeChecked()
+
+  fireEvent.click(document.getElementById('zone-delivery-intrusion-all')!)
   fireEvent.click(screen.getByTestId('zone-save'))
   await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
-    { kind: 'intrusion', trigger_seconds: 0, telegram: true },
+    { kind: 'intrusion', trigger_seconds: 0, delivery: 'all', telegram: true },
   ]))
+})
+
+test('nilai lama (telegram true/false) terbaca sebagai Inbox + Telegram / Hanya Inbox', async () => {
+  await selectZone([zoneFix({ behaviors: [
+    { kind: 'intrusion', trigger_seconds: 0, telegram: true },
+    { kind: 'loitering', trigger_seconds: 30, telegram: false },
+  ] })])
+  expect(document.getElementById('zone-delivery-intrusion-all')).toBeChecked()
+  expect(document.getElementById('zone-delivery-loitering-inbox')).toBeChecked()
+})
+
+test('Mode uji pada zona warning langsung menulis tanpa dialog', async () => {
+  const fetchMock = await selectZone([zoneFix({ severity: 'warning', behaviors: [{ kind: 'intrusion', trigger_seconds: 0 }] })])
+  fireEvent.click(document.getElementById('zone-delivery-intrusion-test')!)
+  expect(screen.queryByTestId('zone-test-confirm')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'intrusion', trigger_seconds: 0, delivery: 'test', telegram: false },
+  ]))
+})
+
+test('Mode uji pada zona critical minta konfirmasi; Batal tidak mengubah nilai', async () => {
+  const fetchMock = await selectZone([zoneFix({ severity: 'critical', behaviors: [{ kind: 'intrusion', trigger_seconds: 0 }] })])
+  fireEvent.click(document.getElementById('zone-delivery-intrusion-test')!)
+  const modal = await screen.findByTestId('zone-test-confirm')
+  expect(modal).toBeInTheDocument()
+  fireEvent.click(screen.getByText('Batal'))
+  await waitFor(() => expect(screen.queryByTestId('zone-test-confirm')).not.toBeInTheDocument())
+  expect(document.getElementById('zone-delivery-intrusion-inbox')).toBeChecked()
+
+  // Lanjut: nilai ditulis
+  fireEvent.click(document.getElementById('zone-delivery-intrusion-test')!)
+  fireEvent.click(await screen.findByText('Lanjut'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'intrusion', trigger_seconds: 0, delivery: 'test', telegram: false },
+  ]))
+})
+
+test('badge UJI muncul selama test_until berlaku dan hilang setelah lewat', async () => {
+  const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
+  const past = new Date(Date.now() - 3600_000).toISOString()
+  await selectZone([
+    zoneFix({ id: 10, behaviors: [{ kind: 'intrusion', trigger_seconds: 0, delivery: 'test', test_until: soon, revert_to: 'all' }] }),
+    zoneFix({ id: 11, name: 'Zona 2', behaviors: [{ kind: 'intrusion', trigger_seconds: 0, delivery: 'test', test_until: past, revert_to: 'inbox' }] }),
+  ])
+  expect(screen.getByTestId('zone-test-badge-10')).toHaveTextContent('UJI')
+  expect(screen.getByTestId('zone-test-badge-10')).toHaveTextContent('sampai')
+  expect(screen.queryByTestId('zone-test-badge-11')).not.toBeInTheDocument()
+})
+
+test('radio Mode uji yang kedaluwarsa menampilkan revert_to', async () => {
+  const past = new Date(Date.now() - 3600_000).toISOString()
+  await selectZone([zoneFix({ behaviors: [
+    { kind: 'intrusion', trigger_seconds: 0, delivery: 'test', test_until: past, revert_to: 'inbox' },
+  ] })])
+  expect(document.getElementById('zone-delivery-intrusion-inbox')).toBeChecked()
+  expect(document.getElementById('zone-delivery-intrusion-test')).not.toBeChecked()
+})
+
+test('zoneDelivery murni: turunan, kedaluwarsa, dan revert_to', async () => {
+  const now = Date.now()
+  expect(effectiveDelivery(null, true, now)).toBe('all')
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0 }, false, now)).toBe('inbox')
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, telegram: true }, false, now)).toBe('all')
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'inbox' }, true, now)).toBe('inbox')
+  const future = { kind: 'intrusion' as const, trigger_seconds: 0, delivery: 'test' as const, test_until: new Date(now + 3600_000).toISOString(), revert_to: 'inbox' as const }
+  expect(effectiveDelivery(future, true, now)).toBe('test')
+  expect(testUntil(future, now)?.getTime()).toBe(now + 3600_000)
+  const past = { ...future, test_until: new Date(now - 1000).toISOString() }
+  expect(effectiveDelivery(past, true, now)).toBe('inbox')
+  expect(testUntil(past, now)).toBeNull()
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('all')
 })
 
 test('zona absensi punya satu toggle Telegram pada behavior attendance', async () => {
@@ -493,4 +570,24 @@ test('Catat absensi default aktif; OFF menampilkan hint dan mengirim record:fals
   await waitFor(() => expect(patchBody(f).behaviors).toEqual([
     { kind: 'attendance', trigger_seconds: 0, record: false },
   ]))
+})
+
+test('badge UJI tampil bila behavior alert MANA PUN sedang diuji, dengan kedaluwarsa terdekat', async () => {
+  const early = new Date(Date.now() + 2 * 3600_000).toISOString()
+  const late = new Date(Date.now() + 5 * 3600_000).toISOString()
+  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  await selectZone([
+    // behavior pertama tidak diuji: badge tetap harus tampil karena behavior kedua sedang diuji
+    zoneFix({ id: 10, behaviors: [
+      { kind: 'intrusion', trigger_seconds: 0, delivery: 'all' },
+      { kind: 'loitering', trigger_seconds: 30, delivery: 'test', test_until: early, revert_to: 'all' },
+    ] }),
+    zoneFix({ id: 11, name: 'Zona 3', behaviors: [
+      { kind: 'intrusion', trigger_seconds: 0, delivery: 'test', test_until: late, revert_to: 'all' },
+      { kind: 'loitering', trigger_seconds: 30, delivery: 'test', test_until: early, revert_to: 'inbox' },
+    ] }),
+  ])
+  expect(screen.getByTestId('zone-test-badge-10')).toHaveTextContent('UJI')
+  expect(screen.getByTestId('zone-test-badge-11')).toHaveTextContent(hhmm(early))
+  expect(screen.getByTestId('zone-test-badge-11')).not.toHaveTextContent(hhmm(late))
 })

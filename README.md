@@ -5,7 +5,7 @@ lokal: deteksi orang berbasis zona untuk keamanan, dan pengenalan wajah untuk ab
 
 | | |
 |---|---|
-| **Keamanan** | Zona poligon per kamera: intrusi, loitering, berlari, zona kosong, kerumunan. Snapshot + klip, Inbox Events, alert Telegram. |
+| **Keamanan** | Zona poligon per kamera: intrusi, loitering, berlari, zona kosong, kerumunan. Snapshot + klip, Inbox Events, alert Telegram dengan **tujuan per behavior** (Inbox + Telegram / Hanya Inbox / **Mode uji** 24 jam). |
 | **Absensi** | Enrollment wajah (3 foto), gerbang wajah di kamera pintu, shift, rekap harian, ekspor/impor CSV. |
 | **Operasional** | Live View + Mode TV, Dashboard, Monitoring dengan alert kesehatan, retensi storage, user admin/viewer. |
 
@@ -235,12 +235,15 @@ lonceng atau toolbar mode TV; status dibaca & mute disimpan per browser). Di Liv
 diberi outline warna severity selama 30 detik; bila tile sedang di luar layar muncul chip di kanan bawah. Absensi
 tidak memicu notifikasi. Notifikasi OS tidak tersedia karena app diakses lewat `http://` LAN.
 
-**Inbox Events.** `/events` master-detail: filter **Tipe, Kamera, Severity, dan Rentang waktu difilter di server**
-(satu query; pencarian teks tetap di klien), tiap dropdown punya opsi **Semua** dan tombol **Atur ulang filter**
-muncul saat ada filter non-default. Opsi Tipe statis dan berlabel lokal — termasuk grup **"Keamanan (tanpa
-absensi)"** — dan Rentang bertambah **Hari ini** (sejak 00:00 lokal). **Filter hidup di URL** (`?type=&camera=
+**Inbox Events.** `/events` master-detail: filter **Tipe, Kamera, Severity, Rentang waktu, dan pencarian `q` difilter di server**
+(satu query), sehingga nama karyawan, nama hasil face ID, nama kamera, tipe, ID, dan teks payload ditemukan di **semua halaman**;
+daftar yang sudah termuat tetap menyempit instan di klien (lapis kedua) dan permintaan server ber-debounce **300 ms**. tiap
+dropdown punya opsi **Semua** dan tombol **Atur ulang filter** muncul saat ada filter non-default. Opsi Tipe statis, berlabel
+lokal, dan **dikelompokkan** — Semua · Semua kecuali sistem · *Kelompok* (Keamanan, Absensi, Sistem) · *Per perilaku*
+(Intrusion, Loitering, Running, Idle zone, Crowd); opsi "Deteksi orang (debug)" dihapus (tautan lama jatuh ke Semua) — dan
+Rentang bertambah **Hari ini** (sejak 00:00 lokal). **Filter hidup di URL** (`?type=&camera=
 &severity=&range=&q=`): deep link, reload, dan Back/Forward memulihkannya; nilai tak valid jatuh ke default.
-Daftar memuat 200 event per halaman dan tombol **Muat lebih banyak** menggabung halaman berikutnya (dedupe id)
+Daftar memuat 200 event per halaman dan tombol **Muat lebih banyak** menggabung halaman berikutnya (dedupe id, membawa `q`)
 sampai batas **1000 baris** → hitungan menjadi `N+ event` disertai petunjuk mempersempit filter. Event kamera
 tetap memakai tab clip/snapshot/crop;
 **event system** (node offline/pulih, health alert) memakai panel **Bukti**: fakta dari payload ditambah grafik tren
@@ -307,13 +310,14 @@ Snapshot dapat memuat wajah karyawan.** Jalankan satu proses API; semaphore, thr
 ## Dashboard
 
 `/dashboard` satu layar status-first: **strip status** (summary Monitoring + health alert aktif, selalu
-berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → `/events?type=security&range=today`
-(filter yang sama dengan angka tile); Kehadiran hari
+berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → `/events?type=security&range=today`,
+yaitu grup Keamanan — lima tipe perilaku; angka tile dihitung `GET /events/stats/today` dengan tipe yang sama,
+jadi sama dengan isi daftar yang dibuka; Kehadiran hari
 ini → Attendance; Disk → Konfigurasi tab Storage) → **chart event per jam** hari ini → **8 event terbaru**
 (sumber realtime yang sama dengan lonceng: nama kamera, Tag severity dengan teks, thumbnail snapshot) →
 **masalah aktif** (maks 5, critical dulu) + **node ringkas** (GPU util/VRAM; detail di Monitoring).
 `GET /api/v1/events/stats/today` memperluas `total`/`by_type` dengan `by_severity`, `by_hour`,
-`critical_by_hour` dan **mengecualikan tipe `attendance`** — "Event hari ini" adalah angka keamanan, sejajar
+`critical_by_hour` dan **hanya menghitung lima tipe perilaku** (bukan `attendance`, `system`, `person_detect`) — "Event hari ini" adalah angka keamanan, sejajar
 dengan isi lonceng. Data di-poll 15 detik per sumber; satu sumber gagal tidak mengosongkan blok lain
 (tampil "—"/"Gagal memuat", bukan 0 palsu) dan strip menandai data basi. Alur lengkap: `WORKFLOW.md §15`.
 
@@ -370,6 +374,14 @@ otomatis "Tidak hadir"/"Tanpa exit".
 `no_exit`/`no_entry`, isi status/jam + catatan wajib. Baris yang sudah dikoreksi
 **tidak pernah diubah** oleh job penutupan maupun status efektif — koreksi tetap
 terjaga sampai event absensi baru masuk untuk hari itu.
+
+**Dua algoritma wajah.** Zona attendance memakai gerbang lama (lebar 80 px, blur 120, 3 frame) secara
+default. Saklar **Algoritma absensi baru (unified)** di **Konfigurasi → Deteksi & Model → Advanced →
+kartu Pengenalan wajah → grup Mode absensi** mengalihkannya ke gerbang identitas (lebar 60 px, tanpa
+gerbang blur), K frame terbaik, dan jendela 1,5 dtk: lebih tahan terhadap wajah kecil atau buram, tetapi
+event baru terbit setelah jendela berlalu atau 0,5 dtk tanpa kandidat baru (orang pergi). Bawaannya tetap `legacy` sampai replay
+offline dan uji lapangan membuktikan; prosedur, syarat lolos, dan query pemantauannya ada di
+`docs/runbooks/attendance.md`.
 
 Detail operasional: `docs/runbooks/attendance.md`.
 
@@ -441,8 +453,12 @@ tanpa migrasi DB.
 3. Buka **Konfigurasi → Notifikasi**: tempel token → **Simpan** → **Deteksi grup**
    → pilih grup dari daftar → **Simpan** → **Kirim pesan uji**. Chip status menjadi
    *Siap* dan pesan uji masuk ke grup.
-4. **Zona Deteksi**: nyalakan toggle **Telegram** per behavior (intrusi/loitering/
-   berlari/Idle Zone/Crowd/absensi) pada zona yang boleh mengirim alert. Tanpa toggle aktif,
+4. **Zona Deteksi**: pilih **Tujuan event** per behavior (intrusi/loitering/berlari/
+   Idle Zone/Crowd) — *Inbox + Telegram*, *Hanya Inbox*, atau *Mode uji* — pada zona yang boleh
+   mengirim alert; absensi tetap memakai toggle Telegram/Record sendiri. Zona lama tanpa
+   `delivery` dibaca dari toggle Telegram-nya. *Mode uji* (24 jam, konfirmasi pada zona `critical`,
+   badge **UJI** di daftar zona) menekan event, klip, dan Telegram, menampilkan label
+   `UJI · <tipe>` di Live View, lalu kembali ke tujuan semula otomatis. Tanpa tujuan aktif,
    event tetap tercatat tapi tidak dikirim.
 
 Yang perlu diketahui:

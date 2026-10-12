@@ -10,6 +10,7 @@ import { playerMode } from './playerMode'
 import { useInView } from './useInView'
 import { useEventAlerts } from '../notifications/EventAlertsProvider'
 import { sevClass, typeKey } from '../notifications/labels'
+import { eventTypeLabel } from '../events/eventTypes'
 import { useCameraHealthAlerts, type CameraHealth } from '../monitoring/useCameraHealthAlerts'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
@@ -253,6 +254,9 @@ function DebugOverlay({ camId, showZones, showDetection, boxes, names }: {
       ? names[`${camId}:${b.id}`].name
       : b.kind === 'face' && b.label && (FACE_GATE_CODES as readonly string[]).includes(b.label)
       ? t(`live.faceGate.${b.label}` as TKey)
+      // Mode uji zona: node mengirim `test:<tipe>`; label lain ditampilkan apa adanya
+      : b.kind === 'person' && b.label?.startsWith('test:')
+      ? t('live.testFired').replace('{type}', eventTypeLabel(b.label.slice('test:'.length), t))
       : b.label ?? t('live.trackId').replace('{n}', String(b.id))
   const [zones, setZones] = useState<Zone[]>([])
   useEffect(() => {
@@ -341,7 +345,8 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
     if (ev?.type === 'attendance' && ev.camera_id != null && p && typeof p.track_id === 'number'
       && ev.ts_event && Date.now() - Date.parse(ev.ts_event) < NAME_TTL_MS) {
       const name = typeof p.employee_name === 'string' ? p.employee_name
-        : p.match_reason === 'no_match' || p.match_reason === 'low_quality' ? t('events.face.unknown') : null
+        : p.match_reason === 'no_match' || p.match_reason === 'low_quality' || p.match_reason === 'ambiguous'
+          ? t('events.face.unknown') : null
       if (name) setFaceNames((prev) => ({ ...prev, [`${ev.camera_id}:${p.track_id}`]: { name, at: Date.now() } }))
     }
   })

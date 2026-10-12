@@ -21,6 +21,36 @@ BEST_K = 5                 # embedding terbaik (berdasar kualitas) yang dipertah
 IDENT_WINDOW_S = 8.0       # kirim hasil setelah sekian detik terikat event meski min_frames belum tercapai
 
 
+class BestK:
+    """Simpan K kandidat terbaik berperingkat `rank`; dipakai bersama identitas intrusion dan absensi unified.
+
+    `beats` memakai `>`: peringkat yang sama tidak mengalahkan yang sudah tersimpan, jadi frame
+    bermutu setara tidak memicu embed berulang.
+    """
+
+    def __init__(self, k: int):
+        self.k = k
+        self._items: list[tuple[float, float, list[float]]] = []
+
+    def beats(self, rank: float) -> bool:
+        """True bila belum penuh atau `rank` lebih besar dari peringkat terendah yang tersimpan."""
+        return len(self._items) < self.k or rank > min(item[0] for item in self._items)
+
+    def add(self, rank: float, quality: float, vector: list[float]) -> None:
+        """Simpan kandidat (rank, quality, vector); buang peringkat terendah bila melebihi K."""
+        self._items.append((rank, quality, vector))
+        if len(self._items) > self.k:
+            self._items.remove(min(self._items, key=lambda item: item[0]))
+
+    @property
+    def items(self) -> list[tuple[float, float, list[float]]]:
+        """Salinan daftar (rank, quality, vector) untuk dibaca pemanggil."""
+        return list(self._items)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+
 @dataclass(frozen=True)
 class IdentSettings:
     """Kebijakan kolektor identitas dari sub-blok `face.ident` (config push)."""
@@ -51,12 +81,16 @@ class FaceSettings:
     blur_min: float = 120.0
     min_frames: int = 3
     ident: IdentSettings = IdentSettings()
+    # mode absensi tahap 2: "legacy" (gerbang lama) atau "unified" (gerbang identitas + jendela)
+    attendance_mode: str = "legacy"
+    attendance_window_s: float = 1.5
 
     @classmethod
     def from_config(cls, face: dict | None) -> FaceSettings:
         """Key `face` config push; key yang hilang (backend lama) memakai default."""
         face = face or {}
         d = cls()
+        mode = str(face.get("attendance_mode", d.attendance_mode))
         return cls(
             min_width_px=float(face.get("min_width_px", d.min_width_px)),
             min_det_score=float(face.get("min_det_score", d.min_det_score)),
@@ -64,6 +98,8 @@ class FaceSettings:
             blur_min=float(face.get("blur_min", d.blur_min)),
             min_frames=int(face.get("min_frames", d.min_frames)),
             ident=IdentSettings.from_config(face.get("ident")),
+            attendance_mode=mode if mode in ("legacy", "unified") else d.attendance_mode,
+            attendance_window_s=float(face.get("attendance_window_s", d.attendance_window_s)),
         )
 
 

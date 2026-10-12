@@ -3,6 +3,126 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Hasil uji user dan keputusan: UX Events, absensi unified, radio absensi (2026-10-12)
+
+- **Konteks:** `feat/events-ux` @ `5bc3f09` (memuat branch absensi) ter-deploy di `gspe-ai3`; user mencoba UI dan lintasan nyata.
+- **Hasil dari user (pernyataan lisan, tanpa bukti tertulis):** (1) cek UI Events/Zona di server: "overall sesuai"; (2) absensi `unified`: karyawan yang lewat biasa tanpa berhenti terdeteksi semua hari ini, sehingga parameter pengenalan wajah dinyatakan OK. **Gerbang non-karyawan (D) BELUM diuji** (satu-dua lintasan non-karyawan menyusul); salah-orang tidak dilaporkan tetapi tidak dapat diukur otomatis.
+- **Data server pendukung (SELECT read-only 2026-10-12 11:00 WIB):** sejak saklar dinyalakan 2026-10-09 14:43:51 WIB: 679 event `unified` (40 dikenali: skor median 0,48, minimum 0,40, margin minimum 0,20; 637 `no_match`, 322 di antaranya berlebar < 80 px; 2 `ambiguous` dengan margin 0,142 dan 0,145). `zone_s` event dikenali median 2,06 dtk / p95 7,55 dtk (ekor = menunggu wajah pertama yang lolos); `collect_s` median 1,59 dtk / p95 2,07 dtk. Volume event ±3× `legacy` (kebisingan Inbox, dipantau; filter Tipe memisahkan Absensi). Telegram absensi tidak melonjak (`unified` 17 dan 8 alert pada dua hari).
+- **Keputusan user:** (a) merge `feat/events-ux` (memuat `feat/face-attendance-unified`) ke `main` dan server kembali ke `main`; mode `unified` tetap menyala; (b) kebisingan event "tidak dikenali" dibiarkan dan dipantau; (c) **radio tujuan event diperluas ke behavior absensi, termasuk Mode uji**, agar seragam untuk semua tipe deteksi (siklus berikutnya, spec dan plan terpisah).
+- **Belum terbukti:** non-karyawan tidak tercatat (D); Mode uji di kamera nyata (label overlay, penekanan event, kedaluwarsa 24 jam); jumlah karyawan dikenali lebih banyak daripada `legacy` (angka kecil).
+- **Rollback:** toggle "Algoritma absensi baru" ke lama di UI (instan); `git revert` merge.
+
+### UX Events dan Mode uji — perbaikan review (2026-10-12)
+
+- **Konteks:** review sesi perencanaan atas `171201e` (suite diulang berurutan cocok dengan laporan executor; satu kegagalan sementara `liveview.test.tsx > tile di luar layar tidak streaming…` dengan `IntersectionObserver is not defined`, lulus sendirian dua kali dan pada run penuh ulang, tes lama yang tidak diubah) menemukan tiga hal. (1) **Badge UJI** hanya memeriksa behavior alert pertama zona: zona dengan `intrusion` = Inbox+Telegram dan `loitering` = Mode uji tidak menampilkan badge, padahal badge adalah pengaman agar Mode uji tidak terlupa. (2) **Regresi dari perubahan grup `security`:** tile Dashboard "Event hari ini" menaut ke `/events?type=security&range=today` sedangkan `GET /events/stats/today` menghitung semua tipe kecuali `attendance` (termasuk `system`, `person_detect`), sehingga angka tile bisa lebih besar daripada daftar yang dibuka. (3) `CameraWorker._flash` tidak dibersihkan untuk track yang sudah hilang (kebocoran kecil; id track tidak didaur ulang dan `_flash` kosong saat worker restart, jadi risiko label salah-orang tidak ada).
+- **Perubahan:** `ZonesPage.zoneTestLabel` mengumpulkan `test_until` semua behavior alert dan memakai yang terdekat; `event_stats.today` memfilter `Event.type.in_(SECURITY_TYPES)` (lima perilaku); node membuang entri `_flash` basi pada tiap frame. `WORKFLOW.md` dan `README.md` disesuaikan (catatan selisih tile dihapus). Entri di bawah yang menyebut selisih tile sebagai temuan dibiarkan sebagai riwayat; sudah diperbaiki di sini.
+- **Bukti:** RED benar: `badge UJI tampil bila behavior alert MANA PUN sedang diuji…` gagal `Unable to find an element by: [data-testid="zone-test-badge-10"]`, `test_stats_today_counts_only_the_five_behavior_types` gagal `assert 4 == 2`, `test_test_mode_flash_entries_are_pruned_once_the_track_is_gone` gagal `assert {1: ('test:in…', …)} == {}`; ketiganya lulus sesudah perbaikan. Suite berurutan di commit terakhir: backend `1026 passed / 1 deselected / 611 warnings` (sebelumnya 1025), vision `360 passed / 3 deselected` (359), docker `77 passed`, frontend `38 berkas / 529 passed` (528), build exit 0, lint 24 warning / 16 pasangan identik baseline. Kueri pencarian `q` dikompilasi dengan dialek PostgreSQL secara lokal: `ILIKE … ESCAPE '\'` benar; eksekusi nyata di Postgres divalidasi setelah deploy.
+- **Dampak:** angka tile "Event hari ini" dan grafik per jam kini hanya menghitung lima tipe perilaku (event `system` tidak lagi menaikkan angka); badge UJI lebih andal. Tanpa migrasi.
+- **Rollback:** `git revert` ketiga commit perbaikan.
+
+### Tujuan event per behavior zona dan Mode uji (2026-10-12)
+
+- **Konteks:** toggle Telegram per behavior hanya bisa "kirim / tidak kirim", padahal kebutuhan lapangan
+  ada tiga: event tersimpan **dan** dikirim, tersimpan tanpa Telegram, dan **uji** (zona dievaluasi tanpa
+  meninggalkan bukti/alarm saat polygon atau trigger disetel ulang). Spec §6
+  (`docs/superpowers/specs/2026-10-09-inbox-zone-ux-design.md`), Plan B.
+- **Perubahan:** kunci JSON baru di `zone.behaviors[]` tanpa migrasi — `delivery` ∈ {`all`,`inbox`,`test`}
+  (kind alert saja; `attendance` menolak 422), `test_until` (ISO-8601 UTC), `revert_to` ∈ {`all`,`inbox`}.
+  Modul murni baru `app/services/zone_delivery.py`: `effective_delivery` (tanpa `delivery` → turunan
+  `telegram` item/flag zona; `test` yang lewat `test_until` → `revert_to`) dan `stamp_test_mode`
+  (`test` baru/kedaluwarsa → `test_until = now + 24 jam` + `revert_to` = tujuan efektif sebelumnya;
+  `test` berjalan dipertahankan sehingga menyimpan perubahan lain tidak memperpanjang uji) yang dipanggil
+  `create_zone`/`update_zone` sebelum atribut diisi. `alerting._telegram_on` memakai tujuan efektif
+  (Telegram hanya untuk `all`). Node: `_make_analyzers` memasang `delivery_cfg` per analyzer alert,
+  `delivery_mode(cfg, now_wall)` (jam dinding) menekan `_merge_event`/`publish_event`/`recorder.enqueue`/
+  `registry.bind` dan mencatat `flash[track_id] = ("test:<tipe>", frame.ts + 6 s)`; label itu dikirim pada
+  overlay `person` berikutnya dan diterjemahkan UI menjadi `UJI · <tipe>`; kedaluwarsa pulih tanpa restart.
+  UI: `RadioButtonGroup` tiga pilihan menggantikan `Toggle zone-telegram-<kind>` (menulis `delivery` dan
+  menjaga `telegram = (delivery === "all")`), `Modal` konfirmasi hanya untuk zona `critical`, badge
+  **UJI · sampai HH:MM** di daftar zona, `zoneDelivery.ts` sebagai padanan aturan backend di klien.
+  Runbook baru `docs/runbooks/zone-test-mode.md`.
+- **Bukti:** RED benar per task (B1 `ModuleNotFoundError` + 3 tes API; B2 3 tes Telegram; B3 3 tes node —
+  implementasi direvert dulu untuk membuktikan merah; B4 7 tes UI) dan lima mutasi wajib terbukti merah
+  lalu dikembalikan identik: `effective_delivery` mengabaikan `test_until`, `_telegram_on` mengabaikan
+  `delivery`, kondisi Mode uji di node diubah, `effectiveDelivery` klien mengabaikan kedaluwarsa, plus
+  penjaga zona lama (lulus sebelum implementasi, perilaku memang tidak berubah). Suite berurutan di commit
+  terakhir: backend `1025 passed / 1 deselected / 609 warnings` (baseline 996), vision `359 passed /
+  3 deselected` (baseline 351), docker `77 passed`, frontend `38 berkas / 528 passed` (baseline 38/508),
+  build exit 0, lint 24 warning / 16 pasangan file-rule identik baseline. Verifikasi visual 390/1280 px
+  (dev server Vite + API distub): `scrollWidth == innerWidth`, tiga radio + teks bantu, badge
+  "UJI · sampai 13:06", dialog konfirmasi muncul pada zona `critical` dan **Batal** mengembalikan pilihan
+  (perbaikan remount grup radio); screenshot `docs/evidence/ux-zones-*.png`.
+- **Dampak:** admin bisa menguji satu behavior zona 24 jam tanpa event/klip/Telegram; setelah kedaluwarsa
+  perilaku kembali ke tujuan sebelumnya tanpa restart, dan node lama tetap kompatibel (event bisa tiba,
+  Telegram ditolak API selama uji). **BELUM di-deploy/diuji di server** — penekanan event hanya berlaku
+  setelah node `vision` baru terpasang; validasi jam dinding node vs API dan perilaku lapangan menunggu uji.
+- **Rollback:** pilih *Inbox + Telegram*/*Hanya Inbox* lalu Simpan (kunci uji dibuang otomatis), atau
+  `git revert` commit Plan B (tanpa migrasi; kunci JSON tak dikenal diabaikan kode lama).
+
+### UX Events: pencarian `q` di server dan filter Tipe berkelompok (2026-10-12)
+
+- **Konteks:** pencarian Inbox sebelumnya hanya menyaring event yang sudah termuat di klien, jadi nama karyawan
+  (atau event apa pun) di halaman lebih lama tidak pernah ketemu; filter Tipe memuat opsi `person_detect` yang
+  tak berguna di server (`VISION_EMIT_PERSON_DETECT=false`) dan grup "Keamanan" masih memuat `system` sehingga
+  bercampur dengan event sistem. Plan A dari spec `docs/superpowers/specs/2026-10-09-inbox-zone-ux-design.md` §5.
+- **Perubahan:** `GET /api/v1/events` menerima `q` (≤100 karakter; `strip`, kosong diabaikan) — ILIKE atas
+  `Event.type`, `Event.event_id`, `Event.severity`, nama kamera (outerjoin, tanpa menggandakan baris), dan
+  `CAST(payload AS TEXT)`, dengan `%`/`_`/`\` di-escape (literal) dan berlaku bersama `type`/`camera_id`/
+  `severity`/`since`/`limit`/`offset` (urutan & paginasi tidak berubah). `EventsPage` mengirim `q` ber-debounce
+  **300 ms** pada refresh dan "Muat lebih banyak" (`src/api/events.ts` → `EventListParams.q`), sementara `q`
+  tetap ditulis ke URL tanpa jeda dan daftar yang sudah termuat tetap menyempit instan di klien (haystack klien
+  diperluas untuk event `system`: `type` + JSON payload, supaya hasil server tidak pernah hilang oleh saringan
+  klien). Dropdown Tipe dikelompokkan dengan urutan tetap — Semua · Semua kecuali sistem (`nosystem`) · judul
+  *Kelompok* · Keamanan (lima tipe perilaku) · Absensi · Sistem · judul *Per perilaku* · Intrusion · Loitering ·
+  Running · Idle zone · Crowd — judul tidak dapat dipilih, `person_detect` tidak lagi ditawarkan, dan
+  `parseFilters` menolaknya sehingga tautan lama jatuh ke Semua tanpa error.
+- **Bukti:** RED benar per task (A1 7 gagal, A2 12 gagal, A3 6 gagal) + tiga mutasi wajib terbukti merah lalu
+  dikembalikan identik: escape LIKE dihapus, `security` memuat `system` lagi, debounce dilepas. Suite di commit
+  terakhir: backend `1004 passed / 1 deselected / 601 warnings` (baseline 996), vision `351 passed / 3 deselected`,
+  docker `77 passed`, frontend `38 berkas / 521 passed` (baseline 38/508), build exit 0, lint 24 warning /
+  16 pasangan file-rule identik baseline. Verifikasi visual (dev server Vite + API distub Playwright) 390 px dan
+  1280 px: `scrollWidth == innerWidth` sebelum dan sesudah dropdown dibuka, urutan 12 opsi + 2 judul
+  `aria-disabled="true"`; screenshot `docs/evidence/ux-events-type-{390,1280}.png`.
+- **Dampak:** pencarian menemukan nama karyawan/face ID di semua halaman; grup Keamanan kini murni lima perilaku
+  alert (event `system` pindah ke opsi Sistem / Semua kecuali sistem). **BELUM di-deploy/diuji di server**;
+  validasi query `q` terhadap PostgreSQL (escape `LIKE`) belum dijalankan. Temuan: tile "Event hari ini" di
+  Dashboard menautkan `type=security&range=today` tetapi angkanya dari `events/stats/today` (termasuk `system`),
+  jadi angka tile bisa lebih besar dari isi daftar — belum diubah (di luar plan).
+- **Rollback:** `git revert` commit A1–A4 (tanpa migrasi).
+
+### Replay offline absensi: hasil pertama di server (2026-10-09)
+
+- **Konteks:** replay `--limit 600 --days 14 --threads 2 --max-seconds 300` (baca-saja, di container `api` `gspe-ai3`; CPU `api` ±154%, load host 8, layanan sehat) setelah deploy `f399998`; percobaan kecil sebelumnya (`--limit 40`): 40 crop, 14 direplay, `same` 5, `flipped` 0, 26 tanpa wajah. Log: `temp/logs/face-attendance-unified/replay-2.txt`, `replay-3.txt`.
+- **Hasil (replay besar):** 197 event ber-crop dari 600 event terbaru; direplay 92; **tanpa wajah 105 (53%)**; `same` 23, `flipped` **0**, `ambiguous` **0**, `lost` 9, `gained` 3, `both_none` 57; `same_pct` 71,9% dari 32 event yang dikenali `legacy`. Tiga event `gained` (margin 0,20–0,22) diserahkan ke user untuk dinilai manual di Inbox.
+- **Penilaian:** kriteria awal ≥ 98% **tidak tercapai**. Dugaan penyebab (belum diukur): crop event yang dikenali `legacy` digambari `annotate_face_crop` sehingga embedding ulangnya turun dan sebagian jatuh di bawah 0,40. **Atas keputusan user (2026-10-09) gerbang keras diubah menjadi `flipped = 0` (tercapai), `ambiguous` ditinjau (0), `same_pct` informatif**; spec §7.1 dan runbook diperbarui. Skrip belum disesuaikan: baris vonisnya masih memakai kriteria lama dan dicetak "belum lolos".
+- **Belum terbukti:** apakah `lost` memang akibat anotasi (butuh run diagnostik yang mencetak skor lama vs skor replay), apakah 3 `gained` karyawan sah, dan perilaku `unified` pada wajah kecil/buram yang tak pernah menjadi event `legacy` (hanya uji lapangan yang dapat membuktikannya). 53% crop tanpa wajah menunjukkan sebagian besar event `legacy` berkualitas rendah.
+- **Dampak:** tidak ada perubahan produk; saklar tetap `legacy` sampai user membaliknya untuk uji lapangan.
+- **Rollback:** tidak ada (hanya baca).
+
+### Skrip replay: batas CPU onnxruntime dan batas waktu (2026-10-09)
+
+- **Konteks:** replay pertama di container `api` `gspe-ai3` (`nice -n 19 taskset -c 0-3`, `OMP_NUM_THREADS=2`, atas persetujuan user) memakai **±1600% CPU** (121 thread, `docker top`), load host naik 50 → 82, dan tetap berjalan setelah handle ssh dihentikan; proses berakhir sendiri sebelum `pkill` dijalankan (`pkill` tidak ada di image `api`). Layanan tetap sehat dan CPU `api` kembali ±1%; load turun ke 55 dalam ±1 menit. Ringkasan hilang karena koneksi terputus sebelum tercetak (32 crop terbaca "tanpa wajah" di log parsial; jumlah yang diproses tak diketahui). Penyebab: onnxruntime memasang afinitas threadnya sendiri dan mengabaikan `taskset` dan `OMP_NUM_THREADS`; pelajaran yang sama dengan insiden analisis klip 2026-10-08.
+- **Perubahan:** `backend/scripts/face_replay.py`: `cap_onnx_threads(threads)` menambal `onnxruntime.InferenceSession` agar `intra_op_num_threads` = `--threads` (bawaan 2), `inter_op` 1, tanpa spin, juga bila pemanggil memberi `sess_options`; `--max-seconds` (bawaan 300) menghentikan sendiri dan tetap mencetak ringkasan; ringkasan memuat `tanpa wajah: N` dan cetakan progres ber-`flush`. Runbook diperbarui (perintah, batas, aturan hentikan bila CPU > ±300%).
+- **Bukti:** RED benar (`AttributeError: ... has no attribute 'cap_onnx_threads'`, `SystemExit: 2` untuk `--max-seconds`, tidak ada `tanpa wajah`); 11 tes replay lulus; mutasi (`intra_op_num_threads` dihapus) → merah, dikembalikan. Efek CPU nyata baru terbukti di server (onnxruntime tidak terpasang di mesin lokal): wajib dipantau pada percobaan berikutnya.
+- **Dampak:** hanya skrip dan runbook; tidak ada perubahan produk. **Belum ada hasil replay**.
+- **Rollback:** `git revert`; tidak ada efek ke server.
+
+### Keselarasan algoritma absensi — perbaikan review tahap 2 (2026-10-09)
+
+- **Konteks:** review sesi perencanaan atas `8eab439` menemukan dua cacat pada jalur `unified`. (1) **Latensi orang lewat cepat:** event hanya dikirim saat jendela (1,5 dtk) habis atau saat track hilang; `FaceGateWorker` memakai `ByteTracker` `max_age_s` 3,0 sehingga wajah yang terlihat < 1,5 dtk baru tercatat ±3 dtk sesudah terakhir terlihat (mode `legacy` mengirim dalam ±0,3–0,6 dtk), dan `zone_s` memakai timestamp frame terakhir sehingga **ukuran kecepatan menyembunyikan keterlambatan itu**. (2) `first_ts` diisi sebelum embed pertama berhasil: bila embed gagal/`None` sampai jendela habis, `_emit_due` mengirim dengan keranjang kosong, `aggregate([], [])` melempar galat yang ditelan finalizer, dan `done = True` mematikan track tanpa event.
+- **Perubahan:** `UNIFIED_GONE_S = 0.5` di `vision/vision/face_worker.py`: event dikirim juga bila 0,5 dtk tanpa kandidat lolos gerbang (diperiksa di tiap frame yang diproses, di cabang frame-dilewati-motion-gate, dan di cabang idle); timestamp kirim memakai waktu nyata sehingga `zone_s` dan `collect_s` jujur; `_expire(now)` menerima waktu; `first_ts` baru diisi saat vektor pertama masuk keranjang. Spec §5 dan dokumen (runbook, WORKFLOW, ARCHITECTURE, README) disesuaikan.
+- **Bukti:** RED benar: `test_unified_quick_pass_is_sent_when_the_face_is_gone_not_after_the_tracker_gives_up` gagal `assert 0 == 1` (4 frame wajah lalu 10 frame kosong dengan tracker 3,0 dtk) dan `test_unified_failed_embeds_do_not_start_the_window_or_kill_the_track` gagal `assert 0 == 1` dengan log `face event finalization failed`; penjaga `test_unified_short_gap_in_candidates_does_not_send_early` lulus sebelum perbaikan dan terbukti bisa gagal lewat mutasi (`UNIFIED_GONE_S` 0,1 → `assert 0.3 >= 1.0`); mutasi aturan pergi dimatikan (`gone = False`) → tes lewat-cepat merah. Vision `351 passed / 3 deselected` (sebelumnya 348). Query SQL baru di runbook divalidasi read-only di Postgres `gspe-ai3` (eksekusi tanpa galat; query kecepatan 0 baris karena belum ada event `unified`).
+- **Dampak:** hanya mode `unified` (saklar tetap `legacy`): orang yang lewat cepat tercatat ±0,5 dtk sesudah wajah terakhir terlihat, bukan ±3 dtk. Perilaku `legacy` tidak berubah (tes lama lulus tanpa perubahan). Pengamatan server (query runbook 2026-10-09, absensi `legacy`): sejak 2026-10-08 `no_match` dan `low_quality` jauh melebihi `matched` di semua kamera (mis. 2026-10-09: `matched` 7, `no_match` 61, `low_quality` 18); sebagian bisa non-karyawan atau deteksi palsu, penyebab belum diselidiki.
+- **Rollback:** `git revert` commit perbaikan; saklar `legacy` tidak terpengaruh.
+
+### Keselarasan algoritma absensi — tahap 2 (saklar `unified`) (2026-10-09)
+
+- **Konteks:** absensi lama menolak wajah kecil/buram karena gerbang absolut (lebar 80 px, blur 120), sedangkan algoritma identitas intrusion (gerbang relatif, K frame terbaik, margin top-1/top-2) lebih baik pada data uji kamera 357/363 dan parameternya sudah dipusatkan di DB pada tahap 1. Tahap 2 menyediakan mode `unified` di balik saklar agar bisa dibandingkan sebelum dipakai produksi.
+- **Perubahan:** migrasi `0025_face_attendance_mode` (kolom `face_attendance_mode` `'legacy'`|`'unified'` bawaan `legacy` dan `face_attendance_window_s` bawaan 1,5 dtk rentang 0,5–3,0) + field di skema, `_effective`, `Settings`, dan config push (`face.attendance_mode`/`attendance_window_s`). Vision: kelas `BestK` bersama (diekstrak dari `IdentCollector`; refaktor murni) dan `FaceSettings.attendance_mode`/`attendance_window_s`; `FaceGateWorker` memilih jalur per frame — `unified` memakai gerbang identitas (lebar `ident.min_width_px`, skor, yaw, pitch; **tanpa gerbang blur**), K frame terbaik berperingkat `skor × ketajaman`, dan kirim **tepat sekali per track** saat jendela berlalu atau track hilang (K kandidat **tidak** memicu); payload mendapat `policy: "unified"` serta `face_stats.collect_s`/`zone_s`. API memakai `match_strict` bila `payload.policy == "unified"` (ambang + margin, tanpa gerbang `low_quality`), menyimpan `payload.face_margin`, dan memperlakukan `ambiguous` seperti `no_match` (tanpa baris absensi, snapshot "Unknown", Live/Inbox menampilkan tidak dikenal); event tanpa `policy` tetap `match_vector`. UI: grup **Mode absensi** (toggle + jendela) di kartu Pengenalan wajah, tooltip `id`/`en` diperbarui. Skrip baru `backend/scripts/face_replay.py` (replay offline, keluaran hanya ID, tanpa nama/embedding).
+- **Bukti:** suite berurutan di commit terakhir: backend `990 passed / 1 deselected / 585 warnings` (baseline 971; +19 tes baru), vision `348 passed / 3 deselected` (baseline 338; +10), docker `77 passed`, frontend `38 berkas / 508 passed` (baseline 38/503; +5), build exit 0, lint 24 warning / 16 pasangan file-rule identik baseline. RED benar per task (T1 `KeyError: 'face_attendance_mode'` dan `assert 200 == 422`, T2 `ImportError: cannot import name 'BestK'`, T3 `KeyError: 'policy'` dan `0 == 3` embed, T4 `KeyError: 'face_margin'` dan `assert 1 == 0`, T5 empat tes UI, T6 `ModuleNotFoundError`) plus lima mutasi wajib yang terbukti merah lalu dikembalikan: (a) kirim saat K kandidat → `collect_s 0.4 < 1.0`, (b) `unified` mengabaikan pitch, (c) `handle_face_event` selalu `match_vector` (6 tes merah), (d) `BestK.beats` memakai `>=`, (e) event dikirim dua kali (jendela lalu track hilang) → `assert 2 == 1`. Migrasi 0025 diuji dua siklus dan mutasi upgrade no-op terbukti merah. Verifikasi tampilan (Vite dev + API distub, screenshot `docs/evidence/face-attendance-mode-{390,1280}.png` dan tooltip): 390 px `scrollWidth 390 = innerWidth 390`, 1280 px `1280 = 1280`, tooltip jendela di dalam viewport.
+- **Dampak:** **perilaku absensi tidak berubah** — saklar tetap `legacy`; migrasi 0025 berjalan saat `api` start. Setelah user menyalakan mode baru, node memakai gerbang identitas + jendela 1,5 dtk dan API memakai ambang/margin dari baris DB; mengubah saklar/jendela merestart worker wajah kamera terkait (track yang sedang di jendela hilang). **BELUM di-deploy, saklar `legacy`, bukti replay dan lapangan menunggu** (spec §7.1/§7.2); replay dijalankan sesi perencanaan di container `api` dengan `nice -n 19 taskset -c 0-3` setelah user diberi tahu.
+- **Rollback:** balik saklar ke `legacy` di UI (instan, tanpa deploy); `git revert` commit tahap 2 (kolom 0025 boleh tetap ada).
+
 ### Pemusatan parameter pengenalan wajah — tahap 1 ter-deploy (2026-10-09)
 
 - **Konteks:** tahap 1 (`4919f5d..4b50440`) di-deploy ke `gspe-ai3` atas persetujuan user: `git checkout feat/face-params-unify` di clone Docker (sebelumnya `feat/intrusion-face-progressive` @ `2cedca8`), `./docker/setup.sh` (`api`, `vision`, `web`, `retention` dibuat ulang), lalu hanya `web` dibuat ulang untuk ikon info.

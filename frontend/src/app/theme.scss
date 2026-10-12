@@ -628,6 +628,13 @@ html {
     border-color: #42be65;
     color: #42be65;
   }
+
+  /* Mode uji aktif: badge harus menonjol (alert keamanan sedang mati). */
+  &--uji {
+    border-color: #f1c21b;
+    color: #f1c21b;
+    font-weight: 600;
+  }
 }
 
 .zone-list__empty {
@@ -643,6 +650,14 @@ html {
   flex: 1 1 200px;
   min-inline-size: 0;
   max-inline-size: 240px;
+}
+
+/* Judul kelompok di dropdown Tipe (item `disabled`, hanya label). */
+.ev-filter-heading {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--cds-text-helper);
 }
 
 /* Toolbar /events (mockup 03): filter + rentang + cari + jumlah hasil. */

@@ -1,5 +1,5 @@
 import type { EventOut } from '../../api/events'
-import { EVENT_TYPES } from './eventTypes'
+import { BEHAVIOR_TYPES, EVENT_TYPES } from './eventTypes'
 
 // Filter Events hidup di URL (D1): fungsi murni parse/write tanpa sisi-efek, supaya
 // EventsPage tinggal menurunkan nilai dari `useSearchParams` dan menulis lewat setter.
@@ -8,11 +8,16 @@ import { EVENT_TYPES } from './eventTypes'
 export const RANGE_IDS = ['all', 'today', '24h', '7d', '30d'] as const
 export type RangeId = (typeof RANGE_IDS)[number]
 export const SECURITY = 'security'
+/** Semua tipe backend kecuali `system` (opsi baru §5.2 spec). */
+export const NOSYSTEM = 'nosystem'
 export type Filters = { type: string | null; camera: number | null; severity: string | null; range: RangeId; q: string }
 
 const SEVERITIES = ['critical', 'warning', 'info']
 const RANGE_HOURS: Partial<Record<RangeId, number>> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 const DEFAULTS: Filters = { type: null, camera: null, severity: null, range: 'all', q: '' }
+// tipe tunggal yang boleh dipilih di URL: `person_detect` sengaja ditolak (opsi debug dihapus;
+// tipe tetap valid di backend dan label) sehingga tautan lama jatuh ke Semua tanpa galat.
+const SINGLE_TYPES = EVENT_TYPES.filter((t) => t !== 'person_detect')
 const Q_MAX = 100
 const INT4_MAX = 2 ** 31 - 1 // id kolom int4: nilai di atas ini tak mungkin ada dan membuat query server melempar
 
@@ -24,7 +29,7 @@ export function parseFilters(params: URLSearchParams): Filters {
   const rawRange = params.get('range')
   const cam = rawCam != null && /^\d+$/.test(rawCam) && Number(rawCam) > 0 && Number(rawCam) <= INT4_MAX ? Number(rawCam) : null
   return {
-    type: rawType === SECURITY || (EVENT_TYPES as readonly string[]).includes(rawType ?? '') ? rawType : null,
+    type: rawType === SECURITY || rawType === NOSYSTEM || (SINGLE_TYPES as readonly string[]).includes(rawType ?? '') ? rawType : null,
     camera: cam,
     severity: SEVERITIES.includes(rawSev ?? '') ? rawSev : null,
     range: (RANGE_IDS as readonly string[]).includes(rawRange ?? '') ? (rawRange as RangeId) : 'all',
@@ -44,10 +49,11 @@ export function writeFilters(prev: URLSearchParams, patch: Partial<Filters>): UR
   return next
 }
 
-/** Daftar tipe untuk server: grup `security` = semua kecuali absensi (D3). */
+/** Daftar tipe untuk server: `security` = lima perilaku alert, `nosystem` = semua kecuali system. */
 export function typesFor(type: string | null): string[] | undefined {
   if (type == null) return undefined
-  if (type === SECURITY) return EVENT_TYPES.filter((t) => t !== 'attendance')
+  if (type === SECURITY) return [...BEHAVIOR_TYPES]
+  if (type === NOSYSTEM) return EVENT_TYPES.filter((t) => t !== 'system')
   return [type]
 }
 
@@ -61,7 +67,8 @@ export function sinceFor(range: RangeId, now: Date): string | undefined {
 
 /** Cocok untuk event live/daftar klien: tipe (termasuk grup), kamera, severity — bukan range/q. */
 export function matchesFilters(e: EventOut, f: Filters): boolean {
-  if (f.type === SECURITY ? e.type === 'attendance' : f.type != null && e.type !== f.type) return false
+  const types = typesFor(f.type)
+  if (types && !types.includes(e.type)) return false
   if (f.camera != null && e.camera_id !== f.camera) return false
   if (f.severity != null && e.severity !== f.severity) return false
   return true

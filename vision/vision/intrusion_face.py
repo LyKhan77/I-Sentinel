@@ -15,7 +15,7 @@ import numpy as np
 from .analyzers.base import point_in_polygon
 from .face import FaceDet
 from .face_quality import (BEST_K, IDENT_MIN_WIDTH_PX, IDENT_WINDOW_S, MAX_PITCH,
-                           FaceSettings, aggregate, blur_score, crop_box,
+                           BestK, FaceSettings, aggregate, blur_score, crop_box,
                            gate_code, quality, yaw_ratio)
 
 REGISTRY_TTL_S = 3.0   # sama dengan max_age_s tracker; motion gate bisa melewatkan frame saat orang diam
@@ -162,7 +162,7 @@ def _dummy_zone(zone_id: int) -> dict:
 
 @dataclass
 class _IdentState:
-    kept: list = field(default_factory=list)  # (ketajaman, kualitas, vektor): best_k terbaik, bukan K pertama
+    keeper: BestK | None = None  # (ketajaman, kualitas, vektor): best_k terbaik, bukan K pertama
     crop_rank: float = -1.0
     crop: bytes | None = None
     rejects: dict = field(default_factory=lambda: dict.fromkeys(
@@ -197,6 +197,10 @@ class IdentCollector:
         self._states: dict[tuple[int, int], _IdentState] = {}
         self.entries_seen: list[int] = []  # test hook
 
+    def _new_state(self) -> _IdentState:
+        """State baru dengan kapasitas K dari kebijakan saat ini (dipakai semua tempat pembuatan)."""
+        return _IdentState(keeper=BestK(self._ident.best_k))
+
     def observe(self, faces: list[FaceDet], frame_data, frame_w: int, frame_h: int,
                 now: float) -> dict[int, str]:
         """Proses wajah frame ini; kembalikan {id(wajah): label overlay} untuk wajah di kepala orang."""
@@ -208,7 +212,7 @@ class IdentCollector:
             ent = associate((cx_norm, cy_norm), entries)
             if ent is None:
                 continue
-            st = self._states.setdefault((ent.zone_id, ent.track_id), _IdentState())
+            st = self._states.setdefault((ent.zone_id, ent.track_id), self._new_state())
             st.faces += 1
             labels[id(f)] = self._reject_or_keep(f, ent, st, frame_data, frame_w, frame_h)
         return labels
@@ -252,7 +256,10 @@ class IdentCollector:
         if code is not None:
             return label
         sharp = f.score * blur
-        if len(st.kept) >= self._ident.best_k and sharp <= min(k[0] for k in st.kept):
+        keeper = st.keeper
+        if keeper is None:  # state lama tanpa keeper (mis. dibuat tes): kapasitas dari kebijakan
+            keeper = st.keeper = BestK(self._ident.best_k)
+        if not keeper.beats(sharp):
             return label  # tidak mengalahkan K terbaik: tanpa embed berulang
         try:
             vec = self.face.embed(aligned)
@@ -260,24 +267,23 @@ class IdentCollector:
             return label
         if vec is None:
             return label
-        st.kept.append((sharp, q, vec))
-        if len(st.kept) > self._ident.best_k:
-            st.kept.remove(min(st.kept, key=lambda k: k[0]))
+        keeper.add(sharp, q, vec)
         st.dirty = True
         return label
 
     def _message(self, ent: PersonEntry, st: _IdentState, now: float) -> dict:
-        qualities = [q for _, q, _ in st.kept]
+        kept = st.keeper.items if st.keeper is not None else []
+        qualities = [q for _, q, _ in kept]
         msg = {
             "event_id": ent.event_id,
             "camera_id": self.camera_id,
             "node_id": self.node_id,
             "track_id": ent.track_id,
             "seq": st.sent,
-            "embedding": aggregate([v for _, _, v in st.kept], qualities) if st.kept else None,
-            "quality": round(max(qualities), 3) if st.kept else None,
+            "embedding": aggregate([v for _, _, v in kept], qualities) if kept else None,
+            "quality": round(max(qualities), 3) if kept else None,
             "crop_path": None,
-            "stats": {"faces": st.faces, "rejects": dict(st.rejects), "frames_used": len(st.kept)},
+            "stats": {"faces": st.faces, "rejects": dict(st.rejects), "frames_used": len(kept)},
             "_crop": st.crop if (st.sent == 0 or st.crop_dirty) else None,
         }
         st.sent += 1
@@ -301,7 +307,7 @@ class IdentCollector:
             if ent.event_id is None:
                 continue
             key = (ent.zone_id, ent.track_id)
-            st = self._states.setdefault(key, _IdentState())
+            st = self._states.setdefault(key, self._new_state())
             gone = now - ent.seen_ts > REGISTRY_TTL_S
             age = now - (ent.bound_ts or now)
             if st.sent == 0:
@@ -326,7 +332,7 @@ class IdentCollector:
             if ent.event_id is None:
                 continue
             key = (ent.zone_id, ent.track_id)
-            st = self._states.pop(key, _IdentState())
+            st = self._states.pop(key, self._new_state())
             if st.sent == 0 or st.dirty:
                 out.append(self._message(ent, st, now))
             self.registry.release(*key)

@@ -9,9 +9,9 @@ import { listEvents, getEvent, type EventOut } from '../../api/events'
 import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type TelegramStatus } from '../../api/alerts'
 import { useLiveEvents } from '../../api/useWs'
 import { eventTitle, eventWhere } from '../notifications/labels'
-import { EVENT_TYPES, eventTypeLabel } from './eventTypes'
+import { BEHAVIOR_TYPES, eventTypeLabel } from './eventTypes'
 import {
-  RANGE_IDS, SECURITY, parseFilters, writeFilters, typesFor, sinceFor, matchesFilters,
+  RANGE_IDS, NOSYSTEM, SECURITY, parseFilters, writeFilters, typesFor, sinceFor, matchesFilters,
   appendPage, mergeFirstPage, type Filters, type RangeId,
 } from './eventFilters'
 import EvidencePanel from './EvidencePanel'
@@ -25,8 +25,12 @@ const SEV_TAG: Record<string, string> = { critical: 'ev-tag--err', warning: 'ev-
 // Dropdown filter: SATU bentuk item untuk ketiganya (Tipe/Kamera/Severity) supaya
 // "Semua" selalu item pertama dan nilai filter disimpan sebagai primitif
 // (`value: null` = tanpa filter) — dependensi `refresh` jadi stabil.
-type FilterItem = { value: string | number | null; label: string }
+// `heading` = item judul kelompok: tampil redup dan `disabled` (tak dapat dipilih).
+type FilterItem = { value: string | number | null; label: string; heading?: boolean; disabled?: boolean }
 const ALL_VALUE = null
+// nilai sentinel judul: tak pernah ditulis ke URL dan tak pernah lolos `parseFilters`
+const GROUP_GROUPS = '__group:groups'
+const GROUP_BEHAVIORS = '__group:behaviors'
 
 const ALERT_KEY: Record<AlertStatus, TKey> = {
   sent: 'events.alert.sent',
@@ -70,6 +74,19 @@ const MAX_EVENTS = 1000
 
 function timeStr(ts: string): string {
   return new Date(ts).toLocaleTimeString('en-GB') // HH:MM:SS
+}
+
+/**
+ * Nilai yang tertinggal `ms` di belakang `value` (dipakai untuk menahan permintaan
+ * pencarian ke server; penyempitan klien tetap instan).
+ */
+function useDebouncedValue<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return debounced
 }
 
 function Thumb({ path, alt }: { path: string | null; alt: string }) {
@@ -125,6 +142,11 @@ export default function EventsPage() {
   const hasFilter = typeFilter != null || camFilter != null || sevFilter != null || range !== 'all' || query.trim() !== ''
   const resetFilters = () => setFilter({ type: null, camera: null, severity: null, range: 'all', q: '' })
 
+  // teks pencarian: dipakai klien tanpa jeda (daftar langsung menyempit), sedangkan
+  // permintaan ke server memakai salinan ber-debounce 300 ms supaya mengetik tidak membanjiri server
+  const needle = query.trim().toLowerCase()
+  const debouncedQ = useDebouncedValue(query.trim(), 300)
+
   // mode 'replace' (filter berubah) mengganti daftar + mereset hasMore;
   // mode 'merge' (interval klip tertunda) menggabung halaman pertama tanpa membuang yang termuat
   const refresh = useCallback(async (mode: 'replace' | 'merge' = 'replace') => {
@@ -137,6 +159,7 @@ export default function EventsPage() {
         types: typesFor(typeFilter),
         camera_id: camFilter ?? undefined,
         severities: sevFilter ? [sevFilter] : undefined,
+        q: debouncedQ,
       })
       if (req !== reqRef.current) return // respons basi: permintaan lebih baru sudah jalan
       if (mode === 'merge') {
@@ -152,7 +175,7 @@ export default function EventsPage() {
     } finally {
       if (req === reqRef.current) setLoading(false)
     }
-  }, [range, typeFilter, camFilter, sevFilter])
+  }, [range, typeFilter, camFilter, sevFilter, debouncedQ])
 
   useEffect(() => {
     refresh()
@@ -172,6 +195,7 @@ export default function EventsPage() {
         types: typesFor(typeFilter),
         camera_id: camFilter ?? undefined,
         severities: sevFilter ? [sevFilter] : undefined,
+        q: debouncedQ,
       })
       if (req !== reqRef.current) return
       setEvents((prev) => appendPage(prev, rows, MAX_EVENTS))
@@ -195,40 +219,18 @@ export default function EventsPage() {
       .catch(() => setZoneNames({}))
   }, [])
 
-  // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first)
-  useLiveEvents((raw) => {
-    const msg = raw as { kind?: string; event_id?: number; status?: AlertStatus }
-    if (msg?.kind === 'ai') {
-      if (typeof msg.event_id === 'number' && selected?.id === msg.event_id) setAiTick((value) => value + 1)
-      return
-    }
-    if (msg?.kind === 'face') {
-      // hasil identitas wajah intrusion tertulis → refresh merge supaya payload.face terlihat
-      refresh('merge')
-      return
-    }
-    if (msg?.kind === 'alert') {
-      // broadcast status akhir alert (alert_dispatcher) → update chip tanpa reload
-      const status = msg.status
-      if (typeof msg.event_id !== 'number' || !status || !(status in ALERT_KEY)) return // status/id tak dikenal → abaikan
-      const match = events.find((p) => p.id === msg.event_id)
-      if (!match) return // event belum ada di list ter-load → abaikan
-      setAlertMap((am) => ({ ...am, [match.event_id]: status }))
-      return
-    }
-    const e = raw as EventOut
-    if (typeof e?.id !== 'number') return // buang frame non-event lain
-    // filter aktif dikirim ke server; event live dari tipe/kamera/severity lain tidak boleh ikut masuk
-    if (!matchesFilters(e, filters)) return
-    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, MAX_EVENTS)))
-  })
-
-  // tiga dropdown memakai bentuk item yang sama: "Semua" + opsi; nilai = primitif
+  // urutan persis §5.2 spec: Semua · Semua kecuali sistem · judul Kelompok · Keamanan · Absensi ·
+  // Sistem · judul Per perilaku · lima tipe perilaku. `person_detect` tak lagi ditawarkan.
   const typeItems = useMemo<FilterItem[]>(
     () => [
       { value: ALL_VALUE, label: t('events.filterAll') },
+      { value: NOSYSTEM, label: t('events.type.nosystem') },
+      { value: GROUP_GROUPS, label: t('events.type.groupGroups'), heading: true, disabled: true },
       { value: SECURITY, label: t('events.type.security') },
-      ...EVENT_TYPES.map((v) => ({ value: v, label: eventTypeLabel(v, t) })),
+      { value: 'attendance', label: eventTypeLabel('attendance', t) },
+      { value: 'system', label: eventTypeLabel('system', t) },
+      { value: GROUP_BEHAVIORS, label: t('events.type.groupBehaviors'), heading: true, disabled: true },
+      ...BEHAVIOR_TYPES.map((v) => ({ value: v, label: eventTypeLabel(v, t) })),
     ],
     [t],
   )
@@ -256,7 +258,7 @@ export default function EventsPage() {
     if (name && p?.match_reason === 'cooldown') return `${name} · ${t('events.face.cooldown')}`
     if (name && p?.match_reason === 'already_in') return `${name} · ${t('events.face.alreadyIn')}`
     if (name) return name
-    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality') return t('events.face.unknown')
+    if (p?.match_reason === 'no_match' || p?.match_reason === 'low_quality' || p?.match_reason === 'ambiguous') return t('events.face.unknown')
     return '—'
   }
 
@@ -276,16 +278,19 @@ export default function EventsPage() {
     }
   }
 
-  // pencarian teks tetap client-side atas hasil server yang sudah terfilter
-  const needle = query.trim().toLowerCase()
-  const filtered = events.filter((e) => {
-    if (!matchesFilters(e, filters)) return false // daftar langsung menyempit; server tetap otoritas data
-    if (!needle) return true
+  // pencarian teks tetap client-side atas hasil server yang sudah terfilter.
+  // Haystack klien harus ⊇ haystack server (tipe, event_id, severity, nama kamera, teks payload)
+  // supaya hasil server tak pernah hilang oleh saringan klien; event system ikut `type` dan
+  // JSON payload di samping judul/lokasi terjemahan. Dipakai juga untuk event live.
+  const matchesQuery = (e: EventOut, text: string) => {
+    if (!text) return true
     const haystack = e.type === 'system'
-      ? [eventTitle(e, t), eventWhere(e, t, camNameById), e.severity, e.event_id]
+      ? [eventTitle(e, t), eventWhere(e, t, camNameById), e.type, e.severity, e.event_id, e.payload ? JSON.stringify(e.payload) : '']
       : [e.type, e.event_id, e.severity, camName(e), e.payload ? JSON.stringify(e.payload) : '']
-    return haystack.join(' ').toLowerCase().includes(needle)
-  })
+    return haystack.join(' ').toLowerCase().includes(text)
+  }
+
+  const filtered = events.filter((e) => matchesFilters(e, filters) && matchesQuery(e, needle))
 
   const inList = eventParam != null && filtered.some((e) => e.id === eventParam)
   const pinnedEvent = pinned && pinned.id === eventParam && pinned.status === 'ok' ? pinned.event : null
@@ -295,6 +300,37 @@ export default function EventsPage() {
   // pilihan dari URL (K1); fallback: event tersemat, lalu event pertama daftar
   const selected = resolving ? null : (filtered.find((e) => e.id === eventParam) ?? pinnedEvent ?? filtered[0] ?? null)
   const fromPinned = selected != null && selected === pinnedEvent
+
+  // poll 5s via useLiveEvents — event dgn id belum ada → prepend (newest first).
+  // Diletakkan setelah `selected`/`matchesQuery` supaya callback tidak membaca binding
+  // yang belum terinisialisasi (aturan react/immutability).
+  useLiveEvents((raw) => {
+    const msg = raw as { kind?: string; event_id?: number; status?: AlertStatus }
+    if (msg?.kind === 'ai') {
+      if (typeof msg.event_id === 'number' && selected?.id === msg.event_id) setAiTick((value) => value + 1)
+      return
+    }
+    if (msg?.kind === 'face') {
+      // hasil identitas wajah intrusion tertulis → refresh merge supaya payload.face terlihat
+      refresh('merge')
+      return
+    }
+    if (msg?.kind === 'alert') {
+      // broadcast status akhir alert (alert_dispatcher) → update chip tanpa reload
+      const status = msg.status
+      if (typeof msg.event_id !== 'number' || !status || !(status in ALERT_KEY)) return // status/id tak dikenal → abaikan
+      const match = events.find((p) => p.id === msg.event_id)
+      if (!match) return // event belum ada di list ter-load → abaikan
+      setAlertMap((am) => ({ ...am, [match.event_id]: status }))
+      return
+    }
+    const e = raw as EventOut
+    if (typeof e?.id !== 'number') return // buang frame non-event lain
+    // filter aktif dikirim ke server; event live dari tipe/kamera/severity lain tidak boleh ikut masuk
+    if (!matchesFilters(e, filters)) return
+    if (!matchesQuery(e, needle)) return // teks pencarian: haystack sama dengan daftar
+    setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, MAX_EVENTS)))
+  })
 
   // sematan: fetch by-id tepat sekali per eventParam, hanya bila daftar selesai dimuat dan
   // eventParam tidak ada di daftar (K3). Respons basi dibuang lewat alive + koreksi id.
@@ -418,6 +454,9 @@ export default function EventsPage() {
           label={t('events.filterAll')}
           items={typeItems}
           itemToString={(i) => i?.label ?? ''}
+          // item `disabled` dihormati Carbon 1.115 (downshift isItemDisabled): tak bisa diklik;
+          // itemToElement hanya untuk kelas gaya judul kelompok
+          itemToElement={(i) => (i.heading ? <span className="ev-filter-heading">{i.label}</span> : i.label)}
           selectedItem={selectedTypeItem}
           onChange={({ selectedItem }) => setFilter({ type: (selectedItem?.value as string | null) ?? null })}
         />

@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     face_best_k: int = 5
     face_ident_min_width_px: float = 60.0
     face_ident_window_s: float = 8.0
+    # mode absensi tahap 2 (fallback bila baris detector_setting belum ada): legacy | unified
+    face_attendance_mode: str = "legacy"
+    face_attendance_window_s: float = 1.5
     attendance_cooldown_min: int = 5
     no_exit_grace_min: int = 60  # toleransi setelah jam shift usai sebelum status jadi no_exit
     # catatan: JWT_SECRET wajib >= 32 karakter acak di produksi (lihat .env.example)

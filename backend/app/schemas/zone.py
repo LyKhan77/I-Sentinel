@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.services.zone_delivery import ALERT_KINDS, DELIVERIES
+
 VALID_TYPES = {"free", "restricted", "absensi", "behavior", "attendance"}
 VALID_BEHAVIOR_KINDS = {"intrusion", "loitering", "running", "attendance", "idle_zone", "crowd"}
 VALID_DIRECTIONS = {"entry", "exit"}
@@ -38,6 +40,22 @@ def _validate_behaviors(v: list | None) -> list | None:
         reminder = b.get("reminder_minutes")
         if reminder is not None and (not isinstance(reminder, int) or isinstance(reminder, bool) or reminder < 0):
             raise ValueError("reminder_minutes must be an int >= 0")
+        # Tujuan event per behavior (Plan B): `delivery` hanya untuk kind alert; kunci uji
+        # (`test_until`/`revert_to`) hanya bermakna saat `delivery == "test"` — sisanya dibuang
+        # supaya menyimpan "Inbox + Telegram"/"Hanya Inbox" tidak menyisakan uji menggantung.
+        delivery = b.get("delivery")
+        if delivery is not None:
+            if b.get("kind") not in ALERT_KINDS:
+                raise ValueError("delivery is only valid for alert behaviors")
+            if delivery not in DELIVERIES:
+                raise ValueError(f"delivery must be one of {sorted(DELIVERIES)}")
+        if "test_until" in b and not isinstance(b["test_until"], str):
+            raise ValueError("test_until must be an ISO-8601 string")
+        if b.get("revert_to") is not None and b.get("revert_to") not in ("all", "inbox"):
+            raise ValueError("revert_to must be one of ['all', 'inbox']")
+        if delivery != "test":
+            b.pop("test_until", None)
+            b.pop("revert_to", None)
     return v
 
 

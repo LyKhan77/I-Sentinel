@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { within } from '@testing-library/react'
 import { act } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
@@ -352,6 +353,15 @@ test('detail event attendance menampilkan hasil pencocokan wajah', async () => {
   expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Tidak dikenal')
 })
 
+test('detail event attendance ambiguous tampil sebagai tidak dikenal', async () => {
+  const att: EventOut[] = [{ id: 6, event_id: 'ev-6', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'ambiguous', employee_id: null, crop_path: 'crops/x.jpg' },
+    clip_path: null, snapshot_path: null }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Tidak dikenal')
+})
+
 test('detail event attendance cooldown menampilkan nama + keterangan', async () => {
   const att: EventOut[] = [{ id: 4, event_id: 'ev-4', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
     ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'cooldown', employee_id: 1, employee_name: 'Budi' },
@@ -613,8 +623,87 @@ test('type options are static, localized and independent of loaded events', asyn
   await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
   expect(await screen.findByRole('option', { name: 'Sistem' })).toBeInTheDocument()
   expect(screen.getByRole('option', { name: 'Absensi' })).toBeInTheDocument()
-  expect(screen.getByRole('option', { name: 'Deteksi orang (debug)' })).toBeInTheDocument()
   expect(screen.getByRole('option', { name: 'Intrusi' })).toBeInTheDocument()
+  // opsi debug dihapus dari dropdown; tipe tetap valid di backend dan label
+  expect(screen.queryByRole('option', { name: 'Deteksi orang (debug)' })).not.toBeInTheDocument()
+})
+
+test('type dropdown groups options in order with headings that cannot be picked', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  const { container } = renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  // hanya menu dropdown Tipe (select Rentang punya option native juga)
+  const menu = container.querySelector<HTMLElement>('#filter-type .cds--list-box__menu')!
+  expect(within(menu).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Semua', 'Semua kecuali sistem', 'Kelompok', 'Keamanan', 'Absensi', 'Sistem', 'Per perilaku',
+    'Intrusi', 'Loitering', 'Berlari', 'Zona kosong (Idle)', 'Kerumunan (Crowd)',
+  ])
+
+  const heading = screen.getByRole('option', { name: 'Kelompok' })
+  expect(heading).toHaveAttribute('aria-disabled', 'true')
+  await userEvent.click(heading)
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+  expect(listCalls(fetchMock).length).toBe(before) // judul tidak mengubah filter
+})
+
+test('type nosystem sends every type except system', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Semua kecuali sistem' }))
+  await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(before))
+
+  const types = new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1]).getAll('type')
+  expect(types).toHaveLength(7)
+  expect(types).not.toContain('system')
+  expect(types).toContain('intrusion')
+  expect(types).toContain('attendance')
+  expect(types).toContain('person_detect')
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua kecuali sistem')
+})
+
+test('live system event does not enter the list while nosystem is active', async () => {
+  stubScrollIntoView()
+  vi.useFakeTimers()
+  let current = EVENTS
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(current) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const { container } = renderPage()
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+  fireEvent.click(container.querySelector('#filter-type .cds--list-box__field')!)
+  fireEvent.click(screen.getByRole('option', { name: 'Semua kecuali sistem' }))
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  expect(listCalls(fetchMock).at(-1)).not.toContain('type=system')
+
+  // tick poll 5s: event system baru tidak boleh masuk daftar
+  current = [...EVENTS, { ...SYS_HEALTH, id: 9, event_id: 'ev-sys-9' }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.queryByTestId('event-item-9')).not.toBeInTheDocument()
+
+  // event perilaku tetap masuk (bukti filter hidup, bukan daftar beku)
+  current = [...current, { ...EVENTS[0], id: 10, event_id: 'ev-10', type: 'intrusion' }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.getByTestId('event-item-10')).toBeInTheDocument()
+
+  vi.useRealTimers()
 })
 
 test('reset button is hidden by default and clears every filter, range and search', async () => {
@@ -1176,7 +1265,7 @@ test('range today sends since at local midnight', async () => {
   expect(q.get('since')).toBe(new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString())
 })
 
-test('type security sends every type except attendance', async () => {
+test('type security sends exactly the five behavior types', async () => {
   stubScrollIntoView()
   const fetchMock = stubFetch()
   vi.stubGlobal('fetch', fetchMock)
@@ -1185,15 +1274,34 @@ test('type security sends every type except attendance', async () => {
 
   const before = listCalls(fetchMock).length
   await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
-  await userEvent.click(await screen.findByRole('option', { name: 'Keamanan (tanpa absensi)' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Keamanan' }))
   await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(before))
 
   const q = new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1])
-  const types = q.getAll('type')
+  expect(q.getAll('type')).toEqual(['intrusion', 'loitering', 'running', 'idle_zone', 'crowd'])
+})
+
+test('?type=nosystem comes alive from the URL', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?type=nosystem')
+  await screen.findByTestId('event-item-2') // fixture 'intrusi' bukan tipe ingest → tersaring klien
+
+  const types = new URLSearchParams(listCalls(fetchMock)[0].split('?')[1]).getAll('type')
   expect(types).toHaveLength(7)
-  expect(types).toContain('intrusion')
-  expect(types).toContain('system')
-  expect(types).not.toContain('attendance')
+  expect(types).not.toContain('system')
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua kecuali sistem')
+})
+
+test('?type=person_detect falls back to Semua without a type param', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?type=person_detect')
+  await screen.findByTestId('event-item-1')
+
+  expect(new URLSearchParams(listCalls(fetchMock)[0].split('?')[1]).getAll('type')).toEqual([])
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+  expect(screen.queryByTestId('filter-reset')).not.toBeInTheDocument()
 })
 
 test('invalid URL values fall back to defaults without a crash', async () => {
@@ -1213,7 +1321,7 @@ test('invalid URL values fall back to defaults without a crash', async () => {
   expect(screen.queryByTestId('filter-reset')).not.toBeInTheDocument()
 })
 
-test('search box writes q to the URL and filters client-side without a new request', async () => {
+test('search box writes q to the URL instantly, narrows client-side and refetches once after the debounce', async () => {
   const fetchMock = stubFetch()
   vi.stubGlobal('fetch', fetchMock)
   renderWithProbe()
@@ -1222,10 +1330,94 @@ test('search box writes q to the URL and filters client-side without a new reque
   const before = listCalls(fetchMock).length
   await userEvent.type(screen.getByLabelText('Cari'), 'CAM-02')
 
+  // penyempitan instan atas event yang sudah termuat + URL ditulis tanpa jeda
   await waitFor(() => expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument())
   expect(screen.getByTestId('event-item-2')).toBeInTheDocument()
   expect(screen.getByTestId('loc')).toHaveTextContent('/events?q=CAM-02')
-  expect(listCalls(fetchMock).length).toBe(before) // pencarian tetap klien
+
+  // satu permintaan server ber-q setelah jeda 300 ms
+  await waitFor(() => {
+    expect(listCalls(fetchMock).length).toBe(before + 1)
+    expect(listCalls(fetchMock).at(-1)).toContain('q=CAM-02')
+  }, { timeout: 2000 })
+  expect(listCalls(fetchMock).length).toBe(before + 1) // satu per kata, bukan per huruf
+})
+
+test('typing a word sends a single debounced request', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.type(screen.getByLabelText('Cari'), 'Budi')
+
+  expect(listCalls(fetchMock).length).toBe(before) // mengetik tidak membanjiri server
+  await waitFor(() => expect(listCalls(fetchMock).length).toBe(before + 1), { timeout: 2000 })
+  expect(new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1]).get('q')).toBe('Budi')
+})
+
+test('clearing the search restores requests without q', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const box = screen.getByLabelText('Cari')
+  await userEvent.type(box, 'CAM-02')
+  await waitFor(() => expect(listCalls(fetchMock).at(-1)).toContain('q=CAM-02'), { timeout: 2000 })
+
+  const before = listCalls(fetchMock).length
+  await userEvent.clear(box)
+  await waitFor(() => {
+    expect(listCalls(fetchMock).length).toBeGreaterThan(before)
+    expect(listCalls(fetchMock).at(-1)).not.toContain('q=')
+  }, { timeout: 2000 })
+  expect(screen.getByTestId('event-item-1')).toBeInTheDocument()
+})
+
+test('live event that does not match the search text is not prepended', async () => {
+  vi.useFakeTimers()
+  let current = EVENTS
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(current) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+  fireEvent.change(screen.getByLabelText('Cari'), { target: { value: 'CAM-02' } })
+  await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+  expect(listCalls(fetchMock).at(-1)).toContain('q=CAM-02')
+
+  // tick poll 5s: event kamera lain tak memuat teks itu → tidak masuk daftar
+  current = [...EVENTS, { ...EVENTS[0], id: 9, event_id: 'ev-9', camera_id: 1 }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.queryByTestId('event-item-9')).not.toBeInTheDocument()
+
+  // event yang cocok tetap masuk (bukti saringan hidup, bukan daftar beku)
+  current = [...current, { ...EVENTS[1], id: 10, event_id: 'ev-10', camera_id: 2 }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.getByTestId('event-item-10')).toBeInTheDocument()
+
+  vi.useRealTimers()
+})
+
+test('system event yang hanya cocok lewat teks payload tidak hilang oleh saringan klien', async () => {
+  const fetchMock = stubSystemFetch([SYS_NODE])
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-8')
+
+  await userEvent.type(screen.getByLabelText('Cari'), 'timeout')
+  await waitFor(() => expect(listCalls(fetchMock).at(-1)).toContain('q=timeout'), { timeout: 2000 })
+  // judul/lokasi terjemahan event system tak memuat "timeout" — hanya payload
+  expect(screen.getByTestId('event-item-8')).toBeInTheDocument()
 })
 
 // --- Muat lebih banyak (Task 3) --------------------------------------------
@@ -1273,6 +1465,23 @@ test('load more appends the next page and requests offset = loaded count', async
   expect(screen.getByTestId('event-item-205')).toBeInTheDocument()
   // halaman terakhir tidak penuh → tombol hilang
   expect(screen.queryByTestId('events-load-more')).not.toBeInTheDocument()
+})
+
+test('load more keeps the debounced q with the offset', async () => {
+  const fetchMock = stubPagedFetch(genEvents(205))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  await userEvent.type(screen.getByLabelText('Cari'), 'intrusion')
+  await waitFor(() => expect(listCalls(fetchMock).at(-1)).toContain('q=intrusion'), { timeout: 2000 })
+
+  await userEvent.click(screen.getByTestId('events-load-more'))
+  await waitFor(() => {
+    const last = listCalls(fetchMock).at(-1)!
+    expect(last).toContain('q=intrusion')
+    expect(last).toContain('offset=200')
+  }, { timeout: 2000 })
 })
 
 test('load more does not duplicate rows that a live event shifted', async () => {

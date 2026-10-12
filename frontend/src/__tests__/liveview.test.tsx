@@ -337,6 +337,16 @@ test('wajah tak cocok diberi label Tidak dikenal', async () => {
   expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Tidak dikenal')
 })
 
+test('wajah ambiguous (dua karyawan mirip) diberi label Tidak dikenal', async () => {
+  const { faceBox, attendance } = faceNameSetup()
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+  await attendance({ track_id: 2, employee_id: null, match_reason: 'ambiguous' })
+  await faceBox()
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('Tidak dikenal')
+})
+
 test('event attendance lama (polling awal) tidak menamai track baru dengan id sama', async () => {
   const { faceBox, attendance } = faceNameSetup()
   renderPage()
@@ -462,4 +472,33 @@ test('stream gagal → snapshot, dicoba ulang setelah 60 detik', async () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
   }
+})
+
+test('label test:<tipe> tampil sebagai UJI · <tipe>, label lain tidak berubah', async () => {
+  const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
+  class FakeWS {
+    onmessage: ((ev: { data: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    constructor(_url: string) { handlers.push(this as { onmessage?: (ev: { data: string }) => void }) }
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+
+  const ws = handlers[0]
+  await act(async () => {
+    ws.onmessage?.({ data: JSON.stringify({
+      type: 'detections', camera_id: 1, kind: 'person',
+      boxes: [{ id: 9, bbox_norm: [0.1, 0.1, 0.5, 0.6], label: 'test:intrusion' },
+              { id: 10, bbox_norm: [0.2, 0.2, 0.6, 0.7], label: null }],
+    }) })
+  })
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('UJI \u00b7 Intrusi')
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('ID 10')
 })
