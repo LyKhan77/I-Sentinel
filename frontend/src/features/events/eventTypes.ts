@@ -4,7 +4,8 @@ import type { TKey } from '../../app/i18n'
 // opsi tidak muncul/hilang saat event berubah dan labelnya selalu terlokalisasi.
 export const EVENT_TYPES = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd', 'attendance', 'person_detect', 'system'] as const
 
-const BEHAVIOR_TYPES = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd']
+/** Tipe perilaku alert: isi grup "Keamanan" dan satu-satunya kind ber-delivery (Plan B). */
+export const BEHAVIOR_TYPES = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd'] as const
 
 const EVENT_TYPE_KEYS: Record<string, TKey> = {
   attendance: 'events.type.attendance',
@@ -14,7 +15,7 @@ const EVENT_TYPE_KEYS: Record<string, TKey> = {
 
 /** Label tipe event: behavior memakai label zona, system/attendance/person_detect khusus, sisanya teks mentah. */
 export function eventTypeLabel(type: string, t: (k: TKey) => string): string {
-  if (BEHAVIOR_TYPES.includes(type)) return t(`zones.behavior.${type}` as TKey)
+  if ((BEHAVIOR_TYPES as readonly string[]).includes(type)) return t(`zones.behavior.${type}` as TKey)
   const key = EVENT_TYPE_KEYS[type]
   return key ? t(key) : type
 }

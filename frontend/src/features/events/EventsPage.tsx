@@ -9,9 +9,9 @@ import { listEvents, getEvent, type EventOut } from '../../api/events'
 import { alertsByEvents, listAlerts, telegramStatus, type AlertStatus, type TelegramStatus } from '../../api/alerts'
 import { useLiveEvents } from '../../api/useWs'
 import { eventTitle, eventWhere } from '../notifications/labels'
-import { EVENT_TYPES, eventTypeLabel } from './eventTypes'
+import { BEHAVIOR_TYPES, eventTypeLabel } from './eventTypes'
 import {
-  RANGE_IDS, SECURITY, parseFilters, writeFilters, typesFor, sinceFor, matchesFilters,
+  RANGE_IDS, NOSYSTEM, SECURITY, parseFilters, writeFilters, typesFor, sinceFor, matchesFilters,
   appendPage, mergeFirstPage, type Filters, type RangeId,
 } from './eventFilters'
 import EvidencePanel from './EvidencePanel'
@@ -25,8 +25,12 @@ const SEV_TAG: Record<string, string> = { critical: 'ev-tag--err', warning: 'ev-
 // Dropdown filter: SATU bentuk item untuk ketiganya (Tipe/Kamera/Severity) supaya
 // "Semua" selalu item pertama dan nilai filter disimpan sebagai primitif
 // (`value: null` = tanpa filter) — dependensi `refresh` jadi stabil.
-type FilterItem = { value: string | number | null; label: string }
+// `heading` = item judul kelompok: tampil redup dan `disabled` (tak dapat dipilih).
+type FilterItem = { value: string | number | null; label: string; heading?: boolean; disabled?: boolean }
 const ALL_VALUE = null
+// nilai sentinel judul: tak pernah ditulis ke URL dan tak pernah lolos `parseFilters`
+const GROUP_GROUPS = '__group:groups'
+const GROUP_BEHAVIORS = '__group:behaviors'
 
 const ALERT_KEY: Record<AlertStatus, TKey> = {
   sent: 'events.alert.sent',
@@ -223,12 +227,18 @@ export default function EventsPage() {
     setEvents((prev) => (prev.some((p) => p.id === e.id) ? prev : [e, ...prev].slice(0, MAX_EVENTS)))
   })
 
-  // tiga dropdown memakai bentuk item yang sama: "Semua" + opsi; nilai = primitif
+  // urutan persis §5.2 spec: Semua · Semua kecuali sistem · judul Kelompok · Keamanan · Absensi ·
+  // Sistem · judul Per perilaku · lima tipe perilaku. `person_detect` tak lagi ditawarkan.
   const typeItems = useMemo<FilterItem[]>(
     () => [
       { value: ALL_VALUE, label: t('events.filterAll') },
+      { value: NOSYSTEM, label: t('events.type.nosystem') },
+      { value: GROUP_GROUPS, label: t('events.type.groupGroups'), heading: true, disabled: true },
       { value: SECURITY, label: t('events.type.security') },
-      ...EVENT_TYPES.map((v) => ({ value: v, label: eventTypeLabel(v, t) })),
+      { value: 'attendance', label: eventTypeLabel('attendance', t) },
+      { value: 'system', label: eventTypeLabel('system', t) },
+      { value: GROUP_BEHAVIORS, label: t('events.type.groupBehaviors'), heading: true, disabled: true },
+      ...BEHAVIOR_TYPES.map((v) => ({ value: v, label: eventTypeLabel(v, t) })),
     ],
     [t],
   )
@@ -418,6 +428,9 @@ export default function EventsPage() {
           label={t('events.filterAll')}
           items={typeItems}
           itemToString={(i) => i?.label ?? ''}
+          // item `disabled` dihormati Carbon 1.115 (downshift isItemDisabled): tak bisa diklik;
+          // itemToElement hanya untuk kelas gaya judul kelompok
+          itemToElement={(i) => (i.heading ? <span className="ev-filter-heading">{i.label}</span> : i.label)}
           selectedItem={selectedTypeItem}
           onChange={({ selectedItem }) => setFilter({ type: (selectedItem?.value as string | null) ?? null })}
         />

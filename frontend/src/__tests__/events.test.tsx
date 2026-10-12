@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { act } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
@@ -622,8 +622,87 @@ test('type options are static, localized and independent of loaded events', asyn
   await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
   expect(await screen.findByRole('option', { name: 'Sistem' })).toBeInTheDocument()
   expect(screen.getByRole('option', { name: 'Absensi' })).toBeInTheDocument()
-  expect(screen.getByRole('option', { name: 'Deteksi orang (debug)' })).toBeInTheDocument()
   expect(screen.getByRole('option', { name: 'Intrusi' })).toBeInTheDocument()
+  // opsi debug dihapus dari dropdown; tipe tetap valid di backend dan label
+  expect(screen.queryByRole('option', { name: 'Deteksi orang (debug)' })).not.toBeInTheDocument()
+})
+
+test('type dropdown groups options in order with headings that cannot be picked', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  const { container } = renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  // hanya menu dropdown Tipe (select Rentang punya option native juga)
+  const menu = container.querySelector<HTMLElement>('#filter-type .cds--list-box__menu')!
+  expect(within(menu).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Semua', 'Semua kecuali sistem', 'Kelompok', 'Keamanan', 'Absensi', 'Sistem', 'Per perilaku',
+    'Intrusi', 'Loitering', 'Berlari', 'Zona kosong (Idle)', 'Kerumunan (Crowd)',
+  ])
+
+  const heading = screen.getByRole('option', { name: 'Kelompok' })
+  expect(heading).toHaveAttribute('aria-disabled', 'true')
+  await userEvent.click(heading)
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+  expect(listCalls(fetchMock).length).toBe(before) // judul tidak mengubah filter
+})
+
+test('type nosystem sends every type except system', async () => {
+  stubScrollIntoView()
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Semua kecuali sistem' }))
+  await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(before))
+
+  const types = new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1]).getAll('type')
+  expect(types).toHaveLength(7)
+  expect(types).not.toContain('system')
+  expect(types).toContain('intrusion')
+  expect(types).toContain('attendance')
+  expect(types).toContain('person_detect')
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua kecuali sistem')
+})
+
+test('live system event does not enter the list while nosystem is active', async () => {
+  stubScrollIntoView()
+  vi.useFakeTimers()
+  let current = EVENTS
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(current) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const { container } = renderPage()
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+  fireEvent.click(container.querySelector('#filter-type .cds--list-box__field')!)
+  fireEvent.click(screen.getByRole('option', { name: 'Semua kecuali sistem' }))
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  expect(listCalls(fetchMock).at(-1)).not.toContain('type=system')
+
+  // tick poll 5s: event system baru tidak boleh masuk daftar
+  current = [...EVENTS, { ...SYS_HEALTH, id: 9, event_id: 'ev-sys-9' }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.queryByTestId('event-item-9')).not.toBeInTheDocument()
+
+  // event perilaku tetap masuk (bukti filter hidup, bukan daftar beku)
+  current = [...current, { ...EVENTS[0], id: 10, event_id: 'ev-10', type: 'intrusion' }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.getByTestId('event-item-10')).toBeInTheDocument()
+
+  vi.useRealTimers()
 })
 
 test('reset button is hidden by default and clears every filter, range and search', async () => {
@@ -1185,7 +1264,7 @@ test('range today sends since at local midnight', async () => {
   expect(q.get('since')).toBe(new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString())
 })
 
-test('type security sends every type except attendance', async () => {
+test('type security sends exactly the five behavior types', async () => {
   stubScrollIntoView()
   const fetchMock = stubFetch()
   vi.stubGlobal('fetch', fetchMock)
@@ -1194,15 +1273,34 @@ test('type security sends every type except attendance', async () => {
 
   const before = listCalls(fetchMock).length
   await userEvent.click(screen.getByRole('combobox', { name: 'Tipe' }))
-  await userEvent.click(await screen.findByRole('option', { name: 'Keamanan (tanpa absensi)' }))
+  await userEvent.click(await screen.findByRole('option', { name: 'Keamanan' }))
   await waitFor(() => expect(listCalls(fetchMock).length).toBeGreaterThan(before))
 
   const q = new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1])
-  const types = q.getAll('type')
+  expect(q.getAll('type')).toEqual(['intrusion', 'loitering', 'running', 'idle_zone', 'crowd'])
+})
+
+test('?type=nosystem comes alive from the URL', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?type=nosystem')
+  await screen.findByTestId('event-item-2') // fixture 'intrusi' bukan tipe ingest → tersaring klien
+
+  const types = new URLSearchParams(listCalls(fetchMock)[0].split('?')[1]).getAll('type')
   expect(types).toHaveLength(7)
-  expect(types).toContain('intrusion')
-  expect(types).toContain('system')
-  expect(types).not.toContain('attendance')
+  expect(types).not.toContain('system')
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua kecuali sistem')
+})
+
+test('?type=person_detect falls back to Semua without a type param', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage('/events?type=person_detect')
+  await screen.findByTestId('event-item-1')
+
+  expect(new URLSearchParams(listCalls(fetchMock)[0].split('?')[1]).getAll('type')).toEqual([])
+  expect(screen.getByRole('combobox', { name: 'Tipe' })).toHaveTextContent('Semua')
+  expect(screen.queryByTestId('filter-reset')).not.toBeInTheDocument()
 })
 
 test('invalid URL values fall back to defaults without a crash', async () => {

@@ -7,6 +7,7 @@ import {
   matchesFilters,
   appendPage,
   mergeFirstPage,
+  NOSYSTEM,
   SECURITY,
   type Filters,
 } from '../features/events/eventFilters'
@@ -44,6 +45,14 @@ test('parseFilters keeps the security group and truncates q to 100', () => {
   expect(parseFilters(new URLSearchParams(`q=${long}`)).q).toHaveLength(100)
 })
 
+test('parseFilters accepts nosystem and single types but rejects person_detect', () => {
+  expect(parseFilters(new URLSearchParams(`type=${NOSYSTEM}`)).type).toBe(NOSYSTEM)
+  expect(parseFilters(new URLSearchParams('type=crowd')).type).toBe('crowd')
+  expect(parseFilters(new URLSearchParams('type=system')).type).toBe('system')
+  // tipe tetap valid di backend dan label, tapi tautan lama tak boleh menyalakannya di UI
+  expect(parseFilters(new URLSearchParams('type=person_detect')).type).toBeNull()
+})
+
 test('writeFilters drops default values, keeps other params and does not mutate prev', () => {
   const prev = new URLSearchParams('event=5&type=system')
   const next = writeFilters(prev, { type: null, camera: 3, severity: null, range: 'all', q: '' })
@@ -65,11 +74,16 @@ test('writeFilters writes non-default values', () => {
   expect(next.get('q')).toBe('gate')
 })
 
-test('typesFor security excludes attendance and keeps the other seven', () => {
-  const types = typesFor(SECURITY)
+test('typesFor security is exactly the five behavior types', () => {
+  expect(typesFor(SECURITY)).toEqual(['intrusion', 'loitering', 'running', 'idle_zone', 'crowd'])
+})
+
+test('typesFor nosystem keeps every type except system', () => {
+  const types = typesFor(NOSYSTEM)
   expect(types).toHaveLength(7)
-  expect(types).not.toContain('attendance')
-  expect(types).toContain('system')
+  expect(types).not.toContain('system')
+  expect(types).toContain('attendance')
+  expect(types).toContain('person_detect')
   expect(types).toContain('intrusion')
 })
 
@@ -89,10 +103,18 @@ test('sinceFor finite ranges subtracts the window from now, all is undefined', (
   expect(sinceFor('all', now)).toBeUndefined()
 })
 
-test('matchesFilters security group rejects attendance and accepts system', () => {
+test('matchesFilters security group accepts only behavior types', () => {
   const f = F({ type: SECURITY })
   expect(matchesFilters(ev({ type: 'attendance' }), f)).toBe(false)
-  expect(matchesFilters(ev({ type: 'system' }), f)).toBe(true)
+  expect(matchesFilters(ev({ type: 'system' }), f)).toBe(false)
+  expect(matchesFilters(ev({ type: 'crowd' }), f)).toBe(true)
+})
+
+test('matchesFilters nosystem rejects only system events', () => {
+  const f = F({ type: NOSYSTEM })
+  expect(matchesFilters(ev({ type: 'system' }), f)).toBe(false)
+  expect(matchesFilters(ev({ type: 'attendance' }), f)).toBe(true)
+  expect(matchesFilters(ev({ type: 'intrusion' }), f)).toBe(true)
 })
 
 test('matchesFilters checks camera and severity too', () => {

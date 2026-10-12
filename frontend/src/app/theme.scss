@@ -645,6 +645,14 @@ html {
   max-inline-size: 240px;
 }
 
+/* Judul kelompok di dropdown Tipe (item `disabled`, hanya label). */
+.ev-filter-heading {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--cds-text-helper);
+}
+
 /* Toolbar /events (mockup 03): filter + rentang + cari + jumlah hasil. */
 .ev-toolbar {
   display: flex;
