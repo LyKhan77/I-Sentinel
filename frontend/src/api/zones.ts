@@ -14,7 +14,10 @@ export type Behavior = {
   snapshot?: boolean // kosong = ikut flag zona (data lama)
   clip?: boolean
   telegram?: boolean // kosong = ikut flag zona / default off
-  telegram_unknown?: boolean // kosong = true
+  telegram_unknown?: boolean // kosong = true (turunan lama; ditulis dari radio `unknown_delivery`)
+  // Tujuan wajah tidak dikenal pada behavior attendance (keputusan 2026-10-12):
+  // `none` = event dibuang di API (tanpa baris Inbox, tanpa Telegram).
+  unknown_delivery?: 'all' | 'inbox' | 'none'
   record?: boolean // kosong = true
   face_id?: boolean // intrusion critical: cari identitas wajah (kamera dengan worker wajah)
   // Tujuan event (Plan B): `test` = Mode uji (tanpa event/klip/Telegram, kembali ke `revert_to`).

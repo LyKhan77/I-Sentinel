@@ -36,6 +36,7 @@ import {
 } from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
 import DeliveryRadio from './DeliveryRadio'
+import UnknownFaceRadio from './UnknownFaceRadio'
 import { effectiveDelivery, testUntil, type Delivery } from './zoneDelivery'
 
 const BEHAVIOR_KINDS: BehaviorKind[] = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd']
@@ -186,18 +187,22 @@ export default function ZonesPage() {
     setBehavior(kind, { delivery: value, telegram: value === 'all', test_until: undefined, revert_to: undefined })
   }
 
-  /** Sama untuk behavior absensi; behavior-nya dibuat bila zona lama belum punya item itu. */
-  const applyAttendanceDelivery = (value: Delivery) => {
+  /** Patch behavior absensi; item-nya dibuat bila zona lama belum punya item itu. */
+  const patchAttendanceBehavior = (patch: Partial<Behavior>) => {
     if (!selected) return
-    setPendingTest(null)
-    setDeliveryRev((n) => n + 1)
-    const patch = { delivery: value, telegram: value === 'all', test_until: undefined, revert_to: undefined }
     const has = selected.behaviors.some((b) => b.kind === 'attendance')
     patchSelected({
       behaviors: has
         ? selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, ...patch } : b))
         : [...selected.behaviors, { kind: 'attendance', trigger_seconds: 0, ...patch }],
     })
+  }
+
+  /** Tujuan event behavior absensi (radio utama). */
+  const applyAttendanceDelivery = (value: Delivery) => {
+    setPendingTest(null)
+    setDeliveryRev((n) => n + 1)
+    patchAttendanceBehavior({ delivery: value, telegram: value === 'all', test_until: undefined, revert_to: undefined })
   }
 
   const chooseAttendanceDelivery = (value: Delivery) => {
@@ -540,16 +545,12 @@ export default function ZonesPage() {
                       nowMs={nowMs}
                       onChoose={chooseAttendanceDelivery}
                     />
-                    {effectiveDelivery(attBehavior, selected.telegram, nowMs) === 'all' && (
-                      <Toggle
-                        id="zone-telegram-unknown"
-                        size="sm"
-                        labelText={t('zones.telegramUnknown')}
-                        toggled={attBehavior.telegram_unknown ?? true}
-                        onToggle={(v) =>
-                          patchSelected({
-                            behaviors: selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, telegram_unknown: v } : b)),
-                          })
+                    {effectiveDelivery(attBehavior, selected.telegram, nowMs) !== 'test' && (
+                      <UnknownFaceRadio
+                        behavior={attBehavior}
+                        mainDelivery={effectiveDelivery(attBehavior, selected.telegram, nowMs)}
+                        onChoose={(v) =>
+                          patchAttendanceBehavior({ unknown_delivery: v, telegram_unknown: v === 'all' })
                         }
                       />
                     )}

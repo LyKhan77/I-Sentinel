@@ -27,3 +27,21 @@ export function testUntil(b: Behavior | null | undefined, nowMs: number): Date |
   const until = Date.parse(b.test_until ?? '')
   return Number.isNaN(until) || until <= nowMs ? null : new Date(until)
 }
+
+export type UnknownDelivery = 'all' | 'inbox' | 'none'
+
+/**
+ * Tujuan wajah tidak dikenal satu zona — padanan `unknown_delivery` di backend.
+ *
+ * Nilai tersimpan: kunci `unknown_delivery` bila sah, selain itu turunan toggle lama
+ * `telegram_unknown` (hanya `false` → `inbox`). *Inbox + Telegram* yang tidak mungkin
+ * dikirim (tujuan utama bukan *Inbox + Telegram*) tampil sebagai *Hanya Inbox*:
+ * hanya tampilan, nilai tersimpan tidak diubah.
+ */
+export function effectiveUnknownDelivery(b: Behavior | null | undefined, main: Delivery): UnknownDelivery {
+  const raw = b?.unknown_delivery
+  const stored: UnknownDelivery = raw === 'all' || raw === 'inbox' || raw === 'none'
+    ? raw
+    : b?.telegram_unknown === false ? 'inbox' : 'all'
+  return stored === 'all' && main !== 'all' ? 'inbox' : stored
+}
