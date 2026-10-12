@@ -241,6 +241,11 @@ Telegram selama uji (API yang menolak).
 ### Attendance evidence dan flag zona
 Flag `record` dan `telegram_unknown` disimpan sebagai boolean di JSON behavior `attendance`,
 tanpa migrasi. Key hilang atau `behaviors=null` memakai true; `direction` tetap wajib.
+Tujuan **wajah tidak dikenal** memakai kunci `unknown_delivery` ∈ `all`/`inbox`/`none`
+(hanya sah untuk kind `attendance`; nilai lain atau kind lain ditolak 422): `all` = Inbox +
+Telegram, `inbox` = baris Inbox tanpa alert Telegram, `none` = event dibuang di API. Tanpa kunci,
+nilainya diturunkan dari toggle lama `telegram_unknown` (hanya `false` → `inbox`), jadi zona lama
+berperilaku persis seperti sebelumnya.
 Backend memberi `employee_id`, `employee_name`, `face_score`, dan `match_reason` setelah
 menghapus embedding dari payload tersimpan.
 
@@ -255,8 +260,9 @@ menghapus embedding dari payload tersimpan.
   dedup Event per (karyawan, zona), hanya evidence `detected` dalam jendela cooldown.
   Prafilter DB ±1 hari, waktu tepat dibandingkan di Python lewat `_local` agar SQLite
   naive dan Postgres aware konsisten. Caption TERDETEKSI — MASUK/KELUAR.
-- `cooldown`: event tetap ada, tanpa alert. `no_match`: Unknown tetap Inbox;
-  `telegram_unknown=false` menahan alert setelah saklar Telegram induk.
+- `cooldown`: event tetap ada, tanpa alert. `no_match`: Unknown mengikuti `unknown_delivery`
+  setelah saklar Telegram induk: `all` mengirim, `inbox` menahan alert, `none` membuang event
+  beserta medianya sebelum alert/AI/WS.
 
 `matched`, `already_in`, dan `detected` melewati rate-limit generik; Unknown tetap
 memakai bucket `attendance_unknown`. Tautan semua caption: `Lihat event`.
@@ -323,6 +329,14 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
    `publish_event`, unggahan crop/snapshot, atau baris absensi; track ditandai `done` dan box wajahnya
    berlabel `test:attendance` ±6 dtk (overlay `face`). Telegram absensi hanya bila efektif `all`
    (`_telegram_on` generik per kind), jadi API juga menolak alert dari node lama selama uji.
+   Urutan consumer per event absensi: `ingest_event` → `handle_face_event` (pencocokan) →
+   `attendance.drop_unknown_event` → `alerting.handle` → caption AI → `intrusion_face` →
+   `hub.broadcast`. Pada zona `unknown_delivery=none`, `drop_unknown_event` membuang event
+   `no_match`/`ambiguous`/`low_quality` tanpa `employee_id`: baris event dan file medianya
+   (crop/snapshot/clip, lewat `retention._safe_join`) dihapus, lalu `handle_message` `return`
+   sebelum alert, caption AI, face ID, dan WS. Pesan media yang menyusul dibuang tanpa warning
+   lewat daftar `_DROPPED` di memori (`discard_dropped_media`); daftar itu hilang saat API
+   restart dan file sisanya diurus sapuan orphan retensi.
 4. **Face ID pada intrusion critical**: alert terkirim (tidak ditunda) → pesan susulan
    `isentinel/events/face` dari node → consumer meng-pop embedding, pencocokan ketat
    (`FacePolicy.match_threshold` + `match_margin`, baris `detector_setting`) → `payload.face` = `recognized|unknown|not_visible`

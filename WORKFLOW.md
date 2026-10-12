@@ -93,8 +93,9 @@ menghapus riwayat event.
 3. Per behavior: toggle **Snapshot**, **Clip**, dan radio **Tujuan event** — **Inbox + Telegram**
    (`delivery=all`), **Hanya Inbox** (`inbox`), atau **Mode uji** (`test`). Behavior aktif wajib punya
    Snapshot atau Clip (422 `needs snapshot or clip`); attendance wajib snapshot dan memakai radio yang
-   sama (toggle Telegram lamanya digantikan radio; `Catat absensi` dan `Kirim wajah tidak dikenal`
-   tetap). Menyimpan menulis `delivery` sekaligus menjaga
+   sama (toggle Telegram lamanya digantikan radio; `Catat absensi` tetap, dan wajah tidak dikenal punya
+   radio **Wajah tidak dikenal** — `unknown_delivery`: *Inbox + Telegram* / *Hanya Inbox* /
+   *Tidak dikirim*). Menyimpan menulis `delivery` sekaligus menjaga
    `telegram = (delivery === "all")` untuk node/API lama; zona lama tanpa `delivery` dibaca dari toggle
    `telegram`-nya (true → Inbox + Telegram, false → Hanya Inbox) dan tidak diubah saat disimpan.
 4. **Mode uji** (24 jam): zona tetap dievaluasi di node, tetapi **tidak ada event, klip, atau Telegram**
@@ -300,8 +301,14 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
    pertama, atau 0,5 dtk tanpa kandidat baru (orang pergi), atau track hilang, dengan embedding dari K
    frame terbaik. Detail: `docs/runbooks/attendance.md`.
    Zona attendance memakai **Tujuan event** yang sama dengan behavior alert (§6): *Inbox + Telegram*
-   (wajah dikenali dikirim; wajah tidak dikenal mengikuti toggle **Kirim wajah tidak dikenal**),
+   (wajah dikenali dikirim; wajah tidak dikenal mengikuti radio **Wajah tidak dikenal**),
    *Hanya Inbox*, atau **Mode uji**. Toggle Telegram lama digantikan radio ini; **Catat absensi** tetap.
+   Radio **Wajah tidak dikenal** (`unknown_delivery`) menentukan tujuan wajah tidak dikenal dan tampil
+   kecuali Mode uji: *Inbox + Telegram* (`all`), *Hanya Inbox* (`inbox`), atau *Tidak dikirim* (`none`).
+   *Inbox + Telegram* nonaktif bila tujuan utama bukan *Inbox + Telegram* (alert Telegram bertaut ke
+   baris event); pilihan yang tampil lalu jatuh ke *Hanya Inbox* tanpa mengubah nilai tersimpan.
+   *Tidak dikirim* membuang event wajah tidak dikenal di API setelah pencocokan: tanpa baris Inbox,
+   tanpa Telegram, tanpa skor pantauan; nilai lama `telegram_unknown` tetap dibaca (default true).
    Mode uji absensi berlaku 24 jam (konfirmasi pada zona `critical`, badge **UJI**, `revert_to`): node
    tetap menilai zona dan menghitung embedding, tetapi **tidak** menerbitkan event, **tidak** mengunggah
    crop/snapshot, dan **tidak** membuat baris absensi — track ditandai selesai sekali dan box wajahnya
@@ -348,9 +355,12 @@ Runbook: `docs/runbooks/attendance.md` (termasuk kalibrasi gerbang wajah).
   atau menghitung ulang `attendance_day`. Dedup per (karyawan, zona) memakai jendela
   `attendance_cooldown_min` (default 5 menit), termasuk event yang datang terlambat.
   `direction` entry/exit tetap wajib, juga untuk zona deteksi-saja.
-- Saklar **Kirim Telegram** tetap induk. **Kirim wajah tidak dikenal** (`telegram_unknown`,
-  default true) hanya tampil ketika Telegram aktif; OFF menahan alert Unknown, bukan event Inbox.
-  Kedua flag hanya ditulis ketika togglenya disentuh; zona lama tetap memakai default.
+- Saklar **Kirim Telegram** tetap induk. Radio **Wajah tidak dikenal** (`unknown_delivery`,
+  *Inbox + Telegram* / *Hanya Inbox* / *Tidak dikirim*) tampil kecuali Mode uji; *Inbox + Telegram*
+  nonaktif bila tujuan utamanya bukan *Inbox + Telegram*. *Tidak dikirim* membuang event wajah tidak
+  dikenal di API (tanpa baris Inbox, tanpa Telegram, tanpa skor pantauan zona itu); *Hanya Inbox*
+  hanya menahan alert Unknown, bukan baris Inbox. Nilai lama `telegram_unknown` (default true) tetap
+  dibaca sehingga zona lama tidak berubah perilaku.
 - Tiga pesan untuk wajah cocok: **ATTENDANCE — CHECK IN/OUT** untuk pencatatan baru,
   **ATTENDANCE — SUDAH CHECK IN** untuk entry berulang (`first_entry_ts`, dan `exit_ts` bila exit
   terlihat sejak check in pertama), serta **TERDETEKSI — MASUK/KELUAR** untuk zona OFF.
