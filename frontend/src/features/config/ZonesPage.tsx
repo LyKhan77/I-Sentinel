@@ -298,7 +298,7 @@ export default function ZonesPage() {
             : applyDelivery(pendingTest, 'test'))}
           onRequestClose={cancelTest}
         >
-          <p>{t('zones.testConfirmBody')}</p>
+          <p>{t(pendingTest === 'attendance' ? 'zones.testConfirmBodyAttendance' : 'zones.testConfirmBody')}</p>
         </Modal>
       )}
 

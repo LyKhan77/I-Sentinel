@@ -667,3 +667,20 @@ test('radio absensi pada zona tanpa behavior attendance tetap menulis behavior i
     { kind: 'attendance', trigger_seconds: 0, delivery: 'all', telegram: true },
   ]))
 })
+
+test('Mode uji absensi menjelaskan bahwa absensi tidak tercatat selama uji', async () => {
+  const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'test', test_until: soon, revert_to: 'all' },
+  ] })])
+  // karyawan yang lewat tidak masuk rekap selama uji: bantuan radio harus mengatakannya
+  expect(screen.getByText(/rekap absensi/)).toBeInTheDocument()  // teks bantu ada di luar fieldset radio
+})
+
+test('konfirmasi Mode uji absensi zona critical memakai kalimat absensi, bukan alert keamanan', async () => {
+  await selectZone([attendanceZone({ severity: 'critical' })])
+  fireEvent.click(document.getElementById('zone-delivery-attendance-test')!)
+  const dialog = await screen.findByTestId('zone-test-confirm')
+  expect(dialog).toHaveTextContent('tidak tercatat')
+  expect(dialog).not.toHaveTextContent('Alert keamanan')
+})

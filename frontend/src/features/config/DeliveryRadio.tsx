@@ -21,9 +21,10 @@ export default function DeliveryRadio({ kind, behavior, zoneTelegram, nowMs, onC
 }) {
   const { t } = useT()
   const value = effectiveDelivery(behavior, zoneTelegram, nowMs)
-  // absensi: "Inbox + Telegram" hanya mengirim wajah yang dikenali; wajah tak dikenal punya toggle sendiri
-  const hint = kind === 'attendance' && value === 'all'
-    ? 'zones.delivery.allHintAttendance'
+  // absensi: "Inbox + Telegram" hanya mengirim wajah yang dikenali (wajah tak dikenal punya toggle
+  // sendiri) dan Mode uji berarti karyawan yang lewat TIDAK tercatat — bantuan harus mengatakannya
+  const hint = kind === 'attendance' && value !== 'inbox'
+    ? `zones.delivery.${value}HintAttendance`
     : `zones.delivery.${value}Hint`
   return (
     <RadioButtonGroup
