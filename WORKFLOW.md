@@ -92,8 +92,9 @@ menghapus riwayat event.
    dengan arah `entry`/`exit`), severity, jadwal (**24/7**, **Jam tertentu**, **Ikut shift**).
 3. Per behavior: toggle **Snapshot**, **Clip**, dan radio **Tujuan event** — **Inbox + Telegram**
    (`delivery=all`), **Hanya Inbox** (`inbox`), atau **Mode uji** (`test`). Behavior aktif wajib punya
-   Snapshot atau Clip (422 `needs snapshot or clip`); attendance wajib snapshot dan **tidak** memakai
-   radio ini (punya toggle Telegram/Record sendiri). Menyimpan menulis `delivery` sekaligus menjaga
+   Snapshot atau Clip (422 `needs snapshot or clip`); attendance wajib snapshot dan memakai radio yang
+   sama (toggle Telegram lamanya digantikan radio; `Catat absensi` dan `Kirim wajah tidak dikenal`
+   tetap). Menyimpan menulis `delivery` sekaligus menjaga
    `telegram = (delivery === "all")` untuk node/API lama; zona lama tanpa `delivery` dibaca dari toggle
    `telegram`-nya (true → Inbox + Telegram, false → Hanya Inbox) dan tidak diubah saat disimpan.
 4. **Mode uji** (24 jam): zona tetap dievaluasi di node, tetapi **tidak ada event, klip, atau Telegram**
@@ -104,6 +105,9 @@ menghapus riwayat event.
    uji; menyimpan perubahan lain **tidak** memperpanjang uji. Setelah kedaluwarsa, node dan API kembali
    ke `revert_to` **tanpa restart**. Daftar zona menampilkan badge **UJI · sampai HH:MM** selama uji
    berlaku. Rincian operasional: `docs/runbooks/zone-test-mode.md`.
+   Pada behavior **attendance**, Mode uji juga menekan unggahan crop/snapshot wajah dan **baris absensi**
+   (lihat §12): box wajah track pemicu berlabel `UJI · Absensi`, dan nama karyawan tidak ditampilkan
+   selama uji karena pencocokan terjadi di API.
 5. **Simpan** → `zone` → config push → node hanya memulai ulang kamera yang berubah,
    bukan kamera lain; stream kamera itu tersambung ulang (<10 detik terukur untuk kamera worker face).
    Snapshot tertumpuk digabung ke yang terakhir; config pertama dan perubahan setelan global
@@ -295,6 +299,15 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
    **tepat sekali per track** saat jendela `attendance_window_s` (bawaan 1,5 dtk) berlalu sejak kandidat
    pertama, atau 0,5 dtk tanpa kandidat baru (orang pergi), atau track hilang, dengan embedding dari K
    frame terbaik. Detail: `docs/runbooks/attendance.md`.
+   Zona attendance memakai **Tujuan event** yang sama dengan behavior alert (§6): *Inbox + Telegram*
+   (wajah dikenali dikirim; wajah tidak dikenal mengikuti toggle **Kirim wajah tidak dikenal**),
+   *Hanya Inbox*, atau **Mode uji**. Toggle Telegram lama digantikan radio ini; **Catat absensi** tetap.
+   Mode uji absensi berlaku 24 jam (konfirmasi pada zona `critical`, badge **UJI**, `revert_to`): node
+   tetap menilai zona dan menghitung embedding, tetapi **tidak** menerbitkan event, **tidak** mengunggah
+   crop/snapshot, dan **tidak** membuat baris absensi — track ditandai selesai sekali dan box wajahnya
+   berlabel `UJI · Absensi` ±6 dtk. Nama karyawan tidak muncul selama uji (pencocokan di API, tanpa
+   event). Untuk melihat hasil pencocokan tanpa menambah rekap, matikan **Catat absensi** alih-alih
+   memakai Mode uji.
 2. API mencocokkan ke galeri (cosine ≥ ambang kecocokan di Konfigurasi → Deteksi & Model → kartu
    **Pengenalan wajah** → grup Bersama; default 0,40, `FACE_MATCH_THRESHOLD` hanya cadangan bila baris
    setelan belum ada). Event ber-`payload.policy = "unified"` memakai `match_strict` (ambang + margin

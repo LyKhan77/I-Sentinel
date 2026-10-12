@@ -222,8 +222,8 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 
 ### Tujuan event per behavior (`delivery`) dan Mode uji
 
-Kunci JSON baru di `zone.behaviors[]` (tanpa migrasi): `delivery` ∈ {`all`, `inbox`, `test`} untuk kind
-alert (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`; `attendance` ditolak 422), `test_until`
+Kunci JSON baru di `zone.behaviors[]` (tanpa migrasi): `delivery` ∈ {`all`, `inbox`, `test`} untuk semua
+kind deteksi (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`, `attendance`), `test_until`
 (ISO-8601 UTC, hanya saat `test`), `revert_to` ∈ {`all`, `inbox`} (hanya saat `test`). Validasi di
 `schemas/zone.py` (`_validate_behaviors`) dan aturan murni di `services/zone_delivery.py`:
 `effective_delivery(behavior, zone_telegram, now)` (tanpa `delivery` → diturunkan dari `telegram` item,
@@ -232,7 +232,9 @@ dipanggil `create_zone`/`update_zone` **sebelum** atribut diisi: `test` baru/ked
 now + 24 jam` + `revert_to` = tujuan efektif sebelumnya; `test` yang sedang berjalan dipertahankan
 (menyimpan perubahan lain tidak memperpanjang uji); `delivery != test` membuang kunci uji. `alerting`
 memakai `effective_delivery(...) == "all"` sebagai gerbang Telegram, dan node memakai padanannya
-(`node.delivery_mode`, jam dinding) untuk menekan event. Node/API lama tetap kompatibel: `telegram` selalu
+(`delivery.delivery_mode`, jam dinding, modul netral `vision/vision/delivery.py`) untuk menekan event —
+analyzer alert lewat `delivery_cfg_for(behavior, zone_telegram)`, `FaceGateWorker` absensi lewat
+`zone_attendance_cfg(zone)`. Node/API lama tetap kompatibel: `telegram` selalu
 ditulis `= (delivery === "all")` oleh UI, dan node lama yang mengabaikan `delivery` tetap tidak mengirim
 Telegram selama uji (API yang menolak).
 
@@ -316,6 +318,11 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
    API mencocokkan ke galeri `face_embedding` (cosine ≥ `FacePolicy.match_threshold` dari baris `detector_setting`; `FACE_MATCH_THRESHOLD` hanya cadangan) →
    `attendance_event` → `recompute_day` → `attendance_day`. `AttendanceCloser` membuat
    `absent`/`no_exit` setelah batas (selesai shift + `NO_EXIT_GRACE_MIN`).
+   Behavior absensi ber-`delivery` efektif `test` ditekan di **awal** `FaceGateWorker._emit` (satu tempat
+   untuk jalur `legacy`, `_emit_due`, dan `_expire`): embedding tetap dihitung, tetapi tidak ada
+   `publish_event`, unggahan crop/snapshot, atau baris absensi; track ditandai `done` dan box wajahnya
+   berlabel `test:attendance` ±6 dtk (overlay `face`). Telegram absensi hanya bila efektif `all`
+   (`_telegram_on` generik per kind), jadi API juga menolak alert dari node lama selama uji.
 4. **Face ID pada intrusion critical**: alert terkirim (tidak ditunda) → pesan susulan
    `isentinel/events/face` dari node → consumer meng-pop embedding, pencocokan ketat
    (`FacePolicy.match_threshold` + `match_margin`, baris `detector_setting`) → `payload.face` = `recognized|unknown|not_visible`

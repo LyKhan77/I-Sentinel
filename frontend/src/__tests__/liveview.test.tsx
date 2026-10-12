@@ -502,3 +502,46 @@ test('label test:<tipe> tampil sebagai UJI · <tipe>, label lain tidak berubah',
   expect(screen.getByTestId('debug-overlay')).toHaveTextContent('UJI \u00b7 Intrusi')
   expect(screen.getByTestId('debug-overlay')).toHaveTextContent('ID 10')
 })
+
+test('box wajah berlabel test:attendance tampil UJI · Absensi walau ada nama karyawan', async () => {
+  const handlers: { onmessage?: (ev: { data: string }) => void }[] = []
+  class FakeWS {
+    onmessage: ((ev: { data: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    constructor(_url: string) { handlers.push(this as { onmessage?: (ev: { data: string }) => void }) }
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  vi.stubGlobal('WebSocket', FakeWS as unknown as typeof WebSocket)
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  await screen.findByText('CAM-01')
+  await userEvent.click(screen.getByTestId('cam-tile-1'))
+
+  const faceBox = (label: string) => act(async () => {
+    handlers[0].onmessage?.({ data: JSON.stringify({
+      type: 'detections', camera_id: 1, kind: 'face',
+      boxes: [{ id: 2, bbox_norm: [0.2, 0.2, 0.3, 0.3], label }],
+    }) })
+  })
+  await faceBox('test:attendance')
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('UJI \u00b7 Absensi')
+
+  // nama dari event attendance track itu tidak menimpa label Mode uji
+  await act(async () => {
+    handlers[0].onmessage?.({ data: JSON.stringify({
+      type: 'attendance', event_id: crypto.randomUUID(), camera_id: 1,
+      ts_event: new Date().toISOString(),
+      payload: { track_id: 2, employee_name: 'Angly', match_reason: 'matched' },
+    }) })
+  })
+  await faceBox('test:attendance')
+  expect(screen.getByTestId('debug-overlay')).toHaveTextContent('UJI \u00b7 Absensi')
+  expect(screen.getByTestId('debug-overlay')).not.toHaveTextContent('Angly')
+
+  // label gerbang lain pada box wajah tidak berubah
+  await faceBox('0.82')
+  expect(screen.getByTestId('debug-overlay')).not.toHaveTextContent('UJI')
+})

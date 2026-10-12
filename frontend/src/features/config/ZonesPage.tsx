@@ -35,10 +35,10 @@ import {
   type ZoneType,
 } from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
+import DeliveryRadio from './DeliveryRadio'
 import { effectiveDelivery, testUntil, type Delivery } from './zoneDelivery'
 
 const BEHAVIOR_KINDS: BehaviorKind[] = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd']
-const DELIVERY_OPTIONS: Delivery[] = ['all', 'inbox', 'test']
 const DEFAULT_SPEED_MPS = 2
 const BEHAVIOR_DEFAULTS: Partial<Record<BehaviorKind, Partial<Behavior>>> = {
   running: { speed_limit_mps: DEFAULT_SPEED_MPS },
@@ -71,7 +71,7 @@ export default function ZonesPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [pendingTest, setPendingTest] = useState<BehaviorKind | null>(null) // konfirmasi Mode uji (zona critical)
+  const [pendingTest, setPendingTest] = useState<BehaviorKind | 'attendance' | null>(null) // konfirmasi Mode uji (zona critical)
   const [deliveryRev, setDeliveryRev] = useState(0) // remount grup radio saat pilihan selesai/dibatalkan
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null)
   const [showAiDefaults, setShowAiDefaults] = useState(false)
@@ -125,6 +125,9 @@ export default function ZonesPage() {
   }, [cam, reload])
 
   const selected = zones.find((z) => z.id === selectedId) ?? null
+  // behavior absensi zona terpilih; zona lama tanpa item itu diperlakukan default (radio tetap tampil)
+  const attBehavior: Behavior = selected?.behaviors.find((b) => b.kind === 'attendance')
+    ?? { kind: 'attendance', trigger_seconds: 0 }
   // event = bukti visual: behavior aktif wajib Snapshot atau Clip (backend juga menolak 422)
   const noMedia = (b: Behavior) => !(b.snapshot ?? selected?.snapshot ?? true) && !(b.clip ?? selected?.clip ?? true)
   const mediaMissing = selected?.type === 'behavior'
@@ -154,10 +157,9 @@ export default function ZonesPage() {
     patchSelected({ behaviors: BEHAVIOR_KINDS.map(entry).filter((b): b is Behavior => b !== null) })
   }
 
-  /** Label badge UJI daftar zona: behavior alert MANA PUN yang sedang diuji, kedaluwarsa terdekat; `null` bila tidak ada. */
+  /** Label badge UJI daftar zona: behavior MANA PUN (alert atau absensi) yang sedang diuji, kedaluwarsa terdekat; `null` bila tidak ada. */
   const zoneTestLabel = (z: Zone): string | null => {
     const untils = z.behaviors
-      .filter((b) => (BEHAVIOR_KINDS as string[]).includes(b.kind))
       .map((b) => testUntil(b, nowMs))
       .filter((d): d is Date => d !== null)
     if (untils.length === 0) return null
@@ -182,6 +184,28 @@ export default function ZonesPage() {
     // React tidak berubah (mis. konfirmasi dibatalkan) — tanpa ini pilihan tampak nyangkut
     setDeliveryRev((n) => n + 1)
     setBehavior(kind, { delivery: value, telegram: value === 'all', test_until: undefined, revert_to: undefined })
+  }
+
+  /** Sama untuk behavior absensi; behavior-nya dibuat bila zona lama belum punya item itu. */
+  const applyAttendanceDelivery = (value: Delivery) => {
+    if (!selected) return
+    setPendingTest(null)
+    setDeliveryRev((n) => n + 1)
+    const patch = { delivery: value, telegram: value === 'all', test_until: undefined, revert_to: undefined }
+    const has = selected.behaviors.some((b) => b.kind === 'attendance')
+    patchSelected({
+      behaviors: has
+        ? selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, ...patch } : b))
+        : [...selected.behaviors, { kind: 'attendance', trigger_seconds: 0, ...patch }],
+    })
+  }
+
+  const chooseAttendanceDelivery = (value: Delivery) => {
+    if (value === 'test' && selected?.severity === 'critical') {
+      setPendingTest('attendance')
+      return
+    }
+    applyAttendanceDelivery(value)
   }
 
   const cancelTest = () => {
@@ -269,10 +293,12 @@ export default function ZonesPage() {
           modalHeading={t('zones.testConfirmTitle')}
           primaryButtonText={t('zones.testConfirmOk')}
           secondaryButtonText={t('common.cancel')}
-          onRequestSubmit={() => applyDelivery(pendingTest, 'test')}
+          onRequestSubmit={() => (pendingTest === 'attendance'
+            ? applyAttendanceDelivery('test')
+            : applyDelivery(pendingTest, 'test'))}
           onRequestClose={cancelTest}
         >
-          <p>{t('zones.testConfirmBody')}</p>
+          <p>{t(pendingTest === 'attendance' ? 'zones.testConfirmBodyAttendance' : 'zones.testConfirmBody')}</p>
         </Modal>
       )}
 
@@ -494,35 +520,32 @@ export default function ZonesPage() {
                       id="zone-record-attendance"
                       size="sm"
                       labelText={t('zones.record')}
-                      toggled={selected.behaviors.find((b) => b.kind === 'attendance')?.record ?? true}
+                      toggled={attBehavior.record ?? true}
                       onToggle={(v) =>
                         patchSelected({
                           behaviors: selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, record: v } : b)),
                         })
                       }
                     />
-                    {selected.behaviors.find((b) => b.kind === 'attendance')?.record === false && (
+                    {attBehavior.record === false && (
                       <p data-testid="zone-record-off-hint" style={{ fontSize: 12, color: 'var(--cds-text-secondary)', margin: 0 }}>
                         {t('zones.recordOffHint')}
                       </p>
                     )}
-                    <Toggle
-                      id="zone-telegram-attendance"
-                      size="sm"
-                      labelText={t('zones.telegram')}
-                      toggled={selected.behaviors.find((b) => b.kind === 'attendance')?.telegram ?? selected.telegram}
-                      onToggle={(v) =>
-                        patchSelected({
-                          behaviors: selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, telegram: v } : b)),
-                        })
-                      }
+                    <DeliveryRadio
+                      key={`zone-delivery-attendance-${deliveryRev}`}
+                      kind="attendance"
+                      behavior={attBehavior}
+                      zoneTelegram={selected.telegram}
+                      nowMs={nowMs}
+                      onChoose={chooseAttendanceDelivery}
                     />
-                    {(selected.behaviors.find((b) => b.kind === 'attendance')?.telegram ?? selected.telegram) && (
+                    {effectiveDelivery(attBehavior, selected.telegram, nowMs) === 'all' && (
                       <Toggle
                         id="zone-telegram-unknown"
                         size="sm"
                         labelText={t('zones.telegramUnknown')}
-                        toggled={selected.behaviors.find((b) => b.kind === 'attendance')?.telegram_unknown ?? true}
+                        toggled={attBehavior.telegram_unknown ?? true}
                         onToggle={(v) =>
                           patchSelected({
                             behaviors: selected.behaviors.map((b) => (b.kind === 'attendance' ? { ...b, telegram_unknown: v } : b)),
@@ -607,26 +630,14 @@ export default function ZonesPage() {
                                 toggled={b.clip ?? selected.clip}
                                 onToggle={(v) => setBehavior(kind, { clip: v })}
                               />
-                              <RadioButtonGroup
+                              <DeliveryRadio
                                 key={`zone-delivery-${kind}-${deliveryRev}`}
-                                legendText={t('zones.delivery.label')}
-                                name={`zone-delivery-${kind}`}
-                                data-testid={`zone-delivery-${kind}`}
-                                valueSelected={effectiveDelivery(b, selected.telegram, nowMs)}
-                                // Carbon hanya meng-clone RadioButton anak langsung, jadi teks bantu
-                                // per pilihan ditampilkan pada slot helper milik grup (pilihan aktif)
-                                helperText={t(`zones.delivery.${effectiveDelivery(b, selected.telegram, nowMs)}Hint` as TKey)}
-                                onChange={(value) => chooseDelivery(kind, value as Delivery)}
-                              >
-                                {DELIVERY_OPTIONS.map((option) => (
-                                  <RadioButton
-                                    key={option}
-                                    id={`zone-delivery-${kind}-${option}`}
-                                    value={option}
-                                    labelText={t(`zones.delivery.${option}` as TKey)}
-                                  />
-                                ))}
-                              </RadioButtonGroup>
+                                kind={kind}
+                                behavior={b}
+                                zoneTelegram={selected.telegram}
+                                nowMs={nowMs}
+                                onChoose={(value) => chooseDelivery(kind, value)}
+                              />
                               {kind === 'intrusion' && (
                                 <Toggle
                                   id="zone-face-id-intrusion"

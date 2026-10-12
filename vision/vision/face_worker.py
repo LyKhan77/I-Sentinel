@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass, field, replace
 from statistics import median
 
+from .delivery import FLASH_S, delivery_mode, zone_attendance_cfg
 from .face_quality import (BestK, FaceSettings, aggregate, blur_score, crop_box, gate_code,
                            quality, yaw_ratio)
 from .intrusion_face import ErrorThrottle, IdentCollector, IntrusionRegistry, pitch_dev
@@ -101,6 +102,7 @@ class FaceGateWorker(threading.Thread):
         self._in_zone: dict[int, float] = {}
         self._funnel = self._empty_funnel()
         self._last_frame_ts = 0.0  # jalur unified: `_expire` tanpa timestamp memakai frame terakhir
+        self._flash: dict[int, tuple[str, float]] = {}  # Mode uji: track_id → (label, sampai frame.ts)
         # gerbang unified: lebar identitas + tanpa blur absolut (pitch dicek terpisah di `_gate_unified`)
         self._unified_settings = replace(settings, min_width_px=settings.ident.min_width_px, blur_min=0.0)
         # registry ≠ None → kamera ini juga menjalankan identitas intrusion critical
@@ -211,6 +213,8 @@ class FaceGateWorker(threading.Thread):
     def _process(self, frame) -> None:
         h, w = frame.data.shape[:2]
         self._last_frame_ts = frame.ts
+        if self._flash:  # buang label Mode uji basi, juga untuk track yang sudah pergi
+            self._flash = {k: v for k, v in self._flash.items() if v[1] > frame.ts}
         try:
             faces = self.face.detect_faces(frame.data)
         except Exception:
@@ -267,8 +271,9 @@ class FaceGateWorker(threading.Thread):
                 # `.get`: kode `pitch` (khusus unified) hanya muncul di kamus bila benar-benar terjadi
                 self._funnel["rejects"][code] = self._funnel["rejects"].get(code, 0) + 1
             q = quality(f.score, f.bbox[2] - f.bbox[0], yaw_ratio(f.kps))
+            # label identitas intrusion di atas flash Mode uji; keduanya di atas kode gerbang/skor
             boxes.append({"id": tr.id, "bbox_norm": [round(v, 4) for v in tr.bbox],
-                          "label": ident_label or code or f"{q:.2f}"})
+                          "label": ident_label or self._flash_label(tr.id) or code or f"{q:.2f}"})
             if code is None:
                 passed.append((tr.id, f, zone, aligned, q, blur))
         self._publish(boxes)  # overlay before ArcFace embedding and uploads
@@ -295,6 +300,11 @@ class FaceGateWorker(threading.Thread):
         if boxes or self._faces_shown:
             self.transport.publish_detections(self.camera_id, boxes, kind="face")
         self._faces_shown = bool(boxes)
+
+    def _flash_label(self, track_id: int) -> str | None:
+        """Label overlay Mode uji untuk track ini; entri basi dibuang tiap frame di `_process`."""
+        flash = self._flash.get(track_id)
+        return flash[0] if flash is not None else None
 
     def _accumulate(self, tid, f, zone, aligned, q, frame) -> None:
         st = self._states.setdefault(tid, _TrackState(zone=zone))
@@ -375,11 +385,21 @@ class FaceGateWorker(threading.Thread):
             if st is not None and not st.done and (st.keeper if st.unified else st.vectors):
                 st.emit_ts = now if now is not None else self._last_frame_ts
                 self._emit(tid, st)
-            if tid in self._in_zone and (st is None or not st.vectors):
+            if tid in self._in_zone and (st is None or (not st.vectors and not st.done)):
+                # track `done` tanpa vektor = track yang ditekan Mode uji (jalur unified): bukan
+                # track yang lewat tanpa satu pun frame layak, jadi tidak dihitung `tracks_silent`.
                 self._funnel["tracks_silent"] += 1
             self._in_zone.pop(tid, None)
 
     def _emit(self, tid: int, st: _TrackState) -> None:
+        # Mode uji absensi: zona tetap dinilai (embedding jalan), tetapi tidak ada event, unggahan
+        # media, atau baris absensi. Track ditandai selesai (sekali saja) dan box wajahnya diberi
+        # label `test:attendance` ±6 dtk; setelah `test_until` lewat, jalur normal kembali sendiri.
+        if delivery_mode(zone_attendance_cfg(st.zone), time.time()) == "test":
+            st.done = True
+            st.best = None  # lepas frame penuh yang tertahan; track bisa hidup lama sebelum hilang
+            self._flash[tid] = ("test:attendance", self._last_frame_ts + FLASH_S)
+            return
         st.done = True
         self._funnel["tracks_emitted"] += 1
         if st.unified:

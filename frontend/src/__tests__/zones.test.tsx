@@ -436,16 +436,21 @@ test('zoneDelivery murni: turunan, kedaluwarsa, dan revert_to', async () => {
   const past = { ...future, test_until: new Date(now - 1000).toISOString() }
   expect(effectiveDelivery(past, true, now)).toBe('inbox')
   expect(testUntil(past, now)).toBeNull()
-  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('all')
+  // test tanpa test_until = pilihan yang belum disimpan (server menstempel saat Simpan): tampil `test`
+  // (sebelumnya 'all' membuat radio mental kembali dan Mode uji tampak tak bisa diklik)
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('test')
 })
 
-test('zona absensi punya satu toggle Telegram pada behavior attendance', async () => {
+test('zona absensi memakai radio tujuan event yang sama; toggle Telegram lama hilang', async () => {
   const fetchMock = await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
     behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] })])
-  fireEvent.click(document.getElementById('zone-telegram-attendance')!)
+  expect(document.getElementById('zone-telegram-attendance')).toBeNull()
+  expect(document.getElementById('zone-delivery-attendance-inbox')).toBeChecked()
+
+  fireEvent.click(document.getElementById('zone-delivery-attendance-all')!)
   fireEvent.click(screen.getByTestId('zone-save'))
   await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
-    { kind: 'attendance', trigger_seconds: 0, telegram: true },
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'all', telegram: true },
   ]))
 })
 
@@ -590,4 +595,118 @@ test('badge UJI tampil bila behavior alert MANA PUN sedang diuji, dengan kedaluw
   expect(screen.getByTestId('zone-test-badge-10')).toHaveTextContent('UJI')
   expect(screen.getByTestId('zone-test-badge-11')).toHaveTextContent(hhmm(early))
   expect(screen.getByTestId('zone-test-badge-11')).not.toHaveTextContent(hhmm(late))
+})
+
+
+// --- radio tujuan event pada behavior absensi -------------------------------
+
+function attendanceZone(over: Partial<Zone> = {}) {
+  return zoneFix({ type: 'attendance', direction: 'entry',
+    behaviors: [{ kind: 'attendance', trigger_seconds: 0 }], ...over })
+}
+
+test('Mode uji absensi pada zona warning langsung menulis tanpa dialog', async () => {
+  const fetchMock = await selectZone([attendanceZone()])
+  expect(screen.getByTestId('zone-delivery-attendance')).toBeInTheDocument()
+  fireEvent.click(document.getElementById('zone-delivery-attendance-test')!)
+  expect(screen.queryByTestId('zone-test-confirm')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'test', telegram: false },
+  ]))
+})
+
+test('Mode uji absensi pada zona critical minta konfirmasi; Batal tidak mengubah nilai', async () => {
+  const fetchMock = await selectZone([attendanceZone({ severity: 'critical' })])
+  fireEvent.click(document.getElementById('zone-delivery-attendance-test')!)
+  expect(await screen.findByTestId('zone-test-confirm')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('Batal'))
+  await waitFor(() => expect(screen.queryByTestId('zone-test-confirm')).not.toBeInTheDocument())
+  expect(document.getElementById('zone-delivery-attendance-inbox')).toBeChecked()
+
+  // Lanjut: nilai ditulis
+  fireEvent.click(document.getElementById('zone-delivery-attendance-test')!)
+  fireEvent.click(await screen.findByText('Lanjut'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'test', telegram: false },
+  ]))
+})
+
+test('badge UJI muncul untuk zona absensi yang diuji', async () => {
+  const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'test', test_until: soon, revert_to: 'all' },
+  ] })])
+  expect(screen.getByTestId('zone-test-badge-10')).toHaveTextContent('UJI')
+})
+
+test('toggle Unknown tidak tampil saat absensi efektif Hanya Inbox atau Mode uji', async () => {
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'inbox' }] })])
+  expect(document.getElementById('zone-telegram-unknown')).toBeNull()
+})
+
+test('toggle Unknown absensi tidak tampil saat Mode uji sedang berlaku', async () => {
+  const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'test', test_until: soon, revert_to: 'all' }] })])
+  expect(document.getElementById('zone-telegram-unknown')).toBeNull()
+})
+
+test('toggle Unknown absensi tampil saat efektif Inbox + Telegram', async () => {
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'all' }] })])
+  expect(document.getElementById('zone-telegram-unknown')).not.toBeNull()
+})
+
+test('radio absensi pada zona tanpa behavior attendance tetap menulis behavior itu', async () => {
+  const fetchMock = await selectZone([attendanceZone({ behaviors: [] })])
+  expect(document.getElementById('zone-delivery-attendance-inbox')).toBeChecked()
+  fireEvent.click(document.getElementById('zone-delivery-attendance-all')!)
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'all', telegram: true },
+  ]))
+})
+
+test('Mode uji absensi menjelaskan bahwa absensi tidak tercatat selama uji', async () => {
+  const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'test', test_until: soon, revert_to: 'all' },
+  ] })])
+  // karyawan yang lewat tidak masuk rekap selama uji: bantuan radio harus mengatakannya
+  expect(screen.getByText(/rekap absensi/)).toBeInTheDocument()  // teks bantu ada di luar fieldset radio
+})
+
+test('konfirmasi Mode uji absensi zona critical memakai kalimat absensi, bukan alert keamanan', async () => {
+  await selectZone([attendanceZone({ severity: 'critical' })])
+  fireEvent.click(document.getElementById('zone-delivery-attendance-test')!)
+  const dialog = await screen.findByTestId('zone-test-confirm')
+  expect(dialog).toHaveTextContent('tidak tercatat')
+  expect(dialog).not.toHaveTextContent('Alert keamanan')
+})
+
+test('Mode uji yang baru dipilih (belum disimpan) tampak terpilih pada behavior alert', async () => {
+  await selectZone([zoneFix({ severity: 'warning', behaviors: [{ kind: 'intrusion', trigger_seconds: 0 }] })])
+  fireEvent.click(document.getElementById('zone-delivery-intrusion-test')!)
+  // server baru menstempel test_until saat Simpan: sebelum itu radio tidak boleh mental kembali
+  await waitFor(() => expect(document.getElementById('zone-delivery-intrusion-test')).toBeChecked())
+  expect(document.getElementById('zone-delivery-intrusion-all')).not.toBeChecked()
+})
+
+test('Mode uji yang baru dipilih (belum disimpan) tampak terpilih pada absensi dan bantuannya menyebut rekap', async () => {
+  await selectZone([attendanceZone()])
+  fireEvent.click(document.getElementById('zone-delivery-attendance-test')!)
+  await waitFor(() => expect(document.getElementById('zone-delivery-attendance-test')).toBeChecked())
+  expect(screen.getByText(/rekap absensi/)).toBeInTheDocument()
+})
+
+test('zoneDelivery: test tanpa test_until = pilihan belum disimpan (tampil test); test_until lampau tetap kembali ke revert_to', async () => {
+  const now = Date.now()
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('test')
+  const past = new Date(now - 3600_000).toISOString()
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test', test_until: past, revert_to: 'inbox' }, true, now)).toBe('inbox')
+  // badge UJI hanya untuk uji yang sudah distempel server
+  expect(testUntil({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, now)).toBeNull()
 })

@@ -250,13 +250,14 @@ function DebugOverlay({ camId, showZones, showDetection, boxes, names }: {
 }) {
   const { t } = useT()
   const boxLabel = (b: DetBox) =>
-    b.kind === 'face' && names[`${camId}:${b.id}`]
+    // Mode uji zona: node mengirim `test:<tipe>` untuk box person maupun wajah; label ini
+    // tidak boleh tertimpa nama karyawan atau kode gerbang wajah
+    b.label?.startsWith('test:')
+      ? t('live.testFired').replace('{type}', eventTypeLabel(b.label.slice('test:'.length), t))
+      : b.kind === 'face' && names[`${camId}:${b.id}`]
       ? names[`${camId}:${b.id}`].name
       : b.kind === 'face' && b.label && (FACE_GATE_CODES as readonly string[]).includes(b.label)
       ? t(`live.faceGate.${b.label}` as TKey)
-      // Mode uji zona: node mengirim `test:<tipe>`; label lain ditampilkan apa adanya
-      : b.kind === 'person' && b.label?.startsWith('test:')
-      ? t('live.testFired').replace('{type}', eventTypeLabel(b.label.slice('test:'.length), t))
       : b.label ?? t('live.trackId').replace('{n}', String(b.id))
   const [zones, setZones] = useState<Zone[]>([])
   useEffect(() => {

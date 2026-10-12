@@ -634,3 +634,82 @@ def test_unified_failed_embeds_do_not_start_the_window_or_kill_the_track():
     assert len(t.events) == 1
     assert t.events[0]["payload"]["face_stats"]["frames"] >= 1
     assert len(t.events[0]["payload"]["embedding"]) == 512
+
+
+# --- Mode uji absensi: zona attendance dengan `delivery = "test"` -----------
+
+def _until(seconds: float) -> str:
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(time.time() + seconds, tz=timezone.utc).isoformat()
+
+
+def attendance_zone(**behavior) -> dict:
+    return {**ZONE, "behaviors": [{"kind": "attendance", "trigger_seconds": 0, **behavior}]}
+
+
+def run_zone(frames_faces, zone, engine=None, transport=None, recorder=None,
+             settings=FaceSettings(), max_age_s=0.5):
+    """Seperti `run_worker`, tetapi zona (dan karenanya `behaviors`) bisa diatur per tes."""
+    t = transport or FakeTransport()
+    eng = engine or FakeFaces(frames_faces)
+    w = FaceGateWorker(363, [zone], eng, t, "test-node", settings, recorder=recorder,
+                       max_age_s=max_age_s)
+    w.source = FrameSource.from_frames([FRAME] * len(frames_faces), fps=10.0)
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    return w, t, eng
+
+
+def test_test_mode_attendance_suppresses_event_and_media_but_keeps_embedding():
+    rec = FakeRecorder()
+    w, t, eng = run_zone([[GOOD]] * 12,
+                         attendance_zone(delivery="test", test_until=_until(3600), revert_to="all"),
+                         recorder=rec)
+    assert t.events == [] and w.events == []   # tanpa publish_event
+    assert rec.uploads == []                   # tanpa unggah crop/snapshot
+    assert eng.embed_calls == 3                # embedding tetap dihitung sampai K frame
+    assert w.take_funnel()["tracks_emitted"] == 0
+
+
+def test_test_mode_attendance_labels_the_face_box_for_six_seconds():
+    w, t, _ = run_zone([[GOOD]] * 80,
+                       attendance_zone(delivery="test", test_until=_until(3600), revert_to="all"))
+    seq = labels(t)
+    assert seq[0] != "test:attendance"        # sebelum emisi (emisi = frame K-1, label dipasang sesudah publish)
+    assert seq[3] == "test:attendance"        # frame sesudah emisi
+    assert seq[61] == "test:attendance"       # ±6 dtk sejak frame emisi (80 frame @10 fps)
+    assert seq[-1] != "test:attendance"       # kedaluwarsa
+    assert w._flash == {}                     # entri basi dibuang
+
+
+def test_test_mode_attendance_emits_again_once_expired():
+    _, t, _ = run_zone([[GOOD]] * 3,
+                       attendance_zone(delivery="test", test_until=_until(-1), revert_to="all"))
+    assert [ev["type"] for ev in t.events] == ["attendance"]
+    assert all(label != "test:attendance" for label in labels(t))
+
+
+def test_legacy_attendance_zone_without_delivery_is_unchanged():
+    _, t, _ = run_zone([[GOOD]] * 3, attendance_zone(telegram=True))
+    assert [ev["type"] for ev in t.events] == ["attendance"]
+    assert all(label != "test:attendance" for label in labels(t))
+
+
+def test_test_mode_attendance_suppresses_unified_track_without_silent_count():
+    zone = attendance_zone(delivery="test", test_until=_until(3600), revert_to="all")
+    w, t, eng = run_zone([[GOOD]] * 20 + [[]] * 8, zone,
+                         settings=FaceSettings(attendance_mode="unified", attendance_window_s=1.0))
+    assert t.events == [] and eng.embed_calls > 0
+    assert "test:attendance" in labels(t)
+    funnel = w.take_funnel()
+    assert funnel["tracks_silent"] == 0       # track `done` yang ditekan bukan track tanpa hasil
+    assert set(funnel) == {"faces", "rejects", "tracks_emitted", "tracks_silent", "ttfg_median_s"}
+
+
+def test_test_mode_attendance_releases_the_held_frame_of_a_suppressed_track():
+    # track ditekan tetap hidup (tracker 30 dtk): frame terbaik tidak boleh tertahan sampai track hilang
+    w, _, _ = run_zone([[GOOD]] * 12,
+                       attendance_zone(delivery="test", test_until=_until(3600), revert_to="all"),
+                       max_age_s=30.0)
+    assert w._states and all(st.best is None for st in w._states.values())

@@ -111,3 +111,22 @@ def test_stamp_does_not_mutate_inputs():
     stamp_test_mode(new, old, NOW)
     assert new == snapshot_new
     assert old == snapshot_old
+
+
+# --- behavior absensi memakai aturan yang sama ------------------------------
+
+def test_attendance_behavior_uses_the_same_delivery_rules():
+    """Absensi ikut radio tiga pilihan (keputusan 2026-10-12): turunan, `test`, dan kedaluwarsa."""
+    assert effective_delivery({"kind": "attendance", "telegram": True}, False, NOW) == "all"
+    assert effective_delivery({"kind": "attendance"}, False, NOW) == "inbox"
+    b = {"kind": "attendance", "delivery": "test",
+         "test_until": _iso(NOW + timedelta(hours=1)), "revert_to": "inbox"}
+    assert effective_delivery(b, True, NOW) == "test"
+    assert effective_delivery({**b, "test_until": _iso(NOW - timedelta(minutes=1))}, True, NOW) == "inbox"
+
+
+def test_stamp_test_mode_for_attendance_remembers_previous_telegram_flag():
+    out = stamp_test_mode([{"kind": "attendance", "delivery": "test"}],
+                          [{"kind": "attendance", "telegram": True}], NOW)
+    assert out[0]["test_until"] == _iso(NOW + timedelta(hours=TEST_HOURS))
+    assert out[0]["revert_to"] == "all"
