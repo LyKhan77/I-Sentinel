@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### UX Events dan Mode uji — perbaikan review (2026-10-12)
+
+- **Konteks:** review sesi perencanaan atas `171201e` (suite diulang berurutan cocok dengan laporan executor; satu kegagalan sementara `liveview.test.tsx > tile di luar layar tidak streaming…` dengan `IntersectionObserver is not defined`, lulus sendirian dua kali dan pada run penuh ulang, tes lama yang tidak diubah) menemukan tiga hal. (1) **Badge UJI** hanya memeriksa behavior alert pertama zona: zona dengan `intrusion` = Inbox+Telegram dan `loitering` = Mode uji tidak menampilkan badge, padahal badge adalah pengaman agar Mode uji tidak terlupa. (2) **Regresi dari perubahan grup `security`:** tile Dashboard "Event hari ini" menaut ke `/events?type=security&range=today` sedangkan `GET /events/stats/today` menghitung semua tipe kecuali `attendance` (termasuk `system`, `person_detect`), sehingga angka tile bisa lebih besar daripada daftar yang dibuka. (3) `CameraWorker._flash` tidak dibersihkan untuk track yang sudah hilang (kebocoran kecil; id track tidak didaur ulang dan `_flash` kosong saat worker restart, jadi risiko label salah-orang tidak ada).
+- **Perubahan:** `ZonesPage.zoneTestLabel` mengumpulkan `test_until` semua behavior alert dan memakai yang terdekat; `event_stats.today` memfilter `Event.type.in_(SECURITY_TYPES)` (lima perilaku); node membuang entri `_flash` basi pada tiap frame. `WORKFLOW.md` dan `README.md` disesuaikan (catatan selisih tile dihapus). Entri di bawah yang menyebut selisih tile sebagai temuan dibiarkan sebagai riwayat; sudah diperbaiki di sini.
+- **Bukti:** RED benar: `badge UJI tampil bila behavior alert MANA PUN sedang diuji…` gagal `Unable to find an element by: [data-testid="zone-test-badge-10"]`, `test_stats_today_counts_only_the_five_behavior_types` gagal `assert 4 == 2`, `test_test_mode_flash_entries_are_pruned_once_the_track_is_gone` gagal `assert {1: ('test:in…', …)} == {}`; ketiganya lulus sesudah perbaikan. Suite berurutan di commit terakhir: backend `1026 passed / 1 deselected / 611 warnings` (sebelumnya 1025), vision `360 passed / 3 deselected` (359), docker `77 passed`, frontend `38 berkas / 529 passed` (528), build exit 0, lint 24 warning / 16 pasangan identik baseline. Kueri pencarian `q` dikompilasi dengan dialek PostgreSQL secara lokal: `ILIKE … ESCAPE '\'` benar; eksekusi nyata di Postgres divalidasi setelah deploy.
+- **Dampak:** angka tile "Event hari ini" dan grafik per jam kini hanya menghitung lima tipe perilaku (event `system` tidak lagi menaikkan angka); badge UJI lebih andal. Tanpa migrasi.
+- **Rollback:** `git revert` ketiga commit perbaikan.
+
 ### Tujuan event per behavior zona dan Mode uji (2026-10-12)
 
 - **Konteks:** toggle Telegram per behavior hanya bisa "kirim / tidak kirim", padahal kebutuhan lapangan
