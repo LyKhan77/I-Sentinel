@@ -709,3 +709,48 @@ def test_test_mode_flash_entries_are_pruned_once_the_track_is_gone():
     worker.run()
 
     assert worker._flash == {}
+
+
+# --- `delivery` absensi: modul murni `vision.delivery` ----------------------
+
+def test_delivery_module_matches_node_reexport_and_reads_wall_clock():
+    from vision.delivery import delivery_mode, wall_of
+    from vision.node import delivery_mode as node_delivery_mode
+
+    assert wall_of("2026-10-12T08:00:00+00:00") == datetime(2026, 10, 12, 8, tzinfo=timezone.utc).timestamp()
+    assert wall_of("2026-10-12T08:00:00") == wall_of("2026-10-12T08:00:00+00:00")  # tanpa offset = UTC
+    assert wall_of(None) is None and wall_of("besok") is None and wall_of(12345) is None
+    assert node_delivery_mode(None, 0.0) == "all"
+    now = time.time()
+    assert node_delivery_mode({"delivery": "test", "test_until": _until(-1), "revert_to": "inbox"}, now) == "inbox"
+
+
+def test_delivery_cfg_for_keeps_the_zone_telegram_fallback():
+    from vision.delivery import delivery_cfg_for
+
+    assert delivery_cfg_for({"delivery": "test", "test_until": "x", "revert_to": "inbox",
+                             "telegram": True}, False) == {
+        "delivery": "test", "test_until": "x", "revert_to": "inbox", "telegram": True}
+    assert delivery_cfg_for({}, True)["telegram"] is True
+    assert delivery_cfg_for({}, False)["telegram"] is False
+
+
+def test_zone_attendance_cfg_finds_the_attendance_behavior():
+    from vision.delivery import zone_attendance_cfg
+
+    b = {"kind": "attendance", "delivery": "test", "test_until": _until(3600)}
+    assert zone_attendance_cfg({"behaviors": [{"kind": "intrusion"}, b]}) == b
+    assert zone_attendance_cfg({"behaviors": None}) is None   # zona legacy pra-R5
+    assert zone_attendance_cfg({}) is None
+    assert zone_attendance_cfg({"behaviors": [{"kind": "intrusion"}]}) is None
+    assert zone_attendance_cfg({"behaviors": [None, "lama", {"kind": "attendance"}]}) == {"kind": "attendance"}
+
+
+def test_analyzers_carry_delivery_cfg_for_alert_behaviors():
+    worker, _ = _worker_with(
+        [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+          "test_until": _until(3600), "revert_to": "inbox"}], [[INSIDE]])
+
+    assert worker.analyzers[0].delivery_cfg == {
+        "delivery": "test", "test_until": worker.analyzers[0].delivery_cfg["test_until"],
+        "revert_to": "inbox", "telegram": False}

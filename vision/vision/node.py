@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from .analyzers import ANALYZERS
 from .analyzers.base import Analyzer, ground_point, point_in_polygon, wall_time
+from .delivery import FLASH_S, delivery_cfg_for, delivery_mode
 from .face_quality import FaceSettings
 from .face_worker import FaceGateWorker
 from .config import CameraCfg, NodeSettings
@@ -27,44 +28,11 @@ log = logging.getLogger(__name__)
 
 DEDUP_BUCKET_S = 10.0
 DEFAULT_W, DEFAULT_H = 640, 480
-# Lama label overlay Mode uji bertahan pada track pemicu (detik).
-FLASH_S = 6.0
 
 
 def _iso(ts: float) -> str:
     """Format epoch or live-frame monotonic timestamp in UTC."""
     return datetime.fromtimestamp(wall_time(ts), tz=timezone.utc).isoformat()
-
-
-def _wall_of(value) -> float | None:
-    """ISO-8601 (UTC beraksi zona atau tanpa offset) → epoch; `None` bila hilang/tak terbaca."""
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.timestamp()
-
-
-def delivery_mode(cfg: dict | None, now_wall: float) -> str:
-    """Tujuan efektif satu behavior menurut jam dinding node: `test` | `all` | `inbox`.
-
-    Padanan `effective_delivery` di API (node tidak mengimpor paket backend): Mode uji yang
-    sudah lewat `test_until` kembali ke `revert_to` tanpa restart. `cfg` = `analyzer.delivery_cfg`.
-    """
-    if not isinstance(cfg, dict):
-        return "all"
-    if cfg.get("delivery") == "test":
-        until = _wall_of(cfg.get("test_until"))
-        if until is not None and now_wall < until:
-            return "test"
-        return cfg.get("revert_to") if cfg.get("revert_to") in ("all", "inbox") else "all"
-    if cfg.get("delivery") in ("all", "inbox"):
-        return cfg["delivery"]
-    return "all" if cfg.get("telegram") else "inbox"
 
 
 def main_stream_name(source_url: str) -> str | None:
@@ -433,12 +401,7 @@ class VisionNode:
     @staticmethod
     def _with_delivery(analyzer, behavior: dict, zone_telegram: bool):
         """Tempel tujuan event behavior ke analyzer; worker membacanya untuk Mode uji."""
-        analyzer.delivery_cfg = {
-            "delivery": behavior.get("delivery"),
-            "test_until": behavior.get("test_until"),
-            "revert_to": behavior.get("revert_to"),
-            "telegram": behavior.get("telegram", zone_telegram),
-        }
+        analyzer.delivery_cfg = delivery_cfg_for(behavior, zone_telegram)
         return analyzer
 
     def _wants_clip(self, analyzers: list) -> bool:
