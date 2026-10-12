@@ -244,6 +244,7 @@ def drop_unknown_event(db, event) -> bool:
     tidak dikenal yang dibuang; event dikenali, anomali, dan event yang pencocokannya gagal
     selalu tersimpan. Path media dibaca sebelum `db.delete` (objek terhapus tidak boleh diakses
     lagi). Kegagalan hapus file dicatat, tidak dilempar: sapuan orphan retensi menutup sisanya.
+    Klip tidak pernah dihapus: event absensi tidak merekam klip, dan klip insiden dipakai bersama.
     """
     if event.type != "attendance":
         return False
@@ -254,7 +255,7 @@ def drop_unknown_event(db, event) -> bool:
     if zone is None or unknown_delivery(zone.behaviors) != "none":
         return False
     event_id = event.event_id
-    rels = [payload.get("crop_path"), event.snapshot_path, event.clip_path]
+    rels = [payload.get("crop_path"), event.snapshot_path]
     db.delete(event)
     db.commit()
     _DROPPED.append(event_id)
@@ -274,7 +275,7 @@ def discard_dropped_media(data: dict) -> bool:
     event_id = data.get("event_id")
     if not isinstance(event_id, str) or event_id not in _DROPPED:
         return False
-    _remove_media([data.get("snapshot_path"), data.get("clip_path")])
+    _remove_media([data.get("snapshot_path")])
     logger.info("attendance: media susulan event %s yang dibuang dihapus", event_id)
     return True
 

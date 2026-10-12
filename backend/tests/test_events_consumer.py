@@ -407,3 +407,36 @@ def test_duplicate_unknown_event_dropped_twice(db, broadcast, media, monkeypatch
 
     assert db.query(ec.Event).count() == 0
     assert broadcast == []
+
+
+def test_unified_policy_event_dropped_with_real_matcher(db, broadcast, media):
+    """Jalur produksi: `payload.policy == "unified"` → `match_strict` asli (galeri kosong → `no_match`)."""
+    cam, zone = _unknown_zone(db)
+    data = _face_event(cam, zone)
+    data["payload"]["policy"] = "unified"
+
+    handle_message(db, ec.EVENTS_TOPIC, json.dumps(data).encode())
+
+    assert db.query(ec.Event).count() == 0
+    assert broadcast == []
+    assert not (media / "crops" / "a.jpg").exists()
+    assert not (media / "snapshots" / "a.jpg").exists()
+
+
+def test_clip_of_dropped_event_is_never_deleted(db, broadcast, media, monkeypatch):
+    """Klip insiden dipakai bersama banyak event: membuang satu event absensi tidak boleh menghapusnya."""
+    shared = media / "clips" / "shared.mp4"
+    shared.parent.mkdir(parents=True)
+    shared.write_bytes(b"clip")
+    cam, zone = _unknown_zone(db)
+    _match(monkeypatch, face.MatchResult(None, 0.2, 0.9, "no_match"))
+    data = _face_event(cam, zone, clip_path="clips/shared.mp4")
+
+    handle_message(db, ec.EVENTS_TOPIC, json.dumps(data).encode())
+    assert db.query(ec.Event).count() == 0
+    assert not (media / "snapshots" / "a.jpg").exists()  # media miliknya sendiri tetap dihapus
+    assert shared.exists()
+
+    handle_message(db, ec.MEDIA_TOPIC, json.dumps(
+        {"event_id": data["event_id"], "clip_path": "clips/shared.mp4"}).encode())
+    assert shared.exists()

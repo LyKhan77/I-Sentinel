@@ -333,7 +333,7 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
    `attendance.drop_unknown_event` → `alerting.handle` → caption AI → `intrusion_face` →
    `hub.broadcast`. Pada zona `unknown_delivery=none`, `drop_unknown_event` membuang event
    `no_match`/`ambiguous`/`low_quality` tanpa `employee_id`: baris event dan file medianya
-   (crop/snapshot/clip, lewat `retention._safe_join`) dihapus, lalu `handle_message` `return`
+   (crop/snapshot, lewat `retention._safe_join`; klip tidak pernah dihapus) dihapus, lalu `handle_message` `return`
    sebelum alert, caption AI, face ID, dan WS. Pesan media yang menyusul dibuang tanpa warning
    lewat daftar `_DROPPED` di memori (`discard_dropped_media`); daftar itu hilang saat API
    restart dan file sisanya diurus sapuan orphan retensi.
