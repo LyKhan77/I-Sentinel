@@ -1,7 +1,15 @@
 """Tes murni `zone_delivery`: turunan delivery, kedaluwarsa Mode uji, dan stempel server."""
 from datetime import datetime, timedelta, timezone
 
-from app.services.zone_delivery import TEST_HOURS, effective_delivery, stamp_test_mode
+import pytest
+
+from app.services.zone_delivery import (
+    TEST_HOURS,
+    UNKNOWN_DELIVERIES,
+    effective_delivery,
+    stamp_test_mode,
+    unknown_delivery,
+)
 
 NOW = datetime(2026, 10, 12, 8, 0, 0, tzinfo=timezone.utc)
 
@@ -130,3 +138,34 @@ def test_stamp_test_mode_for_attendance_remembers_previous_telegram_flag():
                           [{"kind": "attendance", "telegram": True}], NOW)
     assert out[0]["test_until"] == _iso(NOW + timedelta(hours=TEST_HOURS))
     assert out[0]["revert_to"] == "all"
+
+
+# --- unknown_delivery: tujuan wajah tidak dikenal ---------------------------
+
+def test_unknown_deliveries_enum():
+    assert set(UNKNOWN_DELIVERIES) == {"all", "inbox", "none"}
+
+
+@pytest.mark.parametrize("behaviors, expected", [
+    (None, "all"),
+    ([], "all"),
+    ([{"kind": "attendance"}], "all"),
+    ([{"kind": "attendance", "unknown_delivery": "all"}], "all"),
+    ([{"kind": "attendance", "unknown_delivery": "inbox"}], "inbox"),
+    ([{"kind": "attendance", "unknown_delivery": "none"}], "none"),
+    # turunan dari toggle lama: false → Hanya Inbox, true/kosong → Inbox + Telegram
+    ([{"kind": "attendance", "telegram_unknown": False}], "inbox"),
+    ([{"kind": "attendance", "telegram_unknown": True}], "all"),
+    # data sampah dan nilai tak sah tidak melempar
+    ([{"kind": "attendance", "unknown_delivery": "bogus"}], "all"),
+    ([{"kind": "attendance", "unknown_delivery": None}], "all"),
+    ([None, "old", {"kind": "attendance"}], "all"),
+    # kunci sah menang atas toggle lama
+    ([{"kind": "attendance", "unknown_delivery": "none", "telegram_unknown": True}], "none"),
+    ([{"kind": "attendance", "unknown_delivery": "inbox", "telegram_unknown": True}], "inbox"),
+    # behavior kind lain tidak pernah menentukan tujuan wajah tidak dikenal
+    ([{"kind": "intrusion", "unknown_delivery": "none"}], "all"),
+    ([{"kind": "intrusion", "unknown_delivery": "none"}, {"kind": "attendance"}], "all"),
+])
+def test_unknown_delivery_rules(behaviors, expected):
+    assert unknown_delivery(behaviors) == expected

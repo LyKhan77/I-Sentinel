@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.services.zone_delivery import DELIVERIES, DELIVERY_KINDS
+from app.services.zone_delivery import DELIVERIES, DELIVERY_KINDS, UNKNOWN_DELIVERIES
 
 VALID_TYPES = {"free", "restricted", "absensi", "behavior", "attendance"}
 VALID_BEHAVIOR_KINDS = {"intrusion", "loitering", "running", "attendance", "idle_zone", "crowd"}
@@ -54,6 +54,14 @@ def _validate_behaviors(v: list | None) -> list | None:
             raise ValueError("test_until must be an ISO-8601 string")
         if b.get("revert_to") is not None and b.get("revert_to") not in ("all", "inbox"):
             raise ValueError("revert_to must be one of ['all', 'inbox']")
+        # Tujuan wajah tidak dikenal (keputusan 2026-10-12): kunci khusus behavior absensi;
+        # zona lama tanpa kunci tetap dibaca dari `telegram_unknown` (lihat `unknown_delivery`).
+        unknown = b.get("unknown_delivery")
+        if unknown is not None:
+            if b.get("kind") != "attendance":
+                raise ValueError("unknown_delivery is only valid for ['attendance'] behaviors")
+            if unknown not in UNKNOWN_DELIVERIES:
+                raise ValueError(f"unknown_delivery must be one of {sorted(UNKNOWN_DELIVERIES)}")
         if delivery != "test":
             b.pop("test_until", None)
             b.pop("revert_to", None)

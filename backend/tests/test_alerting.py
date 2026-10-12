@@ -351,3 +351,28 @@ def test_attendance_without_delivery_keeps_old_rules(db, queued):
     assert alerting.should_alert(db, _matched(db, cam, zone), now=NOW) == (True, "")
     cam2, zone2 = _attendance(db, {}, telegram=False)
     assert alerting.should_alert(db, _matched(db, cam2, zone2), now=NOW) == (False, "telegram_off")
+
+
+# --- tujuan wajah tidak dikenal (`unknown_delivery`) ------------------------
+
+@pytest.mark.parametrize("behavior, telegram, expected", [
+    # tujuan utama Inbox + Telegram: hanya `unknown_delivery=all` yang mengirim Unknown
+    ({"delivery": "all", "unknown_delivery": "all"}, False, (True, "")),
+    ({"delivery": "all", "unknown_delivery": "inbox"}, False, (False, "attendance_skipped")),
+    ({"delivery": "all", "unknown_delivery": "none"}, False, (False, "attendance_skipped")),
+    # tujuan utama bukan Inbox + Telegram: Telegram mati sebelum aturan Unknown dinilai
+    ({"delivery": "inbox", "unknown_delivery": "all"}, True, (False, "telegram_off")),
+    # turunan dari toggle lama (`telegram_unknown=false` → Hanya Inbox)
+    ({"telegram": True, "telegram_unknown": False}, False, (False, "attendance_skipped")),
+    # kunci sah menang atas toggle lama
+    ({"delivery": "all", "unknown_delivery": "none", "telegram_unknown": True}, False, (False, "attendance_skipped")),
+])
+def test_unknown_face_telegram_matrix(db, queued, behavior, telegram, expected):
+    cam, zone = _attendance(db, behavior, telegram=telegram)
+    ev = _event(db, cam, zone, type="attendance", severity="info", payload={"match_reason": "no_match"})
+    assert alerting.should_alert(db, ev, now=NOW) == expected
+
+
+def test_matched_ignores_unknown_delivery(db, queued):
+    cam, zone = _attendance(db, {"delivery": "all", "unknown_delivery": "none"})
+    assert alerting.should_alert(db, _matched(db, cam, zone), now=NOW) == (True, "")

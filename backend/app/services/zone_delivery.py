@@ -6,7 +6,9 @@ bersama oleh router zona (`app/api/zones.py`) dan gerbang Telegram (`alerting`).
 
 Nilai:
 - `delivery` ∈ {`all`, `inbox`, `test`} — untuk semua kind deteksi (lima behavior alert dan
-  `attendance`); absensi tetap punya `record`/`telegram_unknown` sendiri.
+  `attendance`); absensi tetap punya `record`/`unknown_delivery` sendiri.
+- `unknown_delivery` ∈ {`all`, `inbox`, `none`} — tujuan wajah tidak dikenal pada behavior
+  `attendance`; tanpa kunci diturunkan dari toggle lama `telegram_unknown`.
 - `test_until` (ISO-8601 UTC) dan `revert_to` ∈ {`all`, `inbox`} hanya ada saat `delivery == "test"`.
 - Tanpa `delivery`: diturunkan dari `telegram` item, atau flag zona bila item tanpa key
   (zona pra-R5 `behaviors is None` memakai flag zona).
@@ -16,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 TEST_HOURS = 24
 DELIVERY_KINDS = ("intrusion", "loitering", "running", "idle_zone", "crowd", "attendance")
 DELIVERIES = ("all", "inbox", "test")
+UNKNOWN_DELIVERIES = ("all", "inbox", "none")
 
 
 def parse_until(value) -> datetime | None:
@@ -51,6 +54,23 @@ def effective_delivery(behavior: dict | None, zone_telegram: bool, now: datetime
     if delivery in ("all", "inbox"):
         return delivery
     return "all" if behavior.get("telegram", zone_telegram) else "inbox"
+
+
+def unknown_delivery(behaviors: list | None) -> str:
+    """Tujuan wajah tidak dikenal satu zona: `all` | `inbox` | `none`.
+
+    Item `kind == "attendance"` pertama yang berupa dict yang menentukan. Tanpa kunci sah
+    nilainya diturunkan dari toggle lama `telegram_unknown` (hanya `false` → `inbox`) dan
+    `behaviors` kosong/`None` → `all`, supaya zona lama berperilaku persis seperti sebelumnya.
+    Murni: data sampah (`None`, `[None, "old"]`, nilai tak sah) tidak melempar.
+    """
+    for b in behaviors or []:
+        if isinstance(b, dict) and b.get("kind") == "attendance":
+            value = b.get("unknown_delivery")
+            if value in UNKNOWN_DELIVERIES:
+                return value
+            return "inbox" if b.get("telegram_unknown") is False else "all"
+    return "all"
 
 
 def _previous_delivery(prev: dict | None) -> str:
