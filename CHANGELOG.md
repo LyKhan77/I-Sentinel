@@ -3,6 +3,37 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### UX Events: pencarian `q` di server dan filter Tipe berkelompok (2026-10-12)
+
+- **Konteks:** pencarian Inbox sebelumnya hanya menyaring event yang sudah termuat di klien, jadi nama karyawan
+  (atau event apa pun) di halaman lebih lama tidak pernah ketemu; filter Tipe memuat opsi `person_detect` yang
+  tak berguna di server (`VISION_EMIT_PERSON_DETECT=false`) dan grup "Keamanan" masih memuat `system` sehingga
+  bercampur dengan event sistem. Plan A dari spec `docs/superpowers/specs/2026-10-09-inbox-zone-ux-design.md` §5.
+- **Perubahan:** `GET /api/v1/events` menerima `q` (≤100 karakter; `strip`, kosong diabaikan) — ILIKE atas
+  `Event.type`, `Event.event_id`, `Event.severity`, nama kamera (outerjoin, tanpa menggandakan baris), dan
+  `CAST(payload AS TEXT)`, dengan `%`/`_`/`\` di-escape (literal) dan berlaku bersama `type`/`camera_id`/
+  `severity`/`since`/`limit`/`offset` (urutan & paginasi tidak berubah). `EventsPage` mengirim `q` ber-debounce
+  **300 ms** pada refresh dan "Muat lebih banyak" (`src/api/events.ts` → `EventListParams.q`), sementara `q`
+  tetap ditulis ke URL tanpa jeda dan daftar yang sudah termuat tetap menyempit instan di klien (haystack klien
+  diperluas untuk event `system`: `type` + JSON payload, supaya hasil server tidak pernah hilang oleh saringan
+  klien). Dropdown Tipe dikelompokkan dengan urutan tetap — Semua · Semua kecuali sistem (`nosystem`) · judul
+  *Kelompok* · Keamanan (lima tipe perilaku) · Absensi · Sistem · judul *Per perilaku* · Intrusion · Loitering ·
+  Running · Idle zone · Crowd — judul tidak dapat dipilih, `person_detect` tidak lagi ditawarkan, dan
+  `parseFilters` menolaknya sehingga tautan lama jatuh ke Semua tanpa error.
+- **Bukti:** RED benar per task (A1 7 gagal, A2 12 gagal, A3 6 gagal) + tiga mutasi wajib terbukti merah lalu
+  dikembalikan identik: escape LIKE dihapus, `security` memuat `system` lagi, debounce dilepas. Suite di commit
+  terakhir: backend `1004 passed / 1 deselected / 601 warnings` (baseline 996), vision `351 passed / 3 deselected`,
+  docker `77 passed`, frontend `38 berkas / 521 passed` (baseline 38/508), build exit 0, lint 24 warning /
+  16 pasangan file-rule identik baseline. Verifikasi visual (dev server Vite + API distub Playwright) 390 px dan
+  1280 px: `scrollWidth == innerWidth` sebelum dan sesudah dropdown dibuka, urutan 12 opsi + 2 judul
+  `aria-disabled="true"`; screenshot `docs/evidence/ux-events-type-{390,1280}.png`.
+- **Dampak:** pencarian menemukan nama karyawan/face ID di semua halaman; grup Keamanan kini murni lima perilaku
+  alert (event `system` pindah ke opsi Sistem / Semua kecuali sistem). **BELUM di-deploy/diuji di server**;
+  validasi query `q` terhadap PostgreSQL (escape `LIKE`) belum dijalankan. Temuan: tile "Event hari ini" di
+  Dashboard menautkan `type=security&range=today` tetapi angkanya dari `events/stats/today` (termasuk `system`),
+  jadi angka tile bisa lebih besar dari isi daftar — belum diubah (di luar plan).
+- **Rollback:** `git revert` commit A1–A4 (tanpa migrasi).
+
 ### Replay offline absensi: hasil pertama di server (2026-10-09)
 
 - **Konteks:** replay `--limit 600 --days 14 --threads 2 --max-seconds 300` (baca-saja, di container `api` `gspe-ai3`; CPU `api` ±154%, load host 8, layanan sehat) setelah deploy `f399998`; percobaan kecil sebelumnya (`--limit 40`): 40 crop, 14 direplay, `same` 5, `flipped` 0, 26 tanpa wajah. Log: `temp/logs/face-attendance-unified/replay-2.txt`, `replay-3.txt`.

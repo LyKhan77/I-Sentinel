@@ -235,12 +235,15 @@ lonceng atau toolbar mode TV; status dibaca & mute disimpan per browser). Di Liv
 diberi outline warna severity selama 30 detik; bila tile sedang di luar layar muncul chip di kanan bawah. Absensi
 tidak memicu notifikasi. Notifikasi OS tidak tersedia karena app diakses lewat `http://` LAN.
 
-**Inbox Events.** `/events` master-detail: filter **Tipe, Kamera, Severity, dan Rentang waktu difilter di server**
-(satu query; pencarian teks tetap di klien), tiap dropdown punya opsi **Semua** dan tombol **Atur ulang filter**
-muncul saat ada filter non-default. Opsi Tipe statis dan berlabel lokal — termasuk grup **"Keamanan (tanpa
-absensi)"** — dan Rentang bertambah **Hari ini** (sejak 00:00 lokal). **Filter hidup di URL** (`?type=&camera=
+**Inbox Events.** `/events` master-detail: filter **Tipe, Kamera, Severity, Rentang waktu, dan pencarian `q` difilter di server**
+(satu query), sehingga nama karyawan, nama hasil face ID, nama kamera, tipe, ID, dan teks payload ditemukan di **semua halaman**;
+daftar yang sudah termuat tetap menyempit instan di klien (lapis kedua) dan permintaan server ber-debounce **300 ms**. tiap
+dropdown punya opsi **Semua** dan tombol **Atur ulang filter** muncul saat ada filter non-default. Opsi Tipe statis, berlabel
+lokal, dan **dikelompokkan** — Semua · Semua kecuali sistem · *Kelompok* (Keamanan, Absensi, Sistem) · *Per perilaku*
+(Intrusion, Loitering, Running, Idle zone, Crowd); opsi "Deteksi orang (debug)" dihapus (tautan lama jatuh ke Semua) — dan
+Rentang bertambah **Hari ini** (sejak 00:00 lokal). **Filter hidup di URL** (`?type=&camera=
 &severity=&range=&q=`): deep link, reload, dan Back/Forward memulihkannya; nilai tak valid jatuh ke default.
-Daftar memuat 200 event per halaman dan tombol **Muat lebih banyak** menggabung halaman berikutnya (dedupe id)
+Daftar memuat 200 event per halaman dan tombol **Muat lebih banyak** menggabung halaman berikutnya (dedupe id, membawa `q`)
 sampai batas **1000 baris** → hitungan menjadi `N+ event` disertai petunjuk mempersempit filter. Event kamera
 tetap memakai tab clip/snapshot/crop;
 **event system** (node offline/pulih, health alert) memakai panel **Bukti**: fakta dari payload ditambah grafik tren
@@ -307,8 +310,9 @@ Snapshot dapat memuat wajah karyawan.** Jalankan satu proses API; semaphore, thr
 ## Dashboard
 
 `/dashboard` satu layar status-first: **strip status** (summary Monitoring + health alert aktif, selalu
-berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → `/events?type=security&range=today`
-(filter yang sama dengan angka tile); Kehadiran hari
+berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → `/events?type=security&range=today`,
+yaitu grup Keamanan — lima tipe perilaku; angka tile sendiri dihitung `GET /events/stats/today` yang memuat
+semua tipe kecuali `attendance` (termasuk `system`), jadi angka tile bisa lebih besar dari isi daftar; Kehadiran hari
 ini → Attendance; Disk → Konfigurasi tab Storage) → **chart event per jam** hari ini → **8 event terbaru**
 (sumber realtime yang sama dengan lonceng: nama kamera, Tag severity dengan teks, thumbnail snapshot) →
 **masalah aktif** (maks 5, critical dulu) + **node ringkas** (GPU util/VRAM; detail di Monitoring).

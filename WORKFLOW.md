@@ -137,23 +137,36 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
 **Pengguna:** semua · **Halaman:** `/events`
 
 1. Daftar kiri: filter Tipe, Kamera, Severity, Rentang waktu, dan pencarian; data dari `GET /api/v1/events`
-   dan update realtime via WebSocket. Tipe/Kamera/Severity/Rentang difilter **di server** (lima sekaligus
-   jadi satu query), pencarian teks tetap di klien.
+   dan update realtime via WebSocket. Kelima filter — termasuk pencarian `q` — dikerjakan **di server**
+   dalam satu query, jadi hasilnya berlaku atas **semua halaman**: nama karyawan (`payload.employee_name`
+   absensi), nama hasil face ID (`payload.face.name`), nama kamera, tipe, ID, severity, dan teks payload
+   ikut dicari (tidak peka huruf besar; `%`, `_`, `\` diperlakukan literal; `q` kosong diabaikan, > 100
+   karakter ditolak 422). Pencarian klien tetap jalan sebagai **lapis kedua**: daftar yang sudah termuat
+   menyempit **instan** tanpa menunggu server, sedangkan permintaan server memakai salinan **ber-debounce
+   300 ms** (mengetik cepat = satu permintaan) dan haystack klien selalu ⊇ haystack server.
 2. **Filter hidup di URL** (`?type=&camera=&severity=&range=&q=`): deep link, reload, dan Back/Forward
    memulihkan filter; perubahan menulis URL dengan `replace` (riwayat tidak menumpuk) dan menjaga param lain
    termasuk `?event=`. Nilai tak valid di URL jatuh ke default tanpa error; nilai default tidak ditulis.
-   Opsi Tipe bertambah **"Keamanan (tanpa absensi)"** (`type=security` = semua tipe kecuali `attendance`,
-   dikirim sebagai daftar `type`) dan Rentang bertambah **Hari ini** (`range=today`, sejak 00:00 lokal) —
-   keduanya menyamakan semantik angka "Event hari ini" di Dashboard. Setiap dropdown punya opsi **Semua**
-   (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul begitu ada filter non-default —
-   menghapus kelima param filter, `?event=` tetap ada. Opsi Tipe statis (daftar tipe ingest, berlabel lokal),
-   bukan turunan event yang sedang termuat. Respons lama yang tiba belakangan dibuang.
+   Opsi Tipe **dikelompokkan** dengan urutan tetap: Semua · **Semua kecuali sistem** (`type=nosystem` =
+   semua tipe ingest kecuali `system`) · judul *Kelompok* (tidak dapat dipilih) · **Keamanan**
+   (`type=security` = lima tipe perilaku alert: intrusion, loitering, running, idle_zone, crowd — tanpa
+   `system`) · **Absensi** · **Sistem** · judul *Per perilaku* (tidak dapat dipilih) · Intrusion ·
+   Loitering · Running · Idle zone · Crowd. Opsi **Deteksi orang (debug)** dihapus dari dropdown —
+   tipe `person_detect` tetap valid di backend dan label, dan tautan lama `?type=person_detect` jatuh ke
+   Semua tanpa error. Rentang bertambah **Hari ini** (`range=today`, sejak 00:00 lokal). Setiap dropdown
+   punya opsi **Semua** (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul begitu ada filter
+   non-default — menghapus kelima param filter, `?event=` tetap ada. Opsi Tipe statis (daftar tipe ingest,
+   berlabel lokal), bukan turunan event yang sedang termuat. Respons lama yang tiba belakangan dibuang.
+   Catatan Dashboard: tile "Event hari ini" menautkan `/events?type=security&range=today`, tetapi angkanya
+   dihitung `GET /events/stats/today` (semua tipe kecuali `attendance`, termasuk `system`) sehingga bisa
+   lebih besar dari isi daftar `security`.
 3. **Muat lebih banyak**: daftar memuat 200 event per halaman (`LIMIT`) dengan urutan `ts_event DESC, id DESC`.
    Saat halaman penuh, hitungan jadi `N+ event` + petunjuk dan tombol **Muat lebih banyak** mengambil halaman
    berikutnya (`offset`, digabung dengan dedupe `id` — event baru yang menggeser halaman tidak menduplikasi
-   baris). Daftar dibatasi **1000 baris** (`MAX_EVENTS`): setelah itu tombol diganti petunjuk batas dan filter
-   perlu dipersempit. Refetch klip tertunda (poll 5 dtk) menggabung halaman pertama tanpa membuang halaman
-   yang sudah dimuat; ganti filter mengganti daftar dan mereset halaman.
+   baris); halaman berikutnya membawa filter **dan `q`** yang sama. Daftar dibatasi **1000 baris** (`MAX_EVENTS`):
+   setelah itu tombol diganti petunjuk batas dan filter perlu dipersempit. Refetch klip tertunda (poll 5 dtk)
+   menggabung halaman pertama tanpa membuang halaman yang sudah dimuat; ganti filter mengganti daftar dan
+   mereset halaman. Event live (WebSocket/poll) hanya masuk bila lolos filter **dan** teks pencarian.
 4. Detail kanan — **event kamera**: tab clip (`#t=` melompat ke detik kejadian), snapshot, crop wajah,
    metadata, status alert Telegram (`queued/sent/failed/rate_limited/not_configured`, realtime).
 5. Detail kanan — **event system** (node offline/pulih, health alert): panel **Bukti** menggantikan tab media.
