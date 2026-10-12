@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from sqlalchemy import Text, cast, or_
 from app.core.db import get_db
 from app.api.deps import COOKIE, get_current_user, session_user
 from app.core.security import decode_token
 from app.core.config import settings
+from app.models.camera import Camera
 from app.models.event import Event
 from app.models.node import Node
 from app.schemas.event import EventIn, EventOut, EventStatsOut
@@ -94,6 +96,7 @@ def list_events(
     camera_id: int | None = Query(None, le=2**31 - 1),  # int4 di Postgres: di atas ini query melempar → 422, bukan 500
     type: list[str] | None = Query(None),  # boleh berulang: ?type=a&type=b
     severity: list[str] | None = Query(None),  # boleh berulang: ?severity=a&severity=b
+    search: str | None = Query(None, alias="q", max_length=100),  # alias q: ILIKE atas tipe, ID, severity, nama kamera, payload
     since: datetime | None = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0, le=10_000),
@@ -105,6 +108,17 @@ def list_events(
     if type: q = q.filter(Event.type.in_(type))
     if severity: q = q.filter(Event.severity.in_(severity))
     if since: q = q.filter(Event.ts_event >= since)
+    if search and search.strip():
+        # ponytail: pemindaian penuh pada rentang terfilter; indeks trigram menyusul bila tabel > 100 ribu baris
+        term = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pat = f"%{term}%"
+        q = q.outerjoin(Camera, Camera.id == Event.camera_id).filter(or_(
+            Event.type.ilike(pat, escape="\\"),
+            Event.event_id.ilike(pat, escape="\\"),
+            Event.severity.ilike(pat, escape="\\"),
+            Camera.name.ilike(pat, escape="\\"),
+            cast(Event.payload, Text).ilike(pat, escape="\\"),
+        ))
     # id DESC = pemutus seri: ts_event sama tetap urut pasti antar-halaman (paginasi offset)
     return q.order_by(Event.ts_event.desc(), Event.id.desc()).offset(offset).limit(limit).all()
 
