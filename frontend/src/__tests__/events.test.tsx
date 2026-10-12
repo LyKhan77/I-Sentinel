@@ -1320,7 +1320,7 @@ test('invalid URL values fall back to defaults without a crash', async () => {
   expect(screen.queryByTestId('filter-reset')).not.toBeInTheDocument()
 })
 
-test('search box writes q to the URL and filters client-side without a new request', async () => {
+test('search box writes q to the URL instantly, narrows client-side and refetches once after the debounce', async () => {
   const fetchMock = stubFetch()
   vi.stubGlobal('fetch', fetchMock)
   renderWithProbe()
@@ -1329,10 +1329,94 @@ test('search box writes q to the URL and filters client-side without a new reque
   const before = listCalls(fetchMock).length
   await userEvent.type(screen.getByLabelText('Cari'), 'CAM-02')
 
+  // penyempitan instan atas event yang sudah termuat + URL ditulis tanpa jeda
   await waitFor(() => expect(screen.queryByTestId('event-item-1')).not.toBeInTheDocument())
   expect(screen.getByTestId('event-item-2')).toBeInTheDocument()
   expect(screen.getByTestId('loc')).toHaveTextContent('/events?q=CAM-02')
-  expect(listCalls(fetchMock).length).toBe(before) // pencarian tetap klien
+
+  // satu permintaan server ber-q setelah jeda 300 ms
+  await waitFor(() => {
+    expect(listCalls(fetchMock).length).toBe(before + 1)
+    expect(listCalls(fetchMock).at(-1)).toContain('q=CAM-02')
+  }, { timeout: 2000 })
+  expect(listCalls(fetchMock).length).toBe(before + 1) // satu per kata, bukan per huruf
+})
+
+test('typing a word sends a single debounced request', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const before = listCalls(fetchMock).length
+  await userEvent.type(screen.getByLabelText('Cari'), 'Budi')
+
+  expect(listCalls(fetchMock).length).toBe(before) // mengetik tidak membanjiri server
+  await waitFor(() => expect(listCalls(fetchMock).length).toBe(before + 1), { timeout: 2000 })
+  expect(new URLSearchParams(listCalls(fetchMock).at(-1)!.split('?')[1]).get('q')).toBe('Budi')
+})
+
+test('clearing the search restores requests without q', async () => {
+  const fetchMock = stubFetch()
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-1')
+
+  const box = screen.getByLabelText('Cari')
+  await userEvent.type(box, 'CAM-02')
+  await waitFor(() => expect(listCalls(fetchMock).at(-1)).toContain('q=CAM-02'), { timeout: 2000 })
+
+  const before = listCalls(fetchMock).length
+  await userEvent.clear(box)
+  await waitFor(() => {
+    expect(listCalls(fetchMock).length).toBeGreaterThan(before)
+    expect(listCalls(fetchMock).at(-1)).not.toContain('q=')
+  }, { timeout: 2000 })
+  expect(screen.getByTestId('event-item-1')).toBeInTheDocument()
+})
+
+test('live event that does not match the search text is not prepended', async () => {
+  vi.useFakeTimers()
+  let current = EVENTS
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/events?')) return { ok: true, status: 200, json: () => Promise.resolve(current) }
+    if (u.endsWith('/cameras')) {
+      return { ok: true, status: 200, json: () => Promise.resolve([{ id: 1, name: 'CAM-01' }, { id: 2, name: 'CAM-02' }]) }
+    }
+    return { ok: false, status: 404, json: () => Promise.resolve(null) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+  fireEvent.change(screen.getByLabelText('Cari'), { target: { value: 'CAM-02' } })
+  await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+  expect(listCalls(fetchMock).at(-1)).toContain('q=CAM-02')
+
+  // tick poll 5s: event kamera lain tak memuat teks itu → tidak masuk daftar
+  current = [...EVENTS, { ...EVENTS[0], id: 9, event_id: 'ev-9', camera_id: 1 }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.queryByTestId('event-item-9')).not.toBeInTheDocument()
+
+  // event yang cocok tetap masuk (bukti saringan hidup, bukan daftar beku)
+  current = [...current, { ...EVENTS[1], id: 10, event_id: 'ev-10', camera_id: 2 }]
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.getByTestId('event-item-10')).toBeInTheDocument()
+
+  vi.useRealTimers()
+})
+
+test('system event yang hanya cocok lewat teks payload tidak hilang oleh saringan klien', async () => {
+  const fetchMock = stubSystemFetch([SYS_NODE])
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await screen.findByTestId('event-item-8')
+
+  await userEvent.type(screen.getByLabelText('Cari'), 'timeout')
+  await waitFor(() => expect(listCalls(fetchMock).at(-1)).toContain('q=timeout'), { timeout: 2000 })
+  // judul/lokasi terjemahan event system tak memuat "timeout" — hanya payload
+  expect(screen.getByTestId('event-item-8')).toBeInTheDocument()
 })
 
 // --- Muat lebih banyak (Task 3) --------------------------------------------
@@ -1380,6 +1464,23 @@ test('load more appends the next page and requests offset = loaded count', async
   expect(screen.getByTestId('event-item-205')).toBeInTheDocument()
   // halaman terakhir tidak penuh → tombol hilang
   expect(screen.queryByTestId('events-load-more')).not.toBeInTheDocument()
+})
+
+test('load more keeps the debounced q with the offset', async () => {
+  const fetchMock = stubPagedFetch(genEvents(205))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+
+  await screen.findByTestId('events-load-more')
+  await userEvent.type(screen.getByLabelText('Cari'), 'intrusion')
+  await waitFor(() => expect(listCalls(fetchMock).at(-1)).toContain('q=intrusion'), { timeout: 2000 })
+
+  await userEvent.click(screen.getByTestId('events-load-more'))
+  await waitFor(() => {
+    const last = listCalls(fetchMock).at(-1)!
+    expect(last).toContain('q=intrusion')
+    expect(last).toContain('offset=200')
+  }, { timeout: 2000 })
 })
 
 test('load more does not duplicate rows that a live event shifted', async () => {

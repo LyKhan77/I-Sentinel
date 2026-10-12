@@ -22,7 +22,7 @@ export type EventStats = {
   critical_by_hour: number[]
 }
 
-export type EventListParams = { camera_id?: number; type?: string; types?: string[]; severities?: string[]; since?: string; limit?: number; offset?: number }
+export type EventListParams = { camera_id?: number; type?: string; types?: string[]; severities?: string[]; since?: string; q?: string; limit?: number; offset?: number }
 
 export async function listEvents(params: EventListParams = {}): Promise<EventOut[]> {
   const qs = new URLSearchParams()
@@ -31,6 +31,7 @@ export async function listEvents(params: EventListParams = {}): Promise<EventOut
   for (const t of params.types ?? []) qs.append('type', t) // backend: ?type=a&type=b = salah satu
   for (const s of params.severities ?? []) qs.append('severity', s) // backend: ?severity=a&severity=b = salah satu
   if (params.since) qs.set('since', params.since)
+  if (params.q?.trim()) qs.set('q', params.q.trim()) // kosong/spasi = tanpa pencarian server
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.offset) qs.set('offset', String(params.offset)) // hanya bila > 0: perilaku lama identik
   const res = await apiFetch(`/events${qs.toString() ? `?${qs}` : ''}`)
