@@ -10,7 +10,10 @@ export type Delivery = 'all' | 'inbox' | 'test'
 export function effectiveDelivery(b: Behavior | null | undefined, zoneTelegram: boolean, nowMs: number): Delivery {
   if (!b) return zoneTelegram ? 'all' : 'inbox'
   if (b.delivery === 'test') {
-    const until = Date.parse(b.test_until ?? '')
+    // belum ada `test_until`: pilihan yang baru dipilih dan belum disimpan (server yang menstempelnya saat
+    // Simpan) — tampil sebagai `test`, kalau tidak radio mental kembali dan Mode uji tampak tak bisa diklik
+    if (b.test_until == null) return 'test'
+    const until = Date.parse(b.test_until)
     if (!Number.isNaN(until) && nowMs < until) return 'test'
     return b.revert_to === 'inbox' ? 'inbox' : 'all'
   }

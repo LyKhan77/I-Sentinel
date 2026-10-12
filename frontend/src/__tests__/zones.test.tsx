@@ -436,7 +436,9 @@ test('zoneDelivery murni: turunan, kedaluwarsa, dan revert_to', async () => {
   const past = { ...future, test_until: new Date(now - 1000).toISOString() }
   expect(effectiveDelivery(past, true, now)).toBe('inbox')
   expect(testUntil(past, now)).toBeNull()
-  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('all')
+  // test tanpa test_until = pilihan yang belum disimpan (server menstempel saat Simpan): tampil `test`
+  // (sebelumnya 'all' membuat radio mental kembali dan Mode uji tampak tak bisa diklik)
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('test')
 })
 
 test('zona absensi memakai radio tujuan event yang sama; toggle Telegram lama hilang', async () => {
@@ -683,4 +685,28 @@ test('konfirmasi Mode uji absensi zona critical memakai kalimat absensi, bukan a
   const dialog = await screen.findByTestId('zone-test-confirm')
   expect(dialog).toHaveTextContent('tidak tercatat')
   expect(dialog).not.toHaveTextContent('Alert keamanan')
+})
+
+test('Mode uji yang baru dipilih (belum disimpan) tampak terpilih pada behavior alert', async () => {
+  await selectZone([zoneFix({ severity: 'warning', behaviors: [{ kind: 'intrusion', trigger_seconds: 0 }] })])
+  fireEvent.click(document.getElementById('zone-delivery-intrusion-test')!)
+  // server baru menstempel test_until saat Simpan: sebelum itu radio tidak boleh mental kembali
+  await waitFor(() => expect(document.getElementById('zone-delivery-intrusion-test')).toBeChecked())
+  expect(document.getElementById('zone-delivery-intrusion-all')).not.toBeChecked()
+})
+
+test('Mode uji yang baru dipilih (belum disimpan) tampak terpilih pada absensi dan bantuannya menyebut rekap', async () => {
+  await selectZone([attendanceZone()])
+  fireEvent.click(document.getElementById('zone-delivery-attendance-test')!)
+  await waitFor(() => expect(document.getElementById('zone-delivery-attendance-test')).toBeChecked())
+  expect(screen.getByText(/rekap absensi/)).toBeInTheDocument()
+})
+
+test('zoneDelivery: test tanpa test_until = pilihan belum disimpan (tampil test); test_until lampau tetap kembali ke revert_to', async () => {
+  const now = Date.now()
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('test')
+  const past = new Date(now - 3600_000).toISOString()
+  expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test', test_until: past, revert_to: 'inbox' }, true, now)).toBe('inbox')
+  // badge UJI hanya untuk uji yang sudah distempel server
+  expect(testUntil({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, now)).toBeNull()
 })
