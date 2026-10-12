@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Radio tujuan event untuk absensi — perbaikan review (2026-10-12)
+
+- **Konteks:** review sesi perencanaan atas `b45d8c3` (suite diulang berurutan; diff produksi dibaca; tidak ada konsumen `vision.node._wall_of` yang tersisa) menemukan dua hal. (1) **Teks Mode uji absensi menyesatkan:** bantuan radio dan dialog konfirmasi untuk zona `critical` memakai kalimat behavior alert ("tidak ada event, klip, atau Telegram", "Alert keamanan zona ini berhenti"), padahal pada absensi Mode uji berarti **karyawan yang lewat tidak tercatat** (tanpa event dan rekap). Pengaman "jangan sampai terlupa" bergantung pada pengguna memahami akibatnya. (2) `FaceGateWorker._emit` pada Mode uji tidak mengosongkan `st.best`, sehingga satu frame penuh (±11 MB pada 2K) tertahan per track yang ditekan sampai track hilang.
+- **Perubahan:** kunci i18n baru `zones.delivery.testHintAttendance` dan `zones.testConfirmBodyAttendance` (id/en): bantuan Mode uji absensi menyebut "tidak ada event, rekap absensi, atau Telegram ... karyawan yang lewat tidak tercatat" dan dialog menyebut "Absensi zona ini tidak tercatat selama uji"; `DeliveryRadio` memilih bantuan absensi untuk *Inbox + Telegram* dan *Mode uji*; `st.best = None` pada cabang Mode uji di `_emit`.
+- **Bukti:** RED benar pada kode lama: `Unable to find an element with the text: /rekap absensi/`, dialog tanpa "tidak tercatat", dan `assert w._states and all(st.best is None …)` gagal (track `done=True` masih memegang frame); lulus sesudah perbaikan. Suite berurutan di commit terakhir: backend `1033 passed / 1 deselected / 613 warnings`, vision `370 passed / 3 deselected` (sebelumnya 369), docker `77 passed`, frontend `38 berkas / 539 passed` (537), build exit 0, lint 24 warning / 16 pasangan identik baseline. (Satu run review awal tercemar karena berkas diedit saat suite berjalan; hasil resmi memakai run ulang di commit akhir.)
+- **Dampak:** hanya teks UI dan penahanan memori pada Mode uji absensi; tanpa perubahan perilaku produk lain. Tanpa migrasi.
+- **Rollback:** `git revert` kedua commit perbaikan.
+
 ### Radio tujuan event dan Mode uji untuk absensi (2026-10-12)
 
 - **Konteks:** keputusan user 2026-10-12 (setelah mencoba radio tujuan event untuk behavior alert):
