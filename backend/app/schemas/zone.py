@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.services.zone_delivery import ALERT_KINDS, DELIVERIES
+from app.services.zone_delivery import DELIVERIES, DELIVERY_KINDS
 
 VALID_TYPES = {"free", "restricted", "absensi", "behavior", "attendance"}
 VALID_BEHAVIOR_KINDS = {"intrusion", "loitering", "running", "attendance", "idle_zone", "crowd"}
@@ -40,13 +40,14 @@ def _validate_behaviors(v: list | None) -> list | None:
         reminder = b.get("reminder_minutes")
         if reminder is not None and (not isinstance(reminder, int) or isinstance(reminder, bool) or reminder < 0):
             raise ValueError("reminder_minutes must be an int >= 0")
-        # Tujuan event per behavior (Plan B): `delivery` hanya untuk kind alert; kunci uji
-        # (`test_until`/`revert_to`) hanya bermakna saat `delivery == "test"` — sisanya dibuang
-        # supaya menyimpan "Inbox + Telegram"/"Hanya Inbox" tidak menyisakan uji menggantung.
+        # Tujuan event per behavior (Plan B): `delivery` untuk semua kind deteksi (termasuk
+        # absensi, keputusan 2026-10-12); kunci uji (`test_until`/`revert_to`) hanya bermakna
+        # saat `delivery == "test"` — sisanya dibuang supaya menyimpan "Inbox + Telegram"/
+        # "Hanya Inbox" tidak menyisakan uji menggantung.
         delivery = b.get("delivery")
         if delivery is not None:
-            if b.get("kind") not in ALERT_KINDS:
-                raise ValueError("delivery is only valid for alert behaviors")
+            if b.get("kind") not in DELIVERY_KINDS:
+                raise ValueError(f"delivery is only valid for {sorted(DELIVERY_KINDS)} behaviors")
             if delivery not in DELIVERIES:
                 raise ValueError(f"delivery must be one of {sorted(DELIVERIES)}")
         if "test_until" in b and not isinstance(b["test_until"], str):

@@ -457,12 +457,34 @@ def test_zone_delivery_validation(client):
     # test_until bukan string ISO
     assert _zone_with(client, h, cam, [
         {"kind": "intrusion", "delivery": "test", "test_until": 12345}]).status_code == 422
-    # absensi punya record/telegram_unknown sendiri — delivery ditolak
+    # absensi memakai radio yang sama (keputusan 2026-10-12) — delivery diterima apa adanya
     r = client.post("/api/v1/zones", json={
         **VALID, "camera_id": cam["id"], "type": "attendance", "direction": "entry",
         "behaviors": [{"kind": "attendance", "delivery": "inbox"}],
     }, headers=h)
-    assert r.status_code == 422
+    assert r.status_code == 200 and r.json()["behaviors"] == [{"kind": "attendance", "delivery": "inbox"}]
+
+
+def test_attendance_zone_test_mode_is_stamped(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    r = client.post("/api/v1/zones", json={
+        **VALID, "camera_id": cam["id"], "type": "attendance", "direction": "entry",
+        "behaviors": [{"kind": "attendance", "trigger_seconds": 0, "delivery": "test"}],
+    }, headers=h)
+    assert r.status_code == 200
+    zone = r.json()
+    b = zone["behaviors"][0]
+    assert b["delivery"] == "test" and b["revert_to"] == "all"
+    until = datetime.fromisoformat(b["test_until"])
+    assert until.tzinfo is not None  # UTC beraksi zona
+    left = until - datetime.now(timezone.utc)
+    assert timedelta(hours=23, minutes=55) < left <= timedelta(hours=24)
+
+    # pindah ke inbox membuang kunci uji
+    r = client.patch(f"/api/v1/zones/{zone['id']}",
+                     json={"behaviors": [{"kind": "attendance", "delivery": "inbox"}]}, headers=h)
+    assert r.json()["behaviors"] == [{"kind": "attendance", "delivery": "inbox"}]
 
 
 def test_zone_test_mode_is_stamped_and_not_extended(client):

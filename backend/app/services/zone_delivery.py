@@ -5,8 +5,8 @@ Tanpa migrasi: kunci hidup di JSON `zone.behaviors[]`. Semua fungsi di sini murn
 bersama oleh router zona (`app/api/zones.py`) dan gerbang Telegram (`alerting`).
 
 Nilai:
-- `delivery` ∈ {`all`, `inbox`, `test`} — hanya untuk kind alert (absensi punya `record`/
-  `telegram_unknown` sendiri).
+- `delivery` ∈ {`all`, `inbox`, `test`} — untuk semua kind deteksi (lima behavior alert dan
+  `attendance`); absensi tetap punya `record`/`telegram_unknown` sendiri.
 - `test_until` (ISO-8601 UTC) dan `revert_to` ∈ {`all`, `inbox`} hanya ada saat `delivery == "test"`.
 - Tanpa `delivery`: diturunkan dari `telegram` item, atau flag zona bila item tanpa key
   (zona pra-R5 `behaviors is None` memakai flag zona).
@@ -14,7 +14,7 @@ Nilai:
 from datetime import datetime, timedelta, timezone
 
 TEST_HOURS = 24
-ALERT_KINDS = ("intrusion", "loitering", "running", "idle_zone", "crowd")
+DELIVERY_KINDS = ("intrusion", "loitering", "running", "idle_zone", "crowd", "attendance")
 DELIVERIES = ("all", "inbox", "test")
 
 

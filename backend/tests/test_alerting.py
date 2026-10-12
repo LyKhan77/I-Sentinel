@@ -309,3 +309,45 @@ def test_legacy_behavior_without_delivery_keeps_old_rules(db, queued):
     assert alerting.should_alert(db, _event(db, cam2, zone2), now=NOW) == (False, "telegram_off")
     cam3, zone3 = _zone(db, [{"kind": "intrusion", "trigger_seconds": 0}], telegram=True)
     assert alerting.should_alert(db, _event(db, cam3, zone3), now=NOW) == (True, "")
+
+
+# --- `delivery` pada behavior absensi ---------------------------------------
+
+def _attendance(db, behavior, telegram=False):
+    return _zone(db, [{"kind": "attendance", "trigger_seconds": 0, **behavior}],
+                 telegram=telegram, type="attendance", direction="entry")
+
+
+def _matched(db, cam, zone):
+    return _event(db, cam, zone, type="attendance", severity="info",
+                  payload={"match_reason": "matched", "employee_id": 1})
+
+
+def test_attendance_delivery_inbox_and_test_suppress_telegram(db, queued):
+    cam, zone = _attendance(db, {"delivery": "inbox"}, telegram=True)
+    assert alerting.should_alert(db, _matched(db, cam, zone), now=NOW) == (False, "telegram_off")
+    until = (NOW + timedelta(hours=2)).isoformat()
+    cam2, zone2 = _attendance(db, {"delivery": "test", "test_until": until, "revert_to": "all"})
+    assert alerting.should_alert(db, _matched(db, cam2, zone2), now=NOW) == (False, "telegram_off")
+
+
+def test_attendance_expired_test_follows_revert_to(db, queued):
+    past = (NOW - timedelta(minutes=1)).isoformat()
+    cam, zone = _attendance(db, {"delivery": "test", "test_until": past, "revert_to": "all"})
+    assert alerting.should_alert(db, _matched(db, cam, zone), now=NOW) == (True, "")
+    cam2, zone2 = _attendance(db, {"delivery": "test", "test_until": past, "revert_to": "inbox"})
+    assert alerting.should_alert(db, _matched(db, cam2, zone2), now=NOW) == (False, "telegram_off")
+
+
+def test_attendance_all_with_unknown_off_skips_unknown_but_sends_matched(db, queued):
+    cam, zone = _attendance(db, {"delivery": "all", "telegram_unknown": False})
+    unknown = _event(db, cam, zone, type="attendance", severity="info", payload={"match_reason": "no_match"})
+    assert alerting.should_alert(db, unknown, now=NOW) == (False, "attendance_skipped")
+    assert alerting.should_alert(db, _matched(db, cam, zone), now=NOW) == (True, "")
+
+
+def test_attendance_without_delivery_keeps_old_rules(db, queued):
+    cam, zone = _attendance(db, {}, telegram=True)
+    assert alerting.should_alert(db, _matched(db, cam, zone), now=NOW) == (True, "")
+    cam2, zone2 = _attendance(db, {}, telegram=False)
+    assert alerting.should_alert(db, _matched(db, cam2, zone2), now=NOW) == (False, "telegram_off")
