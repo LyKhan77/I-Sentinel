@@ -2,9 +2,9 @@
 
 **Untuk siapa:** admin · **Di mana:** Konfigurasi → Zona Deteksi (`/configuration?tab=zones`)
 
-Mode uji membuat satu behavior alert zona **berhenti menghasilkan bukti** selama 24 jam: tidak ada
-event, tidak ada klip/snapshot, dan tidak ada alert Telegram. Zona tetap dievaluasi di node, dan track
-yang akan memicu diberi label `UJI · <tipe>` di overlay Live View (hanya bila Debug aktif).
+Mode uji membuat satu behavior zona (alert **atau absensi**) **berhenti menghasilkan bukti** selama 24 jam:
+tidak ada event, tidak ada klip/snapshot, dan tidak ada alert Telegram. Zona tetap dievaluasi di node, dan
+track yang akan memicu diberi label `UJI · <tipe>` di overlay Live View (hanya bila Debug aktif).
 
 ## Kapan dipakai
 
@@ -28,10 +28,16 @@ yang akan memicu diberi label `UJI · <tipe>` di overlay Live View (hanya bila D
 
 - **Tidak ada bukti selama uji.** Event yang tidak dibuat tidak bisa ditinjau kemudian — kalau kejadian
   di area itu perlu bukti, jangan pakai Mode uji.
-- Uji hanya untuk behavior **alert** (intrusion, loitering, running, idle zone, crowd). Absensi tidak
-  diubah oleh fitur ini (tetap punya toggle Telegram/Record sendiri).
+- Uji berlaku untuk semua behavior: alert (intrusion, loitering, running, idle zone, crowd) **dan
+  absensi**. Pada zona attendance, Mode uji juga menekan unggahan crop/snapshot wajah dan **baris
+  absensi** — tidak ada rekap yang terbentuk, dan box wajah track pemicu berlabel `UJI · Absensi`.
+  Nama karyawan tidak muncul selama uji karena pencocokan terjadi di API (tanpa event).
+  Butuh melihat hasil pencocokan tanpa menambah rekap? Matikan **Catat absensi** (event "terdeteksi"
+  tetap terbit di Inbox) — itu bukan Mode uji.
 - **Node lama** (belum di-deploy dengan dukungan `delivery`) tetap mengirim event; API menolak
   mengirim Telegram selama `test_until` berlaku, jadi Inbox bisa tetap terisi tetapi grup aman.
+  Khusus absensi, node lama juga masih membuat **baris absensi** selama uji (penekanan hanya di node
+  baru); deploy `api`, `vision`, dan `web` bersamaan.
 - **Selisih jam** node dan API menggeser akhir uji. Keduanya berjalan di server yang sama (Jetson
   memakai NTP); selisih detik tidak berarti untuk jendela 24 jam.
 - **Perilaku saat kembali** mengikuti `revert_to`, bukan selalu "Inbox + Telegram" — zona yang sengaja

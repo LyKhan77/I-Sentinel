@@ -3,6 +3,54 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Radio tujuan event dan Mode uji untuk absensi (2026-10-12)
+
+- **Konteks:** keputusan user 2026-10-12 (setelah mencoba radio tujuan event untuk behavior alert):
+  semua tipe deteksi harus seragam, jadi behavior `attendance` ikut radio tiga pilihan **termasuk Mode
+  uji** dan toggle Telegram absensi diganti radio. Spec
+  `docs/superpowers/specs/2026-10-12-attendance-delivery-design.md`, plan
+  `docs/superpowers/plans/2026-10-12-attendance-delivery.md` (Task 1–4). Sesi ini executor native
+  (implementasi + smoke test; review, push, dan deploy di luar sesi).
+- **Perubahan:** (1) Backend — `ALERT_KINDS` → `DELIVERY_KINDS` (`zone_delivery.py`, `schemas/zone.py`):
+  `delivery`/`test_until`/`revert_to` kini sah untuk `attendance` dengan aturan stempel 24 jam dan
+  pembuangan kunci uji yang sama; `_telegram_on` sudah generik per kind, jadi Telegram absensi mengikuti
+  tujuan efektif tanpa kode baru (`telegram_unknown` dan alasan `attendance_skipped` tidak berubah).
+  (2) Vision — modul murni baru `vision/vision/delivery.py` (`wall_of`, `delivery_mode`,
+  `delivery_cfg_for`, `zone_attendance_cfg`, `FLASH_S`; `node.py` mengimpornya dan tetap mengekspor
+  `delivery_mode` sehingga tes lama lulus tanpa diubah); `FaceGateWorker._emit` memeriksa Mode uji di
+  awal (satu titik untuk jalur `legacy`, `_emit_due`, dan `_expire`): track ditandai `done`, box wajahnya
+  diberi flash `test:attendance` ±6 dtk, dan tidak ada `publish_event`, unggahan crop/snapshot, atau
+  baris absensi; `_expire` mengecualikan track `done` tanpa vektor dari hitungan `tracks_silent`.
+  (3) Frontend — komponen `DeliveryRadio.tsx` dipakai bersama blok behavior alert dan blok absensi
+  (toggle `zone-telegram-attendance` dihapus), konfirmasi `critical` memakai alur `pendingTest` yang ada,
+  badge UJI mencakup behavior absensi, `zone-telegram-unknown` hanya saat efektif *Inbox + Telegram*,
+  teks bantu khusus absensi (`zones.delivery.allHintAttendance`), dan `LiveWall.boxLabel` menerjemahkan
+  `test:<tipe>` untuk semua kind box **sebelum** nama karyawan/kode gerbang sehingga box wajah berlabel
+  `UJI · Absensi` tidak tertimpa nama. (4) Dokumen: `WORKFLOW.md` §6/§12, `ARCHITECTURE.md`, `README.md`,
+  runbook `docs/runbooks/zone-test-mode.md`, `ROADMAP.md`.
+- **Bukti:** RED benar per task — T1 `test_zone_delivery_validation` + `test_attendance_zone_test_mode_is_stamped`
+  gagal `assert (422 == 200)`; T2 3 tes `face_worker` gagal (event terbit, `assert '0.90' == 'test:attendance'`)
+  dan 3 tes node `ModuleNotFoundError: No module named 'vision.delivery'`; T3 7 tes gagal (radio absensi
+  tidak ada, badge UJI absensi, Unknown bersyarat, label box wajah). Empat mutasi wajib terbukti merah lalu
+  dikembalikan identik: `_emit` mengabaikan Mode uji (RED T2), `delivery_mode` mengabaikan `test_until`
+  (3 tes merah), `_telegram_on` mengabaikan `delivery` untuk absensi (3 tes merah), `zone-telegram-unknown`
+  tampil juga saat efektif `inbox` (5 tes merah). Suite berurutan di commit terakhir: backend
+  `1033 passed / 1 deselected / 613 warnings` (baseline 1026), vision `369 passed / 3 deselected`
+  (baseline 360; +9), docker `77 passed`, frontend `38 berkas / 537 passed` (baseline 38/529; +8),
+  build exit 0, lint 24 warning / 16 pasangan file-rule identik baseline. Satu kegagalan sementara
+  `liveview.test.tsx > tile di luar layar tidak streaming…` (`IntersectionObserver is not defined`, tes
+  lama yang tidak diubah) muncul di run berurutan dan hilang pada run ulang tanpa beban. Verifikasi visual
+  390/1280 px (dev server Vite + API distub): `scrollWidth == innerWidth`, radio tiga pilihan pada zona
+  absensi, teks bantu absensi saat *Inbox + Telegram*, dialog konfirmasi pada zona `critical` — screenshot
+  `docs/evidence/attendance-delivery-*.png`. Tanpa migrasi.
+- **Dampak:** admin bisa menguji zona absensi 24 jam tanpa event, unggahan wajah, atau baris rekap; setelah
+  `test_until` lewat, event terbit normal tanpa restart dan Telegram kembali mengikuti `revert_to`. Zona
+  absensi lama (tanpa `delivery`) berperilaku identik. **BELUM di-deploy/diuji** di server — penekanan event
+  hanya berlaku setelah node `vision` baru terpasang, dan node lama masih membuat baris absensi selama uji
+  (API hanya menolak Telegram); uji lapangan menunggu user.
+- **Rollback:** pilih *Inbox + Telegram*/*Hanya Inbox* lalu Simpan (kunci uji dibuang otomatis), atau
+  `git revert` commit siklus ini (tanpa migrasi; kunci JSON tak dikenal diabaikan kode lama).
+
 ### Hasil uji user dan keputusan: UX Events, absensi unified, radio absensi (2026-10-12)
 
 - **Konteks:** `feat/events-ux` @ `5bc3f09` (memuat branch absensi) ter-deploy di `gspe-ai3`; user mencoba UI dan lintasan nyata.

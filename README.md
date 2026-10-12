@@ -6,7 +6,7 @@ lokal: deteksi orang berbasis zona untuk keamanan, dan pengenalan wajah untuk ab
 | | |
 |---|---|
 | **Keamanan** | Zona poligon per kamera: intrusi, loitering, berlari, zona kosong, kerumunan. Snapshot + klip, Inbox Events, alert Telegram dengan **tujuan per behavior** (Inbox + Telegram / Hanya Inbox / **Mode uji** 24 jam). |
-| **Absensi** | Enrollment wajah (3 foto), gerbang wajah di kamera pintu, shift, rekap harian, ekspor/impor CSV. |
+| **Absensi** | Enrollment wajah (3 foto), gerbang wajah di kamera pintu, shift, rekap harian, ekspor/impor CSV; zona absensi memakai **tujuan event per behavior** yang sama (Inbox + Telegram / Hanya Inbox / **Mode uji** 24 jam tanpa event, media, atau rekap). |
 | **Operasional** | Live View + Mode TV, Dashboard, Monitoring dengan alert kesehatan, retensi storage, user admin/viewer. |
 
 Status: pra-rilis `0.x`. Berjalan di Docker Compose (server dev `gspe-ai3` sejak 2026-10-02).
@@ -454,11 +454,13 @@ tanpa migrasi DB.
    → pilih grup dari daftar → **Simpan** → **Kirim pesan uji**. Chip status menjadi
    *Siap* dan pesan uji masuk ke grup.
 4. **Zona Deteksi**: pilih **Tujuan event** per behavior (intrusi/loitering/berlari/
-   Idle Zone/Crowd) — *Inbox + Telegram*, *Hanya Inbox*, atau *Mode uji* — pada zona yang boleh
-   mengirim alert; absensi tetap memakai toggle Telegram/Record sendiri. Zona lama tanpa
+   Idle Zone/Crowd **dan absensi**) — *Inbox + Telegram*, *Hanya Inbox*, atau *Mode uji* — pada zona yang boleh
+   mengirim alert. Zona lama tanpa
    `delivery` dibaca dari toggle Telegram-nya. *Mode uji* (24 jam, konfirmasi pada zona `critical`,
    badge **UJI** di daftar zona) menekan event, klip, dan Telegram, menampilkan label
-   `UJI · <tipe>` di Live View, lalu kembali ke tujuan semula otomatis. Tanpa tujuan aktif,
+   `UJI · <tipe>` di Live View, lalu kembali ke tujuan semula otomatis. Pada zona attendance, Mode uji
+   juga menekan unggahan wajah dan baris absensi (label `UJI · Absensi`); `Catat absensi` dan
+   `Kirim wajah tidak dikenal` tetap. Tanpa tujuan aktif,
    event tetap tercatat tapi tidak dikirim.
 
 Yang perlu diketahui:
