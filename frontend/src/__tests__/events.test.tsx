@@ -1667,3 +1667,22 @@ test('an interval merge refresh during load-more does not discard the loaded pag
   await waitFor(() => expect(screen.getByTestId('event-count')).toHaveTextContent('205 event'))
   expect(screen.getByTestId('event-item-205')).toBeInTheDocument()
 }, 15000)
+
+test('detail event attendance tidak dikenal menampilkan skor tertinggi bila tersedia', async () => {
+  const att: EventOut[] = [{ id: 7, event_id: 'ev-7', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'no_match', employee_id: null, face_top_score: 0.381, crop_path: 'crops/x.jpg' },
+    clip_path: null, snapshot_path: null }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  expect(await screen.findByTestId('event-face-match')).toHaveTextContent('Tidak dikenal · skor tertinggi 0.38')
+})
+
+test('detail event attendance tidak dikenal tanpa skor tertinggi tetap hanya "Tidak dikenal"', async () => {
+  const att: EventOut[] = [{ id: 8, event_id: 'ev-8', type: 'attendance', camera_id: 1, zone_id: 9, severity: 'info',
+    ts_event: '2026-09-23T02:00:00Z', payload: { match_reason: 'no_match', employee_id: null, crop_path: 'crops/x.jpg' },
+    clip_path: null, snapshot_path: null }]
+  vi.stubGlobal('fetch', stubFetch(att))
+  renderPage()
+  const row = await screen.findByTestId('event-face-match')
+  expect(row).toHaveTextContent(/^Tidak dikenal$/)
+})

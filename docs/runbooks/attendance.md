@@ -260,6 +260,24 @@ Pada tahap 1 (`legacy`) absensi hanya memutuskan `matched`/`no_match` (plus `coo
 pada pencatatan); `ambiguous` baru muncul setelah tahap 2 (mode `unified`) dijalankan. Ambang dan galeri
 diuji ulang bila jumlah karyawan terdaftar berlipat.
 
+**Skor teratas pada event tidak dikenali (jalur `unified`):** event `no_match` dan `ambiguous` menyimpan
+`payload.face_top_score` (skor tertinggi ke galeri walau di bawah ambang; `face_score` tetap khusus yang
+dikenali) dan Inbox menampilkannya sebagai "Tidak dikenal · skor tertinggi 0,38". Dipakai untuk membedakan
+**near-miss** (mis. 0,35–0,39: wajah karyawan yang buram/miring) dari **jauh di bawah ambang** (mis. < 0,25:
+biasanya bukan karyawan atau wajah sangat buruk). Event `legacy` dan event lama tidak memilikinya.
+
+```sql
+-- sebaran skor teratas pada event tidak dikenali per kamera (event baru sesudah fitur ini)
+SELECT camera_id, count(*) AS n,
+       round(min((payload->>'face_top_score')::numeric),3) AS skor_min,
+       round((percentile_cont(0.5) WITHIN GROUP (ORDER BY (payload->>'face_top_score')::numeric))::numeric,3) AS skor_p50,
+       count(*) FILTER (WHERE (payload->>'face_top_score')::numeric >= 0.35) AS near_miss_035_040
+  FROM event
+ WHERE type='attendance' AND payload->>'face_top_score' IS NOT NULL
+   AND ts_event >= now() - interval '14 days'
+ GROUP BY 1 ORDER BY 1;
+```
+
 `fps` dan `motion_skip_pct` berada di objek `ai` yang sama. Motion gate tetap
 update setiap frame; wajah terlihat mempertahankan pemrosesan frame diam, dan
 gate kembali melewati frame saat wajah hilang. Wajah latar/poster/cermin dapat

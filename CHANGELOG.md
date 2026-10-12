@@ -3,6 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Skor teratas pada event absensi tidak dikenali (2026-10-12)
+
+- **Konteks:** user menelaah event nyata: karyawan yang sama dikenali saat masuk (Lorong Server: lebar 89 px, blur 146, skor 0,459) tetapi tidak saat keluar (Receptionist: lebar 106 px, **blur 61**, jendela penuh 2,01 dtk, 5 frame). Event `no_match` tidak menyimpan skor sehingga tidak terlihat seberapa dekat ke ambang 0,40. Data kamera (SELECT read-only, event `unified`, blur median): Lorong 1 292, Tangga 2 66, Lorong Server 74, Receptionist 2 68, **Receptionist 33**; tingkat dikenali mengikuti ketajaman (11%, 6%, 8%, 3%, 4%). `ffprobe` read-only stream utama: Lorong 1, Tangga 2, Lorong Server 2560×1440 @ 15 fps ±7,6–8,3 Mbps; **Receptionist dan Receptionist 2 hanya 1920×1080 ±3,5 Mbps** (bukan profil C). Siklus emisi adaptif dibatalkan (penyebabnya ketajaman, bukan pengiriman dini).
+- **Perubahan:** `handle_face_event` menyimpan `payload.face_top_score` (skor teratas, dibulatkan 3 desimal) pada hasil tidak cocok yang membawa skor (`no_match`/`ambiguous` jalur `match_strict`); `face_score` tetap hanya untuk yang dikenali; event `legacy` dan yang dikenali tidak berubah. Inbox menampilkan "Tidak dikenal · skor tertinggi 0,38" bila ada. Runbook memuat kueri sebaran near-miss. Tanpa migrasi.
+- **Bukti:** RED benar: `KeyError: 'face_top_score'` pada tes `no_match`/`ambiguous` dan tes UI gagal (label tanpa skor); tes pelindung `matched` tanpa kunci dan `legacy` tanpa kunci lulus. Suite penuh berurutan di commit terakhir: backend `1037 passed / 1 deselected / 613 warnings` (sebelumnya 1033), vision `370 passed / 3 deselected`, docker `77 passed`, frontend `38 berkas / 544 passed` (542), build exit 0, lint 24 warning / 16 pasangan identik baseline.
+- **Dampak:** hanya payload dan satu baris tampilan; berlaku untuk event baru. **Rollback:** `git revert`.
+
 ### Merge radio tujuan event absensi ke main (2026-10-12)
 
 - **Konteks:** `feat/attendance-delivery` (radio tujuan event dan Mode uji untuk absensi, perbaikan review, dan perbaikan radio yang mental kembali) ter-deploy di `gspe-ai3`; user mencoba UI dan memutuskan melanjutkan ke merge.

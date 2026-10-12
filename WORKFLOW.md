@@ -313,7 +313,9 @@ Pengirim lain: node offline/pulih (§14), disk hampir penuh (§13), alert keseha
    setelan belum ada). Event ber-`payload.policy = "unified"` memakai `match_strict` (ambang + margin
    0,15; tanpa gerbang `low_quality`), selain itu jalur lama `match_vector`; keputusan mengikuti payload
    event, bukan baris DB. Hasil `ambiguous` (dua karyawan mirip) diperlakukan seperti tidak dikenal:
-   tanpa baris absensi, snapshot "Unknown", tampil sebagai tidak dikenal di Inbox dan Live. Dengan
+   tanpa baris absensi, snapshot "Unknown", tampil sebagai tidak dikenal di Inbox dan Live. Event
+   tidak dikenal jalur `unified` menyimpan `payload.face_top_score` (skor tertinggi ke galeri) dan Inbox
+   menampilkannya sebagai "Tidak dikenal · skor tertinggi 0,38" untuk membedakan near-miss. Dengan
    **Catat absensi**
    aktif (behavior `record=true`, default bila key hilang), cocok → `attendance_event` →
    `recompute_day` memperbarui `attendance_day`. Cooldown per karyawan+arah diperiksa dahulu;

@@ -250,6 +250,10 @@ def handle_face_event(db, event, embedding: list[float] | None = None) -> Attend
     if res.employee_id is None:
         payload["employee_id"] = None
         payload["match_reason"] = res.reason
+        if res.score is not None:
+            # diagnostik near-miss: skor teratas ke galeri walau di bawah ambang (hanya jalur strict;
+            # `face_score` tetap khusus yang dikenali)
+            payload["face_top_score"] = round(res.score, 3)
         if res.reason in ("no_match", "ambiguous"):
             _label_snapshot(event, payload, "Unknown", ORANGE)
         logger.info("attendance: event %s tidak cocok (%s)", event.event_id, res.reason)

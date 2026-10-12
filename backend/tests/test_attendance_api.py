@@ -558,3 +558,49 @@ def test_event_without_policy_keeps_low_quality_gate(db):
     assert attendance.handle_face_event(db, ev) is None
     db.refresh(ev)
     assert ev.payload["match_reason"] == "low_quality"
+
+
+# --- skor teratas pada event tidak dikenali (diagnostik near-miss; jalur strict saja) ---
+
+def test_unified_no_match_stores_the_top_score_without_face_score(db):
+    cam, _a, _b = _two_employees(db, [0.0, 0.0, 1.0, 0.0])
+    _policy_row(db)
+
+    # cosine ke karyawan A = 0,3 (< ambang 0,40); ke B = 0
+    ev = _attendance_event(db, cam.id, {"policy": "unified", "embedding": [0.3, 0.0, 0.0, 0.9539392]})
+    assert attendance.handle_face_event(db, ev) is None
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "no_match"
+    assert ev.payload["face_top_score"] == pytest.approx(0.3, abs=1e-3)
+    assert "face_score" not in ev.payload  # `face_score` tetap hanya untuk yang dikenali
+
+
+def test_unified_ambiguous_stores_the_top_score(db):
+    cam, _a, _b = _two_employees(db, [0.995, 0.1, 0.0, 0.0])
+    _policy_row(db)
+
+    ev = _attendance_event(db, cam.id, {"policy": "unified"})
+    attendance.handle_face_event(db, ev)
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "ambiguous"
+    assert ev.payload["face_top_score"] == pytest.approx(1.0, abs=1e-3)
+
+
+def test_matched_event_has_no_top_score_key(db):
+    cam, a, _b = _two_employees(db, [0.0, 1.0, 0.0, 0.0])
+    _policy_row(db)
+
+    ev = _attendance_event(db, cam.id, {"policy": "unified"})
+    assert attendance.handle_face_event(db, ev) is not None
+    db.refresh(ev)
+    assert "face_top_score" not in ev.payload and ev.payload["face_score"] == pytest.approx(1.0)
+
+
+def test_legacy_no_match_has_no_top_score(db):
+    cam, _a, _b = _two_employees(db, [0.0, 0.0, 1.0, 0.0])
+    _policy_row(db)
+
+    ev = _attendance_event(db, cam.id, {"embedding": [0.0, 1.0, 0.0, 0.0]})  # tanpa policy = legacy
+    assert attendance.handle_face_event(db, ev) is None
+    db.refresh(ev)
+    assert ev.payload["match_reason"] == "no_match" and "face_top_score" not in ev.payload
