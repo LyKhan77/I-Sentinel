@@ -397,6 +397,7 @@ class FaceGateWorker(threading.Thread):
         # label `test:attendance` ±6 dtk; setelah `test_until` lewat, jalur normal kembali sendiri.
         if delivery_mode(zone_attendance_cfg(st.zone), time.time()) == "test":
             st.done = True
+            st.best = None  # lepas frame penuh yang tertahan; track bisa hidup lama sebelum hilang
             self._flash[tid] = ("test:attendance", self._last_frame_ts + FLASH_S)
             return
         st.done = True

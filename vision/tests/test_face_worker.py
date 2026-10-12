@@ -705,3 +705,11 @@ def test_test_mode_attendance_suppresses_unified_track_without_silent_count():
     funnel = w.take_funnel()
     assert funnel["tracks_silent"] == 0       # track `done` yang ditekan bukan track tanpa hasil
     assert set(funnel) == {"faces", "rejects", "tracks_emitted", "tracks_silent", "ttfg_median_s"}
+
+
+def test_test_mode_attendance_releases_the_held_frame_of_a_suppressed_track():
+    # track ditekan tetap hidup (tracker 30 dtk): frame terbaik tidak boleh tertahan sampai track hilang
+    w, _, _ = run_zone([[GOOD]] * 12,
+                       attendance_zone(delivery="test", test_until=_until(3600), revert_to="all"),
+                       max_age_s=30.0)
+    assert w._states and all(st.best is None for st in w._states.values())
