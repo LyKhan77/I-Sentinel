@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Merge skor teratas event absensi ke main (2026-10-12)
+
+- **Konteks:** `feat/attendance-top-score` (3 commit, tanpa migrasi) sudah ter-deploy di `gspe-ai3` (`api` + `web`); user menyetujui merge dengan kondisi saat ini ("boleh merge kondisi saat ini").
+- **Bukti di data nyata (read-only, bukan konfirmasi user):** dua event yang dilaporkan user tidak dikenali (event 1: Tangga 2 exit, event 2: Lorong Server entry) membawa `face_top_score` 0,278 dan 0,137 terhadap ambang 0,40, sedangkan skor karyawan A yang dikenali 0,40–0,675 (lima hari terakhir). Tampilan Inbox "Tidak dikenal · skor tertinggi" **belum dikonfirmasi user**.
+- **Temuan diagnosis:** penyebab kegagalan adalah kualitas frame, bukan ambang atau waktu emisi. Crop Tangga 2 menunduk dan berkacamata; crop Lorong Server motion blur berat (metrik `blur` 86,3 tidak menangkapnya). Foto enrollment karyawan A (5 foto, 22 Sep) tajam, jarak dekat, tanpa kacamata. Embedding ulang crop (CPU 1 thread, `nice 19`, tanpa tulis DB): karyawan A peringkat 1 dari 7 karyawan pada crop Tangga 2 (0,221 vs 0,130); crop Lorong Server tidak terdeteksi ulang. Skor embedding ulang selalu lebih rendah daripada skor node (0,06–0,28), jadi hanya peringkat yang bermakna.
+- **Keputusan user:** kamera Receptionist dan Receptionist 2 maksimal 1080p dan sudah memakai panduan `temp/data/cctv-source-settings.txt`; enroll dari kamera ditolak (tidak ada kamera dengan posisi ideal); semua dibiarkan seperti sekarang dan seluruh karyawan akan difoto ulang nanti. Ide untuk pemotretan ulang (belum diuji): kamera belakang HP pada 1–1,5 m, JPEG 12 MP, lurus dan menunduk ±20°, dengan kacamata bila dipakai; `MAX_PHOTOS` = 5 membatasi variasi.
+- **Dampak:** hanya payload dan satu baris tampilan, berlaku untuk event baru. **Rollback:** `git revert -m 1 8989598`.
+
 ### Skor teratas pada event absensi tidak dikenali (2026-10-12)
 
 - **Konteks:** user menelaah event nyata: karyawan yang sama dikenali saat masuk (Lorong Server: lebar 89 px, blur 146, skor 0,459) tetapi tidak saat keluar (Receptionist: lebar 106 px, **blur 61**, jendela penuh 2,01 dtk, 5 frame). Event `no_match` tidak menyimpan skor sehingga tidak terlihat seberapa dekat ke ambang 0,40. Data kamera (SELECT read-only, event `unified`, blur median): Lorong 1 292, Tangga 2 66, Lorong Server 74, Receptionist 2 68, **Receptionist 33**; tingkat dikenali mengikuti ketajaman (11%, 6%, 8%, 3%, 4%). `ffprobe` read-only stream utama: Lorong 1, Tangga 2, Lorong Server 2560×1440 @ 15 fps ±7,6–8,3 Mbps; **Receptionist dan Receptionist 2 hanya 1920×1080 ±3,5 Mbps** (bukan profil C). Siklus emisi adaptif dibatalkan (penyebabnya ketajaman, bukan pengiriman dini).
