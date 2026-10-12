@@ -3,6 +3,12 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Merge tujuan wajah tidak dikenal ke main (2026-10-12)
+
+- **Konteks:** `feat/unknown-face-delivery` (7 commit, tanpa migrasi, tanpa perubahan `vision/`) sudah ter-deploy di `gspe-ai3` (`api` + `web`); user menguji UI dan melapor hasil OK, lalu menginstruksikan merge ("lanjut merge").
+- **Perubahan:** merge `--no-ff` ke `main` (`9256840`); pohon `main` identik dengan ujung branch (`d001f3b`), jadi suite yang diukur di `8efe854` berlaku: backend `1074 passed / 1 deselected`, vision `370 passed / 3 deselected`, docker `77 passed`, vitest `38 berkas / 548 passed`, build exit 0, lint 24 warning / 16 pasangan.
+- **Dampak:** radio **Wajah tidak dikenal** per zona absensi aktif di `main`; zona lama berperilaku seperti sebelumnya. **Rollback:** `git revert -m 1 9256840`; kode lama mengabaikan `unknown_delivery` dan membaca `telegram_unknown` (zona `none` kembali menyimpan event tidak dikenal di Inbox tanpa Telegram).
+
 ### Tujuan wajah tidak dikenal per zona absensi (2026-10-12)
 
 - **Konteks:** toggle **Kirim wajah tidak dikenal** (`telegram_unknown`) hanya mengatur Telegram dan hanya tampil bila tujuan event efektif *Inbox + Telegram*, sementara event wajah tidak dikenal selalu masuk Inbox. Keputusan user 2026-10-12: radio tiga pilihan per zona absensi — *Inbox + Telegram* / *Hanya Inbox* / *Tidak dikirim* — dengan "Tidak dikirim" berarti event dibuang di API (tanpa baris Inbox, tanpa Telegram). Cakupan buang: `no_match`, `ambiguous`, `low_quality`. Spec `docs/superpowers/specs/2026-10-12-unknown-face-delivery-design.md`, plan `docs/superpowers/plans/2026-10-12-unknown-face-delivery.md` (Task 1–4). Sesi ini executor native (implementasi + smoke test); Review, push, deploy, dan uji UI dilakukan di sesi perencanaan (lihat bullet **Deploy dan uji UI**).
