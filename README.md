@@ -459,8 +459,10 @@ tanpa migrasi DB.
    `delivery` dibaca dari toggle Telegram-nya. *Mode uji* (24 jam, konfirmasi pada zona `critical`,
    badge **UJI** di daftar zona) menekan event, klip, dan Telegram, menampilkan label
    `UJI · <tipe>` di Live View, lalu kembali ke tujuan semula otomatis. Pada zona attendance, Mode uji
-   juga menekan unggahan wajah dan baris absensi (label `UJI · Absensi`); `Catat absensi` dan
-   `Kirim wajah tidak dikenal` tetap. Tanpa tujuan aktif,
+   juga menekan unggahan wajah dan baris absensi (label `UJI · Absensi`); `Catat absensi` tetap, dan
+   radio **Wajah tidak dikenal** memilih tujuan wajah tidak dikenal (*Inbox + Telegram* / *Hanya
+   Inbox* / *Tidak dikirim* — yang terakhir membuang event di API: tanpa baris Inbox dan tanpa
+   Telegram). Tanpa tujuan aktif,
    event tetap tercatat tapi tidak dikirim.
 
 Yang perlu diketahui:

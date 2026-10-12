@@ -465,6 +465,28 @@ def test_zone_delivery_validation(client):
     assert r.status_code == 200 and r.json()["behaviors"] == [{"kind": "attendance", "delivery": "inbox"}]
 
 
+def test_unknown_delivery_validation(client):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    # tiga nilai sah tersimpan apa adanya
+    for value in ("all", "inbox", "none"):
+        r = _zone_with(client, h, cam, [{"kind": "attendance", "unknown_delivery": value}],
+                       type_="attendance", direction="entry")
+        assert r.status_code == 200
+        assert r.json()["behaviors"] == [{"kind": "attendance", "unknown_delivery": value}]
+    # nilai tak dikenal / bukan string
+    assert _zone_with(client, h, cam, [{"kind": "attendance", "unknown_delivery": "bogus"}],
+                      type_="attendance", direction="entry").status_code == 422
+    assert _zone_with(client, h, cam, [{"kind": "attendance", "unknown_delivery": True}],
+                      type_="attendance", direction="entry").status_code == 422
+    # hanya sah untuk kind attendance
+    assert _zone_with(client, h, cam, [{"kind": "intrusion", "unknown_delivery": "none"}]).status_code == 422
+    # kunci lama tetap sah berdampingan (zona lama tidak dipaksa berubah)
+    r = _zone_with(client, h, cam, [{"kind": "attendance", "telegram_unknown": False}],
+                   type_="attendance", direction="entry")
+    assert r.status_code == 200 and r.json()["behaviors"] == [{"kind": "attendance", "telegram_unknown": False}]
+
+
 def test_attendance_zone_test_mode_is_stamped(client):
     h = _admin_headers(client)
     cam = _camera(client, h)

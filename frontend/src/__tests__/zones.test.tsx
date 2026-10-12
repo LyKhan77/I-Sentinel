@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import ZoneEditor from '../components/ZoneEditor'
 import ZonesPage from '../features/config/ZonesPage'
-import { effectiveDelivery, testUntil } from '../features/config/zoneDelivery'
+import { effectiveDelivery, effectiveUnknownDelivery, testUntil } from '../features/config/zoneDelivery'
 import type { Zone } from '../api/zones'
 
 const CAM_BASE = { location: null, host: '1.2.3.4', rtsp_main: null, rtsp_sub: null, node_id: 1, enabled: true, status: 'online', probe_main: null, probe_sub: null }
@@ -441,6 +441,20 @@ test('zoneDelivery murni: turunan, kedaluwarsa, dan revert_to', async () => {
   expect(effectiveDelivery({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, true, now)).toBe('test')
 })
 
+test('zoneDelivery: effectiveUnknownDelivery turunan tersimpan, tampilan jatuh ke Hanya Inbox', async () => {
+  const b = (over: Record<string, unknown> = {}) => ({ kind: 'attendance' as const, trigger_seconds: 0, ...over })
+  expect(effectiveUnknownDelivery(null, 'all')).toBe('all')
+  expect(effectiveUnknownDelivery(b(), 'all')).toBe('all')
+  expect(effectiveUnknownDelivery(b({ telegram_unknown: false }), 'all')).toBe('inbox')
+  expect(effectiveUnknownDelivery(b({ unknown_delivery: 'none' }), 'all')).toBe('none')
+  // kunci sah menang atas toggle lama
+  expect(effectiveUnknownDelivery(b({ unknown_delivery: 'none', telegram_unknown: true }), 'all')).toBe('none')
+  // `all` yang tidak mungkin dikirim tampil Hanya Inbox (nilai tersimpan tidak diubah)
+  expect(effectiveUnknownDelivery(b({ unknown_delivery: 'all' }), 'inbox')).toBe('inbox')
+  expect(effectiveUnknownDelivery(b({ unknown_delivery: 'all' }), 'test')).toBe('inbox')
+  expect(effectiveUnknownDelivery(b({ unknown_delivery: 'none' }), 'inbox')).toBe('none')
+})
+
 test('zona absensi memakai radio tujuan event yang sama; toggle Telegram lama hilang', async () => {
   const fetchMock = await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
     behaviors: [{ kind: 'attendance', trigger_seconds: 0 }] })])
@@ -544,21 +558,31 @@ test('zona attendance tanpa blok AI', async () => {
 })
 
 
-test('zona absensi dengan Telegram aktif menampilkan toggle Unknown default aktif dan mematikannya mengirim telegram_unknown:false', async () => {
+test('radio Wajah tidak dikenal default Inbox + Telegram; memilih Tidak dikirim menulis dua kunci', async () => {
   const f = await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
     behaviors: [{ kind: 'attendance', trigger_seconds: 0, telegram: true }] })])
-  const toggle = document.getElementById('zone-telegram-unknown')!
-  expect(toggle).toHaveAttribute('aria-checked', 'true')
-  fireEvent.click(toggle)
+  expect(document.getElementById('zone-unknown-all')).toBeChecked()
+  expect(screen.getByText('Wajah tidak dikenal')).toBeInTheDocument()
+  expect(screen.getByText('Tidak dikirim')).toBeInTheDocument()
+  fireEvent.click(document.getElementById('zone-unknown-none')!)
   fireEvent.click(screen.getByTestId('zone-save'))
   await waitFor(() => expect(patchBody(f).behaviors).toEqual([
-    { kind: 'attendance', trigger_seconds: 0, telegram: true, telegram_unknown: false },
+    { kind: 'attendance', trigger_seconds: 0, telegram: true, unknown_delivery: 'none', telegram_unknown: false },
   ]))
 })
 
-test('toggle Unknown tidak tampil saat Telegram mati', async () => {
+test('radio Wajah tidak dikenal tampil saat Telegram mati dengan opsi Inbox + Telegram nonaktif', async () => {
   await selectZone([zoneFix({ type: 'attendance', direction: 'entry',
     behaviors: [{ kind: 'attendance', trigger_seconds: 0, telegram: false }] })])
+  expect(screen.getByTestId('zone-unknown')).toBeInTheDocument()
+  expect(document.getElementById('zone-unknown-all')).toBeDisabled()
+  expect(document.getElementById('zone-unknown-inbox')).toBeChecked()
+  expect(screen.getByText(/butuh tujuan event utama/)).toBeInTheDocument()
+})
+
+test('toggle Kirim wajah tidak dikenal sudah tidak ada di blok absensi', async () => {
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, telegram: true }] })])
   expect(document.getElementById('zone-telegram-unknown')).toBeNull()
 })
 
@@ -641,23 +665,44 @@ test('badge UJI muncul untuk zona absensi yang diuji', async () => {
   expect(screen.getByTestId('zone-test-badge-10')).toHaveTextContent('UJI')
 })
 
-test('toggle Unknown tidak tampil saat absensi efektif Hanya Inbox atau Mode uji', async () => {
-  await selectZone([attendanceZone({ behaviors: [
-    { kind: 'attendance', trigger_seconds: 0, delivery: 'inbox' }] })])
-  expect(document.getElementById('zone-telegram-unknown')).toBeNull()
+test('nilai tersimpan `all` pada tujuan utama Hanya Inbox tampil Hanya Inbox dan tidak berubah saat disimpan', async () => {
+  const f = await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'inbox', unknown_delivery: 'all' }] })])
+  expect(document.getElementById('zone-unknown-inbox')).toBeChecked()
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(f).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'inbox', unknown_delivery: 'all' },
+  ]))
 })
 
-test('toggle Unknown absensi tidak tampil saat Mode uji sedang berlaku', async () => {
+test('radio Wajah tidak dikenal tidak tampil saat Mode uji sedang berlaku', async () => {
   const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
   await selectZone([attendanceZone({ behaviors: [
     { kind: 'attendance', trigger_seconds: 0, delivery: 'test', test_until: soon, revert_to: 'all' }] })])
-  expect(document.getElementById('zone-telegram-unknown')).toBeNull()
+  expect(screen.queryByTestId('zone-unknown')).not.toBeInTheDocument()
 })
 
-test('toggle Unknown absensi tampil saat efektif Inbox + Telegram', async () => {
+test('radio Wajah tidak dikenal tampil dengan opsi Inbox + Telegram aktif saat efektif Inbox + Telegram', async () => {
   await selectZone([attendanceZone({ behaviors: [
     { kind: 'attendance', trigger_seconds: 0, delivery: 'all' }] })])
-  expect(document.getElementById('zone-telegram-unknown')).not.toBeNull()
+  expect(document.getElementById('zone-unknown-all')).not.toBeDisabled()
+  expect(document.getElementById('zone-unknown-all')).toBeChecked()
+})
+
+test('toggle lama `telegram_unknown:false` terbaca Hanya Inbox', async () => {
+  await selectZone([attendanceZone({ behaviors: [
+    { kind: 'attendance', trigger_seconds: 0, delivery: 'all', telegram_unknown: false }] })])
+  expect(document.getElementById('zone-unknown-inbox')).toBeChecked()
+  expect(document.getElementById('zone-unknown-all')).not.toBeDisabled()
+})
+
+test('zona tanpa item attendance: memilih radio membuat item itu', async () => {
+  const f = await selectZone([attendanceZone({ behaviors: [], telegram: true })])
+  fireEvent.click(document.getElementById('zone-unknown-none')!)
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(f).behaviors).toEqual([
+    { kind: 'attendance', trigger_seconds: 0, unknown_delivery: 'none', telegram_unknown: false },
+  ]))
 })
 
 test('radio absensi pada zona tanpa behavior attendance tetap menulis behavior itu', async () => {

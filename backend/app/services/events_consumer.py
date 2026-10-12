@@ -77,6 +77,13 @@ def handle_message(db, topic: str, payload: bytes) -> None:
                     db.rollback()
                     logger.exception("attendance failed for event %s", ev.event_id)
                 try:
+                    # "Tidak dikirim" per zona: buang sebelum alert, caption AI, face ID, dan WS
+                    if attendance.drop_unknown_event(db, ev):
+                        return
+                except Exception:
+                    db.rollback()
+                    logger.exception("unknown face drop failed for event %s", ev.event_id)
+                try:
                     alerting.handle(db, ev)
                 except Exception:
                     db.rollback()
@@ -99,6 +106,8 @@ def handle_message(db, topic: str, payload: bytes) -> None:
             event_id = data.get("event_id")
             ev = db.query(Event).filter_by(event_id=event_id).first() if event_id else None
             if ev is None:
+                if attendance.discard_dropped_media(data):
+                    return
                 logger.warning("media update for unknown event %r", event_id)
                 return
             for col in ("clip_path", "snapshot_path"):

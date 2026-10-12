@@ -96,12 +96,20 @@ zona cukup lebar agar wajah yang berjalan berada di dalamnya **≥1 detik**
 deteksi/tracking memakai seluruh frame, tanpa ROI crop. Arah `entry`/`exit`
 tetap wajib, termasuk saat **Catat absensi OFF**; zona tanpa arah diabaikan worker.
 
-**Catat absensi** dan **Kirim wajah tidak dikenal** adalah flag behavior attendance
-(`record`, `telegram_unknown`, default true). OFF pada pencatatan hanya menerbitkan
+**Catat absensi** dan **Wajah tidak dikenal** adalah pengaturan behavior attendance
+(`record`, dan `unknown_delivery` ∈ `all`/`inbox`/`none`). OFF pada pencatatan hanya menerbitkan
 evidence `detected` di Inbox/Telegram, tidak membuat riwayat atau rekap absensi.
 Dedup per karyawan+zona memakai cooldown default 5 menit; Unknown tidak di-dedup
-oleh jalur ini. Saklar Telegram induk tetap menentukan pengiriman; Unknown OFF
-hanya menahan alert Unknown, bukan event Inbox.
+oleh jalur ini. Saklar Telegram induk tetap menentukan pengiriman.
+
+Radio **Wajah tidak dikenal** (tampil kecuali Mode uji) menentukan tujuan wajah tidak dikenal:
+*Inbox + Telegram* (`all`), *Hanya Inbox* (`inbox`), atau *Tidak dikirim* (`none`).
+*Tidak dikirim* membuang event di API **sesudah** pencocokan: tidak ada baris event, tidak ada
+alert Telegram, dan tidak ada file crop/snapshot yang tersisa (media susulan ikut dihapus).
+Efek sampingnya: zona itu **tidak punya baris `no_match`/`face_top_score`** sehingga kueri
+sebaran noise di bawah tidak punya data di sana — pakai zona lain atau ubah dulu ke *Hanya Inbox*
+bila near-miss zona itu ingin dipantau. Nilai lama `telegram_unknown` (default true) tetap dibaca
+(hanya `false` → *Hanya Inbox*), jadi zona lama tidak berubah perilaku.
 
 Telegram membedakan CHECK IN/OUT, SUDAH CHECK IN (jam check in pertama dan exit sejak
 itu bila terlihat), serta TERDETEKSI — MASUK/KELUAR. Cooldown tetap diam. SUDAH CHECK IN hanya muncul
@@ -265,6 +273,8 @@ diuji ulang bila jumlah karyawan terdaftar berlipat.
 dikenali) dan Inbox menampilkannya sebagai "Tidak dikenal · skor tertinggi 0,38". Dipakai untuk membedakan
 **near-miss** (mis. 0,35–0,39: wajah karyawan yang buram/miring) dari **jauh di bawah ambang** (mis. < 0,25:
 biasanya bukan karyawan atau wajah sangat buruk). Event `legacy` dan event lama tidak memilikinya.
+Zona ber-`unknown_delivery=none` tidak menyimpan baris `no_match` sama sekali, jadi kueri di bawah
+hanya mencakup zona yang masih mengirim wajah tidak dikenal ke Inbox.
 
 ```sql
 -- sebaran skor teratas pada event tidak dikenali per kamera (event baru sesudah fitur ini)

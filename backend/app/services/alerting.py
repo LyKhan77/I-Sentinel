@@ -13,7 +13,7 @@ from app.models.alert import Alert
 from app.models.event import Event
 from app.models.zone import Zone
 from app.services import alert_dispatcher
-from app.services.zone_delivery import effective_delivery
+from app.services.zone_delivery import effective_delivery, unknown_delivery
 from app.ws.hub import hub
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ def should_alert(db: Session, event: Event, now: datetime | None = None) -> tupl
             return True, ""  # duplikat sudah dicegah cooldown absensi
         if payload.get("match_reason") != "no_match" or payload.get("employee_id") is not None:
             return False, "attendance_skipped"
-        if not zone.behavior_flag("attendance", "telegram_unknown"):
+        if unknown_delivery(zone.behaviors) != "all":
             return False, "attendance_skipped"
     # Indexed reminders are generated once per episode by the analyzers; their
     # configured interval may be shorter than the normal two-minute debounce.
