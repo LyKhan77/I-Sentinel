@@ -189,6 +189,8 @@ class CameraWorker(threading.Thread):
                     log.exception("camera %s: detector error, skipping frame", cam_id)
                     continue
                 tracks = tracker.update(detections, frame.ts)
+                if self._flash:  # buang label uji basi, juga untuk track yang sudah pergi
+                    self._flash = {k: v for k, v in self._flash.items() if v[1] > frame.ts}
                 if frame.data is not None:
                     frame_h, frame_w = frame.data.shape[:2]
                 else:

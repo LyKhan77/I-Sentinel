@@ -698,3 +698,14 @@ def test_legacy_behavior_without_delivery_emits_as_before():
 
     assert [ev["type"] for ev in t.events] == ["intrusion"]
     assert all(v is None for frame in _person_labels(t) for v in frame.values())
+
+
+def test_test_mode_flash_entries_are_pruned_once_the_track_is_gone():
+    # orang memicu uji lalu pergi: entri label tidak boleh menumpuk selamanya untuk track yang hilang
+    worker, _ = _worker_with(
+        [{"kind": "intrusion", "trigger_seconds": 0, "delivery": "test",
+          "test_until": _until(3600), "revert_to": "all"}],
+        [[INSIDE]] * 3 + [[]] * 40)  # 3 frame di zona lalu 40 frame kosong @5fps (8 dtk > 6 dtk)
+    worker.run()
+
+    assert worker._flash == {}
