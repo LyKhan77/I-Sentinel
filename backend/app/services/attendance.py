@@ -5,7 +5,9 @@ Waktu disimpan tz-aware. Semua perbandingan dilakukan di timezone server
 (zona lokal saat insert), Postgres mengembalikan aware UTC.
 """
 import logging
+import os
 import threading
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -15,8 +17,9 @@ from app.models.attendance import AttendanceDay, AttendanceEvent
 from app.models.employee import Employee
 from app.models.event import Event
 from app.models.zone import Zone
-from app.services import face, face_policy
+from app.services import face, face_policy, retention
 from app.services.annotate import ORANGE, annotate_face_crop, annotate_snapshot
+from app.services.zone_delivery import unknown_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +28,10 @@ VALID_DIRECTIONS = {"entry", "exit"}
 CLOSE_INTERVAL_S = 900
 CLOSE_DAYS_BACK = 7
 EXIT_EARLY_MIN = 60
+UNKNOWN_REASONS = ("no_match", "ambiguous", "low_quality")
+# ponytail: daftar di memori hilang saat API restart — pesan media susulan event yang sudah
+# dibuang lalu hanya memicu satu warning, dan file diurus sapuan orphan retensi.
+_DROPPED: deque[str] = deque(maxlen=512)
 
 
 def _local(dt: datetime | None) -> datetime | None:
@@ -213,6 +220,63 @@ def annotate_event_snapshot(event) -> None:
         _label_snapshot(event, payload, "Unknown", ORANGE)
     elif payload.get("employee_id") is not None:
         _label_snapshot(event, payload, payload.get("employee_name") or "Unknown")
+
+
+def _remove_media(rels: list) -> None:
+    """Hapus file media event yang dibuang; best-effort (kegagalan dicatat, tidak melempar)."""
+    for rel in rels:
+        if not isinstance(rel, str) or not rel:
+            continue
+        full = retention._safe_join(settings.storage_root, rel)
+        if full is None:  # path di luar storage_root tidak pernah dihapus
+            logger.warning("attendance: media di luar storage_root dilewati: %s", rel)
+            continue
+        try:
+            os.remove(full)
+        except OSError:
+            logger.warning("attendance: gagal menghapus media %s", rel, exc_info=True)
+
+
+def drop_unknown_event(db, event) -> bool:
+    """Buang event wajah tidak dikenal pada zona `unknown_delivery=none` (tanpa baris, tanpa Telegram).
+
+    True bila event dihapus. Hanya event absensi tanpa `employee_id` dengan `match_reason`
+    tidak dikenal yang dibuang; event dikenali, anomali, dan event yang pencocokannya gagal
+    selalu tersimpan. Path media dibaca sebelum `db.delete` (objek terhapus tidak boleh diakses
+    lagi). Kegagalan hapus file dicatat, tidak dilempar: sapuan orphan retensi menutup sisanya.
+    """
+    if event.type != "attendance":
+        return False
+    payload = event.payload or {}
+    if payload.get("employee_id") is not None or payload.get("match_reason") not in UNKNOWN_REASONS:
+        return False
+    zone = db.get(Zone, event.zone_id) if event.zone_id is not None else None
+    if zone is None or unknown_delivery(zone.behaviors) != "none":
+        return False
+    event_id = event.event_id
+    rels = [payload.get("crop_path"), event.snapshot_path, event.clip_path]
+    db.delete(event)
+    db.commit()
+    _DROPPED.append(event_id)
+    _remove_media(rels)
+    logger.info("attendance: event %s tidak dikenal dibuang (unknown_delivery=none)", event_id)
+    return True
+
+
+def discard_dropped_media(data: dict) -> bool:
+    """Buang media susulan (topik media) milik event yang sudah dibuang; True bila ditangani.
+
+    Dipakai `events_consumer` supaya pesan media yang menyusul event terbuang tidak mencatat
+    warning "media update for unknown event".
+    """
+    if not isinstance(data, dict):
+        return False
+    event_id = data.get("event_id")
+    if not isinstance(event_id, str) or event_id not in _DROPPED:
+        return False
+    _remove_media([data.get("snapshot_path"), data.get("clip_path")])
+    logger.info("attendance: media susulan event %s yang dibuang dihapus", event_id)
+    return True
 
 
 def handle_face_event(db, event, embedding: list[float] | None = None) -> AttendanceEvent | None:
