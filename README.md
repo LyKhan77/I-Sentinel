@@ -5,7 +5,7 @@ lokal: deteksi orang berbasis zona untuk keamanan, dan pengenalan wajah untuk ab
 
 | | |
 |---|---|
-| **Keamanan** | Zona poligon per kamera: intrusi, loitering, berlari, zona kosong, kerumunan. Snapshot + klip, Inbox Events, alert Telegram. |
+| **Keamanan** | Zona poligon per kamera: intrusi, loitering, berlari, zona kosong, kerumunan. Snapshot + klip, Inbox Events, alert Telegram dengan **tujuan per behavior** (Inbox + Telegram / Hanya Inbox / **Mode uji** 24 jam). |
 | **Absensi** | Enrollment wajah (3 foto), gerbang wajah di kamera pintu, shift, rekap harian, ekspor/impor CSV. |
 | **Operasional** | Live View + Mode TV, Dashboard, Monitoring dengan alert kesehatan, retensi storage, user admin/viewer. |
 
@@ -453,8 +453,12 @@ tanpa migrasi DB.
 3. Buka **Konfigurasi → Notifikasi**: tempel token → **Simpan** → **Deteksi grup**
    → pilih grup dari daftar → **Simpan** → **Kirim pesan uji**. Chip status menjadi
    *Siap* dan pesan uji masuk ke grup.
-4. **Zona Deteksi**: nyalakan toggle **Telegram** per behavior (intrusi/loitering/
-   berlari/Idle Zone/Crowd/absensi) pada zona yang boleh mengirim alert. Tanpa toggle aktif,
+4. **Zona Deteksi**: pilih **Tujuan event** per behavior (intrusi/loitering/berlari/
+   Idle Zone/Crowd) — *Inbox + Telegram*, *Hanya Inbox*, atau *Mode uji* — pada zona yang boleh
+   mengirim alert; absensi tetap memakai toggle Telegram/Record sendiri. Zona lama tanpa
+   `delivery` dibaca dari toggle Telegram-nya. *Mode uji* (24 jam, konfirmasi pada zona `critical`,
+   badge **UJI** di daftar zona) menekan event, klip, dan Telegram, menampilkan label
+   `UJI · <tipe>` di Live View, lalu kembali ke tujuan semula otomatis. Tanpa tujuan aktif,
    event tetap tercatat tapi tidak dikirim.
 
 Yang perlu diketahui:

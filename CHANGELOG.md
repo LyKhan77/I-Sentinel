@@ -3,6 +3,45 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Tujuan event per behavior zona dan Mode uji (2026-10-12)
+
+- **Konteks:** toggle Telegram per behavior hanya bisa "kirim / tidak kirim", padahal kebutuhan lapangan
+  ada tiga: event tersimpan **dan** dikirim, tersimpan tanpa Telegram, dan **uji** (zona dievaluasi tanpa
+  meninggalkan bukti/alarm saat polygon atau trigger disetel ulang). Spec §6
+  (`docs/superpowers/specs/2026-10-09-inbox-zone-ux-design.md`), Plan B.
+- **Perubahan:** kunci JSON baru di `zone.behaviors[]` tanpa migrasi — `delivery` ∈ {`all`,`inbox`,`test`}
+  (kind alert saja; `attendance` menolak 422), `test_until` (ISO-8601 UTC), `revert_to` ∈ {`all`,`inbox`}.
+  Modul murni baru `app/services/zone_delivery.py`: `effective_delivery` (tanpa `delivery` → turunan
+  `telegram` item/flag zona; `test` yang lewat `test_until` → `revert_to`) dan `stamp_test_mode`
+  (`test` baru/kedaluwarsa → `test_until = now + 24 jam` + `revert_to` = tujuan efektif sebelumnya;
+  `test` berjalan dipertahankan sehingga menyimpan perubahan lain tidak memperpanjang uji) yang dipanggil
+  `create_zone`/`update_zone` sebelum atribut diisi. `alerting._telegram_on` memakai tujuan efektif
+  (Telegram hanya untuk `all`). Node: `_make_analyzers` memasang `delivery_cfg` per analyzer alert,
+  `delivery_mode(cfg, now_wall)` (jam dinding) menekan `_merge_event`/`publish_event`/`recorder.enqueue`/
+  `registry.bind` dan mencatat `flash[track_id] = ("test:<tipe>", frame.ts + 6 s)`; label itu dikirim pada
+  overlay `person` berikutnya dan diterjemahkan UI menjadi `UJI · <tipe>`; kedaluwarsa pulih tanpa restart.
+  UI: `RadioButtonGroup` tiga pilihan menggantikan `Toggle zone-telegram-<kind>` (menulis `delivery` dan
+  menjaga `telegram = (delivery === "all")`), `Modal` konfirmasi hanya untuk zona `critical`, badge
+  **UJI · sampai HH:MM** di daftar zona, `zoneDelivery.ts` sebagai padanan aturan backend di klien.
+  Runbook baru `docs/runbooks/zone-test-mode.md`.
+- **Bukti:** RED benar per task (B1 `ModuleNotFoundError` + 3 tes API; B2 3 tes Telegram; B3 3 tes node —
+  implementasi direvert dulu untuk membuktikan merah; B4 7 tes UI) dan lima mutasi wajib terbukti merah
+  lalu dikembalikan identik: `effective_delivery` mengabaikan `test_until`, `_telegram_on` mengabaikan
+  `delivery`, kondisi Mode uji di node diubah, `effectiveDelivery` klien mengabaikan kedaluwarsa, plus
+  penjaga zona lama (lulus sebelum implementasi, perilaku memang tidak berubah). Suite berurutan di commit
+  terakhir: backend `1025 passed / 1 deselected / 609 warnings` (baseline 996), vision `359 passed /
+  3 deselected` (baseline 351), docker `77 passed`, frontend `38 berkas / 528 passed` (baseline 38/508),
+  build exit 0, lint 24 warning / 16 pasangan file-rule identik baseline. Verifikasi visual 390/1280 px
+  (dev server Vite + API distub): `scrollWidth == innerWidth`, tiga radio + teks bantu, badge
+  "UJI · sampai 13:06", dialog konfirmasi muncul pada zona `critical` dan **Batal** mengembalikan pilihan
+  (perbaikan remount grup radio); screenshot `docs/evidence/ux-zones-*.png`.
+- **Dampak:** admin bisa menguji satu behavior zona 24 jam tanpa event/klip/Telegram; setelah kedaluwarsa
+  perilaku kembali ke tujuan sebelumnya tanpa restart, dan node lama tetap kompatibel (event bisa tiba,
+  Telegram ditolak API selama uji). **BELUM di-deploy/diuji di server** — penekanan event hanya berlaku
+  setelah node `vision` baru terpasang; validasi jam dinding node vs API dan perilaku lapangan menunggu uji.
+- **Rollback:** pilih *Inbox + Telegram*/*Hanya Inbox* lalu Simpan (kunci uji dibuang otomatis), atau
+  `git revert` commit Plan B (tanpa migrasi; kunci JSON tak dikenal diabaikan kode lama).
+
 ### UX Events: pencarian `q` di server dan filter Tipe berkelompok (2026-10-12)
 
 - **Konteks:** pencarian Inbox sebelumnya hanya menyaring event yang sudah termuat di klien, jadi nama karyawan

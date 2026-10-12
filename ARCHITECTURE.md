@@ -220,8 +220,23 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 | `isentinel/events/face` | node → API | Hasil identitas wajah intrusion critical (satu pesan per event_id; embedding ditolak di consumer) |
 | `isentinel/detections/{node}` | node → API → WS | Kotak deteksi live untuk debugger |
 
-### Attendance evidence dan flag zona
+### Tujuan event per behavior (`delivery`) dan Mode uji
 
+Kunci JSON baru di `zone.behaviors[]` (tanpa migrasi): `delivery` ∈ {`all`, `inbox`, `test`} untuk kind
+alert (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`; `attendance` ditolak 422), `test_until`
+(ISO-8601 UTC, hanya saat `test`), `revert_to` ∈ {`all`, `inbox`} (hanya saat `test`). Validasi di
+`schemas/zone.py` (`_validate_behaviors`) dan aturan murni di `services/zone_delivery.py`:
+`effective_delivery(behavior, zone_telegram, now)` (tanpa `delivery` → diturunkan dari `telegram` item,
+lalu flag zona; `test` yang lewat `test_until` → `revert_to`, bawaan `all`), `stamp_test_mode(new, old)`
+dipanggil `create_zone`/`update_zone` **sebelum** atribut diisi: `test` baru/kedaluwarsa → `test_until =
+now + 24 jam` + `revert_to` = tujuan efektif sebelumnya; `test` yang sedang berjalan dipertahankan
+(menyimpan perubahan lain tidak memperpanjang uji); `delivery != test` membuang kunci uji. `alerting`
+memakai `effective_delivery(...) == "all"` sebagai gerbang Telegram, dan node memakai padanannya
+(`node.delivery_mode`, jam dinding) untuk menekan event. Node/API lama tetap kompatibel: `telegram` selalu
+ditulis `= (delivery === "all")` oleh UI, dan node lama yang mengabaikan `delivery` tetap tidak mengirim
+Telegram selama uji (API yang menolak).
+
+### Attendance evidence dan flag zona
 Flag `record` dan `telegram_unknown` disimpan sebagai boolean di JSON behavior `attendance`,
 tanpa migrasi. Key hilang atau `behaviors=null` memakai true; `direction` tetap wajib.
 Backend memberi `employee_id`, `employee_name`, `face_score`, dan `match_reason` setelah
@@ -289,8 +304,14 @@ tanpa batas 7 hari. Event lama tanpa kunci ini tetap memakai `GET /api/v1/monito
 1. **Konfigurasi**: admin menambah kamera (probe RTSP) → API menulis konfigurasi go2rtc →
    admin menggambar zona → `config_push` publish retained ke node → node menerapkan konfigurasi baru (worker kamera ditambah/diubah/dihentikan).
 2. **Event behavior**: analyzer memicu event → node upload snapshot/clip (pra-buffer mainstream) →
-   `ingest` menyimpan + dedup → WS broadcast → `alerting` memeriksa toggle, severity, dan rate-limit
-   → `alert_dispatcher` mengirim foto + caption ke grup Telegram.
+   `ingest` menyimpan + dedup → WS broadcast → `alerting` memeriksa tujuan efektif behavior (`delivery`),
+   severity, dan rate-limit
+   → `alert_dispatcher` mengirim foto + caption ke grup Telegram. Behavior ber-`delivery` efektif `test`
+   (Mode uji, `test_until` belum lewat) **tidak** memanggil `_merge_event`/`publish_event`/`recorder.enqueue`/
+   `registry.bind` di node; sebagai gantinya track pemicu ditandai `flash[track_id] = ("test:<tipe>", ts+6)`
+   dan label itu dikirim pada overlay `person` berikutnya (`publish_detections`, label `test:<tipe>` →
+   UI `UJI · <tipe>`). Kedaluwarsa dinilai ulang tiap frame dengan jam dinding (`delivery_mode`), jadi
+   tidak perlu restart.
 3. **Absensi**: `face_worker` mengumpulkan frame wajah bagus → embedding dikirim di payload →
    API mencocokkan ke galeri `face_embedding` (cosine ≥ `FacePolicy.match_threshold` dari baris `detector_setting`; `FACE_MATCH_THRESHOLD` hanya cadangan) →
    `attendance_event` → `recompute_day` → `attendance_day`. `AttendanceCloser` membuat

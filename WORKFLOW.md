@@ -90,15 +90,27 @@ menghapus riwayat event.
 1. Pilih kamera → gambar polygon di frame (klik titik, tutup di titik awal, drag untuk memindah).
 2. Isi nama, behavior (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`, atau attendance
    dengan arah `entry`/`exit`), severity, jadwal (**24/7**, **Jam tertentu**, **Ikut shift**).
-3. Per behavior: toggle **Snapshot**, **Clip**, **Telegram**. Behavior aktif wajib punya Snapshot atau
-   Clip (422 `needs snapshot or clip`); attendance wajib snapshot.
-4. **Simpan** → `zone` → config push → node hanya memulai ulang kamera yang berubah,
+3. Per behavior: toggle **Snapshot**, **Clip**, dan radio **Tujuan event** — **Inbox + Telegram**
+   (`delivery=all`), **Hanya Inbox** (`inbox`), atau **Mode uji** (`test`). Behavior aktif wajib punya
+   Snapshot atau Clip (422 `needs snapshot or clip`); attendance wajib snapshot dan **tidak** memakai
+   radio ini (punya toggle Telegram/Record sendiri). Menyimpan menulis `delivery` sekaligus menjaga
+   `telegram = (delivery === "all")` untuk node/API lama; zona lama tanpa `delivery` dibaca dari toggle
+   `telegram`-nya (true → Inbox + Telegram, false → Hanya Inbox) dan tidak diubah saat disimpan.
+4. **Mode uji** (24 jam): zona tetap dievaluasi di node, tetapi **tidak ada event, klip, atau Telegram**
+   dari behavior itu; track yang memicu diberi label `UJI · <tipe>` ±6 dtk di overlay Live View
+   (hanya bila Debug aktif). Memilih Mode uji pada zona severity **critical** membuka konfirmasi
+   ("alert keamanan zona ini berhenti selama uji, kembali otomatis dalam 24 jam"); membatalkan tidak
+   mengubah nilai. Server menstempel `test_until = sekarang + 24 jam` dan `revert_to` = tujuan sebelum
+   uji; menyimpan perubahan lain **tidak** memperpanjang uji. Setelah kedaluwarsa, node dan API kembali
+   ke `revert_to` **tanpa restart**. Daftar zona menampilkan badge **UJI · sampai HH:MM** selama uji
+   berlaku. Rincian operasional: `docs/runbooks/zone-test-mode.md`.
+5. **Simpan** → `zone` → config push → node hanya memulai ulang kamera yang berubah,
    bukan kamera lain; stream kamera itu tersambung ulang (<10 detik terukur untuk kamera worker face).
    Snapshot tertumpuk digabung ke yang terakhir; config pertama dan perubahan setelan global
    mengulang semua kamera.
-5. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
+6. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
 
-6. Opsional **Caption AI otomatis** per zona non-attendance: pilih **Bawaan** (instruksi per tipe)
+7. Opsional **Caption AI otomatis** per zona non-attendance: pilih **Bawaan** (instruksi per tipe)
    atau **Kustom** (maksimal 600 karakter). Lihat prompt bawaan melalui tautan di editor.
    AI hanya backend; field ini tidak dikirim ke vision melalui config push.
 Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam belum didukung.
@@ -241,9 +253,14 @@ Telegram Tanya AI, pencarian, dan ringkasan harian belum termasuk MVP.
 1. **Setup satu kali**: buat bot di @BotFather → tambahkan ke grup staf, kirim satu pesan →
    tempel token → **Simpan** → **Deteksi grup** → pilih grup → **Simpan** → **Kirim pesan uji**.
    Token disimpan di `CAMERA_SECRETS_FILE`, tidak pernah tampil lagi.
-2. Nyalakan toggle **Telegram** per behavior di zona (§6).
-3. Saat event: `alerting` memeriksa toggle, `ALERT_MIN_SEVERITY`, dan rate-limit (per kamera, zona,
+2. Tentukan **Tujuan event** per behavior di zona (§6): radio *Inbox + Telegram* / *Hanya Inbox* /
+   *Mode uji*. Tanpa `delivery` (zona lama), toggle `telegram` item/flag zona tetap dipakai.
+3. Saat event: `alerting` memeriksa tujuan efektif behavior (`all` saja yang dikirim), `ALERT_MIN_SEVERITY`,
+   dan rate-limit (per kamera, zona,
    tipe, track; critical tanpa batas, lainnya 2 menit) → baris `alert` berstatus `queued`.
+   Mode uji yang sedang berlaku tidak pernah mengirim Telegram (event-nya sendiri sudah ditekan di node;
+   node lama yang tetap mengirim juga ditolak di sini), dan setelah `test_until` lewat gate kembali ke
+   `revert_to` tanpa restart.
 4. `alert_dispatcher` (thread terpisah) mengirim foto + caption HTML → status `sent`/`failed` →
    broadcast ke Inbox. Alert `sent` ber-foto menyimpan `message_id`; bila caption AI sudah/kembali
    `ok`, `alert_ai.sync_ai_caption` mengedit pesan sekali untuk menambah baris `🤖 AI:`
