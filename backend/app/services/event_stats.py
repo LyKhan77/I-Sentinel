@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.models.event import Event
 
 SEVERITY_KEYS = ("critical", "warning", "info")
+# sama dengan grup "Keamanan" di halaman Events (tile Dashboard menaut ke /events?type=security):
+# system, person_detect, dan attendance tidak dihitung supaya angka tile = isi daftar yang dibuka
+SECURITY_TYPES = ("intrusion", "loitering", "running", "idle_zone", "crowd")
 
 
 def _local_hour(ts: datetime) -> int:
@@ -24,7 +27,7 @@ def _local_hour(ts: datetime) -> int:
 
 
 def today(db: Session) -> dict:
-    """Jumlah event sejak tengah malam lokal, tanpa tipe `attendance` (D1).
+    """Jumlah event keamanan (lima tipe perilaku) sejak tengah malam lokal (D1).
 
     Kembalikan dict dengan kunci total, by_type, by_severity (selalu tiga kunci),
     by_hour dan critical_by_hour (24 angka, indeks = jam lokal 0-23).
@@ -35,7 +38,7 @@ def today(db: Session) -> dict:
         db.query(Event.type, Event.severity, Event.ts_event)
         # Batas instan yang sama dengan `midnight`; dinormalisasi UTC supaya
         # perbandingan string di SQLite juga benar (SQLite uji simpan wall UTC).
-        .filter(Event.ts_event >= midnight.astimezone(timezone.utc), Event.type != "attendance")
+        .filter(Event.ts_event >= midnight.astimezone(timezone.utc), Event.type.in_(SECURITY_TYPES))
         .all()
     )
     total = 0

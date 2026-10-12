@@ -378,3 +378,15 @@ def test_list_events_q_finds_match_beyond_first_page(client):
     assert len(page1) == 50 and all(e["payload"]["employee_name"] != "Dewi Lestari" for e in page1)
     hits = _search_events(client, "dewi", limit=50)
     assert len(hits) == 1 and hits[0]["payload"]["employee_name"] == "Dewi Lestari"
+
+
+def test_stats_today_counts_only_the_five_behavior_types(client):
+    # tile Dashboard "Event hari ini" menaut ke /events?type=security: angka dan daftar harus sama,
+    # jadi system, person_detect, dan attendance tidak dihitung
+    h = _admin_headers(client)
+    for ev_type in ("intrusion", "loitering", "system", "person_detect", "attendance"):
+        client.post("/internal/nodes/1/events", json=_payload(type=ev_type), headers=_ingest_headers())
+    s = client.get("/api/v1/events/stats/today", headers=h).json()
+    assert s["total"] == 2
+    assert set(s["by_type"]) == {"intrusion", "loitering"}
+    assert sum(s["by_hour"]) == sum(s["by_severity"].values()) == 2

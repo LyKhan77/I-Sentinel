@@ -311,13 +311,13 @@ Snapshot dapat memuat wajah karyawan.** Jalankan satu proses API; semaphore, thr
 
 `/dashboard` satu layar status-first: **strip status** (summary Monitoring + health alert aktif, selalu
 berteks) → **4 tile yang dapat diklik** (Kamera sehat → Monitoring; Event hari ini → `/events?type=security&range=today`,
-yaitu grup Keamanan — lima tipe perilaku; angka tile sendiri dihitung `GET /events/stats/today` yang memuat
-semua tipe kecuali `attendance` (termasuk `system`), jadi angka tile bisa lebih besar dari isi daftar; Kehadiran hari
+yaitu grup Keamanan — lima tipe perilaku; angka tile dihitung `GET /events/stats/today` dengan tipe yang sama,
+jadi sama dengan isi daftar yang dibuka; Kehadiran hari
 ini → Attendance; Disk → Konfigurasi tab Storage) → **chart event per jam** hari ini → **8 event terbaru**
 (sumber realtime yang sama dengan lonceng: nama kamera, Tag severity dengan teks, thumbnail snapshot) →
 **masalah aktif** (maks 5, critical dulu) + **node ringkas** (GPU util/VRAM; detail di Monitoring).
 `GET /api/v1/events/stats/today` memperluas `total`/`by_type` dengan `by_severity`, `by_hour`,
-`critical_by_hour` dan **mengecualikan tipe `attendance`** — "Event hari ini" adalah angka keamanan, sejajar
+`critical_by_hour` dan **hanya menghitung lima tipe perilaku** (bukan `attendance`, `system`, `person_detect`) — "Event hari ini" adalah angka keamanan, sejajar
 dengan isi lonceng. Data di-poll 15 detik per sumber; satu sumber gagal tidak mengosongkan blok lain
 (tampil "—"/"Gagal memuat", bukan 0 palsu) dan strip menandai data basi. Alur lengkap: `WORKFLOW.md §15`.
 

@@ -169,9 +169,9 @@ Zona attendance digambar kecil di **area kepala**. Shift lintas tengah malam bel
    punya opsi **Semua** (mengosongkan filter itu) dan tombol **Atur ulang filter** muncul begitu ada filter
    non-default — menghapus kelima param filter, `?event=` tetap ada. Opsi Tipe statis (daftar tipe ingest,
    berlabel lokal), bukan turunan event yang sedang termuat. Respons lama yang tiba belakangan dibuang.
-   Catatan Dashboard: tile "Event hari ini" menautkan `/events?type=security&range=today`, tetapi angkanya
-   dihitung `GET /events/stats/today` (semua tipe kecuali `attendance`, termasuk `system`) sehingga bisa
-   lebih besar dari isi daftar `security`.
+   Catatan Dashboard: tile "Event hari ini" menautkan `/events?type=security&range=today` dan angkanya dari
+   `GET /events/stats/today`, yang kini menghitung tipe yang sama dengan grup `security` (lima perilaku;
+   tanpa `attendance`, `system`, `person_detect`), jadi angka tile sama dengan isi daftar yang dibuka.
 3. **Muat lebih banyak**: daftar memuat 200 event per halaman (`LIMIT`) dengan urutan `ts_event DESC, id DESC`.
    Saat halaman penuh, hitungan jadi `N+ event` + petunjuk dan tombol **Muat lebih banyak** mengambil halaman
    berikutnya (`offset`, digabung dengan dedupe `id` — event baru yang menggeser halaman tidak menduplikasi
@@ -395,8 +395,8 @@ Layout status-first (revamp 2026-09-30): **strip status** sistem (summary Monito
 teks selalu ikut warna) → **4 tile KPI yang dapat diklik** — Kamera sehat→`/monitoring`, Event hari
 ini→`/events?type=security&range=today` (filter yang sama dengan angka tile: keamanan tanpa absensi, sejak
 tengah malam), Kehadiran hari ini→`/attendance`, Disk→`/configuration?tab=storage` → **chart event per jam**
-hari ini (`GET /api/v1/events/stats/today` — `by_hour`/`critical_by_hour`; tipe `attendance` TIDAK dihitung,
-angka tile adalah hitungan keamanan) → grid dua kolom: **8 event terbaru** (sumber realtime yang sama dengan
+hari ini (`GET /api/v1/events/stats/today` — `by_hour`/`critical_by_hour`; hanya lima tipe perilaku dihitung:
+`attendance`, `system`, dan `person_detect` TIDAK; angka tile adalah hitungan keamanan) → grid dua kolom: **8 event terbaru** (sumber realtime yang sama dengan
 lonceng — nama kamera, Tag severity dengan teks, thumbnail snapshot, tautan `/events?event=<id>`) |
 **masalah aktif** (maks 5, critical dulu; "Semua →" `/monitoring`) + **node ringkas** (status, health, GPU
 pertama util/VRAM; detail di Monitoring). Banner disk saat ≥ ambang tetap di atas. Data via `useDashboardData`
