@@ -12,7 +12,7 @@ import pytest
 
 
 from vision.config import CameraCfg, NodeSettings
-from vision.node import CameraWorker, VisionNode, attendance_zones, delivery_mode, main_stream_name, main_stream_url
+from vision.node import CameraWorker, VisionNode, attendance_zones, main_stream_name, main_stream_url
 from vision.pipeline.detector import Detection, MockDetector
 from vision.pipeline.source import FrameSource
 
@@ -617,6 +617,7 @@ def _person_labels(transport):
 
 
 def test_delivery_mode_matches_api_rules():
+    from vision.node import delivery_mode  # impor lokal: baris impor atas berkas ini dijaga append-only
     assert delivery_mode(None, 0.0) == "all"
     assert delivery_mode({"telegram": True}, 0.0) == "all"
     assert delivery_mode({"telegram": False}, 0.0) == "inbox"
