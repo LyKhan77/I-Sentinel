@@ -35,8 +35,10 @@ import {
   type ZoneType,
 } from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
+import { effectiveDelivery, testUntil, type Delivery } from './zoneDelivery'
 
 const BEHAVIOR_KINDS: BehaviorKind[] = ['intrusion', 'loitering', 'running', 'idle_zone', 'crowd']
+const DELIVERY_OPTIONS: Delivery[] = ['all', 'inbox', 'test']
 const DEFAULT_SPEED_MPS = 2
 const BEHAVIOR_DEFAULTS: Partial<Record<BehaviorKind, Partial<Behavior>>> = {
   running: { speed_limit_mps: DEFAULT_SPEED_MPS },
@@ -69,8 +71,17 @@ export default function ZonesPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [pendingTest, setPendingTest] = useState<BehaviorKind | null>(null) // konfirmasi Mode uji (zona critical)
+  const [deliveryRev, setDeliveryRev] = useState(0) // remount grup radio saat pilihan selesai/dibatalkan
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null)
   const [showAiDefaults, setShowAiDefaults] = useState(false)
+  // jam untuk badge UJI: Date.now() di body render melanggar react/purity
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    const clock = setInterval(() => setNowMs(Date.now()), 30_000)
+    return () => clearInterval(clock)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -141,6 +152,37 @@ export default function ZonesPage() {
       }
     }
     patchSelected({ behaviors: BEHAVIOR_KINDS.map(entry).filter((b): b is Behavior => b !== null) })
+  }
+
+  /** Label badge UJI daftar zona; `null` bila tidak ada behavior alert yang sedang diuji. */
+  const zoneTestLabel = (z: Zone): string | null => {
+    const until = testUntil(z.behaviors.find((b) => (BEHAVIOR_KINDS as string[]).includes(b.kind)), nowMs)
+    if (!until) return null
+    const time = until.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    return `${t('zones.testBadge')} · ${t('zones.testUntil').replace('{time}', time)}`
+  }
+
+  /** Pilih tujuan event satu behavior; Mode uji pada zona critical minta konfirmasi dulu. */
+  const chooseDelivery = (kind: BehaviorKind, value: Delivery) => {
+    if (value === 'test' && selected?.severity === 'critical') {
+      setPendingTest(kind)
+      return
+    }
+    applyDelivery(kind, value)
+  }
+
+  /** Tulis `delivery` + jaga `telegram` konsisten untuk node/API lama. */
+  const applyDelivery = (kind: BehaviorKind, value: Delivery) => {
+    setPendingTest(null)
+    // remount grup radio: klik native sempat memindahkan `checked` di DOM sementara state
+    // React tidak berubah (mis. konfirmasi dibatalkan) — tanpa ini pilihan tampak nyangkut
+    setDeliveryRev((n) => n + 1)
+    setBehavior(kind, { delivery: value, telegram: value === 'all', test_until: undefined, revert_to: undefined })
+  }
+
+  const cancelTest = () => {
+    setPendingTest(null)
+    setDeliveryRev((n) => n + 1)
   }
 
   const save = async () => {
@@ -214,6 +256,20 @@ export default function ZonesPage() {
             onCloseButtonClick={() => setToast(null)}
           />
         </div>
+      )}
+
+      {pendingTest && selected && (
+        <Modal
+          open
+          data-testid="zone-test-confirm"
+          modalHeading={t('zones.testConfirmTitle')}
+          primaryButtonText={t('zones.testConfirmOk')}
+          secondaryButtonText={t('common.cancel')}
+          onRequestSubmit={() => applyDelivery(pendingTest, 'test')}
+          onRequestClose={cancelTest}
+        >
+          <p>{t('zones.testConfirmBody')}</p>
+        </Modal>
       )}
 
       {confirmDelete && selected && (
@@ -295,6 +351,11 @@ export default function ZonesPage() {
                     <span className="zone-item__sw" style={{ background: ZONE_COLOR[z.type] }} />
                     <span className="zone-item__name">{z.name}</span>
                     <span className="zone-badge">{t(`zones.type.${z.type}` as TKey).toUpperCase()}</span>
+                    {zoneTestLabel(z) && (
+                      <span data-testid={`zone-test-badge-${z.id}`} className="zone-badge zone-badge--uji">
+                        {zoneTestLabel(z)}
+                      </span>
+                    )}
                     <span className={z.active ? 'zone-badge zone-badge--green' : 'zone-badge'}>
                       {z.active ? t('zones.active') : t('zones.inactive')}
                     </span>
@@ -542,13 +603,26 @@ export default function ZonesPage() {
                                 toggled={b.clip ?? selected.clip}
                                 onToggle={(v) => setBehavior(kind, { clip: v })}
                               />
-                              <Toggle
-                                id={`zone-telegram-${kind}`}
-                                size="sm"
-                                labelText={t('zones.telegram')}
-                                toggled={b.telegram ?? selected.telegram}
-                                onToggle={(v) => setBehavior(kind, { telegram: v })}
-                              />
+                              <RadioButtonGroup
+                                key={`zone-delivery-${kind}-${deliveryRev}`}
+                                legendText={t('zones.delivery.label')}
+                                name={`zone-delivery-${kind}`}
+                                data-testid={`zone-delivery-${kind}`}
+                                valueSelected={effectiveDelivery(b, selected.telegram, nowMs)}
+                                // Carbon hanya meng-clone RadioButton anak langsung, jadi teks bantu
+                                // per pilihan ditampilkan pada slot helper milik grup (pilihan aktif)
+                                helperText={t(`zones.delivery.${effectiveDelivery(b, selected.telegram, nowMs)}Hint` as TKey)}
+                                onChange={(value) => chooseDelivery(kind, value as Delivery)}
+                              >
+                                {DELIVERY_OPTIONS.map((option) => (
+                                  <RadioButton
+                                    key={option}
+                                    id={`zone-delivery-${kind}-${option}`}
+                                    value={option}
+                                    labelText={t(`zones.delivery.${option}` as TKey)}
+                                  />
+                                ))}
+                              </RadioButtonGroup>
                               {kind === 'intrusion' && (
                                 <Toggle
                                   id="zone-face-id-intrusion"

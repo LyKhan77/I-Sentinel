@@ -17,6 +17,10 @@ export type Behavior = {
   telegram_unknown?: boolean // kosong = true
   record?: boolean // kosong = true
   face_id?: boolean // intrusion critical: cari identitas wajah (kamera dengan worker wajah)
+  // Tujuan event (Plan B): `test` = Mode uji (tanpa event/klip/Telegram, kembali ke `revert_to`).
+  delivery?: 'all' | 'inbox' | 'test'
+  test_until?: string // ISO-8601 UTC, hanya saat delivery = test (distempel server)
+  revert_to?: 'all' | 'inbox' // tujuan setelah uji berakhir
 }
 
 export type Schedule = { days: number[]; start: string; end: string }

@@ -10,6 +10,7 @@ import { playerMode } from './playerMode'
 import { useInView } from './useInView'
 import { useEventAlerts } from '../notifications/EventAlertsProvider'
 import { sevClass, typeKey } from '../notifications/labels'
+import { eventTypeLabel } from '../events/eventTypes'
 import { useCameraHealthAlerts, type CameraHealth } from '../monitoring/useCameraHealthAlerts'
 import './go2rtc-player' // sisi efek: daftarkan <video-stream> (custom element player go2rtc)
 import type { StreamElement } from './go2rtc-player'
@@ -253,6 +254,9 @@ function DebugOverlay({ camId, showZones, showDetection, boxes, names }: {
       ? names[`${camId}:${b.id}`].name
       : b.kind === 'face' && b.label && (FACE_GATE_CODES as readonly string[]).includes(b.label)
       ? t(`live.faceGate.${b.label}` as TKey)
+      // Mode uji zona: node mengirim `test:<tipe>`; label lain ditampilkan apa adanya
+      : b.kind === 'person' && b.label?.startsWith('test:')
+      ? t('live.testFired').replace('{type}', eventTypeLabel(b.label.slice('test:'.length), t))
       : b.label ?? t('live.trackId').replace('{n}', String(b.id))
   const [zones, setZones] = useState<Zone[]>([])
   useEffect(() => {
