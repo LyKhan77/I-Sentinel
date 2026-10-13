@@ -9,6 +9,8 @@ from app.api.deps import COOKIE, get_current_user, require_admin, set_auth_cooki
 from app.models.user import User
 from app.schemas.user import UserOut, LoginIn, PasswordChange
 
+from app.services import audit
+
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 # ponytail: penghitung in-memory per proses. Cukup karena deployment ini satu
@@ -20,6 +22,10 @@ _FAILURES: dict[tuple[str, str], list[float]] = {}
 def _client_key(username: str, request: Request) -> tuple[str, str]:
     ip = request.client.host if request.client else "?"
     return (username.strip().lower(), ip)
+
+
+def _ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 def _check_lock(key: tuple[str, str]) -> None:
@@ -45,17 +51,29 @@ def _login(user: User, response: Response) -> dict:
 @router.post("/login")
 def login(body: LoginIn, response: Response, request: Request, db: Session = Depends(get_db)):
     key = _client_key(body.username, request)
-    _check_lock(key)
+    try:
+        _check_lock(key)
+    except HTTPException as exc:
+        if exc.status_code == 429:
+            audit.record(db, action="auth.lockout", actor_label=body.username, status="failed",
+                         ip=_ip(request), user_agent=request.headers.get("user-agent"))
+            db.commit()
+        raise
     user = db.query(User).filter_by(username=body.username).first()
     # bcrypt raises on >72-byte passwords; 401 (not 422) here — client sent wrong creds
     if not user or len(body.password.encode()) > 72 or not verify_password(body.password, user.password_hash):
         _FAILURES.setdefault(key, []).append(time.monotonic())
+        audit.record(db, action="auth.login_failed", actor_label=body.username, status="failed",
+                     ip=_ip(request), user_agent=request.headers.get("user-agent"))
+        db.commit()
         raise HTTPException(401, "invalid credentials")
     if not user.is_active:
         # hanya pemegang password benar yang tahu akunnya nonaktif
         raise HTTPException(403, "account disabled")
     _FAILURES.pop(key, None)
     user.last_login_at = datetime.now(timezone.utc)
+    audit.record(db, action="auth.login", actor=user,
+                 ip=_ip(request), user_agent=request.headers.get("user-agent"))
     db.commit()
     return _login(user, response)
 
@@ -69,12 +87,21 @@ def change_password(body: PasswordChange, request: Request, response: Response,
                     user: User = Depends(require_admin), db: Session = Depends(get_db)):
     # khusus admin (feedback user): password viewer (akun TV/satpam) diatur admin lewat reset di tab User
     key = _client_key(user.username, request)
-    _check_lock(key)  # tebakan password lama ikut batas percobaan login
+    try:
+        _check_lock(key)  # tebakan password lama ikut batas percobaan login
+    except HTTPException as exc:
+        if exc.status_code == 429:
+            audit.record(db, action="auth.lockout", actor=user, status="failed",
+                         ip=_ip(request), user_agent=request.headers.get("user-agent"))
+            db.commit()
+        raise
     if len(body.current_password.encode()) > 72 or not verify_password(body.current_password, user.password_hash):
         _FAILURES.setdefault(key, []).append(time.monotonic())
         raise HTTPException(400, "current password is incorrect")  # bukan 401: jangan lempar ke /login
     user.password_hash = hash_password(body.new_password)
     user.token_version += 1  # perangkat lain keluar
+    audit.record(db, action="auth.password_change", actor=user,
+                 ip=_ip(request), user_agent=request.headers.get("user-agent"))
     db.commit()
     # ditulis setelah cookie perpanjangan dari get_current_user (bila ada) → yang terakhir menang
     set_auth_cookie(response, create_access_token(user.id, user.role, user.token_version))

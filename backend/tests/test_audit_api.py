@@ -43,7 +43,7 @@ def test_list_pagination_and_total(client, db):
     r = client.get("/api/v1/audit-logs?limit=2&offset=0", headers=h)
     assert r.status_code == 200
     body = r.json()
-    assert body["total"] == 4
+    assert body["total"] == 5
     assert len(body["items"]) == 2
     r2 = client.get("/api/v1/audit-logs?limit=2&offset=2", headers=h)
     assert len(r2.json()["items"]) == 2
@@ -55,7 +55,7 @@ def test_list_filters(client, db):
     _seed(db)
     h = admin_headers(client)
     assert client.get("/api/v1/audit-logs?category=config", headers=h).json()["total"] == 1
-    assert client.get("/api/v1/audit-logs?category=auth", headers=h).json()["total"] == 2
+    assert client.get("/api/v1/audit-logs?category=auth", headers=h).json()["total"] == 3
     assert client.get("/api/v1/audit-logs?action=auth.login_failed", headers=h).json()["total"] == 1
     assert client.get("/api/v1/audit-logs?actor=op1", headers=h).json()["total"] == 1
     assert client.get("/api/v1/audit-logs?status=failed", headers=h).json()["total"] == 1
@@ -70,8 +70,8 @@ def test_list_from_to_filter(client, db):
     future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     # pakai params= agar '+' timezone di-encode benar (bila disusul literal di URL, '+' jadi spasi)
-    assert client.get("/api/v1/audit-logs", params={"to": future}, headers=h).json()["total"] == 4
-    assert client.get("/api/v1/audit-logs", params={"from": past}, headers=h).json()["total"] == 4
+    assert client.get("/api/v1/audit-logs", params={"to": future}, headers=h).json()["total"] == 5
+    assert client.get("/api/v1/audit-logs", params={"from": past}, headers=h).json()["total"] == 5
     assert client.get("/api/v1/audit-logs", params={"to": past}, headers=h).json()["total"] == 0
 
 
@@ -100,7 +100,7 @@ def test_verify_endpoint_ok_and_tampered(client, db):
     h = admin_headers(client)
     _seed(db)
     r = client.post("/api/v1/audit-logs/verify", headers=h)
-    assert r.json() == {"ok": True, "checked": 4, "first_break_id": None}
+    assert r.json() == {"ok": True, "checked": 5, "first_break_id": None}
     # rusakkan satu baris langsung di DB → verify melapor
     row = db.query(AuditLog).order_by(AuditLog.id).first()
     row.status = "tampered"
