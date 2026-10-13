@@ -337,3 +337,23 @@ queue size are read-only copy: changes require environment edits and API recreat
 The form is single-column, max-width 640px, with wrapping actions and error text. Synthetic browser
 checks at 390×844 measured document/body scrollWidth 390 with Connection, Advanced expanded,
 and English copy. These stub checks are not real admin/viewer/server/LLM acceptance.
+
+## I-Sentinel: Audit Log
+
+Semua mutasi pada domain auth, konfigurasi (kamera, zona, sumber stream, profil
+kredensial, lokasi, node, pengaturan detektor/AI/storage/Telegram), dan absensi
+(karyawan, enrollment, shift, koreksi/impor/ekspor) menulis satu baris ke `audit_log`
+lewat `app/services/audit.py` (`audit.record`) dalam transaksi yang sama dengan aksi.
+Integritas dijaga rantai SHA-256 per baris (`prev_hash` → `hash`; tulis diserialize
+`pg_advisory_xact_lock`); endpoint `POST /api/v1/audit-logs/verify` menghitung ulang
+rantai di window retensi. Nilai field mirip rahasia (password/token/secret/credential)
+tidak pernah tersimpan — diganti `***`. Retensi 90 hari (`AUDIT_RETENTION_DAYS`)
+disapu `app/services/audit_sweeper.py`. Dibaca admin lewat `GET /api/v1/audit-logs`
+(filter tanggal/kategori/aksi/actor/status/target + paginasi `{total, items}`).
+
+Halaman sidebar `/audit-log` hanya untuk admin, memakai filter URL, input tanggal native,
+pencarian debounce, tabel dan paginasi. CREATE/DELETE tidak menyimpan payload entitas;
+UPDATE memuat nilai baru field yang berubah. Callback sebelum commit pada settings dan
+commit tertunda enrollment menjaga audit dan mutasi database dalam transaksi yang sama.
+Efek samping file/secret store mengikuti layanan existing dan bukan bagian transaksi database.
+Manajemen user/role, endpoint internal vision, dan realtime audit tidak termasuk fase ini.

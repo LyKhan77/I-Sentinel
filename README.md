@@ -9,6 +9,9 @@ lokal: deteksi orang berbasis zona untuk keamanan, dan pengenalan wajah untuk ab
 | **Absensi** | Enrollment wajah (3 foto), gerbang wajah di kamera pintu, shift, rekap harian, ekspor/impor CSV; zona absensi memakai **tujuan event per behavior** yang sama (Inbox + Telegram / Hanya Inbox / **Mode uji** 24 jam tanpa event, media, atau rekap). |
 | **Operasional** | Live View + Mode TV, Dashboard, Monitoring dengan alert kesehatan, retensi storage, user admin/viewer. |
 
+- **Audit log (admin)**: jejak aksi auth, konfigurasi, dan absensi dengan rantai hash
+  anti-tamper (verifikasi dari halaman Audit Log), retensi 90 hari, filter + paginasi.
+
 Status: pra-rilis `0.x`. Berjalan di Docker Compose (server dev `gspe-ai3` sejak 2026-10-02).
 
 **Isi:** [Arsitektur](#arsitektur) · [Instalasi](#instalasi) · [Penyiapan pertama](#penyiapan-pertama) ·
