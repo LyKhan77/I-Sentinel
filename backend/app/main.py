@@ -165,3 +165,6 @@ from app.api.detector_settings import router as detector_settings_router
 app.include_router(detector_settings_router)
 from app.api.monitoring import router as monitoring_router
 app.include_router(monitoring_router)
+
+from app.api.audit_logs import router as audit_logs_router
+app.include_router(audit_logs_router)
