@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -35,11 +37,17 @@ def list_shifts(user=Depends(get_current_user), db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=ShiftOut)
-def create_shift(body: ShiftIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def create_shift(request: Request, body: ShiftIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     if _dup_name(db, body.name):
         raise HTTPException(409, "shift name already exists")
     shift = Shift(**body.model_dump())
-    db.add(shift); db.commit(); db.refresh(shift)
+    db.add(shift)
+    db.flush()
+    audit.record(db, action="shift.create", actor=admin, target=("shift", shift.id, shift.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    db.refresh(shift)
     return shift
 
 
@@ -51,7 +59,7 @@ def get_shift(shift_id: int, user=Depends(get_current_user), db: Session = Depen
 
 
 @router.patch("/{shift_id}", response_model=ShiftOut)
-def update_shift(shift_id: int, body: ShiftPatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def update_shift(request: Request, shift_id: int, body: ShiftPatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
     shift = db.get(Shift, shift_id)
     if not shift: raise HTTPException(404, "shift not found")
     # semua kolom shift NOT NULL → null eksplisit diabaikan, bukan 500
@@ -60,9 +68,14 @@ def update_shift(shift_id: int, body: ShiftPatch, admin=Depends(require_admin), 
         raise HTTPException(409, "shift name already exists")
     if changes.get("end_time", shift.end_time) <= changes.get("start_time", shift.start_time):
         raise HTTPException(422, END_AFTER_START)
+    changes = {k: v for k, v in changes.items() if getattr(shift, k) != v}
     for k, v in changes.items():
         setattr(shift, k, v)
-    db.commit(); db.refresh(shift)
+    audit.record(db, action="shift.update", actor=admin, target=("shift", shift.id, shift.name), changes=changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    db.refresh(shift)
     for camera_id in sorted({z.camera_id for z in _zones_using(db, shift_id)}):
         try:
             publish_node_config_for_camera(db, camera_id)
@@ -72,7 +85,7 @@ def update_shift(shift_id: int, body: ShiftPatch, admin=Depends(require_admin), 
 
 
 @router.delete("/{shift_id}")
-def delete_shift(shift_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def delete_shift(request: Request, shift_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     shift = db.get(Shift, shift_id)
     if not shift: raise HTTPException(404, "shift not found")
     if db.query(Employee).filter(Employee.shift_id == shift_id).first():
@@ -80,5 +93,9 @@ def delete_shift(shift_id: int, admin=Depends(require_admin), db: Session = Depe
     zones = _zones_using(db, shift_id)
     if zones:
         raise HTTPException(409, "shift in use by zones: " + ", ".join(z.name for z in zones))
-    db.delete(shift); db.commit()
+    audit.record(db, action="shift.delete", actor=admin, target=("shift", shift.id, shift.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.delete(shift)
+    db.commit()
     return {"ok": True}

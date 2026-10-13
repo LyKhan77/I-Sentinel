@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 """Absensi API: list harian, export/import CSV, override manual, close-days (internal).
 
 Catatan: `date`/`from`/`to` di query diberi alias karena `date` menutupi tipe bawaan.
@@ -106,7 +108,7 @@ def list_attendance(
 
 
 @router.get("/api/v1/attendance/rekap.csv")
-def export_csv(
+def export_csv(request: Request,
     from_: date | None = Query(None, alias="from"),
     to: date | None = Query(None, alias="to"),
     user=Depends(get_current_user),
@@ -128,6 +130,10 @@ def export_csv(
             _csv_safe(day.override_note or ""),
             early if early is not None else "",
         ])
+    audit.record(db, action="attendance.export", actor=user, target=None, changes={"from": str(from_), "to": str(to)},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
@@ -136,7 +142,7 @@ def export_csv(
 
 
 @router.post("/api/v1/attendance/import")
-def import_csv(
+def import_csv(request: Request,
     file: UploadFile = File(...),
     admin=Depends(require_admin),
     db: Session = Depends(get_db),
@@ -179,12 +185,15 @@ def import_csv(
         row.status = status
         row.late_minutes = late
         row.override_note = "import"
+    audit.record(db, action="attendance.import", actor=admin, target=("attendance", None, "csv"), changes={"created": created, "updated": updated, "skipped": skipped},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     return {"updated": updated, "created": created, "skipped": skipped}
 
 
 @router.patch("/api/v1/attendance/{day_id}")
-def patch_day(
+def patch_day(request: Request,
     day_id: int,
     body: AttendancePatch,
     admin=Depends(require_admin),
@@ -195,6 +204,7 @@ def patch_day(
         raise HTTPException(404, "attendance day not found")
 
     changes = body.model_dump(exclude_unset=True)
+    audit_changes = {k: v for k, v in changes.items() if getattr(row, k) != v}
     note = changes.pop("override_note", None)
     if changes and not note:
         raise HTTPException(422, "override_note required when changing attendance fields")
@@ -213,6 +223,9 @@ def patch_day(
         )
         row.late_minutes = late
         row.duration_min = duration
+    audit.record(db, action="attendance.correct", actor=admin, target=("attendance_day", day_id, f"{emp.name if emp else row.employee_id} {row.date.isoformat()}"), changes=audit_changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(row)
     return _row_dict(row, emp)

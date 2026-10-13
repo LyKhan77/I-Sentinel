@@ -47,11 +47,14 @@ def _employee(db, code="E1"):
 
 def _patch_enroll(monkeypatch):
     """enroll_embedding palsu tapi tetap menyimpan row nyata."""
-    def _enroll(db, employee_id, image_path):
+    def _enroll(db, employee_id, image_path, *, commit=True):
         row = FaceEmbedding(employee_id=employee_id, vector=[1.0, 0.0, 0.0, 0.0], quality=0.9,
                             source_image_path=image_path)
         db.add(row)
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
         db.refresh(row)
         return row
     monkeypatch.setattr(face, "enroll_embedding", _enroll)
@@ -104,7 +107,7 @@ def test_upload_sixth_conflict(client, db, monkeypatch):
 # --- (c) ValueError → 422 + file tidak tersisa ------------------------------
 
 def test_upload_bad_quality_422_cleans_file(client, db, monkeypatch, tmp_path):
-    def _boom(db_, employee_id, image_path):
+    def _boom(db_, employee_id, image_path, *, commit=True):
         raise ValueError("low_quality")
     monkeypatch.setattr(face, "enroll_embedding", _boom)
 
@@ -138,7 +141,7 @@ def test_upload_oversize_413_no_orphan(client, db, monkeypatch, tmp_path):
 
 
 def test_upload_unexpected_error_cleans_file(client, db, monkeypatch, tmp_path):
-    def _boom(db_, employee_id, image_path):
+    def _boom(db_, employee_id, image_path, *, commit=True):
         raise KeyError("kaboom")
     monkeypatch.setattr(face, "enroll_embedding", _boom)
 
@@ -151,7 +154,7 @@ def test_upload_unexpected_error_cleans_file(client, db, monkeypatch, tmp_path):
 
 
 def test_upload_engine_unavailable_422(client, db, monkeypatch):
-    def _boom(db_, employee_id, image_path):
+    def _boom(db_, employee_id, image_path, *, commit=True):
         raise RuntimeError("insightface tidak terpasang")
     monkeypatch.setattr(face, "enroll_embedding", _boom)
 
@@ -328,11 +331,14 @@ def test_batch_upload_duplicate_warns(client, db, monkeypatch, tmp_path):
 
 
 def _fake_enroll(tmp_path):
-    def _enroll(db, employee_id, image_path):
+    def _enroll(db, employee_id, image_path, *, commit=True):
         row = FaceEmbedding(employee_id=employee_id, vector=[1.0, 0.0, 0.0, 0.0], quality=0.9,
                             source_image_path=image_path)
         db.add(row)
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
         db.refresh(row)
         return row
     return _enroll

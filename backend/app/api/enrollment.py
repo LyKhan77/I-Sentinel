@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 """Face enrollment + biometrik PDP endpoints. Foto disimpan di {storage_root}/faces/{id}/."""
 import shutil
 import uuid
@@ -32,13 +34,13 @@ def _faces_dir(employee_id: int) -> Path:
 
 
 @router.post("/{employee_id}/photos")
-def upload_photo(
+def upload_photo(request: Request,
     employee_id: int,
     file: UploadFile = File(...),
     admin=Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    _employee(db, employee_id)
+    emp = _employee(db, employee_id)
     count = db.query(FaceEmbedding).filter(FaceEmbedding.employee_id == employee_id).count()
     if count >= MAX_PHOTOS:
         raise HTTPException(409, f"max {MAX_PHOTOS} photos")
@@ -53,7 +55,7 @@ def upload_photo(
     abs_path.write_bytes(data)
 
     try:
-        row = face.enroll_embedding(db, employee_id, str(abs_path))
+        row = face.enroll_embedding(db, employee_id, str(abs_path), commit=False)
     except ValueError as e:  # no_face / low_quality
         abs_path.unlink(missing_ok=True)
         raise HTTPException(422, str(e))
@@ -65,6 +67,9 @@ def upload_photo(
         raise
 
     row.source_image_path = rel  # simpan path relatif (disajikan via /api/v1/media)
+    audit.record(db, action="enrollment.create", actor=admin, target=("employee", employee_id, emp.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(row)
     face.refresh_gallery(db)
@@ -72,7 +77,7 @@ def upload_photo(
 
 
 @router.post("/{employee_id}/photos/batch")
-def upload_photos_batch(
+def upload_photos_batch(request: Request,
     employee_id: int,
     files: List[UploadFile] = File(...),
     admin=Depends(require_admin),
@@ -84,11 +89,15 @@ def upload_photos_batch(
     mentah); ok=False → reason no_face|low_quality|too_large|max_photos.
     duplicate_of = warning wajah mirip employee lain (bukan reject).
     """
-    _employee(db, employee_id)
+    emp = _employee(db, employee_id)
     results = []
     for f in files:
         r = _enroll_one(db, employee_id, f)
         results.append(r)
+    audit.record(db, action="enrollment.batch", actor=admin, target=("employee", employee_id, emp.name), changes={"count": len(files), "ok": sum(1 for r in results if r["ok"])},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
     face.refresh_gallery(db)
     return {"results": results}
 
@@ -129,7 +138,7 @@ def _enroll_one(db, employee_id: int, f: UploadFile) -> dict:
         return {"ok": False, "reason": "no_face"}
 
     rel = str(Path(crop_abs).relative_to(settings.storage_root))
-    row = face._save_embedding(db, employee_id, best, rel)
+    row = face._save_embedding(db, employee_id, best, rel, commit=False)
     dup = face.find_duplicate(best.vector, employee_id)
     return {
         "ok": True,
@@ -158,13 +167,13 @@ def enrollment_status(employee_id: int, user=Depends(get_current_user), db: Sess
 
 
 @router.delete("/{employee_id}/photos/{embedding_id}")
-def delete_photo(
+def delete_photo(request: Request,
     employee_id: int,
     embedding_id: int,
     admin=Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    _employee(db, employee_id)
+    emp = _employee(db, employee_id)
     row = (
         db.query(FaceEmbedding)
         .filter(FaceEmbedding.id == embedding_id, FaceEmbedding.employee_id == employee_id)
@@ -175,19 +184,25 @@ def delete_photo(
     if row.source_image_path:
         (Path(settings.storage_root) / row.source_image_path).unlink(missing_ok=True)
     db.delete(row)
+    audit.record(db, action="enrollment.delete", actor=admin, target=("employee", employee_id, emp.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     face.refresh_gallery(db)
     return {"ok": True}
 
 
 @router.delete("/{employee_id}/biometrics")
-def purge_biometrics(employee_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
-    _employee(db, employee_id)
+def purge_biometrics(request: Request, employee_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
+    emp = _employee(db, employee_id)
     deleted = (
         db.query(FaceEmbedding)
         .filter(FaceEmbedding.employee_id == employee_id)
         .delete(synchronize_session=False)
     )
+    audit.record(db, action="enrollment.purge", actor=admin, target=("employee", employee_id, emp.name), changes={"deleted": deleted},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     shutil.rmtree(_faces_dir(employee_id), ignore_errors=True)
     face.refresh_gallery(db)

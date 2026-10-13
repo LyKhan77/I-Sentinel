@@ -267,7 +267,7 @@ def match_crop(db, image_path: str) -> MatchResult:
     return MatchResult(employee_id, score, face.quality, "matched")
 
 
-def enroll_embedding(db, employee_id: int, image_path: str) -> FaceEmbedding:
+def enroll_embedding(db, employee_id: int, image_path: str, *, commit: bool = True) -> FaceEmbedding:
     """Embed wajah terbesar di image_path dan simpan row. ValueError bila tidak ada wajah / kualitas rendah.
 
     Tidak refresh gallery — caller yang tahu kapan (lihat refresh_gallery).
@@ -279,10 +279,10 @@ def enroll_embedding(db, employee_id: int, image_path: str) -> FaceEmbedding:
     best = _best_face(faces)
     if best.quality < settings.face_min_quality:
         raise ValueError("low_quality")
-    return _save_embedding(db, employee_id, best, image_path)
+    return _save_embedding(db, employee_id, best, image_path, commit=commit)
 
 
-def _save_embedding(db, employee_id: int, best: FaceResult, source_path: str) -> FaceEmbedding:
+def _save_embedding(db, employee_id: int, best: FaceResult, source_path: str, *, commit: bool = True) -> FaceEmbedding:
     """Simpan row embedding dari FaceResult (dipakai enroll_embedding + batch)."""
     row = FaceEmbedding(
         employee_id=employee_id,
@@ -291,7 +291,10 @@ def _save_embedding(db, employee_id: int, best: FaceResult, source_path: str) ->
         source_image_path=source_path,
     )
     db.add(row)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()  # caller commits embedding and its audit record together
     db.refresh(row)
     return row
 

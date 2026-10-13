@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 import shutil
 from pathlib import Path
 
@@ -37,12 +39,18 @@ def list_employees(active: bool | None = None, user=Depends(get_current_user), d
 
 
 @router.post("", response_model=EmployeeOut)
-def create_employee(body: EmployeeIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def create_employee(request: Request, body: EmployeeIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     if _dup_code(db, body.employee_code):
         raise HTTPException(409, "employee_code already exists")
     _check_shift(db, body.shift_id)
     emp = Employee(**body.model_dump())
-    db.add(emp); db.commit(); db.refresh(emp)
+    db.add(emp)
+    db.flush()
+    audit.record(db, action="employee.create", actor=admin, target=("employee", emp.id, emp.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    db.refresh(emp)
     return emp
 
 
@@ -54,7 +62,7 @@ def get_employee(employee_id: int, user=Depends(get_current_user), db: Session =
 
 
 @router.patch("/{employee_id}", response_model=EmployeeOut)
-def update_employee(employee_id: int, body: EmployeePatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def update_employee(request: Request, employee_id: int, body: EmployeePatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
     emp = db.get(Employee, employee_id)
     if not emp: raise HTTPException(404, "employee not found")
     # shift_id boleh null (lepas shift); kolom lain NOT NULL → null eksplisit diabaikan
@@ -63,23 +71,32 @@ def update_employee(employee_id: int, body: EmployeePatch, admin=Depends(require
         raise HTTPException(409, "employee_code already exists")
     if "shift_id" in changes:
         _check_shift(db, changes["shift_id"])
+    changes = {k: v for k, v in changes.items() if getattr(emp, k) != v}
     for k, v in changes.items():
         setattr(emp, k, v)
-    db.commit(); db.refresh(emp)
+    audit.record(db, action="employee.update", actor=admin, target=("employee", emp.id, emp.name), changes=changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    db.refresh(emp)
     if "active" in changes:
         face.refresh_gallery(db)  # nonaktif = tidak dikenali di gate
     return emp
 
 
 @router.delete("/{employee_id}")
-def delete_employee(employee_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def delete_employee(request: Request, employee_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     emp = db.get(Employee, employee_id)
     if not emp: raise HTTPException(404, "employee not found")
     if (db.query(AttendanceEvent).filter(AttendanceEvent.employee_id == employee_id).first()
             or db.query(AttendanceDay).filter(AttendanceDay.employee_id == employee_id).first()):
         raise HTTPException(409, "employee has attendance records; deactivate instead")
     db.query(FaceEmbedding).filter(FaceEmbedding.employee_id == employee_id).delete(synchronize_session=False)
-    db.delete(emp); db.commit()
+    audit.record(db, action="employee.delete", actor=admin, target=("employee", emp.id, emp.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.delete(emp)
+    db.commit()
     shutil.rmtree(Path(settings.storage_root) / "faces" / str(employee_id), ignore_errors=True)
     face.refresh_gallery(db)
     return {"ok": True}
