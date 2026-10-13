@@ -21,6 +21,7 @@ import {
   Logout,
   Password,
   Activity,
+  Document,
 } from '@carbon/icons-react'
 import { useT, type TKey } from './i18n'
 import { getMe, logout, type Me } from '../api/client'
@@ -55,6 +56,7 @@ const GROUPS: { key: TKey; items: Item[] }[] = [
     items: [
       { to: '/monitoring', key: 'nav.monitoring', icon: Activity },
       { to: '/configuration?tab=cameras', key: 'nav.configuration', icon: Settings, adminOnly: true },
+      { to: '/audit-log', key: 'nav.auditLog', icon: Document, adminOnly: true },
     ],
   },
 ]

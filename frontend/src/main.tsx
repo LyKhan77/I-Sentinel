@@ -12,6 +12,7 @@ import EventsPage from './features/events/EventsPage'
 import AttendancePage from './features/attendance/AttendancePage'
 import EnrollmentPage from './features/enrollment/EnrollmentPage'
 import MonitoringPage from './features/monitoring/MonitoringPage'
+import AuditLogPage from './features/audit/AuditLogPage'
 import { I18nProvider, useT } from './app/i18n'
 import { getMe } from './api/client'
 import { EventAlertsProvider } from './features/notifications/EventAlertsProvider'
@@ -76,6 +77,7 @@ const router = createBrowserRouter([
           { path: 'attendance', element: <AttendancePage /> },
           { path: 'enrollment', element: <EnrollmentPage /> },
           { path: 'monitoring', element: <MonitoringPage /> },
+          { path: 'audit-log', element: <AuditLogPage /> },
           { path: 'configuration', element: <ConfigurationPage /> },
           { path: '*', element: <Placeholder /> },
         ],

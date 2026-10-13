@@ -36,3 +36,58 @@
       format('woff2');
   }
 }
+
+/* Audit Log */
+.audit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+.audit-toolbar .cds--dropdown,
+.audit-toolbar .cds--text-input {
+  min-width: 160px;
+}
+.audit-filter--search {
+  flex: 1 1 200px;
+}
+.audit-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.audit-date label {
+  font-size: 12px;
+  color: var(--cds-text-secondary);
+}
+.audit-date input {
+  height: 32px;
+  padding: 0 12px;
+  background: var(--cds-field);
+  color: var(--cds-text-primary);
+  border: none;
+  border-bottom: 1px solid var(--cds-border-strong);
+}
+.audit-changes {
+  display: block;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--cds-text-secondary);
+  word-break: break-all;
+}
+.audit-pager {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+.audit-table {
+  overflow-x: auto;
+}
+
+.audit-page { min-width: 0; }
+.audit-page .app-page__head { flex-wrap: wrap; gap: 12px; }
+.audit-filter { flex: 1 1 160px; min-width: 0; }
+.audit-pager { flex-wrap: wrap; }
+.audit-table { max-width: 100%; }
