@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import re
@@ -22,7 +24,7 @@ class DetectorDeviceIn(BaseModel):
 
 
 @router.put("/{node_id}/detector-device", response_model=NodeOut)
-def set_detector_device(node_id: int, body: DetectorDeviceIn,
+def set_detector_device(request: Request, node_id: int, body: DetectorDeviceIn,
                         user=Depends(require_admin), db: Session = Depends(get_db)):
     """Pin/unpin detector GPU via config push. Empty device = auto (env fallback)."""
     device = (body.device or "").strip()
@@ -39,6 +41,10 @@ def set_detector_device(node_id: int, body: DetectorDeviceIn,
         if n and n <= int(m.group(1)):
             raise HTTPException(422, f"device {device} not found: node reports {n} GPU")
     node.detector_device = device or None
+    audit.record(db, action="node.update", actor=user,
+                 target=("node", node.id, node.name), changes={"detector_device": device or "auto"},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     publish_node_config(None, db, node.name)
     db.refresh(node)
@@ -46,7 +52,7 @@ def set_detector_device(node_id: int, body: DetectorDeviceIn,
 
 
 @router.put("/{node_id}/face-device", response_model=NodeOut)
-def set_face_device(node_id: int, body: DetectorDeviceIn,
+def set_face_device(request: Request, node_id: int, body: DetectorDeviceIn,
                     user=Depends(require_admin), db: Session = Depends(get_db)):
     """Pin/unpin GPU face recognition via config push. Empty device = auto (env fallback)."""
     device = (body.device or "").strip()
@@ -61,6 +67,10 @@ def set_face_device(node_id: int, body: DetectorDeviceIn,
         if n and n <= int(m.group(1)):
             raise HTTPException(422, f"device {device} not found: node reports {n} GPU")
     node.face_device = device or None
+    audit.record(db, action="node.update", actor=user,
+                 target=("node", node.id, node.name), changes={"face_device": device or "auto"},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     publish_node_config(None, db, node.name)
     db.refresh(node)

@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -76,7 +78,7 @@ def list_profiles(user=Depends(get_current_user), db: Session = Depends(get_db))
 
 
 @router.post("", response_model=CredentialProfileOut)
-def create_profile(
+def create_profile(request: Request, 
     body: CredentialProfileIn,
     admin=Depends(require_admin),
     db: Session = Depends(get_db),
@@ -102,13 +104,18 @@ def create_profile(
             db.rollback()
             raise
         profile.secret_ref = f"store:{key}"
+    db.flush()
+    audit.record(db, action="credential_profile.create", actor=admin,
+                 target=("credential_profile", profile.id, profile.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(profile)
     return profile
 
 
 @router.patch("/{profile_id}", response_model=CredentialProfileOut)
-def update_profile(
+def update_profile(request: Request, 
     profile_id: int,
     body: CredentialProfilePatch,
     admin=Depends(require_admin),
@@ -135,8 +142,13 @@ def update_profile(
     if data.get("enabled") is False and _in_use(db, profile.id):
         raise HTTPException(409, "credential profile is used by an enabled camera or source")
     runtime_changed = bool({"username", "secret_ref", "enabled"} & data.keys())
+    audit_changes = {k: v for k, v in data.items() if getattr(profile, k, object()) != v}
     for key, value in data.items():
         setattr(profile, key, value)
+    audit.record(db, action="credential_profile.update", actor=admin,
+                 target=("credential_profile", profile.id, profile.name), changes=audit_changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(profile)
     if runtime_changed:

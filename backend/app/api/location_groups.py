@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -24,7 +26,7 @@ def list_groups(user=Depends(get_current_user), db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=LocationGroupOut)
-def create_group(
+def create_group(request: Request, 
     body: LocationGroupIn,
     admin=Depends(require_admin),
     db: Session = Depends(get_db),
@@ -36,13 +38,18 @@ def create_group(
         raise HTTPException(409, "location group name already exists")
     group = LocationGroup(**body.model_dump(exclude={"name"}), name=name)
     db.add(group)
+    db.flush()
+    audit.record(db, action="location_group.create", actor=admin,
+                 target=("location_group", group.id, group.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(group)
     return group
 
 
 @router.patch("/{group_id}", response_model=LocationGroupOut)
-def update_group(
+def update_group(request: Request, 
     group_id: int,
     body: LocationGroupPatch,
     admin=Depends(require_admin),
@@ -58,20 +65,29 @@ def update_group(
             raise HTTPException(422, "location group name is required")
         if _duplicate_name(db, data["name"], group.id):
             raise HTTPException(409, "location group name already exists")
+    audit_changes = {k: v for k, v in data.items() if getattr(group, k, object()) != v}
     for key, value in data.items():
         setattr(group, key, value)
+    audit.record(db, action="location_group.update", actor=admin,
+                 target=("location_group", group.id, group.name), changes=audit_changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(group)
     return group
 
 
 @router.delete("/{group_id}")
-def delete_group(group_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def delete_group(request: Request, group_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     group = db.get(LocationGroup, group_id)
     if group is None:
         raise HTTPException(404, "location group not found")
     if db.query(Camera).filter(Camera.location_group_id == group.id).first():
         raise HTTPException(409, "location group has cameras; move them first")
+    audit.record(db, action="location_group.delete", actor=admin,
+                 target=("location_group", group.id, group.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.delete(group)
     db.commit()
     return {"ok": True}

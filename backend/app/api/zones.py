@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.db import get_db
@@ -57,12 +59,19 @@ def list_zones(camera_id: int | None = None, user=Depends(get_current_user), db:
     return q.all()
 
 @router.post("", response_model=ZoneOut)
-def create_zone(body: ZoneIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def create_zone(request: Request, body: ZoneIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     # Mode uji: stempel `test_until` 24 jam saat zona dibuat (tak ada behaviors lama)
     zone = Zone(**{**body.model_dump(), "behaviors": stamp_test_mode(body.behaviors, None)})
     _check_direction_conflict(db, zone)
     _check_shift(db, zone)
-    db.add(zone); db.commit(); db.refresh(zone)
+    db.add(zone)
+    db.flush()
+    audit.record(db, action="zone.create", actor=admin,
+                 target=("zone", zone.id, zone.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone
 
@@ -73,7 +82,7 @@ def get_zone(zone_id: int, user=Depends(get_current_user), db: Session = Depends
     return zone
 
 @router.patch("/{zone_id}", response_model=ZoneOut)
-def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def update_zone(request: Request, zone_id: int, body: ZonePatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
     zone = db.get(Zone, zone_id)
     if not zone: raise HTTPException(404, "zone not found")
     changes = body.model_dump(exclude_unset=True)
@@ -81,6 +90,7 @@ def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db:
     # menghasilkan list baru — menyimpan perubahan lain tidak memperpanjang uji
     if "behaviors" in changes:
         changes["behaviors"] = stamp_test_mode(changes["behaviors"], zone.behaviors)
+    audit_changes = {k: v for k, v in changes.items() if getattr(zone, k, object()) != v}
     for k, v in changes.items():
         setattr(zone, k, v)
     # zona attendance (dulu absensi) wajib direction — cek hasil gabungan patch + nilai lama
@@ -88,15 +98,25 @@ def update_zone(zone_id: int, body: ZonePatch, admin=Depends(require_admin), db:
         raise HTTPException(422, "direction (entry|exit) required for attendance zone")
     _check_direction_conflict(db, zone)
     _check_shift(db, zone)
-    db.commit(); db.refresh(zone)
+    audit.record(db, action="zone.update", actor=admin,
+                 target=("zone", zone.id, zone.name), changes=audit_changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.commit()
+    db.refresh(zone)
     _config_push(db, zone.camera_id)
     return zone
 
 @router.delete("/{zone_id}")
-def delete_zone(zone_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def delete_zone(request: Request, zone_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     zone = db.get(Zone, zone_id)
     if not zone: raise HTTPException(404, "zone not found")
     camera_id = zone.camera_id
-    db.delete(zone); db.commit()
+    audit.record(db, action="zone.delete", actor=admin,
+                 target=("zone", zone.id, zone.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
+    db.delete(zone)
+    db.commit()
     _config_push(db, camera_id)
     return {"ok": True}

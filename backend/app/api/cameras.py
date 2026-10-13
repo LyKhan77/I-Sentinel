@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 import logging
 from urllib.parse import urlsplit
 
@@ -357,7 +359,7 @@ def sync_go2rtc(admin=Depends(require_admin), db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=CameraOut)
-def create_camera(body: CameraIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def create_camera(request: Request, body: CameraIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     data = _prepare_camera_data(db, body.model_dump(exclude_none=True))
     _check_node(db, data.get("node_id"))
     if _dup_name(db, data["name"], data.get("node_id")):
@@ -366,6 +368,11 @@ def create_camera(body: CameraIn, admin=Depends(require_admin), db: Session = De
         raise HTTPException(409, "camera stream identity already exists")
     cam = Camera(**data)
     db.add(cam)
+    db.flush()
+    audit.record(db, action="camera.create", actor=admin,
+                 target=("camera", cam.id, cam.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(cam)
     if cam.enabled:
@@ -391,7 +398,7 @@ def get_camera(camera_id: int, user=Depends(get_current_user), db: Session = Dep
 
 
 @router.patch("/{camera_id}", response_model=CameraOut)
-def update_camera(camera_id: int, body: CameraPatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def update_camera(request: Request, camera_id: int, body: CameraPatch, admin=Depends(require_admin), db: Session = Depends(get_db)):
     cam = db.get(Camera, camera_id)
     if not cam:
         raise HTTPException(404, "camera not found")
@@ -408,8 +415,13 @@ def update_camera(camera_id: int, body: CameraPatch, admin=Depends(require_admin
         exclude_id=cam.id,
     ):
         raise HTTPException(409, "camera stream identity already exists")
+    audit_changes = {k: v for k, v in raw.items() if getattr(cam, k, object()) != v}
     for key, value in data.items():
         setattr(cam, key, value)
+    audit.record(db, action="camera.update", actor=admin,
+                 target=("camera", cam.id, cam.name), changes=audit_changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(cam)
     try:
@@ -421,7 +433,7 @@ def update_camera(camera_id: int, body: CameraPatch, admin=Depends(require_admin
 
 
 @router.post("/import")
-def import_cameras(
+def import_cameras(request: Request, 
     body: CameraImportIn,
     apply_changes: bool = Query(False, alias="apply"),
     allow_create: bool = Query(False, alias="allow_create"),
@@ -641,6 +653,10 @@ def import_cameras(
             cam = Camera(**data)
             db.add(cam)
             created_cameras.append(cam)
+        audit.record(db, action="camera.import", actor=admin,
+                     target=("camera", None, "inventory"), changes={"created": len(created_cameras), "updated": len(changed)},
+                     ip=request.client.host if request.client else None,
+                     user_agent=request.headers.get("user-agent"))
         db.commit()
     except Exception:
         db.rollback()
@@ -667,13 +683,17 @@ def import_cameras(
 
 
 @router.delete("/{camera_id}")
-def delete_camera(camera_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def delete_camera(request: Request, camera_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     cam = db.get(Camera, camera_id)
     if not cam:
         raise HTTPException(404, "camera not found")
     if db.query(AttendanceEvent).filter(AttendanceEvent.camera_id == camera_id).first():
         raise HTTPException(409, "camera has attendance records; deactivate instead")
     node_name = db.get(Node, cam.node_id).name if cam.node_id else None
+    audit.record(db, action="camera.delete", actor=admin,
+                 target=("camera", cam.id, cam.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.delete(cam)
     db.commit()
     try:

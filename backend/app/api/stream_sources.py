@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -57,7 +59,7 @@ def list_sources(user=Depends(get_current_user), db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=StreamSourceOut)
-def create_source(
+def create_source(request: Request, 
     body: StreamSourceIn,
     admin=Depends(require_admin),
     db: Session = Depends(get_db),
@@ -71,13 +73,18 @@ def create_source(
     source = StreamSource(**body.model_dump(exclude={"name"}), name=name)
     source.host = source.host.strip()
     db.add(source)
+    db.flush()
+    audit.record(db, action="stream_source.create", actor=admin,
+                 target=("stream_source", source.id, source.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(source)
     return source
 
 
 @router.patch("/{source_id}", response_model=StreamSourceOut)
-def update_source(
+def update_source(request: Request, 
     source_id: int,
     body: StreamSourcePatch,
     admin=Depends(require_admin),
@@ -102,11 +109,16 @@ def update_source(
     ).first():
         raise HTTPException(409, "source has enabled cameras; disable cameras first")
     runtime_changed = bool({"host", "port", "default_credential_id", "enabled"} & data.keys())
+    audit_changes = {k: v for k, v in data.items() if getattr(source, k, object()) != v}
     for key, value in data.items():
         setattr(source, key, value)
     if runtime_changed and ("host" in data or "port" in data):
         for camera in db.query(Camera).filter(Camera.source_id == source.id).all():
             camera.host = _legacy_host(source)
+    audit.record(db, action="stream_source.update", actor=admin,
+                 target=("stream_source", source.id, source.name), changes=audit_changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(source)
     if runtime_changed:
@@ -115,12 +127,16 @@ def update_source(
 
 
 @router.delete("/{source_id}")
-def delete_source(source_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def delete_source(request: Request, source_id: int, admin=Depends(require_admin), db: Session = Depends(get_db)):
     source = db.get(StreamSource, source_id)
     if source is None:
         raise HTTPException(404, "stream source not found")
     if db.query(Camera).filter(Camera.source_id == source.id).first():
         raise HTTPException(409, "stream source has cameras; disable or move them first")
+    audit.record(db, action="stream_source.delete", actor=admin,
+                 target=("stream_source", source.id, source.name),
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.delete(source)
     db.commit()
     return {"ok": True}
