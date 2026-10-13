@@ -1,4 +1,3 @@
-from collections.abc import Callable
 """Pengaturan retensi & peringatan disk (tabel setting, key "storage").
 
 Field yang belum pernah disimpan mengikuti env (RETENTION_DAYS) / default, jadi .env tetap berlaku
@@ -6,6 +5,7 @@ sampai admin menyimpan nilai lain dari UI. Nilai di DB divalidasi ulang di sini 
 retensi mengontrol penghapusan permanen, jadi nilai rusak/0 tidak boleh diam-diam dipakai.
 """
 import logging
+from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 

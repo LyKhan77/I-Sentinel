@@ -1,15 +1,13 @@
-from fastapi import Request
-from app.services import audit
 """Admin-only runtime LLM settings and unsaved-form connection tests."""
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
 from app.core.db import get_db
 from app.schemas.ai_settings import AiSettingsIn, AiSettingsOut, AiTestIn, AiTestOut
-from app.services import llm_config, secret_store
+from app.services import audit, llm_config, secret_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ai/settings", tags=["ai-settings"])

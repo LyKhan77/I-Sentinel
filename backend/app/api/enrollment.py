@@ -1,11 +1,9 @@
-from fastapi import Request
-from app.services import audit
 """Face enrollment + biometrik PDP endpoints. Foto disimpan di {storage_root}/faces/{id}/."""
 import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from typing import List
 from sqlalchemy.orm import Session
 
@@ -14,7 +12,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.models.employee import Employee, MIN_PHOTOS
 from app.models.face_embedding import FaceEmbedding
-from app.services import face
+from app.services import audit, face
 
 router = APIRouter(prefix="/api/v1/employees", tags=["enrollment"])
 

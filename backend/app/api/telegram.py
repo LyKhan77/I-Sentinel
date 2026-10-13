@@ -1,9 +1,7 @@
-from fastapi import Request
-from app.services import audit
 """Setelan bot Telegram (admin). Token write-only: tak pernah keluar di response/error/log."""
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -11,7 +9,7 @@ from app.api.deps import get_current_user, require_admin
 from app.core.db import get_db
 from app.models.alert import Alert
 from app.models.telegram_chat import TelegramChat
-from app.services import secret_store, telegram
+from app.services import audit, secret_store, telegram
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/telegram", tags=["telegram"])

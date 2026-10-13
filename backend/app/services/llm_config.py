@@ -1,5 +1,5 @@
-from collections.abc import Callable
 """Admin LLM overrides with environment fallback and write-only credential storage."""
+from collections.abc import Callable
 from copy import deepcopy
 from io import BytesIO
 import json
