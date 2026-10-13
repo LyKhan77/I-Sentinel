@@ -78,5 +78,14 @@ def test_verify_ok_and_tamper(db):
     assert result["checked"] == 0
 
 
+def test_overlong_untrusted_input_truncated(db):
+    r = audit.record(db, action="auth.login_failed", actor_label="x" * 200,
+                     ip="1" * 60, user_agent="u" * 400)
+    db.commit()
+    assert len(r.actor_label) == 64
+    assert len(r.ip) == 45
+    assert len(r.user_agent) == 255
+
+
 def test_verify_empty_table(db):
     assert audit.verify(db) == {"ok": True, "checked": 0, "first_break_id": None}

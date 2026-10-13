@@ -109,6 +109,17 @@ def record(
     if target is not None:
         target_type, raw_id, target_label = target
         target_id = None if raw_id is None else str(raw_id)
+    # batasi ke ukuran kolom: input tak-terpercaya (username login, user-agent) tidak
+    # boleh membuat insert gagal di PostgreSQL (VARCHAR menolak overflow)
+    actor_label = actor_label[:64]
+    if target_id is not None:
+        target_id = target_id[:64]
+    if target_label is not None:
+        target_label = target_label[:128]
+    if ip is not None:
+        ip = ip[:45]
+    if user_agent is not None:
+        user_agent = user_agent[:255]
     changes = _sanitize(json.loads(json.dumps(changes, ensure_ascii=False, default=str))
                         if changes else None)
     if action in {"auth.login_failed", "auth.lockout"}:
