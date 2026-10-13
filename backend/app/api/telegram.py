@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 """Setelan bot Telegram (admin). Token write-only: tak pernah keluar di response/error/log."""
 import logging
 
@@ -50,13 +52,14 @@ def get_settings(admin=Depends(require_admin), db: Session = Depends(get_db)):
 
 
 @router.put("/settings")
-def put_settings(body: TelegramSettingsIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def put_settings(request: Request, body: TelegramSettingsIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     """Simpan token (validasi format + getMe sebelum ditulis), grup, dan/atau URL aplikasi.
 
     Token hanya dibaca-tulis lewat secret_store; tidak pernah di-echo. Field yang tidak dikirim
     tidak diubah (exclude_unset), sehingga PUT sebagian tidak menimpa setelan lain. Semua validasi
     dijalankan sebelum efek samping, agar permintaan yang ditolak tidak mengubah setelan.
     """
+    old = _settings_out(db)
     fields = body.model_dump(exclude_unset=True, exclude={"token"})
     app_url = fields.get("app_url")
     if "app_url" in fields and app_url and not app_url.strip().startswith(("http://", "https://")):
@@ -78,6 +81,12 @@ def put_settings(body: TelegramSettingsIn, admin=Depends(require_admin), db: Ses
         telegram.set_chat(db, fields["chat_id"], fields.get("chat_title") or fields["chat_id"])
     if "app_url" in fields:
         telegram.set_app_url(db, app_url)
+    changes = {k: v for k, v in fields.items() if old.get(k) != v}
+    if body.token is not None:
+        changes["token"] = "***"
+    audit.record(db, action="telegram.update", actor=admin, target=("telegram", None, "settings"), changes=changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     return _settings_out(db)
 

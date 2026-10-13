@@ -1,3 +1,4 @@
+from collections.abc import Callable
 """Pengaturan retensi & peringatan disk (tabel setting, key "storage").
 
 Field yang belum pernah disimpan mengikuti env (RETENTION_DAYS) / default, jadi .env tetap berlaku
@@ -49,12 +50,16 @@ def get(db: Session) -> dict:
     }
 
 
-def put(db: Session, patch: dict) -> dict:
+def put(db: Session, patch: dict, *, before_commit: Callable[[], None] | None = None) -> dict:
+    """Persist settings; optionally append audit data in the same transaction."""
     stored = {**_stored(db), **{k: v for k, v in patch.items() if v is not None}}
     row = db.get(Setting, KEY)
     if row is None:
         db.add(Setting(key=KEY, value=stored))
     else:
         row.value = stored  # dict baru → SQLAlchemy mendeteksi perubahan JSON
+    db.flush()
+    if before_commit is not None:
+        before_commit()
     db.commit()
     return get(db)

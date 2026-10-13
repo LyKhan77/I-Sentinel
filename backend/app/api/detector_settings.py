@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -43,7 +45,9 @@ def get_detector_settings(db: Session = Depends(get_db), admin=Depends(require_a
 
 
 @router.put("", response_model=DetectorSettingsOut)
-def put_detector_settings(values: DetectorSettingsIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def put_detector_settings(request: Request, values: DetectorSettingsIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
+    old = _effective(db)
+    changes = {k: v for k, v in values.model_dump().items() if getattr(old, k) != v}
     row = db.get(DetectorSetting, 1)
     if row is None:
         row = DetectorSetting(id=1, **values.model_dump())
@@ -51,6 +55,9 @@ def put_detector_settings(values: DetectorSettingsIn, db: Session = Depends(get_
     else:
         for key, value in values.model_dump().items():
             setattr(row, key, value)
+    audit.record(db, action="detector_setting.update", actor=admin, target=("detector_setting", 1, "global"), changes=changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     db.commit()
     db.refresh(row)
     config_push.republish_all(db)

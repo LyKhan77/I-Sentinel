@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 """Admin-only runtime LLM settings and unsaved-form connection tests."""
 import logging
 
@@ -20,11 +22,18 @@ def get_settings(admin=Depends(require_admin), db: Session = Depends(get_db)):
 
 
 @router.put("", response_model=AiSettingsOut)
-def put_settings(body: AiSettingsIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
+def put_settings(request: Request, body: AiSettingsIn, admin=Depends(require_admin), db: Session = Depends(get_db)):
     """Validate and save a partial update; audit field names without their values."""
     values = body.model_dump(exclude_unset=True, exclude={"api_key", "clear_api_key"})
+    old = llm_config.view(db)
+    changes = {k: v for k, v in values.items() if old.get(k) != v}
+    def record_audit():
+        """Append sanitized audit metadata before the settings service commits."""
+        audit.record(db, action="ai_settings.update", actor=admin, target=("ai_settings", None, "llm"), changes=changes,
+                     ip=request.client.host if request.client else None,
+                     user_agent=request.headers.get("user-agent"))
     try:
-        llm_config.save(db, values, api_key=body.api_key, clear_api_key=body.clear_api_key)
+        llm_config.save(db, values, api_key=body.api_key, clear_api_key=body.clear_api_key, before_commit=record_audit)
     except llm_config.ConfigError as exc:
         raise HTTPException(422, str(exc)) from None
     except secret_store.SecretStoreError:

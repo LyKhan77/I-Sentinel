@@ -1,3 +1,4 @@
+from collections.abc import Callable
 """Admin LLM overrides with environment fallback and write-only credential storage."""
 from copy import deepcopy
 from io import BytesIO
@@ -158,7 +159,7 @@ def view(db: Session) -> dict:
             "restart_only": {"concurrency": settings.llm_concurrency, "queue_max": settings.ai_queue_max}}
 
 
-def save(db: Session, values: dict, *, api_key: str | None = None, clear_api_key: bool = False) -> None:
+def save(db: Session, values: dict, *, api_key: str | None = None, clear_api_key: bool = False, before_commit: Callable[[], None] | None = None) -> None:
     """Validate a partial update, persist overrides/key, commit, then hot-apply settings.
 
     Clearing the stored key restores the environment fallback, not an empty credential.
@@ -178,6 +179,9 @@ def save(db: Session, values: dict, *, api_key: str | None = None, clear_api_key
         db.add(Setting(key=SETTING_KEY, value=stored))
     else:
         row.value = stored
+    db.flush()
+    if before_commit is not None:
+        before_commit()
     db.commit()
     apply(db)
 

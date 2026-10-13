@@ -1,3 +1,5 @@
+from fastapi import Request
+from app.services import audit
 import logging
 from datetime import datetime, timezone
 
@@ -57,27 +59,40 @@ def get_settings(db: Session = Depends(get_db), user=Depends(get_current_user)):
 
 
 @router.put("/settings")
-def put_settings(body: StorageSettingsPatch, db: Session = Depends(get_db), admin=Depends(require_admin)):
-    return storage_settings.put(db, body.model_dump())
+def put_settings(request: Request, body: StorageSettingsPatch, db: Session = Depends(get_db), admin=Depends(require_admin)):
+    old = storage_settings.get(db)
+    changes = {k: v for k, v in body.model_dump(exclude_none=True).items() if old.get(k) != v}
+    return storage_settings.put(db, body.model_dump(), before_commit=lambda: audit.record(db, action="storage_settings.update", actor=admin, target=("storage_settings", None, "global"), changes=changes,
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent")))
 
 
 @router.post("/sweep")
 def run_sweep(
+    request: Request,
     dry_run: bool = Query(False),
     db: Session = Depends(get_db),
     admin=Depends(require_admin),
 ):
+    audit.record(db, action="storage.sweep", actor=admin, target=("storage", None, "sweep"), changes={"dry_run": dry_run},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     result = retention.sweep(db, dry_run=dry_run)
     return _record_sweep(db, result)
 
 
 @router.post("/cleanup")
-def cleanup_events(body: CleanupIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
+def cleanup_events(request: Request, body: CleanupIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
     # None = semua karyawan; identitas karyawan tidak pernah masuk log (hanya id)
     employee_ids = None if body.all_employees else body.employee_ids
+    audit.record(db, action="storage.cleanup", actor=admin, target=("storage", None, "cleanup"), changes={"mode": body.mode, "date_from": str(body.date_from), "date_to": str(body.date_to), "dry_run": body.dry_run},
+                 ip=request.client.host if request.client else None,
+                 user_agent=request.headers.get("user-agent"))
     if body.dry_run:
-        return retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=True,
+        result = retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=True,
                                  mode=body.mode, employee_ids=employee_ids)
+        db.commit()
+        return result
     try:
         result = retention.cleanup(db, body.date_from, body.date_to, body.camera_ids, body.types, dry_run=False,
                                    mode=body.mode, employee_ids=employee_ids)
@@ -95,4 +110,5 @@ def cleanup_events(body: CleanupIn, db: Session = Depends(get_db), admin=Depends
         logger.info("event cleanup by %s: %s..%s cameras=%s types=%s mode=%s → %s events, %s files, %s bytes",
                     admin.username, body.date_from, body.date_to, body.camera_ids or "all",
                     body.types or "all", body.mode, result["events"], result["files"], result["bytes"])
+    db.commit()
     return result
