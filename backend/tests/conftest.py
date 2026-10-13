@@ -115,3 +115,11 @@ def _quiet_app_consumer(monkeypatch):
             pass
 
     monkeypatch.setattr(main, "EventConsumer", FakeConsumer)
+
+
+@pytest.fixture(autouse=True)
+def _quiet_audit_sweeper(monkeypatch):
+    """Sweeper audit latar tidak boleh menyentuh DB nyata selama tes."""
+    from app.services import audit_sweeper
+    monkeypatch.setattr(audit_sweeper.sweeper, "interval_s", 3600)
+    monkeypatch.setattr(audit_sweeper.sweeper, "run_on_start", False)

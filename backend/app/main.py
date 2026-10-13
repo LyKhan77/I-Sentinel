@@ -96,11 +96,14 @@ async def lifespan(app: FastAPI):
     history_sampler.start()
     from app.services.attendance import closer as attendance_closer
     attendance_closer.start()
+    from app.services.audit_sweeper import sweeper as audit_sweeper
+    audit_sweeper.start()
     try:
         yield
     finally:
         worker.stop()
         attendance_closer.stop()
+        audit_sweeper.stop()
         history_sampler.stop()
         node_monitor.stop()
         disk_monitor.stop()
