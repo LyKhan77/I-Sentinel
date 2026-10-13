@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     motion_min_area: float = 0.01         # area gerak minimum (rasio frame)
     motion_force_interval_s: float = 2.0  # paksa inferensi berkala (objek diam)
     retention_days: int = 30
+    audit_retention_days: int = 90  # audit history retention window
     login_max_attempts: int = 5      # percobaan login gagal per (username, ip) sebelum dikunci
     login_lockout_min: int = 15      # lama kunci, menit
     admin_username: str = "admin"

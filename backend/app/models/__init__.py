@@ -16,3 +16,5 @@ from app.models.attendance import AttendanceEvent, AttendanceDay
 from app.models.detector_setting import DetectorSetting
 from app.models.monitoring_sample import MonitoringSample
 from app.models.health_alert import HealthAlert
+
+from app.models.audit_log import AuditLog
