@@ -68,7 +68,7 @@ menghapus riwayat event.
 5. **Filter URL mode TV**: `?cameras=<id1,id2>` menampilkan kamera sesuai urutan ID di URL
    (ID dari kolom ID Konfigurasi → Kamera), dengan `cols`/`scroll`/`speed` opsional; kontrol
    terkunci di toolbar dan nilai URL tidak menulis `localStorage`. Sesi login persisten
-   (cookie `Max-Age` 48 jam bergulir) — Pi reboot tetap login.
+   (cookie `Max-Age` 48 jam bergulir) — Pi reboot diharapkan tetap login (belum diuji di Pi).
 6. Event baru memberi outline tile 30 s (§9); alert kesehatan kamera memberi badge
    **Tanpa frame / FPS rendah** (§14).
 

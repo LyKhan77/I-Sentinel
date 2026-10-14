@@ -68,7 +68,8 @@ Tambahkan kedua perintah (diakhiri `&`) ke `~/.config/labwc/autostart` (Wayland/
   Kontrol yang diatur URL terkunci dan diberi label "Diatur oleh URL".
 - **Cookie persisten 48 jam bergulir**: cookie login kini menyimpan `Max-Age` = umur token
   (default 172800 detik) dan diperpanjang otomatis selama halaman terbuka me-refresh, sehingga
-  Pi yang reboot tetap login selama kunjungan terakhir < 48 jam.
+  Pi yang reboot diharapkan tetap login selama kunjungan terakhir < 48 jam (belum diuji di Pi: setelah
+  uji pertama, reboot Pi lalu pastikan `/live/tv` terbuka tanpa halaman login dan catat hasilnya di sini).
 - Pi yang mati > 48 jam tanpa request → sesi berakhir dan `RequireAuth` mengarahkan ke `/login`
   (dashboard, tanpa kembali ke URL TV otomatis). Login ulang sekali, lalu buka URL TV lagi —
   praktiknya: restart script kiosk (kill Chromium, jalankan ulang perintah autostart).

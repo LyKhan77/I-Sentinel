@@ -235,8 +235,8 @@ untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
   saat operator aktif (mouse/keyboard; lanjut 10 s setelah diam) atau pemilih/debugger
   terbuka. Toolbar auto-hide 4 detik (kursor ikut disembunyikan).
 - **Sesi bergulir 48 jam**: cookie login persisten (`Max-Age` = `ACCESS_TOKEN_EXPIRE_MIN`,
-  default 2880 menit) diperpanjang otomatis selama halaman aktif me-refresh — TV tetap login
-  melewati reboot Pi; setelah 48 jam tanpa request, login ulang mendarat di dashboard dan
+  default 2880 menit) diperpanjang otomatis selama halaman aktif me-refresh — TV diharapkan tetap
+  login melewati reboot Pi (belum diuji di Pi); setelah 48 jam tanpa request, login ulang mendarat di dashboard dan
   script kiosk membuka URL TV lagi.
 
 **Notifikasi event.** Event behavior (intrusion, loitering, running, idle zone, crowd) dan node offline memunculkan
