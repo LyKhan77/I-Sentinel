@@ -12,7 +12,7 @@ import { useLiveCameras } from './useLiveCameras'
 import { useAutoScroll, useIdle } from './useAutoScroll'
 import {
   COL_OPTIONS, SCROLL_SPEEDS, parseTvUrl, screenName, selectByIds, selectCameras,
-  useScreenPrefs, withOverrides, type ScrollSpeed,
+  useScreenPrefs, withOverrides, type CameraSel, type ScrollSpeed,
 } from './screenPrefs'
 import { useEventAlerts } from '../notifications/EventAlertsProvider'
 import NodeOfflineBanner from '../../components/NodeOfflineBanner'
@@ -54,6 +54,8 @@ export default function LiveTvPage() {
   const shown = overrides.cameras !== undefined
     ? selectByIds(active, overrides.cameras)
     : selectCameras(active, prefs.cameras)
+  // mode URL: label n/m pemilih menghitung kamera dari URL, bukan dari pengaturan tersimpan
+  const pickerValue: CameraSel = overrides.cameras !== undefined ? { mode: 'some', ids: overrides.cameras } : prefs.cameras
   const showBar = !barHidden || pickerOpen
 
   const exit = () => {
@@ -73,7 +75,7 @@ export default function LiveTvPage() {
               {t('live.cols').replace('{n}', String(n))}
             </button>
           ))}
-          <CameraPicker cams={active} value={prefs.cameras} onChange={(cameras) => update({ cameras })}
+          <CameraPicker cams={active} value={pickerValue} onChange={(cameras) => update({ cameras })}
             open={pickerOpen} onOpenChange={setPickerOpen} disabled={locked.cameras} />
           <Toggle id="live-tv-scroll" data-testid="live-tv-scroll" size="sm" labelText={t('live.tv.autoScroll')}
             hideLabel toggled={eff.scroll.on} disabled={locked.scroll}

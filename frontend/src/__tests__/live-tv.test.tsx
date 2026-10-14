@@ -153,3 +153,22 @@ test('nilai speed dari URL tidak ikut tertulis saat kontrol lain diklik', async 
   await userEvent.click(screen.getByTestId('live-tv-scroll'))
   expect(JSON.parse(localStorage.getItem('isentinel_live_screen:A')!)).toMatchObject({ scroll: { on: true, speed: 'medium' } })
 })
+
+test('mode URL: label pemilih menghitung kamera dari URL, bukan dari pengaturan tersimpan', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=1')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(tileIds()).toEqual(['cam-tile-1'])
+  // 2 kamera aktif, 1 dipilih URL; pengaturan tersimpan "semua" tidak boleh membuatnya terbaca 2/2
+  expect(screen.getByTestId('live-picker-open')).toHaveTextContent('Kamera (1/2)')
+  // ID tak dikenal/nonaktif tidak ikut terhitung
+  expect(localStorage.length).toBe(0)
+})
+
+test('tanpa cameras di URL: label pemilih tetap dari pengaturan tersimpan', async () => {
+  localStorage.setItem('isentinel_live_screen:A', JSON.stringify({ cameras: { mode: 'some', ids: [2] } }))
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  expect(screen.getByTestId('live-picker-open')).toHaveTextContent('Kamera (1/2)')
+})
