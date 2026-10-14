@@ -136,6 +136,35 @@ export function withOverrides(prefs: ScreenPrefs, o: TvUrlOverrides): ScreenPref
   }
 }
 
+/** Keadaan lengkap satu jendela TV yang ditulis ke URL. */
+export type TvState = { cameras: number[]; cols: Cols; scroll: boolean; speed: ScrollSpeed }
+
+/**
+ * Urutan ID kamera sesudah pilihan di pemilih berubah: ID yang masih terpilih menjaga urutan `current`,
+ * ID baru ditambahkan di akhir menurut urutan `active`. Mode `all` memakai aturan yang sama.
+ */
+export function orderCameraIds(current: number[], sel: CameraSel, active: { id: number }[]): number[] {
+  const picked = active.filter((c) => isSelected(sel, c.id)).map((c) => c.id)
+  const pickedSet = new Set(picked)
+  const kept = current.filter((id) => pickedSet.has(id))
+  const keptSet = new Set(kept)
+  return [...kept, ...picked.filter((id) => !keptSet.has(id))]
+}
+
+/**
+ * Query string (tanpa `?`) jendela TV: parameter lain dari `base` (termasuk `screen`) dipertahankan berurutan,
+ * lalu `cameras` (koma apa adanya agar mudah disalin), `cols`, `scroll`, `speed`. `base` tidak dimutasi.
+ */
+export function tvSearch(base: URLSearchParams, s: TvState): string {
+  const managed = new Set(['cameras', 'cols', 'scroll', 'speed'])
+  const parts: string[] = []
+  for (const [k, v] of base) {
+    if (!managed.has(k)) parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+  }
+  parts.push(`cameras=${s.cameras.join(',')}`, `cols=${s.cols}`, `scroll=${s.scroll ? 'on' : 'off'}`, `speed=${s.speed}`)
+  return parts.join('&')
+}
+
 /** Pilih/buang `ids`; bila semua kamera terpilih → `all` (kamera baru ikut tampil). */
 export function setCameras(sel: CameraSel, cams: { id: number }[], ids: number[], on: boolean): CameraSel {
   const chosen = new Set(cams.filter((c) => isSelected(sel, c.id)).map((c) => c.id))

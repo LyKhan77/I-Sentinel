@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 import { I18nProvider } from '../app/i18n'
 import LiveTvPage from '../features/live/LiveTvPage'
@@ -21,10 +21,20 @@ function tileIds() {
   return [...document.querySelectorAll('[data-testid^="cam-tile-"]')].map((el) => el.getAttribute('data-testid'))
 }
 
+// Probe lokasi: query URL dan jenis navigasi (REPLACE bila toolbar menulis ulang URL tanpa entri riwayat)
+function LocationProbe() {
+  const loc = useLocation()
+  const nav = useNavigationType()
+  return <div data-testid="loc" data-search={loc.search} data-nav={nav} />
+}
+const searchOf = () => new URLSearchParams(screen.getByTestId('loc').getAttribute('data-search') ?? '')
+const navType = () => screen.getByTestId('loc').getAttribute('data-nav')
+
 function renderTv(entry: string) {
   return render(
     <I18nProvider>
       <MemoryRouter initialEntries={[entry]}>
+        <LocationProbe />
         <Routes>
           <Route path="/live/tv" element={<LiveTvPage />} />
           <Route path="/live" element={<div data-testid="normal-live" />} />
@@ -106,52 +116,89 @@ test('cameras ada tapi tidak ada yang cocok → pesan URL, bukan semua kamera', 
   expect(tileIds()).toEqual([])
 })
 
-test('URL mengunci toolbar dan tidak menulis localStorage', async () => {
+test('toolbar tetap aktif saat URL berparameter (tidak ada kontrol terkunci)', async () => {
   vi.stubGlobal('fetch', stubFetch(TV_CAMS))
   renderTv('/live/tv?screen=A&cameras=1&cols=2&scroll=on&speed=fast')
   expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
-  expect(screen.getByTestId('live-tv-cols-3')).toBeDisabled()
-  expect(screen.getByTestId('live-tv-scroll')).toBeDisabled()
-  expect(screen.getByTestId('live-tv-speed-slow')).toBeDisabled()
-  expect(screen.getByTestId('live-picker-open')).toBeDisabled()
-  expect(screen.getByTestId('live-tv-locked')).toHaveTextContent('Diatur oleh URL')
-  expect(document.querySelector('.lv-grid--tv')).toHaveStyle({ '--lv-cols': '2' })
-  expect(localStorage.length).toBe(0)
-  await userEvent.click(screen.getByTestId('live-tv-cols-3'))
-  expect(localStorage.length).toBe(0)
-  expect(screen.getByTestId('live-tv-sound')).toBeEnabled()
-  expect(screen.getByTestId('live-tv-exit')).toBeEnabled()
-})
-
-test('field di luar URL tetap memakai pengaturan tersimpan', async () => {
-  localStorage.setItem('isentinel_live_screen:A', JSON.stringify({ cols: 4 }))
-  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
-  renderTv('/live/tv?screen=A&cameras=1')
-  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
-  expect(document.querySelector('.lv-grid--tv')).toHaveStyle({ '--lv-cols': '4' })
-  expect(screen.getByTestId('live-tv-cols-4')).toHaveAttribute('aria-pressed', 'true')
-  expect(screen.getByTestId('live-tv-cols-4')).toBeEnabled() // cols di luar URL → tidak dikunci
-  expect(screen.getByTestId('live-picker-open')).toBeDisabled()
-  expect(screen.getByTestId('live-tv-scroll')).toBeEnabled()
-})
-
-test('tanpa parameter baru: picker aktif dan tidak ada keterangan terkunci', async () => {
-  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
-  renderTv('/live/tv?screen=A')
-  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
-  expect(screen.getByTestId('live-picker-open')).toBeEnabled()
+  for (const id of ['live-tv-cols-3', 'live-tv-scroll', 'live-tv-speed-slow', 'live-picker-open', 'live-tv-sound', 'live-tv-exit']) {
+    expect(screen.getByTestId(id)).toBeEnabled()
+  }
   expect(screen.queryByTestId('live-tv-locked')).not.toBeInTheDocument()
 })
 
-test('nilai speed dari URL tidak ikut tertulis saat kontrol lain diklik', async () => {
+test('membuka URL tidak mengubah URL dan tidak menulis localStorage', async () => {
   vi.stubGlobal('fetch', stubFetch(TV_CAMS))
-  renderTv('/live/tv?screen=A&speed=fast')
+  renderTv('/live/tv?screen=A&cameras=2,1&cols=2')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  expect(screen.getByTestId('loc')).toHaveAttribute('data-search', '?screen=A&cameras=2,1&cols=2')
+  expect(navType()).toBe('POP')
+  expect(localStorage.length).toBe(0)
+})
+
+test('klik kolom menulis ulang URL (REPLACE), screen dipertahankan, localStorage layar ikut', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=2,1&cols=2')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('live-tv-cols-4'))
+  const p = searchOf()
+  expect(p.get('screen')).toBe('A')
+  expect(p.get('cameras')).toBe('2,1')
+  expect(p.get('cols')).toBe('4')
+  expect(navType()).toBe('REPLACE')
+  expect(screen.getByTestId('loc').getAttribute('data-search')).toContain('cameras=2,1') // koma terbaca, bukan %2C
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:A')!)).toMatchObject({ cols: 4 })
+  expect(document.querySelector('.lv-grid--tv')).toHaveStyle({ '--lv-cols': '4' })
+})
+
+test('scroll dan speed menulis scroll=on/off dan speed=… ke URL', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=1&scroll=on&speed=fast')
   expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
-  expect(screen.getByTestId('live-tv-speed-fast')).toHaveAttribute('aria-pressed', 'true')
-  expect(screen.getByTestId('live-tv-speed-fast')).toBeDisabled()
-  expect(screen.getByTestId('live-tv-scroll')).toBeEnabled()
   await userEvent.click(screen.getByTestId('live-tv-scroll'))
-  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:A')!)).toMatchObject({ scroll: { on: true, speed: 'medium' } })
+  expect(searchOf().get('scroll')).toBe('off')
+  expect(searchOf().get('speed')).toBe('fast') // speed dari URL tidak tertimpa nilai tersimpan
+  await userEvent.click(screen.getByTestId('live-tv-speed-slow'))
+  expect(searchOf().get('speed')).toBe('slow')
+  expect(searchOf().get('cameras')).toBe('1')
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:A')!)).toMatchObject({ scroll: { on: false, speed: 'slow' } })
+})
+
+test('pemilih: ID lama menjaga urutan, ID baru ditambahkan di akhir', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=2')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('live-picker-open'))
+  await userEvent.click(screen.getByLabelText('CAM-01'))
+  expect(searchOf().get('cameras')).toBe('2,1')
+  expect(tileIds()).toEqual(['cam-tile-2', 'cam-tile-1'])
+})
+
+test('pemilih: Semua menulis semua ID aktif (urutan lama dijaga), Kosongkan menulis cameras= dan memunculkan pesan URL', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=2')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('live-picker-open'))
+  await userEvent.click(screen.getByTestId('live-picker-all'))
+  expect(searchOf().get('cameras')).toBe('2,1') // 2 sudah ada lebih dulu, 1 ditambahkan di akhir
+  await userEvent.click(screen.getByTestId('live-picker-none'))
+  expect(searchOf().get('cameras')).toBe('')
+  expect(await screen.findByTestId('live-tv-url-empty')).toBeInTheDocument()
+  expect(tileIds()).toEqual([])
+})
+
+test('URL tanpa parameter + satu edit menghasilkan URL lengkap dari pengaturan tersimpan', async () => {
+  localStorage.setItem('isentinel_live_screen:A', JSON.stringify({ cols: 4 }))
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(screen.getByTestId('loc')).toHaveAttribute('data-search', '?screen=A')
+  await userEvent.click(screen.getByTestId('live-tv-scroll'))
+  const p = searchOf()
+  expect(p.get('screen')).toBe('A')
+  expect(p.get('cameras')).toBe('1,2')
+  expect(p.get('cols')).toBe('4')
+  expect(p.get('scroll')).toBe('on')
+  expect(p.get('speed')).toBe('medium')
 })
 
 test('mode URL: label pemilih menghitung kamera dari URL, bukan dari pengaturan tersimpan', async () => {

@@ -1,6 +1,6 @@
 import {
-  defaultCols, loadPrefs, parseTvUrl, savePrefs, screenName, selectByIds, selectCameras,
-  setCameras, withOverrides, type ScreenPrefs,
+  defaultCols, loadPrefs, orderCameraIds, parseTvUrl, savePrefs, screenName, selectByIds, selectCameras,
+  setCameras, withOverrides, type ScreenPrefs, tvSearch,
 } from '../features/live/screenPrefs'
 
 const CAMS = [{ id: 1 }, { id: 2 }, { id: 3 }]
@@ -98,4 +98,25 @@ test('withOverrides: hanya field yang ada di URL yang menimpa, localStorage teta
   expect(eff.scroll).toEqual({ on: false, speed: 'medium' })
   expect(eff.cameras).toEqual({ mode: 'all' })
   expect(localStorage.length).toBe(0)
+})
+
+test('orderCameraIds: ID yang masih terpilih menjaga urutan lama, ID baru di akhir menurut urutan kamera', () => {
+  const active = [{ id: 1 }, { id: 2 }, { id: 3 }]
+  expect(orderCameraIds([3, 1], { mode: 'some', ids: [1, 2, 3] }, active)).toEqual([3, 1, 2])
+  expect(orderCameraIds([3, 1], { mode: 'some', ids: [1] }, active)).toEqual([1])
+  // mode 'all' (semua dicentang): urutan lama tetap, sisanya di akhir menurut urutan kamera
+  expect(orderCameraIds([2], { mode: 'all' }, active)).toEqual([2, 1, 3])
+  expect(orderCameraIds([], { mode: 'all' }, active)).toEqual([1, 2, 3])
+  expect(orderCameraIds([2, 1], { mode: 'some', ids: [] }, active)).toEqual([])
+  // ID yang tidak lagi ada di kamera aktif tidak ikut
+  expect(orderCameraIds([9, 2], { mode: 'some', ids: [2, 9] }, active)).toEqual([2])
+})
+
+test('tvSearch: menulis cameras/cols/scroll/speed, koma terbaca, parameter lain dipertahankan, base tidak dimutasi', () => {
+  const base = new URLSearchParams('screen=A&cameras=9&cols=2&foo=a%20b')
+  const out = tvSearch(base, { cameras: [3, 1], cols: 3, scroll: true, speed: 'medium' })
+  expect(out).toBe('screen=A&foo=a%20b&cameras=3,1&cols=3&scroll=on&speed=medium')
+  expect(tvSearch(new URLSearchParams(), { cameras: [], cols: 4, scroll: false, speed: 'fast' }))
+    .toBe('cameras=&cols=4&scroll=off&speed=fast')
+  expect(base.toString()).toBe('screen=A&cameras=9&cols=2&foo=a+b')
 })
