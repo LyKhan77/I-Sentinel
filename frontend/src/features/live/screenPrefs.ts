@@ -2,12 +2,12 @@
 // jadi setiap layar punya kunci localStorage sendiri.
 import { useCallback, useState } from 'react'
 
-export type Cols = 2 | 3 | 4
+export type Cols = 1 | 2 | 3 | 4
 export type ScrollSpeed = 'slow' | 'medium' | 'fast'
 export type CameraSel = { mode: 'all' } | { mode: 'some'; ids: number[] }
 export type ScreenPrefs = { cols: Cols; cameras: CameraSel; scroll: { on: boolean; speed: ScrollSpeed } }
 
-export const COL_OPTIONS: Cols[] = [3, 2, 4] // urutan mockup 02: default dulu
+export const COL_OPTIONS: Cols[] = [3, 2, 4, 1] // urutan mockup 02: default dulu; 1 kolom ditambahkan di akhir agar posisi chip lama tetap
 export const SCROLL_SPEEDS: Record<ScrollSpeed, number> = { slow: 20, medium: 40, fast: 80 } // px per detik
 const KEY = 'isentinel_live_screen:'
 const LEGACY_COLS_KEY = 'isentinel_live_cols'
@@ -20,7 +20,7 @@ export function defaultCols(): Cols {
   return window.matchMedia?.('(orientation: portrait)').matches ? 2 : 3
 }
 
-const isCols = (v: unknown): v is Cols => v === 2 || v === 3 || v === 4
+const isCols = (v: unknown): v is Cols => v === 1 || v === 2 || v === 3 || v === 4
 
 function read(key: string): string | null {
   try {

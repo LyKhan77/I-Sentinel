@@ -361,6 +361,11 @@ html {
   }
 }
 
+/* Pilihan 1 kolom dihormati di semua lebar layar (aturan turun di atas hanya untuk 2–4 kolom). */
+.lv-grid.lv-grid--one {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .lv-chips {
   display: flex;
   align-items: center;

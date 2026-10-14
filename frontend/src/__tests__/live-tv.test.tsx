@@ -219,3 +219,27 @@ test('tanpa cameras di URL: label pemilih tetap dari pengaturan tersimpan', asyn
   expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
   expect(screen.getByTestId('live-picker-open')).toHaveTextContent('Kamera (1/2)')
 })
+
+test('layout 1 kolom: chip 1 kolom menulis cols=1 ke URL dan localStorage, grid satu kolom', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=1,2&cols=3')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(screen.getByTestId('live-tv-cols-1')).toHaveTextContent('1 kolom')
+  await userEvent.click(screen.getByTestId('live-tv-cols-1'))
+  expect(searchOf().get('cols')).toBe('1')
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:A')!)).toMatchObject({ cols: 1 })
+  expect(screen.getByTestId('live-tv-cols-1')).toHaveAttribute('aria-pressed', 'true')
+  expect(document.querySelector('.lv-grid--tv')).toHaveStyle({ '--lv-cols': '1' })
+  expect(document.querySelector('.lv-grid--tv')).toHaveClass('lv-grid--one')
+})
+
+test('cols=1 dari URL langsung dipakai; kolom lain tidak memakai kelas satu-kolom', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  const { unmount } = renderTv('/live/tv?screen=A&cols=1')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(document.querySelector('.lv-grid--tv')).toHaveClass('lv-grid--one')
+  unmount()
+  renderTv('/live/tv?screen=A&cols=2')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(document.querySelector('.lv-grid--tv')).not.toHaveClass('lv-grid--one')
+})

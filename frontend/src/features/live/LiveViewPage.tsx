@@ -31,7 +31,7 @@ export default function LiveViewPage() {
           {COL_OPTIONS.map((n) => (
             <button key={n} type="button" data-testid={`live-cols-${n}`} aria-pressed={prefs.cols === n}
               className={prefs.cols === n ? 'lv-chip lv-chip--sel' : 'lv-chip'} onClick={() => update({ cols: n })}>
-              {t('live.cols').replace('{n}', String(n))}
+              {n === 1 ? t('live.col1') : t('live.cols').replace('{n}', String(n))}
             </button>
           ))}
           <CameraPicker cams={active} value={prefs.cameras} onChange={(cameras) => update({ cameras })}

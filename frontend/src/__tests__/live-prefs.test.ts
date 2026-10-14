@@ -1,5 +1,5 @@
 import {
-  defaultCols, loadPrefs, orderCameraIds, parseTvUrl, savePrefs, screenName, selectByIds, selectCameras,
+  COL_OPTIONS, defaultCols, loadPrefs, orderCameraIds, parseTvUrl, savePrefs, screenName, selectByIds, selectCameras,
   setCameras, withOverrides, type ScreenPrefs, tvSearch,
 } from '../features/live/screenPrefs'
 
@@ -73,10 +73,23 @@ test('parseTvUrl: cameras ada tetapi tanpa ID valid → [] (bukan undefined)', (
   expect(parseTvUrl(new URLSearchParams('screen=A')).cameras).toBeUndefined()
 })
 
-test('parseTvUrl: cols hanya 2/3/4', () => {
+test('parseTvUrl: cols hanya 1 sampai 4', () => {
+  expect(parseTvUrl(new URLSearchParams('cols=1')).cols).toBe(1)
   expect(parseTvUrl(new URLSearchParams('cols=4')).cols).toBe(4)
-  expect(parseTvUrl(new URLSearchParams('cols=5')).cols).toBeUndefined()
-  expect(parseTvUrl(new URLSearchParams('cols=abc')).cols).toBeUndefined()
+  for (const bad of ['0', '5', '-1', '1.5', 'abc', '']) expect(parseTvUrl(new URLSearchParams(`cols=${bad}`)).cols).toBeUndefined()
+})
+
+test('COL_OPTIONS: posisi chip lama tetap, 1 kolom ditambahkan di akhir', () => {
+  expect(COL_OPTIONS).toEqual([3, 2, 4, 1])
+})
+
+test('loadPrefs: cols 1 sah; 0 dan 5 jatuh ke default', () => {
+  localStorage.setItem('isentinel_live_screen:A', JSON.stringify({ cols: 1 }))
+  expect(loadPrefs('A').cols).toBe(1)
+  for (const bad of [0, 5]) {
+    localStorage.setItem('isentinel_live_screen:B', JSON.stringify({ cols: bad }))
+    expect(loadPrefs('B').cols).toBe(defaultCols())
+  }
 })
 
 test('parseTvUrl: scroll dan speed tidak peka huruf besar-kecil, nilai asing diabaikan', () => {

@@ -76,7 +76,7 @@ export default function LiveTvPage() {
           {COL_OPTIONS.map((n) => (
             <button key={n} type="button" data-testid={`live-tv-cols-${n}`} aria-pressed={eff.cols === n}
               className={eff.cols === n ? 'lv-chip lv-chip--sel' : 'lv-chip'} onClick={() => commit({ cols: n })}>
-              {t('live.cols').replace('{n}', String(n))}
+              {n === 1 ? t('live.col1') : t('live.cols').replace('{n}', String(n))}
             </button>
           ))}
           <CameraPicker cams={active} value={pickerValue} onChange={(cameras) => commit({ cameras })}
