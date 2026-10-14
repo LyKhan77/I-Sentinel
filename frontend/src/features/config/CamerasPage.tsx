@@ -237,6 +237,7 @@ export default function CamerasPage() {
   }
 
   const headers = [
+    { key: 'id', header: t('cameras.col.id') },
     { key: 'name', header: t('cameras.col.name') },
     { key: 'location', header: t('cameras.col.location') },
     { key: 'streams', header: t('cameras.col.streams') },
@@ -328,6 +329,7 @@ export default function CamerasPage() {
                     const kind = statusKind(cam)
                     return (
                       <TableRow key={cam.id}>
+                        <TableCell style={{ whiteSpace: 'nowrap', width: '1%' }}>{cam.id}</TableCell>
                         <TableCell>
                           <div style={{ fontWeight: 600 }}>{cam.name}</div>
                           {cam.source && <div style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{cam.source.name}</div>}
@@ -374,7 +376,7 @@ export default function CamerasPage() {
                   })}
                   {cams.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7}>{t('cameras.empty')}</TableCell>
+                      <TableCell colSpan={headers.length}>{t('cameras.empty')}</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
