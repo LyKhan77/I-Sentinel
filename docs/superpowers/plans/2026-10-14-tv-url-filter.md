@@ -156,3 +156,25 @@ Server `gspe` (`10.8.0.182`, VPN; kredensial `temp/data/server-production.txt`),
 - [ ] **Step 5: Kiosk.** User mengisi pemetaan monitor → ID dari tabel Konfigurasi Kamera, menulis URL ke script kiosk tiap Pi; login sekali dengan akun `viewer` khusus.
 - [ ] **Step 6: Rollback bila gagal.** `docker tag isentinel-<img>:prev-20261014 isentinel-<img>:local` lalu `run-setup.sh`; revert merge di `main`.
 - [ ] **Step 7:** Perbarui `ROADMAP.md` (`[x]` dengan bukti), `CHANGELOG.md` (hasil deploy dan uji), dan memory server production.
+
+---
+
+### Task 9 (amandemen spec §10): URL sebagai sumber kebenaran per jendela
+
+Dikerjakan setelah Task 1–6 dan sebelum Task 7 diulang (deploy ulang ke dev) dan Task 8. Menggantikan perilaku kunci toolbar pada Task 3.
+
+**Files:**
+- Modify: `frontend/src/features/live/screenPrefs.ts`, `frontend/src/features/live/LiveTvPage.tsx`, `frontend/src/features/live/CameraPicker.tsx` (hapus `disabled`), `frontend/src/app/i18n.tsx` (hapus `live.tv.lockedByUrl` id+en), `frontend/src/app/theme.scss` (hapus `.lv-tv__locked`)
+- Test: `frontend/src/__tests__/live-prefs.test.ts`, `frontend/src/__tests__/live-tv.test.tsx`
+- Docs: runbook TV, README, WORKFLOW, ARCHITECTURE (bila menyebut kunci), CHANGELOG, ROADMAP
+
+**Interfaces:**
+- Produces (`screenPrefs.ts`): `type TvState = { cameras: number[]; cols: Cols; scroll: boolean; speed: ScrollSpeed }`;
+  `orderCameraIds(current: number[], sel: CameraSel, active: { id: number }[]): number[]` (ID yang masih terpilih menjaga urutan `current`, yang baru di akhir menurut urutan `active`; `all` = semua `active`);
+  `tvSearchParams(base: URLSearchParams, s: TvState): URLSearchParams` (salinan `base` dengan `cameras`, `cols`, `scroll`=`on|off`, `speed` ditulis; parameter lain, termasuk `screen`, tidak disentuh).
+
+- [ ] **Step 1: Tes gagal.** `live-prefs.test.ts`: `orderCameraIds` — current `[3,1]` + sel `some [1,3,2]` → `[3,1,2]`; sel `all` + active `[{id:1},{id:2},{id:3}]` → `[1,2,3]`; sel `some []` → `[]`. `tvSearchParams` — `screen=A` dipertahankan, `cameras=3,1`, `scroll=on`/`off`, `speed`, `cols`; `base` tidak dimutasi. `live-tv.test.tsx`: tambahkan komponen probe lokasi (`useLocation().search` dan `useNavigationType()` ke `data-testid`), hapus tes kunci toolbar yang lama, lalu: `toolbar tetap aktif saat URL berparameter`; `klik kolom menulis ulang URL dengan REPLACE, screen dipertahankan, localStorage layar ikut`; `scroll dan speed menulis scroll=on/off dan speed=…`; `pemilih: ID lama menjaga urutan, ID baru di akhir` (`?cameras=2` lalu centang kamera 1 → `cameras=2,1`); `membuka URL tidak mengubah URL dan localStorage kosong`; `tanpa parameter + satu edit menghasilkan URL lengkap` (`cameras` eksplisit, `cols`, `scroll`, `speed`).
+- [ ] **Step 2:** `npx vitest run src/__tests__/live-prefs.test.ts src/__tests__/live-tv.test.tsx` → tes baru GAGAL karena alasan yang benar (fungsi belum ada; kontrol masih `disabled`; URL tidak berubah).
+- [ ] **Step 3: Implementasi.** `screenPrefs.ts`: dua fungsi di atas. `LiveTvPage`: dapatkan `[params, setParams] = useSearchParams()`; satu fungsi `commit(patch)` memanggil `update(patch)` untuk `localStorage` lalu `setParams(tvSearchParams(params, state), { replace: true })` dengan `state` = nilai efektif + patch (ID kamera = `orderCameraIds(daftar ID tampil saat ini, pilihan baru, active)`); semua handler toolbar memakai `commit`; hapus `locked`, `anyLocked`, atribut `disabled` dari URL, keterangan terkunci, dan properti `disabled` di `CameraPicker`; tidak ada penulisan saat mount. Pesan `urlEmpty` tetap.
+- [ ] **Step 4:** vitest `live-tv`, `live-prefs`, `liveview`, `live-autoscroll` lulus; lalu suite penuh berurutan (`--maxWorkers=2` bila mesin ber-load), build, lint (24 warning identik). **Step 5: Commit** `feat(live): toolbar mode TV menulis ulang URL (URL sebagai sumber kebenaran per jendela)`.
+- [ ] **Step 6: Dokumentasi.** Runbook: cara membuat URL (buka `/live/tv`, atur kamera/kolom/scroll di toolbar, salin URL dari address bar ke script kiosk), hapus pernyataan "terkunci"; README/WORKFLOW/ARCHITECTURE/CHANGELOG/ROADMAP disesuaikan. **Commit** `docs(live): URL kiosk dibuat dari address bar mode TV`.

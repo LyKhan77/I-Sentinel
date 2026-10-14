@@ -2,7 +2,7 @@
 
 - Tanggal: 2026-10-14
 - Branch: `feat/tv-url-filter`
-- Status: draf, menunggu validasi user
+- Status: disetujui user; diamandemen 2026-10-14 (lihat §10: URL sebagai sumber kebenaran)
 
 ## 1. Latar Belakang & Tujuan
 
@@ -171,3 +171,35 @@ Pengujian harus gagal pada bug yang masuk akal, bukan mengunci detail implementa
 Tidak ada. Empat call pada bagian 2 dan satu call pada bagian 4.3 (semuanya ditandai **call saya**) perlu dicek
 user saat membaca spec. Pengecekan pembangun (reviewer independen) tidak menemukan pertanyaan penting yang
 tersisa.
+
+## 10. Amandemen 2026-10-14 — URL sebagai sumber kebenaran per jendela
+
+Alasan: setelah uji di dev, user ingin menyusun script kiosk dengan memblok dan menyalin URL dari address bar, dan
+satu Raspberry Pi menjalankan dua monitor dengan tampilan berbeda. Persistensi paling cocok berbasis tab/jendela,
+yaitu URL itu sendiri (tahan restart karena script kiosk yang menyimpannya); `sessionStorage` tidak dipakai.
+
+Keputusan user: (a) address bar `/live/tv` mengikuti toolbar; (b) toolbar tetap bisa diedit dan setiap perubahan
+menulis ulang URL, tidak ada kontrol terkunci; (c) dikerjakan di branch yang sama, diuji di dev, baru ke production.
+
+**Menggantikan** dari §2/§3/§4.1/§5: aturan "field yang diatur URL dikunci di toolbar" dan "nilai URL tidak pernah
+ditulis ke `localStorage`". Tidak berubah: parser URL, `selectByIds`, pesan `live.tv.urlEmpty`, kolom ID, cookie persisten.
+
+Aturan baru:
+
+1. Nilai efektif saat dimuat: parameter URL yang valid > pengaturan tersimpan per `screen` > bawaan (sama seperti sebelumnya).
+2. Membuka halaman tidak menulis apa pun (URL maupun `localStorage`), sehingga URL kiosk tidak berubah sendiri.
+3. Aksi toolbar (kolom, auto-scroll, kecepatan, pemilih kamera): (a) memperbarui `localStorage` untuk `screen` itu seperti
+   sebelumnya, dan (b) menulis ulang URL dengan `replace` (tanpa entri riwayat) berisi `cameras` (daftar ID eksplisit),
+   `cols`, `scroll` (`on`/`off`), dan `speed`. Parameter lain, termasuk `screen`, dipertahankan persis; `screen` tidak
+   ditambahkan bila tidak ada di URL.
+4. Urutan `cameras` hasil edit: ID yang masih terpilih mempertahankan urutan sebelumnya, ID yang baru dicentang
+   ditambahkan di akhir menurut urutan kamera (ID); "Semua" = semua kamera aktif menurut urutan kamera; "Kosongkan" =
+   `cameras=` kosong (layar menampilkan pesan `live.tv.urlEmpty`). **Call saya.**
+5. Tidak ada kontrol toolbar yang `disabled` karena URL; `live.tv.lockedByUrl`, `data-testid="live-tv-locked"`, dan
+   properti `disabled` pada `CameraPicker` dihapus.
+6. Chromium kiosk tetap butuh `--user-data-dir` terpisah per jendela (kebutuhan Chromium); cookie login tetap per profil.
+
+Pengujian tambahan: fungsi murni `orderCameraIds` dan `tvSearchParams` (screenPrefs); di `live-tv.test.tsx`: toolbar
+aktif saat URL berparameter; tiap aksi (kolom, scroll, speed, pemilih) menulis ulang URL dengan navigasi `REPLACE` dan
+mempertahankan `screen`; urutan ID hasil edit; membuka URL tidak mengubah URL maupun `localStorage`; URL tanpa
+parameter + satu edit menghasilkan URL lengkap.
