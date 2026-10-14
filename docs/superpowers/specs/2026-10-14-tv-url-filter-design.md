@@ -193,13 +193,13 @@ Aturan baru:
    `cols`, `scroll` (`on`/`off`), dan `speed`. Parameter lain, termasuk `screen`, dipertahankan persis; `screen` tidak
    ditambahkan bila tidak ada di URL.
 4. Urutan `cameras` hasil edit: ID yang masih terpilih mempertahankan urutan sebelumnya, ID yang baru dicentang
-   ditambahkan di akhir menurut urutan kamera (ID); "Semua" = semua kamera aktif menurut urutan kamera; "Kosongkan" =
+   ditambahkan di akhir menurut urutan kamera (ID); "Semua" = semua kamera aktif dengan ID yang sudah ada tetap di urutan lama dan sisanya di akhir menurut urutan kamera (pemilih mengubah "semua dicentang" menjadi mode `all`, jadi aturannya sama); "Kosongkan" =
    `cameras=` kosong (layar menampilkan pesan `live.tv.urlEmpty`). **Call saya.**
 5. Tidak ada kontrol toolbar yang `disabled` karena URL; `live.tv.lockedByUrl`, `data-testid="live-tv-locked"`, dan
    properti `disabled` pada `CameraPicker` dihapus.
 6. Chromium kiosk tetap butuh `--user-data-dir` terpisah per jendela (kebutuhan Chromium); cookie login tetap per profil.
 
-Pengujian tambahan: fungsi murni `orderCameraIds` dan `tvSearchParams` (screenPrefs); di `live-tv.test.tsx`: toolbar
+Pengujian tambahan: fungsi murni `orderCameraIds` dan `tvSearch` (screenPrefs); di `live-tv.test.tsx`: toolbar
 aktif saat URL berparameter; tiap aksi (kolom, scroll, speed, pemilih) menulis ulang URL dengan navigasi `REPLACE` dan
 mempertahankan `screen`; urutan ID hasil edit; membuka URL tidak mengubah URL maupun `localStorage`; URL tanpa
 parameter + satu edit menghasilkan URL lengkap.

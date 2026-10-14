@@ -23,9 +23,19 @@ bukan oleh klik di toolbar. Daftar ID kamera diambil dari kolom **ID** paling ki
 | `scroll` | `on` / `off` | Auto-scroll (tidak peka huruf besar-kecil); nilai lain diabaikan. |
 | `speed` | `slow` / `medium` / `fast` | Kecepatan auto-scroll; nilai lain diabaikan. |
 
-Field yang diatur URL **dikunci di toolbar** (dinonaktifkan, berlabel "Diatur oleh URL") dan
-nilai URL **tidak pernah ditulis ke `localStorage`** — menghapus parameter dari URL mengembalikan
-pengaturan tersimpan. Tanpa parameter baru, perilaku persis seperti sebelumnya.
+**URL adalah sumber kebenaran per jendela.** Membuka URL tidak menulis apa pun; hanya aksi toolbar
+(kolom, gulir, kecepatan, pemilih kamera) yang menulis ulang URL (replace, tanpa entri riwayat) dan
+`localStorage` layar itu. Nilai efektif saat dimuat: parameter URL yang valid > pengaturan tersimpan per
+`screen` > bawaan. Tanpa parameter baru, perilaku persis seperti sebelumnya.
+
+**Membuat URL kiosk (disarankan):** buka `/live/tv` di browser biasa, atur kamera (pemilih), kolom, gulir,
+dan kecepatan lewat toolbar; address bar langsung mengikuti, mis.
+`…/live/tv?screen=A&cameras=3,1,7&cols=3&scroll=on&speed=medium`. Blok URL itu, salin, lalu tempel ke script
+kiosk. Urutan tile = urutan `cameras`; kamera yang baru dicentang ditambahkan di akhir; "Kosongkan" menghasilkan
+`cameras=` (pesan "Tidak ada kamera aktif yang cocok dengan URL").
+
+Tiap jendela/tab punya URL sendiri, sehingga dua monitor di satu Pi (profil Chromium terpisah A dan B)
+menampilkan kamera berbeda: isi tiap monitor ditentukan oleh URL di script, bukan oleh penyimpanan browser.
 
 Contoh satu monitor:
 ```
@@ -65,7 +75,7 @@ Tambahkan kedua perintah (diakhiri `&`) ke `~/.config/labwc/autostart` (Wayland/
 
 ## Operasional
 - Gerakkan mouse → toolbar muncul: kolom, **Kamera (n/m)**, gulir otomatis + kecepatan, Keluar.
-  Kontrol yang diatur URL terkunci dan diberi label "Diatur oleh URL".
+  Perubahan di toolbar menulis ulang URL jendela itu; setelah kiosk di-restart isi monitor ditentukan lagi oleh URL di script.
 - **Cookie persisten 48 jam bergulir**: cookie login kini menyimpan `Max-Age` = umur token
   (default 172800 detik) dan diperpanjang otomatis selama halaman terbuka me-refresh, sehingga
   Pi yang reboot diharapkan tetap login selama kunjungan terakhir < 48 jam (belum diuji di Pi: setelah

@@ -224,9 +224,11 @@ untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
   terpisah (dua jendela TV di satu Pi). `?screen=` tidak dikenal → `default`.
 - **URL filter**: `?cameras=1,4,20` menampilkan kamera ID 1, 4, 20 dengan urutan tile sesuai
   URL (ID diperoleh dari kolom ID di Konfigurasi → Kamera); `cols=2|3|4`, `scroll=on|off`, dan
-  `speed=slow|medium|fast` ikut diatur URL. Kontrol terkait dikunci di toolbar dan nilai URL
-  tidak pernah ditulis ke `localStorage`; `cameras` ada tetapi tanpa ID yang cocok → pesan
-  kosong, bukan semua kamera. Tanpa parameter baru perilaku tidak berubah.
+  `speed=slow|medium|fast` ikut diatur URL. **URL adalah sumber kebenaran per jendela**:
+  membuka halaman tidak menulis apa pun; setiap aksi toolbar (kolom, gulir, kecepatan, pemilih
+  kamera) menulis ulang URL (replace) selain `localStorage`, sehingga URL di address bar bisa
+  disalin ke script kiosk. `cameras` ada tetapi tanpa ID yang cocok → pesan kosong, bukan
+  semua kamera. Tanpa parameter baru perilaku tidak berubah.
 - **Stream hanya tile terlihat**: tile di luar viewport menampilkan snapshot terakhir;
   `<video-stream>` hanya di-mount untuk tile dekat layar (pra-muat 50 % viewport).
 - **Pulih sendiri**: tile yang gagal stream dicoba ulang tiap 60 detik; snapshot tampil
