@@ -77,6 +77,65 @@ export function selectCameras<T extends { id: number }>(cams: T[], sel: CameraSe
   return cams.filter((c) => isSelected(sel, c.id))
 }
 
+/** Override dari parameter URL `/live/tv` (`cameras` ada = mode URL aktif; `undefined` = parameter tidak ada). */
+export type TvUrlOverrides = { cameras?: number[]; cols?: Cols; scroll?: boolean; speed?: ScrollSpeed }
+
+/** Parse parameter URL mode TV. Fungsi murni: tidak menyentuh `localStorage`. */
+export function parseTvUrl(params: URLSearchParams): TvUrlOverrides {
+  const out: TvUrlOverrides = {}
+  const rawCams = params.get('cameras')
+  if (rawCams !== null) {
+    const seen = new Set<number>()
+    const ids: number[] = []
+    for (const token of rawCams.split(',')) {
+      const v = token.trim()
+      if (!/^\d+$/.test(v)) continue
+      const id = Number(v)
+      if (id <= 0 || seen.has(id)) continue
+      seen.add(id)
+      ids.push(id)
+    }
+    out.cameras = ids
+  }
+  const rawCols = params.get('cols')
+  if (rawCols !== null) {
+    const n = Number(rawCols)
+    if (isCols(n)) out.cols = n
+  }
+  const rawScroll = params.get('scroll')
+  if (rawScroll !== null) {
+    const v = rawScroll.trim().toLowerCase()
+    if (v === 'on') out.scroll = true
+    else if (v === 'off') out.scroll = false
+  }
+  const rawSpeed = params.get('speed')
+  if (rawSpeed !== null) {
+    const v = rawSpeed.trim().toLowerCase()
+    if (Object.hasOwn(SCROLL_SPEEDS, v)) out.speed = v as ScrollSpeed
+  }
+  return out
+}
+
+/** Pilih kamera menurut urutan `ids`; ID yang tidak ada di `cams` dilewati. */
+export function selectByIds<T extends { id: number }>(cams: T[], ids: number[]): T[] {
+  const byId = new Map(cams.map((c) => [c.id, c]))
+  const out: T[] = []
+  for (const id of ids) {
+    const cam = byId.get(id)
+    if (cam) out.push(cam)
+  }
+  return out
+}
+
+/** Gabungkan pengaturan tersimpan dengan override URL; `cameras` tidak disentuh dan tidak ada tulis ke `localStorage`. */
+export function withOverrides(prefs: ScreenPrefs, o: TvUrlOverrides): ScreenPrefs {
+  return {
+    cols: o.cols ?? prefs.cols,
+    cameras: prefs.cameras,
+    scroll: { on: o.scroll ?? prefs.scroll.on, speed: o.speed ?? prefs.scroll.speed },
+  }
+}
+
 /** Pilih/buang `ids`; bila semua kamera terpilih → `all` (kamera baru ikut tampil). */
 export function setCameras(sel: CameraSel, cams: { id: number }[], ids: number[], on: boolean): CameraSel {
   const chosen = new Set(cams.filter((c) => isSelected(sel, c.id)).map((c) => c.id))

@@ -1,5 +1,6 @@
 import {
-  defaultCols, loadPrefs, savePrefs, screenName, selectCameras, setCameras, type ScreenPrefs,
+  defaultCols, loadPrefs, parseTvUrl, savePrefs, screenName, selectByIds, selectCameras,
+  setCameras, withOverrides, type ScreenPrefs,
 } from '../features/live/screenPrefs'
 
 const CAMS = [{ id: 1 }, { id: 2 }, { id: 3 }]
@@ -60,4 +61,41 @@ test('setCameras: toggle, semua terpilih kembali jadi all, ID usang dibuang', ()
   expect(setCameras(s1, CAMS, [2], true)).toEqual({ mode: 'all' })
   expect(setCameras({ mode: 'some', ids: [1, 42] }, CAMS, [3], true)).toEqual({ mode: 'some', ids: [1, 3] })
   expect(setCameras({ mode: 'all' }, CAMS, [1, 2, 3], false)).toEqual({ mode: 'some', ids: [] })
+})
+
+test('parseTvUrl: cameras berurutan, spasi dipangkas, duplikat dan token sampah dibuang', () => {
+  expect(parseTvUrl(new URLSearchParams('cameras= 3, 1,1,x,0,-2,2.5,2')).cameras).toEqual([3, 1, 2])
+})
+
+test('parseTvUrl: cameras ada tetapi tanpa ID valid → [] (bukan undefined)', () => {
+  expect(parseTvUrl(new URLSearchParams('cameras=')).cameras).toEqual([])
+  expect(parseTvUrl(new URLSearchParams('cameras=a,b')).cameras).toEqual([])
+  expect(parseTvUrl(new URLSearchParams('screen=A')).cameras).toBeUndefined()
+})
+
+test('parseTvUrl: cols hanya 2/3/4', () => {
+  expect(parseTvUrl(new URLSearchParams('cols=4')).cols).toBe(4)
+  expect(parseTvUrl(new URLSearchParams('cols=5')).cols).toBeUndefined()
+  expect(parseTvUrl(new URLSearchParams('cols=abc')).cols).toBeUndefined()
+})
+
+test('parseTvUrl: scroll dan speed tidak peka huruf besar-kecil, nilai asing diabaikan', () => {
+  expect(parseTvUrl(new URLSearchParams('scroll=ON')).scroll).toBe(true)
+  expect(parseTvUrl(new URLSearchParams('scroll=Off')).scroll).toBe(false)
+  expect(parseTvUrl(new URLSearchParams('scroll=yes')).scroll).toBeUndefined()
+  expect(parseTvUrl(new URLSearchParams('speed=FAST')).speed).toBe('fast')
+  expect(parseTvUrl(new URLSearchParams('speed=turbo')).speed).toBeUndefined()
+})
+
+test('selectByIds: urutan mengikuti ids, ID tak dikenal dilewati', () => {
+  expect(selectByIds(CAMS, [3, 9, 1]).map((c) => c.id)).toEqual([3, 1])
+})
+
+test('withOverrides: hanya field yang ada di URL yang menimpa, localStorage tetap kosong', () => {
+  const prefs: ScreenPrefs = { cols: 3, cameras: { mode: 'all' }, scroll: { on: false, speed: 'medium' } }
+  const eff = withOverrides(prefs, { cols: 2 })
+  expect(eff.cols).toBe(2)
+  expect(eff.scroll).toEqual({ on: false, speed: 'medium' })
+  expect(eff.cameras).toEqual({ mode: 'all' })
+  expect(localStorage.length).toBe(0)
 })
