@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Deploy production: TV URL filter, kolom ID, cookie persisten, 1 kolom (2026-10-14)
+
+- **Konteks:** setelah uji user di dev (kolom ID, URL sebagai sumber kebenaran, 1 kolom: semua OK), user meminta deploy ke production **tanpa merge ke `main`**. Server `gspe` (VPN `10.8.0.182`) tidak bisa membangun image (apt ke CDN Debian terputus), jadi image dibangun di dev dari `feat/tv-url-filter` lalu dikirim.
+- **Langkah:** tag cadangan `isentinel-api:prev-20261014` dan `isentinel-web:prev-20261014` (ID `2e6edbdd`, `88e732eb`); `docker save | gzip` dari dev, kirim lewat VPN dengan append yang dapat dilanjutkan, verifikasi sha256 (web 21 MB, api 452 MB, 16 menit), `docker load` (ID baru `cf57af4b407d`, `fcd90df99acd`, sama dengan dev); klon production dipindah ke `feat/tv-url-filter` (`752248d`); `run-setup.sh` (melewati build) `EXIT=0`. Container yang di-recreate: `api`, `web`, `retention`; `postgres`, `mosquitto`, `go2rtc`, `vision` tidak disentuh (uptime 6 jam).
+- **Bukti:** semua container `healthy`; `/api/v1/health` 200 dari Mac lewat VPN; helper cookie di image `api` production menghasilkan `isentinel_token=<token>; HttpOnly; Max-Age=172800; Path=/; SameSite=lax`; log `api` menunjukkan `Application startup complete` tanpa error; bundle web production memuat kolom ID, chip `1 kolom`/`1 column`, `COL_OPTIONS [3,2,4,1]`, kelas `lv-grid--one` (JS dan CSS), pesan `urlEmpty`, penulis URL, dan **tidak** memuat keterangan terkunci; rute SPA `/live/tv` 200. Jaringan `isentinel_default` tetap `172.16.200.0/24` dan tidak ada rute `192.168.x`; 74 container berjalan, tidak ada yang restart.
+- **Dampak:** jeda API beberapa detik saat recreate; sesi login yang ada tetap sah. Kiosk production belum dipasang. **BELUM diuji user di production dan BELUM diuji di Pi** (login setelah reboot Pi masih tanda "diharapkan"). `main` belum di-merge; klon production berada di branch fitur dan harus kembali ke `main` setelah merge (`git checkout main && git pull`).
+- **Rollback:** `docker tag isentinel-api:prev-20261014 isentinel-api:local` dan `docker tag isentinel-web:prev-20261014 isentinel-web:local`, lalu `run-setup.sh`; klon production `git checkout main`.
+
 ### Layout 1 kolom untuk Live dan mode TV (2026-10-14)
 
 - **Konteks:** permintaan user setelah uji dev: tambah pilihan 1 kolom (satu tile selebar layar). Spec §11, rencana Task 10.

@@ -486,7 +486,7 @@ Spec: `docs/superpowers/specs/2026-10-14-tv-url-filter-design.md` · Plan: `docs
 - [ ] T6 suite penuh + CHANGELOG — bukti di CHANGELOG 2026-10-14
 - [x] Review sesi perencanaan (M1/L1/L2 diperbaiki, D1 = semua role; backend 1112, vitest 569 dengan `--maxWorkers=2`, build 0, lint 24 identik) — BELUM di-deploy/diuji
 - [ ] Deploy dev (`gspe-ai3`) + uji user
-- [ ] Merge + deploy production + uji Pi
+- [~] Deploy production OK (2026-10-14, branch `feat/tv-url-filter` `752248d`, tanpa merge; verifikasi di CHANGELOG); BELUM diuji user di production, BELUM diuji di Pi, merge ke `main` menunggu user
 
 ## Fase E — Edge Jetson (opsional/nanti)
 
