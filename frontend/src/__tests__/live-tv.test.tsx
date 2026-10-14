@@ -8,10 +8,17 @@ import LiveTvPage from '../features/live/LiveTvPage'
 const cam = (id: number) => ({ id, name: `CAM-0${id}`, location: null, host: `10.0.0.${id}`, rtsp_main: null,
   rtsp_sub: null, node_id: 1, enabled: true, status: 'offline', probe_main: null, probe_sub: null })
 
-function stubFetch() {
+function stubFetch(cams = [cam(1), cam(2)]) {
   return vi.fn(async (url: string) => (String(url).endsWith('/cameras')
-    ? { ok: true, status: 200, json: () => Promise.resolve([cam(1), cam(2)]) }
+    ? { ok: true, status: 200, json: () => Promise.resolve(cams) }
     : { ok: false, status: 503, json: () => Promise.resolve(null) }))
+}
+
+// tiga kamera aktif (1, 2) + satu nonaktif (3) untuk uji filter URL
+const TV_CAMS = [cam(1), cam(2), { ...cam(3), enabled: false }]
+
+function tileIds() {
+  return [...document.querySelectorAll('[data-testid^="cam-tile-"]')].map((el) => el.getAttribute('data-testid'))
 }
 
 function renderTv(entry: string) {
@@ -71,4 +78,78 @@ test('screen ngawur → layar default; tombol Keluar kembali ke /live', async ()
   expect(await screen.findByTestId('live-tv-toolbar')).toHaveTextContent('Layar default')
   await userEvent.click(screen.getByTestId('live-tv-exit'))
   expect(screen.getByTestId('normal-live')).toBeInTheDocument()
+})
+
+test('cameras=2,1 menampilkan tile 2 lalu 1 meski pengaturan tersimpan "semua"', async () => {
+  localStorage.setItem('isentinel_live_screen:A', JSON.stringify({ cameras: { mode: 'all' } }))
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=2,1')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  expect(tileIds()).toEqual(['cam-tile-2', 'cam-tile-1'])
+})
+
+test('ID tak dikenal, nonaktif, dan duplikat dilewati', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=3,9,2,2')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  expect(tileIds()).toEqual(['cam-tile-2'])
+})
+
+test('cameras ada tapi tidak ada yang cocok → pesan URL, bukan semua kamera', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  const { unmount } = renderTv('/live/tv?screen=A&cameras=9')
+  expect(await screen.findByTestId('live-tv-url-empty')).toBeInTheDocument()
+  expect(tileIds()).toEqual([])
+  unmount()
+  renderTv('/live/tv?screen=A&cameras=')
+  expect(await screen.findByTestId('live-tv-url-empty')).toBeInTheDocument()
+  expect(tileIds()).toEqual([])
+})
+
+test('URL mengunci toolbar dan tidak menulis localStorage', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=1&cols=2&scroll=on&speed=fast')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(screen.getByTestId('live-tv-cols-3')).toBeDisabled()
+  expect(screen.getByTestId('live-tv-scroll')).toBeDisabled()
+  expect(screen.getByTestId('live-tv-speed-slow')).toBeDisabled()
+  expect(screen.getByTestId('live-picker-open')).toBeDisabled()
+  expect(screen.getByTestId('live-tv-locked')).toHaveTextContent('Diatur oleh URL')
+  expect(document.querySelector('.lv-grid--tv')).toHaveStyle({ '--lv-cols': '2' })
+  expect(localStorage.length).toBe(0)
+  await userEvent.click(screen.getByTestId('live-tv-cols-3'))
+  expect(localStorage.length).toBe(0)
+  expect(screen.getByTestId('live-tv-sound')).toBeEnabled()
+  expect(screen.getByTestId('live-tv-exit')).toBeEnabled()
+})
+
+test('field di luar URL tetap memakai pengaturan tersimpan', async () => {
+  localStorage.setItem('isentinel_live_screen:A', JSON.stringify({ cols: 4 }))
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&cameras=1')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(document.querySelector('.lv-grid--tv')).toHaveStyle({ '--lv-cols': '4' })
+  expect(screen.getByTestId('live-tv-cols-4')).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByTestId('live-tv-cols-4')).toBeEnabled() // cols di luar URL → tidak dikunci
+  expect(screen.getByTestId('live-picker-open')).toBeDisabled()
+  expect(screen.getByTestId('live-tv-scroll')).toBeEnabled()
+})
+
+test('tanpa parameter baru: picker aktif dan tidak ada keterangan terkunci', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(screen.getByTestId('live-picker-open')).toBeEnabled()
+  expect(screen.queryByTestId('live-tv-locked')).not.toBeInTheDocument()
+})
+
+test('nilai speed dari URL tidak ikut tertulis saat kontrol lain diklik', async () => {
+  vi.stubGlobal('fetch', stubFetch(TV_CAMS))
+  renderTv('/live/tv?screen=A&speed=fast')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(screen.getByTestId('live-tv-speed-fast')).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByTestId('live-tv-speed-fast')).toBeDisabled()
+  expect(screen.getByTestId('live-tv-scroll')).toBeEnabled()
+  await userEvent.click(screen.getByTestId('live-tv-scroll'))
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:A')!)).toMatchObject({ scroll: { on: true, speed: 'medium' } })
 })

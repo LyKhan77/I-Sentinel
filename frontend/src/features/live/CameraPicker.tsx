@@ -4,12 +4,13 @@ import type { Camera } from '../../api/cameras'
 import { isSelected, setCameras, type CameraSel } from './screenPrefs'
 
 /** Pilih kamera yang tampil, dikelompokkan per lokasi (checkbox grup = semua kamera di lokasi itu). */
-export default function CameraPicker({ cams, value, onChange, open, onOpenChange }: {
+export default function CameraPicker({ cams, value, onChange, open, onOpenChange, disabled }: {
   cams: Camera[]
   value: CameraSel
   onChange: (v: CameraSel) => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  disabled?: boolean
 }) {
   const { t } = useT()
   const groups = new Map<string, Camera[]>()
@@ -18,6 +19,7 @@ export default function CameraPicker({ cams, value, onChange, open, onOpenChange
   return (
     <div className="lv-picker">
       <Button kind="tertiary" size="sm" data-testid="live-picker-open" aria-expanded={open}
+        disabled={disabled}
         onClick={() => onOpenChange(!open)}>
         {t('live.picker.button').replace('{n}', String(count)).replace('{m}', String(cams.length))}
       </Button>
