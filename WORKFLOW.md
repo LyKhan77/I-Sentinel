@@ -57,7 +57,7 @@ menghapus riwayat event.
 
 **Pengguna:** semua · **Halaman:** `/live`, `/live/tv?screen=<nama>`
 
-1. Grid kamera 2/3/4 kolom, filter lokasi, pemilih kamera **Kamera (n/m)**; pengaturan tersimpan per
+1. Grid kamera 1/2/3/4 kolom (1 kolom = satu tile selebar layar, juga di layar sempit), filter lokasi, pemilih kamera **Kamera (n/m)**; pengaturan tersimpan per
    layar di `localStorage`.
 2. Tile memutar stream go2rtc (WebRTC/MSE) hanya saat dekat layar; di luar layar menampilkan
    snapshot terakhir lewat proxy API (`GET /api/v1/cameras/{id}/snapshot`, wajib login).

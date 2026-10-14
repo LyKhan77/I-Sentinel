@@ -19,7 +19,7 @@ bukan oleh klik di toolbar. Daftar ID kamera diambil dari kolom **ID** paling ki
 |---|---|---|
 | `screen` | `A`/`B`/nama bebas (huruf/angka/-/_ ≤ 32) | Kunci pengaturan tersimpan per layar; opsional. |
 | `cameras` | ID dipisah koma, mis. `1,4,20` | Tile mengikuti urutan ID di URL. Token bukan bilangan bulat positif dibuang; duplikat dibuang. ID nonaktif/tak ada dilewati. Ada parameter tapi tidak ada yang cocok → layar menampilkan pesan kosong (bukan semua kamera). |
-| `cols` | `2`, `3`, `4` | Jumlah kolom; nilai lain diabaikan. |
+| `cols` | `1`, `2`, `3`, `4` | Jumlah kolom; nilai lain diabaikan. `1` = satu tile selebar layar (dihormati di semua lebar layar; 2–4 kolom tetap turun otomatis di layar sempit). |
 | `scroll` | `on` / `off` | Auto-scroll (tidak peka huruf besar-kecil); nilai lain diabaikan. |
 | `speed` | `slow` / `medium` / `fast` | Kecepatan auto-scroll; nilai lain diabaikan. |
 

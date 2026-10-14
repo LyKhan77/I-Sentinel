@@ -465,6 +465,7 @@ event terbaru (sumber lonceng) | masalah aktif + node ringkas. Backend: `stats/t
 - [x] Task 1–6 terimplementasi di `feat/dashboard-revamp` + perbaikan review (`6e9f7f0`) —
       backend **622**, frontend **296** (30 file), build 0, lint 24 (baseline minus warning `DashboardPage.tsx`)
 - [~] T9 amandemen: toolbar menulis ulang URL (`orderCameraIds`, `tvSearch`), kunci toolbar dihapus — repo selesai (`44c7550`, vitest 574, build 0, lint 24 identik), BELUM di-deploy ulang/diuji
+- [~] T10 layout 1 kolom (`Cols` 1–4, `lv-grid--one`) — repo selesai, BELUM di-deploy ulang/diuji
 - [x] Review sesi perencanaan (M1–M4 diperbaiki); D1 (`attendance` tidak dihitung) diterima user bersama uji UI
 - [x] Push + deploy ke gspe-ai3 (`6e9f7f0`, tanpa migrasi, API restart) + uji UI user: "sudah bagus dan sesuai"
       (2026-10-01; tanpa screenshot)

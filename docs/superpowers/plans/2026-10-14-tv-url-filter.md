@@ -178,3 +178,11 @@ Dikerjakan setelah Task 1–6 dan sebelum Task 7 diulang (deploy ulang ke dev) d
 - [ ] **Step 3: Implementasi.** `screenPrefs.ts`: dua fungsi di atas. `LiveTvPage`: dapatkan `[params, setParams] = useSearchParams()`; satu fungsi `commit(patch)` memanggil `update(patch)` untuk `localStorage` lalu `setParams(tvSearch(params, state), { replace: true })` dengan `state` = nilai efektif + patch (ID kamera = `orderCameraIds(daftar ID tampil saat ini, pilihan baru, active)`); semua handler toolbar memakai `commit`; hapus `locked`, `anyLocked`, atribut `disabled` dari URL, keterangan terkunci, dan properti `disabled` di `CameraPicker`; tidak ada penulisan saat mount. Pesan `urlEmpty` tetap.
 - [ ] **Step 4:** vitest `live-tv`, `live-prefs`, `liveview`, `live-autoscroll` lulus; lalu suite penuh berurutan (`--maxWorkers=2` bila mesin ber-load), build, lint (24 warning identik). **Step 5: Commit** `feat(live): toolbar mode TV menulis ulang URL (URL sebagai sumber kebenaran per jendela)`.
 - [ ] **Step 6: Dokumentasi.** Runbook: cara membuat URL (buka `/live/tv`, atur kamera/kolom/scroll di toolbar, salin URL dari address bar ke script kiosk), hapus pernyataan "terkunci"; README/WORKFLOW/ARCHITECTURE/CHANGELOG/ROADMAP disesuaikan. **Commit** `docs(live): URL kiosk dibuat dari address bar mode TV`.
+
+### Task 10 (spec §11): layout 1 kolom
+
+**Files:** `screenPrefs.ts` (`Cols`, `COL_OPTIONS`, `isCols`), `LiveWall.tsx` (kelas `lv-grid--one`), `theme.scss`, `i18n.tsx` (`live.col1` id+en), `LiveViewPage.tsx` dan `LiveTvPage.tsx` (label chip), tes `live-prefs`, `live-tv`, `liveview`; dokumentasi (runbook, README, WORKFLOW), CHANGELOG, ROADMAP.
+
+- [ ] Tes gagal: `cols=1` diterima parser (0, 5, -1, 1.5, abc, kosong ditolak); `COL_OPTIONS` = `[3, 2, 4, 1]`; `loadPrefs` menerima 1; chip `live-tv-cols-1` dan `live-cols-1` berlabel "1 kolom", menulis `cols=1` ke URL/`localStorage`, grid `--lv-cols: 1` dengan kelas `lv-grid--one` (kolom lain tanpa kelas itu).
+- [ ] Implementasi dan pemeriksaan browser: 1 kolom tetap satu kolom pada 1280 px dan 900 px; 3 kolom pada 900 px tetap turun ke 2; tanpa overflow horizontal.
+- [ ] Commit `feat(live): layout 1 kolom untuk Live dan mode TV`; dokumen dan CHANGELOG.

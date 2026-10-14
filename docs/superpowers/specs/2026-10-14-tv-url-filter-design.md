@@ -203,3 +203,13 @@ Pengujian tambahan: fungsi murni `orderCameraIds` dan `tvSearch` (screenPrefs); 
 aktif saat URL berparameter; tiap aksi (kolom, scroll, speed, pemilih) menulis ulang URL dengan navigasi `REPLACE` dan
 mempertahankan `screen`; urutan ID hasil edit; membuka URL tidak mengubah URL maupun `localStorage`; URL tanpa
 parameter + satu edit menghasilkan URL lengkap.
+
+## 11. Tambahan 2026-10-14 — layout 1 kolom
+
+Permintaan user setelah uji dev: tambah pilihan **1 kolom** (satu tile selebar layar). Berlaku untuk `/live` dan `/live/tv`.
+`Cols` menjadi `1 | 2 | 3 | 4`; parameter URL `cols` menerima 1–4 (nilai lain diabaikan); `COL_OPTIONS` = `[3, 2, 4, 1]`
+(posisi chip lama tidak berubah, 1 kolom di akhir, **call saya**); label "1 kolom" / "1 column" lewat `live.col1`.
+Aturan CSS yang memaksa 2 kolom (≤1055 px) dan 1 kolom (≤671 px) tetap untuk 2–4 kolom; pilihan 1 kolom memakai kelas
+`lv-grid--one` sehingga satu kolom dihormati di semua lebar. Tidak ada perubahan pemilihan stream: tile memakai
+`cam_<id>` (SUB bila ada), jadi pada 1 kolom di monitor 1080p gambar SUB diperbesar; memakai stream MAIN pada 1 kolom
+adalah perubahan terpisah bila diinginkan.

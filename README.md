@@ -213,7 +213,7 @@ Prosedur operasional lainnya (restart, backup, pin GPU, load test): lihat **`doc
 
 ## Live View & Mode TV
 
-Live View (halaman **Live**) menampilkan grid kamera: pilih 2/3/4 kolom, dan pilih kamera
+Live View (halaman **Live**) menampilkan grid kamera: pilih 1/2/3/4 kolom, dan pilih kamera
 mana yang tampil lewat **Kamera (n/m)** (checkbox per kamera, dikelompokkan per lokasi).
 Pengaturan ini tersimpan per layar di `localStorage`.
 
@@ -223,7 +223,7 @@ untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
 - **Pengaturan per layar**: `?screen=A` dan `?screen=B` menyimpan kolom/pilihan/auto-scroll
   terpisah (dua jendela TV di satu Pi). `?screen=` tidak dikenal → `default`.
 - **URL filter**: `?cameras=1,4,20` menampilkan kamera ID 1, 4, 20 dengan urutan tile sesuai
-  URL (ID diperoleh dari kolom ID di Konfigurasi → Kamera); `cols=2|3|4`, `scroll=on|off`, dan
+  URL (ID diperoleh dari kolom ID di Konfigurasi → Kamera); `cols=1|2|3|4`, `scroll=on|off`, dan
   `speed=slow|medium|fast` ikut diatur URL. **URL adalah sumber kebenaran per jendela**:
   membuka halaman tidak menulis apa pun; setiap aksi toolbar (kolom, gulir, kecepatan, pemilih
   kamera) menulis ulang URL (replace) selain `localStorage`, sehingga URL di address bar bisa

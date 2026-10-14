@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Layout 1 kolom untuk Live dan mode TV (2026-10-14)
+
+- **Konteks:** permintaan user setelah uji dev: tambah pilihan 1 kolom (satu tile selebar layar). Spec §11, rencana Task 10.
+- **Perubahan:** `Cols` = `1 | 2 | 3 | 4`, `COL_OPTIONS` = `[3, 2, 4, 1]` (posisi chip lama tetap), `isCols` menerima 1, parameter URL `cols=1` diterima; `LiveWall` menambah kelas `lv-grid--one` untuk 1 kolom dan `theme.scss` menghormatinya di semua lebar (aturan turun ≤1055/≤671 px tetap untuk 2–4 kolom); label "1 kolom"/"1 column" lewat `live.col1` pada chip `/live` dan `/live/tv`. Dokumen: runbook, README, WORKFLOW, spec §11, rencana Task 10.
+- **Bukti:** RED benar sebelum implementasi (6 tes: `COL_OPTIONS` tanpa 1, `loadPrefs` menolak 1, chip `1 kolom` belum ada); sesudahnya 61 tes di empat berkas live lulus dan `tsc` bersih. Browser (Chromium headless, stub API, bukti `docs/evidence/tv-url-filter-onecol-1280.png`): 1 kolom → grid 1 kolom, tile selebar layar pada 1280 dan 900 px, tanpa overflow; 3 kolom pada 900 px tetap 2 kolom, pada 1280 px 3 kolom.
+- **Dampak:** gambar tile memakai stream `cam_<id>` (SUB bila ada), sehingga pada 1 kolom di monitor 1080p gambar SUB diperbesar; memakai MAIN pada 1 kolom adalah perubahan terpisah. Image yang berubah: `web`. **BELUM di-deploy ulang ke dev dan BELUM diuji user.**
+- **Rollback:** `git revert` commit fitur ini; tanpa perubahan skema/data.
+
 ### URL sebagai sumber kebenaran mode TV — amandemen TV URL filter (2026-10-14)
 
 - **Konteks:** setelah uji di dev, user ingin menyusun script kiosk dengan memblok dan menyalin URL dari address bar, dan satu Pi menjalankan dua monitor dengan tampilan berbeda. Keputusan user: address bar `/live/tv` mengikuti toolbar, toolbar tetap bisa diedit (tidak ada kontrol terkunci), satu branch, uji dev lalu production. Spec §10 dan rencana Task 9 mencatat amandemen.
