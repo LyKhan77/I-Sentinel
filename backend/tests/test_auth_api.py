@@ -107,3 +107,22 @@ def test_session_cookie_not_renewed_when_fresh_or_bearer(client):
 def test_default_session_is_48_hours():
     from app.core.config import Settings
     assert Settings.model_fields["access_token_expire_min"].default == 2880
+
+
+def test_login_cookie_max_age_equals_token_lifetime(client):
+    """Cookie login persisten: Max-Age sama dengan umur token, bawaan 172800 detik (48 jam)."""
+    from app.core.config import settings
+    r = client.post("/api/v1/auth/login", json={"username": "admin", "password": "boot123"})
+    assert r.status_code == 200
+    cookie = r.headers.get("set-cookie", "")
+    assert f"Max-Age={settings.access_token_expire_min * 60}" in cookie
+
+
+def test_renewed_cookie_has_max_age(client):
+    """Perpanjangan sesi bergulir ikut menulis Max-Age pada cookie baru."""
+    old = _token_with(_admin_id(client), 60)
+    r = client.get("/api/v1/auth/me", headers={"Cookie": f"isentinel_token={old}"})
+    assert r.status_code == 200
+    cookie = r.headers.get("set-cookie", "")
+    assert cookie.startswith("isentinel_token=")
+    assert "Max-Age=" in cookie
