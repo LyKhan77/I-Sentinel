@@ -482,7 +482,7 @@ Spec: `docs/superpowers/specs/2026-10-14-tv-url-filter-design.md` · Plan: `docs
 - [ ] T4 kolom ID paling kiri di tabel Konfigurasi Kamera — BELUM di-deploy/diuji
 - [ ] T5 dokumentasi (runbook Pi, README, WORKFLOW, ARCHITECTURE) — BELUM di-deploy/diuji
 - [ ] T6 suite penuh + CHANGELOG — bukti di CHANGELOG 2026-10-14
-- [ ] Review sesi perencanaan
+- [x] Review sesi perencanaan (M1/L1/L2 diperbaiki, D1 = semua role; backend 1112, vitest 569 dengan `--maxWorkers=2`, build 0, lint 24 identik) — BELUM di-deploy/diuji
 - [ ] Deploy dev (`gspe-ai3`) + uji user
 - [ ] Merge + deploy production + uji Pi
 
