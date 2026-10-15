@@ -2,7 +2,7 @@
 
 - Tanggal: 2026-10-15
 - Branch: `feat/live-poll-reduction` (dari `main` @ `e544634`)
-- Status: draf, menunggu validasi user
+- Status: disetujui user 2026-10-15 (pool 20+20/10 detik, A2 disertakan)
 
 ## 1. Latar Belakang & Tujuan
 
@@ -32,8 +32,8 @@ Anti-goals: tile kosong 30 detik setelah pilihan kamera berubah; perubahan respo
 |---|---|---|
 | Urutan | A (frontend) dulu, lalu B (backend), satu branch | user: "setuju" |
 | `/live` hanya untuk kamera yang tampil | ya; kamera nonaktif tidak pernah diambil | user (A) |
-| Pool DB | `pool_size` 20, `max_overflow` 20, `pool_timeout` 10 detik, lewat env | **call saya** (menunggu validasi) |
-| Poller `/events` ganda per jendela | satu langganan bersama (A2) | **call saya** (menunggu validasi) |
+| Pool DB | `pool_size` 20, `max_overflow` 20, `pool_timeout` 10 detik, lewat env | user (disetujui) |
+| Poller `/events` ganda per jendela | satu langganan bersama (A2), disertakan | user (disetujui) |
 
 ## 3. Perubahan
 
