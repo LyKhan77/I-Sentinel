@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Kiosk Pi: respawn Chromium dan restart harian 03:30 (2026-10-15)
+
+- **Konteks:** setelah pemantauan 57 menit, memori Chromium di Pi naik ±35 MB/jam (Pi `.235`) dan kiosk tidak punya pemulih bila Chromium crash. User menyetujui respawn + restart harian 03:30 (opsi 2).
+- **Perubahan:** `~/start-kiosk.sh` di tiga Pi (`.235` dua jendela, `.162` dua jendela, `.222` satu jendela) dibangun ulang: loop `run_window` per jendela (respawn 5 dtk; 30 dtk bila mati < 10 dtk) dan loop `daily_restart` yang mematikan Chromium pada 03:30 WIB. Jam dibaca dari header `Date` server karena jam Pi tidak tersinkron NTP (selisih 26–29 jam). Cadangan versi lama `~/start-kiosk.sh.bak-20261015-fix2` di tiap Pi. Tanpa perubahan kode aplikasi; script ada di Pi, contohnya di `docs/runbooks/live-view-tv-pi.md`.
+- **Bukti:** `bash -n` OK di tiga Pi; uji Pi `.222`: restart terjadwal (`RESTART_HHMM` = jam server + 2 menit) terdeteksi pada menit tujuan (Chromium 3633 → 3896), `kill -9` → hidup lagi ±6 dtk (3896 → 4095). Sesudah relaunch normal: URL tiap jendela utuh (`cameras=` sesuai TV 1–5), tanpa `RESTART_HHMM` uji, suhu 54–71 °C, `throttled=0x0`.
+- **Dampak:** monitor kosong ±10 detik tiap hari pukul 03:30 WIB saat Chromium dimuat ulang; login tetap (cookie 48 jam bergulir). Beban Pi `.235`/`.162` (8 tile per Pi) tetap tinggi: load average 12–13 pada 4 inti beberapa menit setelah relaunch (belum diukur pada kondisi stabil).
+- **Rollback:** di tiap Pi `cp ~/start-kiosk.sh.bak-20261015-fix2 ~/start-kiosk.sh`, matikan `start-kiosk.sh` dan Chromium, jalankan ulang script.
+
 ### Pengurangan polling live dan penguatan pool DB (2026-10-15)
 
 - **Konteks:** setelah 5 jendela TV (3 Raspberry Pi) dan 1 tab aktif di production, API kehabisan koneksi DB (`QueuePool limit of size 5 overflow 10`, 147 kejadian dalam 30 menit, 500 pada `/events`, `/cameras/N/live`, `/nodes`, `/monitoring/alerts`, `/snapshot`; 2 kali handler MQTT heartbeat gagal). Ukuran nginx 2 menit (6 klien): 925 permintaan, 528 di antaranya `/cameras/N/live` (tiap klien mengambil semua 22 kamera tiap 30 s) dan 338 `/events` (dua poller per jendela). Spec `2026-10-15-live-poll-reduction-design.md`, rencana `2026-10-15-live-poll-reduction.md`.
