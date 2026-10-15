@@ -30,7 +30,9 @@ export default function LiveTvPage() {
   const [prefs, update] = useScreenPrefs(screen)
   const overrides = useMemo(() => parseTvUrl(params), [params])
   const eff = withOverrides(prefs, overrides)
-  const { cams, lives, loading, loadFailed } = useLiveCameras()
+  // hanya kamera yang tampil di jendela ini yang diambil info /live-nya (URL cameras= > pilihan tersimpan > semua)
+  const wanted = overrides.cameras !== undefined ? overrides.cameras : prefs.cameras.mode === 'some' ? prefs.cameras.ids : null
+  const { cams, lives, loading, loadFailed } = useLiveCameras(wanted)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const barHidden = useIdle(TOOLBAR_HIDE_MS)
