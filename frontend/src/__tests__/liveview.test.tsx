@@ -62,6 +62,17 @@ test('jumlah kolom: default 3, pilihan persist, nilai ngawur di localStorage jat
   expect(document.querySelector('.lv-grid')).toHaveStyle({ '--lv-cols': '2' })
 })
 
+test('jumlah kolom: 1 kolom tersedia di halaman /live, tersimpan, dan memakai kelas satu-kolom', async () => {
+  vi.stubGlobal('fetch', stubFetch())
+  renderPage()
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  expect(screen.getByTestId('live-cols-1')).toHaveTextContent('1 kolom')
+  await userEvent.click(screen.getByTestId('live-cols-1'))
+  expect(JSON.parse(localStorage.getItem('isentinel_live_screen:default')!).cols).toBe(1)
+  expect(document.querySelector('.lv-grid')).toHaveStyle({ '--lv-cols': '1' })
+  expect(document.querySelector('.lv-grid')).toHaveClass('lv-grid--one')
+})
+
 // WebSocket palsu supaya jalur streaming deterministik di jsdom
 // (tidak menyentuh jaringan; onopen tak pernah terkirim → pengukur fallback jalan).
 class FakeWebSocket {

@@ -1,6 +1,9 @@
 // Mode TV (kiosk) untuk command center: tanpa AppShell, grid memenuhi layar, toolbar auto-hide,
 // pengaturan per layar (?screen=A / ?screen=B untuk dua monitor di satu Pi).
-import { useState } from 'react'
+// URL adalah sumber kebenaran per jendela: parameter (cameras, cols, scroll, speed) menimpa pengaturan tersimpan,
+// membuka halaman tidak menulis apa pun, dan setiap aksi toolbar menulis ulang URL (replace) selain localStorage,
+// sehingga URL di address bar bisa disalin ke script kiosk.
+import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Toggle } from '@carbon/react'
 import { useT, type TKey } from '../../app/i18n'
@@ -8,7 +11,10 @@ import CameraPicker from './CameraPicker'
 import LiveWall from './LiveWall'
 import { useLiveCameras } from './useLiveCameras'
 import { useAutoScroll, useIdle } from './useAutoScroll'
-import { COL_OPTIONS, SCROLL_SPEEDS, screenName, selectCameras, useScreenPrefs, type ScrollSpeed } from './screenPrefs'
+import {
+  COL_OPTIONS, SCROLL_SPEEDS, orderCameraIds, parseTvUrl, screenName, selectByIds, selectCameras, tvSearch,
+  useScreenPrefs, withOverrides, type CameraSel, type ScreenPrefs, type ScrollSpeed,
+} from './screenPrefs'
 import { useEventAlerts } from '../notifications/EventAlertsProvider'
 import NodeOfflineBanner from '../../components/NodeOfflineBanner'
 
@@ -22,6 +28,8 @@ export default function LiveTvPage() {
   const [params] = useSearchParams()
   const screen = screenName(params.get('screen'))
   const [prefs, update] = useScreenPrefs(screen)
+  const overrides = useMemo(() => parseTvUrl(params), [params])
+  const eff = withOverrides(prefs, overrides)
   const { cams, lives, loading, loadFailed } = useLiveCameras()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
@@ -30,14 +38,30 @@ export default function LiveTvPage() {
   const { muted, setMuted } = useEventAlerts()
 
   useAutoScroll({
-    on: prefs.scroll.on,
-    pxPerSec: SCROLL_SPEEDS[prefs.scroll.speed],
+    on: eff.scroll.on,
+    pxPerSec: SCROLL_SPEEDS[eff.scroll.speed],
     paused: !resumed || pickerOpen || debugOpen,
   })
 
   const active = cams.filter((c) => c.enabled)
-  const shown = selectCameras(active, prefs.cameras)
+  const shown = overrides.cameras !== undefined
+    ? selectByIds(active, overrides.cameras)
+    : selectCameras(active, prefs.cameras)
+  // mode URL: label n/m pemilih menghitung kamera dari URL, bukan dari pengaturan tersimpan
+  const pickerValue: CameraSel = overrides.cameras !== undefined ? { mode: 'some', ids: overrides.cameras } : prefs.cameras
   const showBar = !barHidden || pickerOpen
+
+  // Aksi toolbar: simpan ke localStorage (seperti sebelumnya) dan tulis ulang URL dengan keadaan lengkap.
+  const commit = (patch: Partial<ScreenPrefs>) => {
+    update(patch)
+    const next = { ...eff, ...patch }
+    const ids = patch.cameras
+      ? orderCameraIds(shown.map((c) => c.id), patch.cameras, active)
+      : shown.map((c) => c.id)
+    // navigate (bukan setSearchParams) supaya koma pada `cameras` tidak dikodekan ulang menjadi %2C
+    navigate({ search: '?' + tvSearch(params, { cameras: ids, cols: next.cols, scroll: next.scroll.on, speed: next.scroll.speed }) },
+      { replace: true })
+  }
 
   const exit = () => {
     if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {})
@@ -50,20 +74,21 @@ export default function LiveTvPage() {
         <div className="lv-tv__bar" data-testid="live-tv-toolbar">
           <strong>{t('live.tv.screen').replace('{name}', screen)}</strong>
           {COL_OPTIONS.map((n) => (
-            <button key={n} type="button" data-testid={`live-tv-cols-${n}`} aria-pressed={prefs.cols === n}
-              className={prefs.cols === n ? 'lv-chip lv-chip--sel' : 'lv-chip'} onClick={() => update({ cols: n })}>
-              {t('live.cols').replace('{n}', String(n))}
+            <button key={n} type="button" data-testid={`live-tv-cols-${n}`} aria-pressed={eff.cols === n}
+              className={eff.cols === n ? 'lv-chip lv-chip--sel' : 'lv-chip'} onClick={() => commit({ cols: n })}>
+              {n === 1 ? t('live.col1') : t('live.cols').replace('{n}', String(n))}
             </button>
           ))}
-          <CameraPicker cams={active} value={prefs.cameras} onChange={(cameras) => update({ cameras })}
+          <CameraPicker cams={active} value={pickerValue} onChange={(cameras) => commit({ cameras })}
             open={pickerOpen} onOpenChange={setPickerOpen} />
           <Toggle id="live-tv-scroll" data-testid="live-tv-scroll" size="sm" labelText={t('live.tv.autoScroll')}
-            hideLabel toggled={prefs.scroll.on} onToggle={(on) => update({ scroll: { ...prefs.scroll, on } })} />
+            hideLabel toggled={eff.scroll.on}
+            onToggle={(on) => commit({ scroll: { ...eff.scroll, on } })} />
           <span>{t('live.tv.autoScroll')}</span>
           {SPEEDS.map((s) => (
-            <button key={s} type="button" data-testid={`live-tv-speed-${s}`} aria-pressed={prefs.scroll.speed === s}
-              className={prefs.scroll.speed === s ? 'lv-chip lv-chip--sel' : 'lv-chip'}
-              onClick={() => update({ scroll: { ...prefs.scroll, speed: s } })}>
+            <button key={s} type="button" data-testid={`live-tv-speed-${s}`} aria-pressed={eff.scroll.speed === s}
+              className={eff.scroll.speed === s ? 'lv-chip lv-chip--sel' : 'lv-chip'}
+              onClick={() => commit({ scroll: { ...eff.scroll, speed: s } })}>
               {t(`live.tv.speed.${s}` as TKey)}
             </button>
           ))}
@@ -79,10 +104,16 @@ export default function LiveTvPage() {
       {loadFailed && <p className="lv-tv__msg">{t('common.loadFailed')}</p>}
       {loading ? null : active.length === 0 ? (
         <p className="lv-tv__msg">{cams.length === 0 ? t('live.noCameras') : t('live.noActiveCameras')}</p>
+      ) : overrides.cameras !== undefined ? (
+        shown.length === 0 ? (
+          <p className="lv-tv__msg" data-testid="live-tv-url-empty">{t('live.tv.urlEmpty')}</p>
+        ) : (
+          <LiveWall cams={shown} lives={lives} cols={eff.cols} tv onDebugChange={setDebugOpen} />
+        )
       ) : shown.length === 0 ? (
         <p className="lv-tv__msg" data-testid="live-empty-selection">{t('live.picker.empty')}</p>
       ) : (
-        <LiveWall cams={shown} lives={lives} cols={prefs.cols} tv onDebugChange={setDebugOpen} />
+        <LiveWall cams={shown} lives={lives} cols={eff.cols} tv onDebugChange={setDebugOpen} />
       )}
     </div>
   )

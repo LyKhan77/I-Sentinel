@@ -57,7 +57,7 @@ menghapus riwayat event.
 
 **Pengguna:** semua · **Halaman:** `/live`, `/live/tv?screen=<nama>`
 
-1. Grid kamera 2/3/4 kolom, filter lokasi, pemilih kamera **Kamera (n/m)**; pengaturan tersimpan per
+1. Grid kamera 1/2/3/4 kolom (1 kolom = satu tile selebar layar, juga di layar sempit), filter lokasi, pemilih kamera **Kamera (n/m)**; pengaturan tersimpan per
    layar di `localStorage`.
 2. Tile memutar stream go2rtc (WebRTC/MSE) hanya saat dekat layar; di luar layar menampilkan
    snapshot terakhir lewat proxy API (`GET /api/v1/cameras/{id}/snapshot`, wajib login).
@@ -65,7 +65,11 @@ menghapus riwayat event.
    pada kamera attendance.
 4. **Mode TV**: kiosk tanpa menu, auto-scroll, toolbar auto-hide, stream gagal dicoba ulang tiap
    60 s. Runbook Raspberry Pi: `docs/runbooks/live-view-tv-pi.md`.
-5. Event baru memberi outline tile 30 s (§9); alert kesehatan kamera memberi badge
+5. **Filter URL mode TV**: `?cameras=<id1,id2>` menampilkan kamera sesuai urutan ID di URL
+   (ID dari kolom ID Konfigurasi → Kamera), dengan `cols`/`scroll`/`speed` opsional; membuka halaman tidak
+   menulis apa pun, dan setiap aksi toolbar menulis ulang URL (salin dari address bar ke script kiosk). Sesi login persisten
+   (cookie `Max-Age` 48 jam bergulir) — Pi reboot tetap login (teramati 2026-10-15).
+6. Event baru memberi outline tile 30 s (§9); alert kesehatan kamera memberi badge
    **Tanpa frame / FPS rendah** (§14).
 
 ## 5. Konfigurasi deteksi & node

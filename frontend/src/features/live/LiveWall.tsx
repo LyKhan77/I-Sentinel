@@ -377,7 +377,8 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
 
   return (
     <>
-      <div className={tv ? 'lv-grid lv-grid--tv' : 'lv-grid'} style={{ '--lv-cols': cols } as React.CSSProperties}>
+      <div className={`${tv ? 'lv-grid lv-grid--tv' : 'lv-grid'}${cols === 1 ? ' lv-grid--one' : ''}`}
+        style={{ '--lv-cols': cols } as React.CSSProperties}>
         {cams.map((cam) => (
           <div key={cam.id} onClick={() => { setBoxes([]); setDebugCam(cam) }} title={t('live.openDebug')}>
             <CameraTile cam={cam} live={lives[cam.id] ?? null} tv={tv} health={health[cam.id]}

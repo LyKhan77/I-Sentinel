@@ -88,6 +88,35 @@ test('renders camera rows from mocked list', async () => {
   expect(screen.getByText(/640x360 · 15fps · h264/)).toBeInTheDocument()
 })
 
+test('tabel kamera: kolom ID paling kiri berisi ID, kamera nonaktif tetap tampil', async () => {
+  stubFetch((call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: CAMS }
+    return { status: 404 }
+  })
+  renderPage()
+  expect(await screen.findByText('CAM-01')).toBeInTheDocument()
+  const headers = screen.getAllByRole('columnheader')
+  expect(headers[0]).toHaveTextContent('ID')
+  expect(headers).toHaveLength(8)
+  const row1 = screen.getByText('CAM-01').closest('tr')!
+  const row2 = screen.getByText('CAM-02').closest('tr')!
+  expect(within(row1).getAllByRole('cell')[0]).toHaveTextContent('1')
+  expect(within(row2).getAllByRole('cell')[0]).toHaveTextContent('2')
+})
+
+test('baris kosong meliputi semua kolom', async () => {
+  stubFetch((call) => {
+    if (call.url.endsWith('/auth/me')) return { status: 200, body: ME }
+    if (call.url.endsWith('/cameras')) return { status: 200, body: [] }
+    return { status: 404 }
+  })
+  renderPage()
+  const emptyCell = await screen.findByText('Belum ada kamera terdaftar')
+  const colCount = screen.getAllByRole('columnheader').length
+  expect(emptyCell).toHaveAttribute('colspan', String(colCount))
+})
+
 test('wizard: auto-detect scan enables Simpan with selected channel paths', async () => {
   const SCAN = [
     { channel: 1, main: { res: '1920x1080', fps: 25, codec: 'h264' }, sub: { res: '640x480', fps: 25, codec: 'h264' }, main_path: '/Streaming/Channels/101', sub_path: '/Streaming/Channels/102' },

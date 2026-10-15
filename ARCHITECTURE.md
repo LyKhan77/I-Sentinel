@@ -87,7 +87,7 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 
 | Domain | Router (`api/`) | Service (`services/`) |
 |---|---|---|
-| Auth & user | `auth`, `users` | JWT HS256 di cookie httpOnly, `token_version` untuk cabut sesi, rate-limit login |
+| Auth & user | `auth`, `users` | JWT HS256 di cookie httpOnly persisten (`Max-Age` = umur token, 48 jam bergulir), `token_version` untuk cabut sesi, rate-limit login |
 | Kamera | `cameras`, `stream_sources`, `credential_profiles`, `location_groups`, `probe`, `live` | `probe`, `stream_endpoint`, `go2rtc`, `secret_store` |
 | Node & deteksi | `nodes`, `detector_settings` | `config_push`, `node_health`, `host_stats` |
 | Zona & event | `zones`, `events` | `ingest`, `events_consumer`, `annotate`, `event_stats` (`GET /api/v1/events` menerima `camera_id`, `type` berulang, `severity` berulang, `since`, `q` ≤ 100 karakter (ILIKE atas `type`, `event_id`, `severity`, nama kamera via outerjoin, dan `CAST(payload AS TEXT)` — `%`/`_`/`\` di-escape; kosong/spasi diabaikan), `limit` ≤ 200, `offset` 0–10000 (paginasi halaman berikutnya, di luar rentang → 422) — semuanya difilter di server; urutan `ts_event DESC, id DESC` (pemutus seri deterministik antar-halaman); `GET /api/v1/events/stats/today` → `EventStatsOut`: `total`, `by_type`, `by_severity` tiga kunci selalu ada, `by_hour`/`critical_by_hour` 24 angka jam lokal; tipe `attendance` dikecualikan dari semua angka; `GET /api/v1/events/{id}` → `EventOut` per id, 404 `"event not found"` untuk deep link `/events?event=<id>`) |

@@ -59,6 +59,7 @@
 | FPU3 | Skor teratas pada event absensi tidak dikenali (`payload.face_top_score` untuk `no_match`/`ambiguous` jalur `unified`, tampil di Inbox) | [~] di `main` (`8989598`) dan ter-deploy di `gspe-ai3` (`api` + `web`); `face_top_score` terbukti di dua event nyata (0,278 dan 0,137); **tampilan Inbox belum dikonfirmasi user**; diagnosis: kegagalan karena frame buram/menunduk, bukan ambang; keputusan user: biarkan, seluruh karyawan difoto ulang nanti | 2026-10-12 | spec tidak ada (perubahan kecil, disetujui di chat); suite akhir lihat CHANGELOG | `3f85b4d..739511e` |
 | FPU2 | Keselarasan algoritma absensi **tahap 2** (saklar `face_attendance_mode` legacy/unified, `BestK` bersama, jalur absensi `unified` di `FaceGateWorker` dengan jendela 1,5 dtk, keputusan API `match_strict` per `payload.policy`, skrip replay offline) | [~] ter-deploy di `gspe-ai3` (branch `feat/face-attendance-unified`, kini di `main`), **saklar `unified` menyala sejak 2026-10-09 14:43:51 WIB**; konfirmasi lisan user 2026-10-12: karyawan terdeteksi semua saat lewat biasa tanpa berhenti, parameter dianggap OK; **gerbang non-karyawan (D) BELUM teruji**; replay offline (600 event, CPU `api` ±154%): `flipped` 0, `ambiguous` 0, `same_pct` 71,9% dari 32 (kriteria ≥ 98% diganti atas keputusan user menjadi gerbang `flipped = 0`; dugaan bias crop beranotasi belum diukur); data server sejak saklar (SELECT read-only 2026-10-12 11:00 WIB): 679 event `unified` = 40 dikenali (skor median 0,48, minimum 0,40; margin minimum 0,20), 637 `no_match` (separuh berlebar < 80 px), 2 `ambiguous` (margin 0,142/0,145); `zone_s` event dikenali median 2,06 dtk / p95 7,55 dtk, `collect_s` median 1,59 dtk / p95 2,07 dtk; volume event ±3× `legacy` (kebisingan Inbox, dipantau); Telegram absensi tidak melonjak | 2026-10-12 | spec+plan `2026-10-09-face-params-unify`/`2026-10-09-face-attendance-unified`; perbaikan review: latensi orang lewat cepat (`UNIFIED_GONE_S` 0,5 dtk) dan jendela mulai dari embed pertama; replay: pembatasan CPU onnxruntime di kode (taskset tidak membatasi) | `b81f05c..f399998` |
 | UFD | Tujuan wajah tidak dikenal per zona absensi (radio *Inbox + Telegram* / *Hanya Inbox* / *Tidak dikirim*; "Tidak dikirim" membuang event di API — tanpa baris Inbox, tanpa Telegram) | [x] di `main` (`9256840`) dan ter-deploy di `gspe-ai3` 2026-10-12 (`api` + `web`, branch `feat/unknown-face-delivery` @ `8efe854`); user menguji UI di server dan melapor OK (lisan, rincian skenario tidak dilaporkan); **belum diukur**: efek restart worker kamera saat zona disimpan dan media sisa pada zona `none` di kamera nyata | 2026-10-12 | spec + plan 2026-10-12; tanpa migrasi, tanpa perubahan `vision/`; backend 1074 (1037+37), vision 370 (tetap), docker 77 (tetap), frontend 548 (544+4; lima tes toggle lama diubah), build 0, lint 24 baris/16 pasangan (set identik baseline); smoke S1–S3 lulus (lihat CHANGELOG); verifikasi Chromium 390 px `docs/evidence/unknown-face-390-*.png` (lokal) | `c21b9f6..8efe854` |
+| TVF | TV URL filter (mode TV membaca `cameras`/`cols`/`scroll`/`speed` dari URL, kolom ID di Konfigurasi Kamera, cookie sesi persisten) | [x] selesai, di-deploy dev + production (2026-10-15) | 2026-10-14 | — | spec+plan `2026-10-14-tv-url-filter`; 6 commit (`747eb42`..HEAD); suite akhir dan bukti di CHANGELOG; review/deploy/uji Pi di sesi perencanaan | `747eb42`.. |
 | E | Edge Jetson Orin Nano | [ ] | — | — | — |
 
 ## Fase 0 — Skeleton
@@ -463,6 +464,8 @@ event terbaru (sumber lonceng) | masalah aktif + node ringkas. Backend: `stats/t
 
 - [x] Task 1–6 terimplementasi di `feat/dashboard-revamp` + perbaikan review (`6e9f7f0`) —
       backend **622**, frontend **296** (30 file), build 0, lint 24 (baseline minus warning `DashboardPage.tsx`)
+- [~] T9 amandemen: toolbar menulis ulang URL (`orderCameraIds`, `tvSearch`), kunci toolbar dihapus — repo selesai (`44c7550`, vitest 574, build 0, lint 24 identik), BELUM di-deploy ulang/diuji
+- [~] T10 layout 1 kolom (`Cols` 1–4, `lv-grid--one`) — repo selesai, BELUM di-deploy ulang/diuji
 - [x] Review sesi perencanaan (M1–M4 diperbaiki); D1 (`attendance` tidak dihitung) diterima user bersama uji UI
 - [x] Push + deploy ke gspe-ai3 (`6e9f7f0`, tanpa migrasi, API restart) + uji UI user: "sudah bagus dan sesuai"
       (2026-10-01; tanpa screenshot)
@@ -470,6 +473,20 @@ event terbaru (sumber lonceng) | masalah aktif + node ringkas. Backend: `stats/t
 **Bukti:** keluaran suite + smoke deploy di `CHANGELOG.md` entri 2026-10-01 dan 2026-09-30.
 
 ---
+
+## TV URL filter — **DONE (2026-10-15): dev dan production OK, 3 Raspberry Pi menayangkan kiosk**
+
+Spec: `docs/superpowers/specs/2026-10-14-tv-url-filter-design.md` · Plan: `docs/superpowers/plans/2026-10-14-tv-url-filter.md`
+
+- [x] T1 cookie sesi persisten (`Max-Age` = umur token) — OK di dev dan production (uji user 2026-10-14/15)
+- [x] T2 parser parameter URL mode TV (`screenPrefs.ts`: `parseTvUrl`, `selectByIds`, `withOverrides`) — OK di dev dan production (uji user 2026-10-14/15)
+- [x] T3 mode TV memakai override URL + pesan `urlEmpty` (kunci toolbar digantikan T9) — OK di dev dan production (uji user 2026-10-14/15)
+- [x] T4 kolom ID paling kiri di tabel Konfigurasi Kamera — OK di dev dan production (uji user 2026-10-14/15)
+- [x] T5 dokumentasi (runbook Pi, README, WORKFLOW, ARCHITECTURE) — OK di dev dan production (uji user 2026-10-14/15)
+- [x] T6 suite penuh + CHANGELOG — bukti di CHANGELOG 2026-10-14
+- [x] Review sesi perencanaan (M1/L1/L2 diperbaiki, D1 = semua role; backend 1112, vitest 569 dengan `--maxWorkers=2`, build 0, lint 24 identik) — OK di dev dan production
+- [x] Deploy dev (`gspe-ai3`) + uji user (kolom ID, URL sebagai sumber kebenaran, 1 kolom: OK; user 2026-10-14)
+- [x] Deploy production OK (2026-10-14, `752248d`, image api+web dikirim dari dev; verifikasi di CHANGELOG) dan diuji user (2026-10-15); tiga Pi menayangkan kiosk dengan daftar kamera per TV; bug URL tanpa kutip di script kiosk diperbaiki (2026-10-15, runbook diperbarui); login persisten teramati setelah restart Pi/Chromium (kiosk langsung memuat stream tanpa halaman login)
 
 ## Fase E — Edge Jetson (opsional/nanti)
 

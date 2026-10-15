@@ -15,8 +15,9 @@ def _token_from(request: Request) -> str | None:
     return h[7:] if h.startswith("Bearer ") else None
 
 def set_auth_cookie(response: Response, token: str) -> None:
-    """Cookie sesi httpOnly (dipakai login dan perpanjangan sesi)."""
-    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure)
+    """Cookie sesi httpOnly persisten (dipakai login dan perpanjangan sesi); umur = umur token."""
+    response.set_cookie(COOKIE, token, max_age=settings.access_token_expire_min * 60,
+                        httponly=True, samesite="lax", secure=settings.cookie_secure)
 
 def session_user(payload: dict, db) -> tuple[User | None, str]:
     """User pemilik token yang masih sah (REST dan WebSocket), atau (None, alasan)."""

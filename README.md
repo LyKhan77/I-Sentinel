@@ -213,7 +213,7 @@ Prosedur operasional lainnya (restart, backup, pin GPU, load test): lihat **`doc
 
 ## Live View & Mode TV
 
-Live View (halaman **Live**) menampilkan grid kamera: pilih 2/3/4 kolom, dan pilih kamera
+Live View (halaman **Live**) menampilkan grid kamera: pilih 1/2/3/4 kolom, dan pilih kamera
 mana yang tampil lewat **Kamera (n/m)** (checkbox per kamera, dikelompokkan per lokasi).
 Pengaturan ini tersimpan per layar di `localStorage`.
 
@@ -222,6 +222,13 @@ untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
 
 - **Pengaturan per layar**: `?screen=A` dan `?screen=B` menyimpan kolom/pilihan/auto-scroll
   terpisah (dua jendela TV di satu Pi). `?screen=` tidak dikenal → `default`.
+- **URL filter**: `?cameras=1,4,20` menampilkan kamera ID 1, 4, 20 dengan urutan tile sesuai
+  URL (ID diperoleh dari kolom ID di Konfigurasi → Kamera); `cols=1|2|3|4`, `scroll=on|off`, dan
+  `speed=slow|medium|fast` ikut diatur URL. **URL adalah sumber kebenaran per jendela**:
+  membuka halaman tidak menulis apa pun; setiap aksi toolbar (kolom, gulir, kecepatan, pemilih
+  kamera) menulis ulang URL (replace) selain `localStorage`, sehingga URL di address bar bisa
+  disalin ke script kiosk. `cameras` ada tetapi tanpa ID yang cocok → pesan kosong, bukan
+  semua kamera. Tanpa parameter baru perilaku tidak berubah.
 - **Stream hanya tile terlihat**: tile di luar viewport menampilkan snapshot terakhir;
   `<video-stream>` hanya di-mount untuk tile dekat layar (pra-muat 50 % viewport).
 - **Pulih sendiri**: tile yang gagal stream dicoba ulang tiap 60 detik; snapshot tampil
@@ -229,8 +236,10 @@ untuk layar TV command center (runbook Pi: `docs/runbooks/live-view-tv-pi.md`):
 - **Auto-scroll**: gulir halus turun, jeda 5 detik di dasar, kembali ke atas. Berhenti
   saat operator aktif (mouse/keyboard; lanjut 10 s setelah diam) atau pemilih/debugger
   terbuka. Toolbar auto-hide 4 detik (kursor ikut disembunyikan).
-- **Sesi bergulir 48 jam**: cookie login diperpanjang otomatis selama halaman aktif
-  me-refresh (`ACCESS_TOKEN_EXPIRE_MIN`, default 2880) — TV tidak logout tiba-tiba.
+- **Sesi bergulir 48 jam**: cookie login persisten (`Max-Age` = `ACCESS_TOKEN_EXPIRE_MIN`,
+  default 2880 menit) diperpanjang otomatis selama halaman aktif me-refresh — TV diharapkan tetap
+  login melewati reboot Pi (teramati 2026-10-15: kiosk langsung memuat stream setelah restart); setelah 48 jam tanpa request, login ulang mendarat di dashboard dan
+  script kiosk membuka URL TV lagi.
 
 **Notifikasi event.** Event behavior (intrusion, loitering, running, idle zone, crowd) dan node offline memunculkan
 badge di lonceng header (panel dua tab **Hari ini** / **Kemarin**, klik → detail event), toast 8 detik, dan bunyi pendek (bisa di-mute di
