@@ -488,7 +488,7 @@ Spec: `docs/superpowers/specs/2026-10-14-tv-url-filter-design.md` · Plan: `docs
 - [x] Deploy dev (`gspe-ai3`) + uji user (kolom ID, URL sebagai sumber kebenaran, 1 kolom: OK; user 2026-10-14)
 - [x] Deploy production OK (2026-10-14, `752248d`, image api+web dikirim dari dev; verifikasi di CHANGELOG) dan diuji user (2026-10-15); tiga Pi menayangkan kiosk dengan daftar kamera per TV; bug URL tanpa kutip di script kiosk diperbaiki (2026-10-15, runbook diperbarui); login persisten teramati setelah restart Pi/Chromium (kiosk langsung memuat stream tanpa halaman login)
 
-## Live polling & DB pool — **[~] deploy dev + production OK dan terukur (2026-10-15); menunggu pemantauan 1 jam, soak 24–48 jam, dan merge ke `main`**
+## Live polling & DB pool — **DONE (2026-10-15): dev + production OK dan terukur, pemantauan 57 menit bersih, merged ke `main`; soak 24–48 jam menyusul**
 
 Spec: `docs/superpowers/specs/2026-10-15-live-poll-reduction-design.md` · Plan: `docs/superpowers/plans/2026-10-15-live-poll-reduction.md`
 
@@ -498,7 +498,7 @@ Spec: `docs/superpowers/specs/2026-10-15-live-poll-reduction-design.md` · Plan:
 - [x] T4 satu poller `/events` dan satu WebSocket per jendela (`useSharedLiveEvents`) — repo
 - [x] Suite penuh (backend 1119, vitest 592, build 0, lint 24 identik)
 - [x] Deploy dev + ukur (nginx): `/live` hanya kamera tampil, `/events` 1 poller, 0 error
-- [x] Deploy production + ukur: `/live` 76 dari 528 per 2 menit (−86%), `/events` 121 dari ≈240, total `/api` Pi 277 dari 773; 0 `QueuePool limit` di lonjakan serentak (restart 3 Pi) — pemantauan 57 menit bersih (0 error di 12 sampel); soak 24–48 jam menyusul; merge ke `main` menunggu izin user
+- [x] Deploy production + ukur: `/live` 76 dari 528 per 2 menit (−86%), `/events` 121 dari ≈240, total `/api` Pi 277 dari 773; 0 `QueuePool limit` di lonjakan serentak (restart 3 Pi) — pemantauan 57 menit bersih (0 error di 12 sampel); soak 24–48 jam menyusul; merged ke `main` (2026-10-15)
 
 ## Fase E — Edge Jetson (opsional/nanti)
 
