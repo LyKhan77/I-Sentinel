@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Pengurangan polling live dan penguatan pool DB (2026-10-15)
+
+- **Konteks:** setelah 5 jendela TV (3 Raspberry Pi) dan 1 tab aktif di production, API kehabisan koneksi DB (`QueuePool limit of size 5 overflow 10`, 147 kejadian dalam 30 menit, 500 pada `/events`, `/cameras/N/live`, `/nodes`, `/monitoring/alerts`, `/snapshot`; 2 kali handler MQTT heartbeat gagal). Ukuran nginx 2 menit (6 klien): 925 permintaan, 528 di antaranya `/cameras/N/live` (tiap klien mengambil semua 22 kamera tiap 30 s) dan 338 `/events` (dua poller per jendela). Spec `2026-10-15-live-poll-reduction-design.md`, rencana `2026-10-15-live-poll-reduction.md`.
+- **Perubahan:** B1 `Settings.db_pool_size/db_max_overflow/db_pool_timeout` = 20/20/10 s (env `DB_POOL_SIZE` dst.), `engine_kwargs` (tidak untuk SQLite). B2 `camera_snapshot` memanggil `db.close()` sebelum menunggu go2rtc. A1 `useLiveCameras(wanted)` hanya mengambil `/live` untuk kamera aktif yang tampil (URL `cameras=` atau pilihan tersimpan; kamera nonaktif tidak pernah), ID baru diambil segera saat himpunan berubah. A2 `EventAlertsProvider` meneruskan pesan mentah (`subscribeEvents`) dan `useSharedLiveEvents` dipakai `LiveWall`, sehingga satu poller `/events` dan satu WebSocket per jendela; `useLiveEvents(cb, enabled)`.
+- **Bukti:** RED benar tiap task (`engine_kwargs` belum ada; `assert 0 >= 1` pada penutupan sesi snapshot; hook mengambil kamera 3,4,5 dan nonaktif; `expected 2 to be 1` poller ganda); mutasi: hapus `db.close()` → tes snapshot merah, hapus penerusan pesan provider → 2 tes merah. Suite penuh: lihat entri hasil verifikasi di bawah setelah dijalankan.
+- **Dampak:** respons API dan tampilan tidak berubah. Perkiraan beban (bukan terukur): `/live` 528 → ≈76 per 2 menit untuk 5 jendela TV, total permintaan ≈925 → ≈473; kapasitas pool 15 → 40 koneksi, gagal dalam 10 s (bukan 30 s). Image berubah: `web` dan `api` (API restart beberapa detik). **BELUM di-deploy dan BELUM diukur di production.**
+- **Rollback:** tag cadangan image `*:prev-<tanggal>` atau `git revert` commit siklus ini; env `DB_POOL_*` menimpa bawaan.
+
 ### Deploy production: TV URL filter, kolom ID, cookie persisten, 1 kolom (2026-10-14)
 
 - **Konteks:** setelah uji user di dev (kolom ID, URL sebagai sumber kebenaran, 1 kolom: semua OK), user meminta deploy ke production **tanpa merge ke `main`**. Server `gspe` (VPN `10.8.0.182`) tidak bisa membangun image (apt ke CDN Debian terputus), jadi image dibangun di dev dari `feat/tv-url-filter` lalu dikirim.
