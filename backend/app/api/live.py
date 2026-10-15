@@ -43,9 +43,13 @@ def camera_snapshot(camera_id: int, user=Depends(get_current_user), db=Depends(g
     cam = db.get(Camera, camera_id)
     if not cam:
         raise HTTPException(404, "camera not found")
+    cam_id = cam.id
+    # Lepas koneksi DB sebelum menunggu go2rtc (bisa sampai 5 dtk); tanpa ini tiap snapshot yang lambat
+    # menahan satu koneksi pool dan lonjakan jendela TV menghabiskan pool.
+    db.close()
     url = f"{settings.go2rtc_url.rstrip('/')}/api/frame.jpeg"
     try:
-        upstream = httpx.get(url, params={"src": f"cam_{cam.id}"}, timeout=5.0)
+        upstream = httpx.get(url, params={"src": f"cam_{cam_id}"}, timeout=5.0)
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"go2rtc unreachable: {type(exc).__name__}") from exc
     if upstream.status_code != 200:
