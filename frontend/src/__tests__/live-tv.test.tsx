@@ -243,3 +243,38 @@ test('cols=1 dari URL langsung dipakai; kolom lain tidak memakai kelas satu-kolo
   expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
   expect(document.querySelector('.lv-grid--tv')).not.toHaveClass('lv-grid--one')
 })
+
+const liveIdsOf = (f: { mock: { calls: unknown[][] } }) =>
+  f.mock.calls.map((c) => /\/cameras\/(\d+)\/live$/.exec(String(c[0]))).filter(Boolean).map((m) => Number(m![1]))
+
+test('hanya kamera yang tampil di URL yang diambil info /live-nya (kamera 1 aktif tetapi tidak di URL)', async () => {
+  const f = stubFetch(TV_CAMS)
+  vi.stubGlobal('fetch', f)
+  renderTv('/live/tv?screen=A&cameras=2')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  expect(liveIdsOf(f)).toEqual([2])
+})
+
+test('memilih kamera baru di pemilih langsung mengambil /live kamera itu saja, tanpa menunggu 30 detik', async () => {
+  const base = stubFetch(TV_CAMS)
+  // /live berhasil (kamera yang sudah punya info tidak diambil ulang; yang gagal memang dicoba lagi)
+  const f = vi.fn(async (url: string) => (/\/cameras\/\d+\/live$/.test(String(url))
+    ? { ok: true, status: 200, json: () => Promise.resolve({ camera_id: 0 }) }
+    : base(url)))
+  vi.stubGlobal('fetch', f)
+  renderTv('/live/tv?screen=A&cameras=2')
+  expect(await screen.findByTestId('cam-tile-2')).toBeInTheDocument()
+  expect(liveIdsOf(f)).toEqual([2])
+  await userEvent.click(screen.getByTestId('live-picker-open'))
+  await userEvent.click(screen.getByLabelText('CAM-01'))
+  await vi.waitFor(() => expect(liveIdsOf(f).sort()).toEqual([1, 2]))
+  expect(liveIdsOf(f).filter((id) => id === 2)).toHaveLength(1) // kamera 2 tidak diambil ulang
+})
+
+test('tanpa cameras di URL dan pilihan "semua": semua kamera aktif diambil (perilaku lama), kamera nonaktif tidak', async () => {
+  const f = stubFetch(TV_CAMS)
+  vi.stubGlobal('fetch', f)
+  renderTv('/live/tv?screen=A')
+  expect(await screen.findByTestId('cam-tile-1')).toBeInTheDocument()
+  expect(liveIdsOf(f).sort()).toEqual([1, 2])
+})

@@ -6,12 +6,13 @@ import { listEvents } from './events'
 // cookie httpOnly (fallback ?token= hanya utk klien non-browser), dan browser
 // ikut mengirim cookie di handshake — jadi bbox realtime sampai ke UI.
 // Bila handshake tetap ditolak → onError/onClose membiarkan polling jalan.
-export function useLiveEvents(onEvent: (e: unknown) => void) {
+export function useLiveEvents(onEvent: (e: unknown) => void, enabled = true) {
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
   const sinceRef = useRef<string | null>(null)
 
   useEffect(() => {
+    if (!enabled) return // langganan dipegang pihak lain (provider); jangan buka poller/WebSocket kedua
     let alive = true
 
     const poll = async () => {
@@ -52,5 +53,5 @@ export function useLiveEvents(onEvent: (e: unknown) => void) {
       clearInterval(timer)
       ws?.close()
     }
-  }, [])
+  }, [enabled])
 }

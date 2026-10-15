@@ -69,7 +69,10 @@ menghapus riwayat event.
    (ID dari kolom ID Konfigurasi → Kamera), dengan `cols`/`scroll`/`speed` opsional; membuka halaman tidak
    menulis apa pun, dan setiap aksi toolbar menulis ulang URL (salin dari address bar ke script kiosk). Sesi login persisten
    (cookie `Max-Age` 48 jam bergulir) — Pi reboot tetap login (teramati 2026-10-15).
-6. Event baru memberi outline tile 30 s (§9); alert kesehatan kamera memberi badge
+6. Beban polling per jendela: info `/live` hanya untuk kamera yang tampil dan aktif (daftar dari URL `cameras=`
+   atau pilihan tersimpan; kamera yang baru dipilih langsung diambil), refresh 30 s; satu poller `/events` (5 s) dan satu
+   WebSocket per jendela, dibagikan ke `LiveWall` lewat provider notifikasi.
+7. Event baru memberi outline tile 30 s (§9); alert kesehatan kamera memberi badge
    **Tanpa frame / FPS rendah** (§14).
 
 ## 5. Konfigurasi deteksi & node

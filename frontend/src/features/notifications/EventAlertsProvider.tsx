@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { listCameras } from '../../api/cameras'
 import { listEvents, type EventOut } from '../../api/events'
 import { useLiveEvents } from '../../api/useWs'
@@ -35,6 +35,8 @@ export type EventAlerts = {
   muted: boolean
   setMuted: (v: boolean) => void
   cameraName: (id: number | null) => string
+  /** Langganan pesan mentah aliran event (WS + polling) yang dimiliki provider; tidak ada tanpa provider. */
+  subscribeEvents?: (cb: (m: unknown) => void) => () => void
 }
 
 function read(key: string): string | null {
@@ -89,6 +91,7 @@ const INERT: EventAlerts = {
 const Ctx = createContext<EventAlerts>(INERT)
 export const useEventAlerts = () => useContext(Ctx)
 
+
 /**
  * Satu langganan event untuk seluruh app: riwayat (dimuat saat mount) hanya mengisi daftar lonceng;
  * event yang tiba sesudahnya memicu toast, bunyi, dan alert aktif per kamera / node.
@@ -106,6 +109,13 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
   const [muted, setMutedState] = useState(() => read(MUTE_KEY) === '1')
   const [camNames, setCamNames] = useState<Record<number, string>>({})
   const seen = useRef(new Set<number>())
+  const [subscribers] = useState(() => new Set<(m: unknown) => void>())
+  const subscribeEvents = useCallback((cb: (m: unknown) => void) => {
+    subscribers.add(cb)
+    return () => {
+      subscribers.delete(cb)
+    }
+  }, [subscribers])
   const buffer = useRef<EventOut[] | null>([]) // null = riwayat sudah diproses
   const historyFailed = useRef(false)
   const historyFrom = useRef(dayStart(1).getTime()) // awal jendela riwayat (ms); event sebelumnya = riwayat
@@ -164,6 +174,7 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
   }
 
   useLiveEvents((m) => {
+    for (const cb of subscribers) cb(m) // teruskan pesan mentah ke pelanggan (mis. LiveWall) dari aliran yang sama
     const e = asNotifyEvent(m)
     if (!e || seen.current.has(e.id)) return
     seen.current.add(e.id)
@@ -254,6 +265,7 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
       write(MUTE_KEY, v ? '1' : '0')
     },
     cameraName: (id) => (id != null && camNames[id]) || `#${id ?? '?'}`,
+    subscribeEvents,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

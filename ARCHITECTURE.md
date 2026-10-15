@@ -109,6 +109,8 @@ Lapisan: `api/` (router per domain, tanpa SQL) → `services/` (logika bisnis) �
 | `attendance_closer` (`AttendanceCloser`) | 15 menit | Tutup hari: `absent` / `no_exit`, catch-up 7 hari saat start |
 | `ai_worker` (`AiWorker`) | antrean | Caption snapshot, dedupe caption per event, throttle per zona, recovery pending saat start; caption `ok` memicu sinkronisasi alert Telegram |
 
+Pool koneksi DB proses API: `DB_POOL_SIZE` 20 + `DB_MAX_OVERFLOW` 20, tunggu `DB_POOL_TIMEOUT` 10 s (bawaan SQLAlchemy 5+10/30 s habis saat banyak jendela TV memuat bersamaan, 2026-10-15). Request sinkron memegang satu koneksi sepanjang request; `/cameras/{id}/snapshot` melepasnya sebelum menunggu go2rtc.
+
 ### Data utama (PostgreSQL, migrasi Alembic `0001`–`0022`)
 
 - **Kamera**: `camera`, `stream_source`, `credential_profile` (hanya referensi `env:`/`store:`),

@@ -102,6 +102,7 @@ Tambahkan kedua perintah (diakhiri `&`) ke `~/.config/labwc/autostart` (Wayland/
   praktiknya: restart script kiosk (kill Chromium, jalankan ulang perintah autostart).
 - Akun TV sebaiknya `viewer` khusus; perangkat hilang → nonaktifkan akun / reset password dari
   Konfigurasi → User (sesi langsung ditolak).
+- Beban server: tiap jendela hanya meminta info `/live` untuk kamera di URL-nya (tiap 30 s) dan satu poller `/events` (5 s). Beri jeda mulai berbeda antar Pi (mis. `sleep` 5, 35, 65 detik di `start-kiosk.sh`) agar tidak memuat bersamaan.
 - Tile yang putus kembali streaming sendiri ≤ 60 s. Beban: pantau `top` di Pi; kurangi jumlah
   kamera di URL bila CPU > 85 %.
 

@@ -13,7 +13,7 @@ export default function LiveViewPage() {
   const navigate = useNavigate()
   const [prefs, update] = useScreenPrefs('default')
   const [pickerOpen, setPickerOpen] = useState(false)
-  const { cams, lives, loading, loadFailed, dismissError } = useLiveCameras()
+  const { cams, lives, loading, loadFailed, dismissError } = useLiveCameras(prefs.cameras.mode === 'some' ? prefs.cameras.ids : null)
 
   // Kamera nonaktif tidak punya stream di go2rtc (sync_camera(delete=True) saat
   // disable) → tile-nya selalu 502 dengan badge LIVE yang menyesatkan.

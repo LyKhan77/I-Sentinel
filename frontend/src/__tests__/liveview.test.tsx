@@ -73,6 +73,16 @@ test('jumlah kolom: 1 kolom tersedia di halaman /live, tersimpan, dan memakai ke
   expect(document.querySelector('.lv-grid')).toHaveClass('lv-grid--one')
 })
 
+test('pilihan tersimpan "some": hanya kamera yang dipilih yang diambil info /live-nya', async () => {
+  localStorage.setItem('isentinel_live_screen:default', JSON.stringify({ cameras: { mode: 'some', ids: [3] } }))
+  const f = stubFetch()
+  vi.stubGlobal('fetch', f)
+  renderPage()
+  expect(await screen.findByText('CAM-03')).toBeInTheDocument()
+  const live = f.mock.calls.map((c) => /\/cameras\/(\d+)\/live$/.exec(String(c[0]))).filter(Boolean).map((m) => Number(m![1]))
+  expect(live).toEqual([3])
+})
+
 // WebSocket palsu supaya jalur streaming deterministik di jsdom
 // (tidak menyentuh jaringan; onopen tak pernah terkirim → pengukur fallback jalan).
 class FakeWebSocket {

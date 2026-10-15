@@ -2,6 +2,11 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://isentinel:isentinel@localhost/isentinel"
+    # Pool koneksi DB per proses API: konsumen MQTT, alert, dan semua request HTTP berbagi pool ini.
+    # Bawaan SQLAlchemy (5+10, tunggu 30 dtk) habis saat banyak jendela TV memuat bersamaan.
+    db_pool_size: int = 20
+    db_max_overflow: int = 20
+    db_pool_timeout: float = 10.0  # detik menunggu koneksi sebelum gagal cepat
     jwt_secret: str = "CHANGE_ME"
     cookie_secure: bool = False  # true di belakang reverse proxy HTTPS; false agar LAN HTTP bisa login
     jwt_algorithm: str = "HS256"

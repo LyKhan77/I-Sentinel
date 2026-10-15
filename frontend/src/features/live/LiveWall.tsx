@@ -5,10 +5,10 @@ import { useT, type TKey } from '../../app/i18n'
 import type { Camera } from '../../api/cameras'
 import type { LiveInfo } from '../../api/events'
 import { listZones, type Zone } from '../../api/zones'
-import { useLiveEvents } from '../../api/useWs'
 import { playerMode } from './playerMode'
 import { useInView } from './useInView'
 import { useEventAlerts } from '../notifications/EventAlertsProvider'
+import { useSharedLiveEvents } from '../notifications/useSharedLiveEvents'
 import { sevClass, typeKey } from '../notifications/labels'
 import { eventTypeLabel } from '../events/eventTypes'
 import { useCameraHealthAlerts, type CameraHealth } from '../monitoring/useCameraHealthAlerts'
@@ -331,7 +331,7 @@ export default function LiveWall({ cams, lives, cols, tv, onDebugChange }: {
     document.querySelector(`[data-testid="cam-tile-${id}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
 
   // deteksi realtime (debugger modal): WS type:"detections"
-  useLiveEvents((e) => {
+  useSharedLiveEvents((e) => {
     const m = e as { type?: string; camera_id?: number; kind?: DetectionKind; boxes?: Omit<DetBox, 'kind'>[] }
     if (m?.type === 'detections') {
       // person & face tiba sebagai pesan terpisah: ganti hanya kotak kind yang sama
