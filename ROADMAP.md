@@ -498,7 +498,7 @@ Spec: `docs/superpowers/specs/2026-10-15-live-poll-reduction-design.md` · Plan:
 - [x] T4 satu poller `/events` dan satu WebSocket per jendela (`useSharedLiveEvents`) — repo
 - [x] Suite penuh (backend 1119, vitest 592, build 0, lint 24 identik)
 - [x] Deploy dev + ukur (nginx): `/live` hanya kamera tampil, `/events` 1 poller, 0 error
-- [x] Deploy production + ukur: `/live` 76 dari 528 per 2 menit (−86%), `/events` 121 dari ≈240, total `/api` Pi 277 dari 773; 0 `QueuePool limit` di lonjakan serentak (restart 3 Pi) — pemantauan 1 jam dan soak 24–48 jam menyusul; merge ke `main` menunggu izin user
+- [x] Deploy production + ukur: `/live` 76 dari 528 per 2 menit (−86%), `/events` 121 dari ≈240, total `/api` Pi 277 dari 773; 0 `QueuePool limit` di lonjakan serentak (restart 3 Pi) — pemantauan 57 menit bersih (0 error di 12 sampel); soak 24–48 jam menyusul; merge ke `main` menunggu izin user
 
 ## Fase E — Edge Jetson (opsional/nanti)
 
