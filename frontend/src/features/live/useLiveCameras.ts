@@ -20,7 +20,9 @@ export function useLiveCameras(wanted?: number[] | null) {
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const wantedRef = useRef(wanted)
-  wantedRef.current = wanted
+  useEffect(() => {
+    wantedRef.current = wanted // sebelum efek di bawah (urutan deklarasi), tanpa menulis ref saat render
+  })
   const camsRef = useRef<Camera[]>([])
   const livesRef = useRef<Record<number, LiveInfo>>({})
 

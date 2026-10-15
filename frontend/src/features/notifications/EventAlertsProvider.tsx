@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { listCameras } from '../../api/cameras'
 import { listEvents, type EventOut } from '../../api/events'
 import { useLiveEvents } from '../../api/useWs'
@@ -91,18 +91,6 @@ const INERT: EventAlerts = {
 const Ctx = createContext<EventAlerts>(INERT)
 export const useEventAlerts = () => useContext(Ctx)
 
-/**
- * Pesan mentah aliran event (WS detections + hasil polling) untuk komponen di dalam app. Memakai satu aliran milik
- * provider (satu poller 5 s dan satu WebSocket per jendela); tanpa provider (tes, komponen terpisah) membuka
- * langganan sendiri seperti `useLiveEvents`.
- */
-export function useSharedLiveEvents(onEvent: (e: unknown) => void) {
-  const { subscribeEvents } = useContext(Ctx)
-  const ref = useRef(onEvent)
-  ref.current = onEvent
-  useLiveEvents((e) => ref.current(e), !subscribeEvents)
-  useEffect(() => (subscribeEvents ? subscribeEvents((e) => ref.current(e)) : undefined), [subscribeEvents])
-}
 
 /**
  * Satu langganan event untuk seluruh app: riwayat (dimuat saat mount) hanya mengisi daftar lonceng;
@@ -121,13 +109,13 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
   const [muted, setMutedState] = useState(() => read(MUTE_KEY) === '1')
   const [camNames, setCamNames] = useState<Record<number, string>>({})
   const seen = useRef(new Set<number>())
-  const subscribers = useRef(new Set<(m: unknown) => void>())
-  const subscribeEvents = useRef((cb: (m: unknown) => void) => {
-    subscribers.current.add(cb)
+  const [subscribers] = useState(() => new Set<(m: unknown) => void>())
+  const subscribeEvents = useCallback((cb: (m: unknown) => void) => {
+    subscribers.add(cb)
     return () => {
-      subscribers.current.delete(cb)
+      subscribers.delete(cb)
     }
-  }).current
+  }, [subscribers])
   const buffer = useRef<EventOut[] | null>([]) // null = riwayat sudah diproses
   const historyFailed = useRef(false)
   const historyFrom = useRef(dayStart(1).getTime()) // awal jendela riwayat (ms); event sebelumnya = riwayat
@@ -186,7 +174,7 @@ export function EventAlertsProvider({ children }: { children: ReactNode }) {
   }
 
   useLiveEvents((m) => {
-    for (const cb of subscribers.current) cb(m) // teruskan pesan mentah ke pelanggan (mis. LiveWall) dari aliran yang sama
+    for (const cb of subscribers) cb(m) // teruskan pesan mentah ke pelanggan (mis. LiveWall) dari aliran yang sama
     const e = asNotifyEvent(m)
     if (!e || seen.current.has(e.id)) return
     seen.current.add(e.id)

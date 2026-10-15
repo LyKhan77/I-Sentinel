@@ -1,7 +1,8 @@
 import { act, render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { I18nProvider } from '../app/i18n'
-import { EventAlertsProvider, useSharedLiveEvents } from '../features/notifications/EventAlertsProvider'
+import { EventAlertsProvider } from '../features/notifications/EventAlertsProvider'
+import { useSharedLiveEvents } from '../features/notifications/useSharedLiveEvents'
 
 const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
 const polled = { id: 5, event_id: 'e-5', type: 'intrusion', camera_id: 1, zone_id: 1, severity: 'critical', ts_event: new Date().toISOString(), payload: null }
