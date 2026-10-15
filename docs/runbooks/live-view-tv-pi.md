@@ -69,6 +69,23 @@ chromium-browser --kiosk --noerrdialogs --disable-infobars --autoplay-policy=no-
 `--window-position` = posisi kiri-atas monitor kedua di layout desktop (lebar monitor pertama).
 Tulis parameter `scroll=on` eksplisit di script kiosk bila auto-scroll diinginkan.
 
+> **Wajib beri kutip pada URL.** Tanda `&` tanpa kutip di bash berarti "jalankan di background": URL terpotong di `&` pertama
+> (Chromium hanya menerima `…/live/tv?screen=default`), parameter `cameras`, `cols`, `scroll`, `speed` hilang, dan layar
+> menampilkan **semua kamera** dari pengaturan tersimpan. Gejala: jendela menampilkan 19/19 kamera padahal URL di script
+> berisi daftar `cameras`. Periksa dengan `ps -eo args | grep chromium | grep -v -- --type=` (URL harus lengkap).
+> Dengan URL dikutip, tambahkan ` &` di akhir tiap perintah `chromium` (supaya jendela kedua tetap dibuka) dan `wait` di
+> akhir script, contoh `start-kiosk.sh` untuk dua jendela:
+> ```bash
+> #!/bin/bash
+> sleep 5
+> chromium --kiosk --user-data-dir=$HOME/.config/chromium-profile-1 --window-position=0,0 --new-window \
+>   'http://<server>:7700/live/tv?screen=default&cameras=1,2,3&cols=1&scroll=on&speed=medium' &
+> sleep 3
+> chromium --kiosk --user-data-dir=$HOME/.config/chromium-profile-2 --window-position=1080,0 --new-window \
+>   'http://<server>:7700/live/tv?screen=default&cameras=4,5,6&cols=1&scroll=on&speed=medium' &
+> wait
+> ```
+
 ## Autostart
 Tambahkan kedua perintah (diakhiri `&`) ke `~/.config/labwc/autostart` (Wayland/labwc) atau
 `~/.config/lxsession/LXDE-pi/autostart` (X11, awali tiap baris dengan `@`).
