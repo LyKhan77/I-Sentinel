@@ -496,7 +496,8 @@ Spec: `docs/superpowers/specs/2026-10-15-live-poll-reduction-design.md` · Plan:
 - [x] T2 snapshot melepas koneksi DB sebelum menunggu go2rtc — repo
 - [x] T3 `/live` hanya kamera yang tampil dan aktif (`useLiveCameras(wanted)`) — repo
 - [x] T4 satu poller `/events` dan satu WebSocket per jendela (`useSharedLiveEvents`) — repo
-- [ ] Suite penuh + deploy dev + ukur (nginx 2 menit)
+- [x] Suite penuh (backend 1119, vitest 592, build 0, lint 24 identik)
+- [ ] Deploy dev + ukur (nginx 2 menit)
 - [ ] Deploy production + ukur: `/live` ≈76 dari 528 per 2 menit, 0 `QueuePool limit` dalam 1 jam setelah memuat ulang Chromium di tiga Pi bersamaan
 
 ## Fase E — Edge Jetson (opsional/nanti)
