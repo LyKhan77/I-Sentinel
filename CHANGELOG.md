@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Kiosk Pi: bubble Translate dan pemeriksaan pagi pertama (2026-10-16)
+
+- **Konteks:** pemeriksaan 2026-10-16 09:00 WIB: restart 03:30 terbukti jalan di tiga Pi (umur Chromium 5 jam 30 menit), stream hidup. Bubble "Indonesian | English" Translate menutup tile teratas di Pi `.162` dan `.222`; log `/tmp/start-kiosk.log` (tmpfs) di dua Pi itu membesar (51 MB dan 32 MB) karena relaunch manual mengalihkan output ke file.
+- **Perubahan:** di `.162` dan `.222`, Preferences kedua profil Chromium diatur `translate.enabled=false` dan `translate_blocked_languages=["id"]` (cadangan `Preferences.bak-20261016`); relaunch kiosk tanpa log ke file. `~/start-kiosk.sh` tidak berubah (cadangan `start-kiosk.sh.bak-20261016` memuat versi yang sama). Percobaan flag `--disable-features=Translate` tidak efektif dan dibatalkan. Pi `.235` tidak berubah (bahasa `id-ID`).
+- **Bukti:** screenshot `.162` dan `.222` tanpa bubble sesudah relaunch; tiga tile `.222` terisi, `supervisor=3`, load 4,6, RAM 997 MB. Kesalahan saya sendiri selama uji: skrip uji `.222` gagal mematikan proses lama, sehingga ada 6 supervisor dan 16 proses Chromium (load 12, swap 205 MB, layar kosong ±5 menit); dibersihkan dan dijalankan ulang satu kali. Tile ketiga `.222` sempat putih ±15 menit sesudah relaunch (aliran WebRTC ke Pi tetap mengalir, kamera 9 sehat); penyebabnya belum terbukti dan tidak muncul lagi setelah relaunch bersih.
+- **Dampak:** hanya tampilan kiosk; tanpa perubahan kode aplikasi.
+- **Rollback:** salin `Preferences.bak-20261016` ke `Preferences` (Chromium harus mati) dan jalankan ulang kiosk.
+
 ### Kiosk Pi: respawn Chromium dan restart harian 03:30 (2026-10-15)
 
 - **Konteks:** setelah pemantauan 57 menit, memori Chromium di Pi naik ±35 MB/jam (Pi `.235`) dan kiosk tidak punya pemulih bila Chromium crash. User menyetujui respawn + restart harian 03:30 (opsi 2).

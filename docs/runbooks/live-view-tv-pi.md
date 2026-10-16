@@ -120,6 +120,15 @@ wait
   selisih 26–29 jam terukur 2026-10-15). Perbaikan NTP di Pi = pekerjaan terpisah (butuh sudo + akses NTP).
 - Uji 2026-10-15 (Pi `.222`): restart terjadwal terdeteksi tepat pada menit yang dituju (Chromium pid 3633 → 3896);
   `kill -9` Chromium → hidup lagi ±6 detik (3896 → 4095). Uji ulang: jalankan script dengan `RESTART_HHMM=<HHMM server + 2>`.
+- **Bubble "Translate" (Indonesian | English) di atas tile paling atas**: muncul bila bahasa Chromium bukan Indonesia
+  (Pi `.162`/`.222` memakai `en-GB`; Pi `.235` memakai `id-ID` sehingga tidak muncul). Flag `--disable-features=Translate`
+  **tidak** menghilangkannya di Chromium 142. Yang berhasil (2026-10-16): matikan Chromium, lalu di tiap
+  `~/.config/chromium-profile-*/Default/Preferences` set `translate.enabled=false` dan tambahkan `"id"` ke
+  `translate_blocked_languages`, lalu jalankan ulang kiosk. Edit Preferences hanya saat Chromium mati (Chromium menulis ulang file itu saat keluar).
+- **Setelah menjalankan ulang dari SSH, pastikan tidak ada proses ganda**: `pgrep -fc 'bash .*start-kiosk.sh'` harus 3 (satu jendela)
+  atau 4 (dua jendela). Bila `pkill` gagal dan script dijalankan lagi, dua supervisor berebut profil yang sama
+  (load 12, RAM 3,1 GB, swap terpakai, layar kosong). Bersihkan dengan `pkill -u $(id -u) -f start-kiosk.sh` lalu
+  `pkill -u $(id -u) -f /usr/lib/chromium/chromium`, pastikan `pgrep` kosong, baru jalankan sekali.
 - Mematikan kiosk secara sengaja: `pkill -f start-kiosk.sh` **lalu** `pkill -f /usr/lib/chromium/chromium`
   (membunuh Chromium saja membuatnya hidup lagi). Menjalankan ulang dari SSH:
   `DISPLAY=:0 setsid nohup bash ~/start-kiosk.sh > /tmp/start-kiosk.log 2>&1 < /dev/null &`.
