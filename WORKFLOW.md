@@ -143,7 +143,8 @@ menghapus riwayat event.
      perangkat (`type="time"`, tidak bisa salah ketik), tombol teks **Hapus istirahat**, segmen diam di
      bilah, dan ringkasan "Zona diam 12:00–13:00". Istirahat di luar jam kerja hanya memberi peringatan
      (tidak memblokir Simpan). **Gate absensi:** sumbu 00:00–24:00 penuh dan catatan bahwa jam kerja tidak
-     dipakai. **24/7:** bagian tidak tampil, hanya petunjuk cara memakainya.
+     dipakai; di bawah dropdown Jadwal tampil petunjuk "Gate absensi tidak memakai jam kerja; hanya istirahat
+     yang berlaku" (jam/hari/shift tetap tersimpan tetapi tidak ditegakkan di gate). **24/7:** bagian tidak tampil, hanya petunjuk cara memakainya.
    - **Batas gerbang:** karyawan yang tiba saat gerbang sedang istirahat tidak tercatat (bisa tampil
      `no_entry`/`absent` sampai dikoreksi admin). Proses rollout dan pemulihan:
      `docs/runbooks/zone-break-rollout.md`.

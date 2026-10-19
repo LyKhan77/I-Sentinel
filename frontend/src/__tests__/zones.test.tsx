@@ -884,6 +884,20 @@ test('gate absensi: sumbu 24 jam dan catatan bahwa jam kerja tidak dipakai', asy
   expect(screen.getByText('Gate absensi tetap aktif sepanjang hari; hanya berhenti saat istirahat.')).toBeInTheDocument()
 })
 
+const GATE_SCHED_HINT = 'Gate absensi tidak memakai jam kerja; hanya istirahat yang berlaku.'
+
+test('gate absensi: petunjuk di bawah Jadwal bahwa jam kerja/shift tidak dipakai; zona lain tanpa petunjuk', async () => {
+  await selectZone([zoneFix({
+    type: 'attendance', direction: 'entry', behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
+    schedule: { shift_id: 3 } })])
+  expect(await screen.findByText(GATE_SCHED_HINT)).toBeInTheDocument()
+})
+
+test('zona non-gate dengan jadwal tidak menampilkan petunjuk gate', async () => {
+  await selectZone([zoneFix({ schedule: WORK_HOURS })])
+  expect(screen.queryByText(GATE_SCHED_HINT)).not.toBeInTheDocument()
+})
+
 test('istirahat di luar jam kerja: peringatan lunak, Simpan tidak diblokir', async () => {
   await selectZone([zoneFix({ schedule: { ...WORK_HOURS, breaks: [{ start: '19:00', end: '20:00' }] } })])
   expect(screen.getByText(BREAK_OUTSIDE_TEXT)).toBeInTheDocument()

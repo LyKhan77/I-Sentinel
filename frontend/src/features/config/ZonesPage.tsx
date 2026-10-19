@@ -489,6 +489,11 @@ export default function ZonesPage() {
                       : selectedItem.id === 'shift' ? { shift_id: shifts[0].id, ...carry } : null })
                   }}
                 />
+                {selected.schedule && selected.type === 'attendance' && (
+                  <p data-testid="zone-sched-gate-hint" style={{ margin: 0, fontSize: 12, color: 'var(--cds-text-secondary)' }}>
+                    {t('zones.schedGateHint')}
+                  </p>
+                )}
                 {selected.schedule && 'shift_id' in selected.schedule && (
                   <Select id="zone-sched-shift" labelText={t('zones.shift')} value={selected.schedule.shift_id}
                     onChange={(e) => patchSelected({

@@ -70,10 +70,12 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   HH:MM diganti `BreakEditor` (`frontend/src/features/config/BreakEditor.tsx`) dengan bilah waktu
   (`breakTimeline.ts`: sumbu jam kerja ±1 jam, gate 24 jam), pemilih jam bawaan perangkat
   (`type="time"`), tombol teks **Hapus istirahat**, keadaan nonaktif ringkas (bilah biru penuh + tombol
-  Tambah), peringatan lunak istirahat di luar jam kerja, dan petunjuk pada jadwal 24/7. Hanya frontend;
+  Tambah), peringatan lunak istirahat di luar jam kerja, dan petunjuk pada jadwal 24/7. Zona gate absensi juga mendapat petunjuk di bawah
+  dropdown Jadwal (`zones.schedGateHint`: jam kerja/shift tidak dipakai di gate, hanya istirahat) setelah uji dev
+  menunjukkan gate tetap aktif di luar jam shift (perilaku opsi A, bukan bug). Hanya frontend;
   kontrak data dan API tidak berubah. Tes baru: `break-timeline.test.ts` (7) + 7 tes `zones.test.tsx`
   (RED → GREEN; mutasi `gate={false}` membuat tes gate merah). Cek browser (Playwright, API di-stub) pada
-  390 px: enam keadaan, tanpa overflow horizontal (375/390). Suite: vitest `614 passed` (43 berkas, +14),
+  390 px: enam keadaan, tanpa overflow horizontal (375/390). Suite: vitest `616 passed` (43 berkas, +16 termasuk 2 tes petunjuk gate),
   build exit 0, lint 24 warning (set identik). BELUM di-deploy ulang ke dev.
 - **Dampak:** zona `loitering`/`running` berjadwal yang selama ini aktif 24 jam **mulai berhenti** di
   luar jam dan saat istirahat (disengaja; tinjau dulu daftar zona ber-jadwal di runbook). Karyawan yang
