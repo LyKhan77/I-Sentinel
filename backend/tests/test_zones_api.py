@@ -317,6 +317,71 @@ def test_zone_schedule_unknown_shift_422(client):
     assert _behavior_zone(client, h, cam["id"], [], schedule={"shift_id": "x"}).status_code == 422
 
 
+BREAK_OK = [{"start": "12:00", "end": "13:00"}]
+
+
+def test_zone_schedule_accepts_breaks(client):
+    """Istirahat opsional pada dua bentuk jadwal (Jam tertentu dan Ikut shift) tersimpan apa adanya."""
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    shift = client.post("/api/v1/shifts", json={"name": "Pagi", "start_time": "08:00", "end_time": "17:00"},
+                        headers=h).json()
+    hours = {"days": [1, 2], "start": "08:00", "end": "17:00", "breaks": BREAK_OK}
+    r = _behavior_zone(client, h, cam["id"], [{"kind": "idle_zone", "trigger_seconds": 60}],
+                       schedule=hours)
+    assert r.status_code == 200, r.text
+    assert r.json()["schedule"] == hours
+    follow = {"shift_id": shift["id"], "breaks": BREAK_OK}
+    r = _behavior_zone(client, h, cam["id"], [], schedule=follow)
+    assert r.status_code == 200, r.text
+    assert r.json()["schedule"] == follow
+
+
+def test_zone_hours_without_breaks_stays_unchanged(client):
+    """Zona lama tanpa kunci `breaks` tetap sah apa adanya."""
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    sched = {"days": [1], "start": "08:00", "end": "17:00"}
+    r = _behavior_zone(client, h, cam["id"], [], schedule=sched)
+    assert r.status_code == 200 and r.json()["schedule"] == sched
+
+
+@pytest.mark.parametrize("sched", [
+    {"days": [1], "start": "08:00", "end": "17:00", "breaks": "nope"},          # bukan list
+    {"days": [1], "start": "08:00", "end": "17:00",
+     "breaks": BREAK_OK * 6},                                                    # lebih dari 5
+    {"days": [1], "start": "08:00", "end": "17:00",
+     "breaks": [{"start": "12:00", "end": "13:00", "x": 1}]},                    # kunci asing
+    {"days": [1], "start": "08:00", "end": "17:00",
+     "breaks": [{"start": "13:00", "end": "12:00"}]},                            # start > end
+    {"days": [1], "start": "08:00", "end": "17:00",
+     "breaks": [{"start": "12:00", "end": "12:00"}]},                            # start == end
+    {"days": [1], "start": "08:00", "end": "17:00",
+     "breaks": [{"start": "12:0", "end": "13:00"}]},                             # format salah
+    {"days": [1], "start": "08:00", "end": "17:00",
+     "breaks": [{"start": "24:00", "end": "13:00"}]},                            # jam 24
+    {"days": [1], "start": "08:00", "end": "17:00",
+     "breaks": [{"start": 12.0, "end": "13:00"}]},                               # nilai non-string
+    {"shift_id": 1, "foo": 1},                                                  # kunci asing bentuk shift
+    {"breaks": BREAK_OK},                                                       # bentuk tanpa jam/hari/shift
+])
+def test_zone_schedule_breaks_invalid_422(client, sched):
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    assert _behavior_zone(client, h, cam["id"], [], schedule=sched).status_code == 422
+
+
+def test_zone_patch_schedule_breaks_invalid_422(client):
+    """ZonePatch memakai validator yang sama: istirahat terbalik ditolak saat PATCH."""
+    h = _admin_headers(client)
+    cam = _camera(client, h)
+    zid = client.post("/api/v1/zones", json={**VALID, "camera_id": cam["id"]}, headers=h).json()["id"]
+    r = client.patch(f"/api/v1/zones/{zid}", json={
+        "schedule": {"days": [1], "start": "08:00", "end": "17:00",
+                     "breaks": [{"start": "13:00", "end": "12:00"}]}}, headers=h)
+    assert r.status_code == 422
+
+
 def test_behavior_without_any_media_rejected(client):
     """Event = bukti visual: behavior aktif wajib Snapshot atau Clip (attendance wajib Snapshot)."""
     h = _admin_headers(client)

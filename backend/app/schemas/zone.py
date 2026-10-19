@@ -6,6 +6,29 @@ VALID_TYPES = {"free", "restricted", "absensi", "behavior", "attendance"}
 VALID_BEHAVIOR_KINDS = {"intrusion", "loitering", "running", "attendance", "idle_zone", "crowd"}
 VALID_DIRECTIONS = {"entry", "exit"}
 VALID_DAYS = set(range(1, 8))
+BREAKS_MAX = 5  # batas istirahat per zona (UI satu baris; data siap multi-baris)
+
+
+def _is_hhmm(t: str) -> bool:
+    """HH:MM dengan jam 00-23 dan menit 00-59 (aturan sama untuk jam kerja dan istirahat)."""
+    parts = t.split(":")
+    return (len(parts) == 2 and len(parts[0]) == 2 and len(parts[1]) == 2
+            and parts[0].isdigit() and parts[1].isdigit()
+            and 0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59)
+
+
+def _validate_breaks(breaks: object) -> None:
+    """breaks = [{"start", "end"}], maks BREAKS_MAX, setengah terbuka via bandingan string HH:MM."""
+    if not isinstance(breaks, list) or len(breaks) > BREAKS_MAX:
+        raise ValueError(f"breaks must be a list of at most {BREAKS_MAX} items")
+    for b in breaks:
+        if not isinstance(b, dict) or set(b) != {"start", "end"}:
+            raise ValueError('each break must be exactly {"start": "HH:MM", "end": "HH:MM"}')
+        if not (isinstance(b["start"], str) and isinstance(b["end"], str)
+                and _is_hhmm(b["start"]) and _is_hhmm(b["end"])):
+            raise ValueError("break times must be HH:MM (00:00-23:59)")
+        if not b["start"] < b["end"]:
+            raise ValueError("break must satisfy start < end")
 
 
 def _validate_behaviors(v: list | None) -> list | None:
@@ -82,22 +105,26 @@ def _validate_polygon(v: list) -> list:
 def _validate_schedule(v: dict | None) -> dict | None:
     if v is None:
         return v
-    if isinstance(v, dict) and set(v) == {"shift_id"}:
+    err = 'schedule must be {"days": [1-7], "start": "HH:MM", "end": "HH:MM"} or {"shift_id": N}'
+    if not isinstance(v, dict):
+        raise ValueError(err)
+    keys = set(v)
+    if keys in ({"shift_id"}, {"shift_id", "breaks"}):
         sid = v["shift_id"]
         if not isinstance(sid, int) or isinstance(sid, bool) or sid < 1:
             raise ValueError("schedule.shift_id must be a positive int")
-        return v
-    if (not isinstance(v, dict) or set(v) != {"days", "start", "end"}
-            or not isinstance(v["days"], list)
-            or not all(isinstance(d, int) and d in VALID_DAYS for d in v["days"])
-            or not isinstance(v["start"], str) or not isinstance(v["end"], str)):
-        raise ValueError('schedule must be {"days": [1-7], "start": "HH:MM", "end": "HH:MM"} or {"shift_id": N}')
-    for t in (v["start"], v["end"]):
-        parts = t.split(":")
-        if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2 \
-                or not parts[0].isdigit() or not parts[1].isdigit() \
-                or not (0 <= int(parts[0]) <= 23) or not (0 <= int(parts[1]) <= 59):
-            raise ValueError('schedule must be {"days": [1-7], "start": "HH:MM", "end": "HH:MM"}')
+    elif keys in ({"days", "start", "end"}, {"days", "start", "end", "breaks"}):
+        if (not isinstance(v["days"], list)
+                or not all(isinstance(d, int) and d in VALID_DAYS for d in v["days"])
+                or not isinstance(v["start"], str) or not isinstance(v["end"], str)):
+            raise ValueError(err)
+        for t in (v["start"], v["end"]):
+            if not _is_hhmm(t):
+                raise ValueError(err)
+    else:
+        raise ValueError(err)
+    if "breaks" in v:
+        _validate_breaks(v["breaks"])
     return v
 
 
