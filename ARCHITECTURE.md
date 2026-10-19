@@ -115,8 +115,8 @@ Pool koneksi DB proses API: `DB_POOL_SIZE` 20 + `DB_MAX_OVERFLOW` 20, tunggu `DB
 
 - **Kamera**: `camera`, `stream_source`, `credential_profile` (hanya referensi `env:`/`store:`),
   `location_group`, `node`.
-- **Deteksi**: `zone` (polygon, behavior, jadwal, toggle Snapshot/Clip/Telegram),
-  `detector_setting`, `setting` (key-value JSON: `storage`, `health_rules`, …).
+- **Deteksi**: `zone` (polygon, behavior, jadwal + daftar `breaks` istirahat per zona,
+  toggle Snapshot/Clip/Telegram), `detector_setting`, `setting` (key-value JSON: `storage`, `health_rules`, …).
 - **Event**: `event` (type, severity, payload JSON, path media), `alert` (status kirim Telegram,
   `message_id`/`message_photo`/`ai_synced` untuk edit caption AI), `telegram_chat`.
 - **Absensi**: `employee`, `shift`, `face_embedding`, `attendance_event`, `attendance_day`
@@ -136,8 +136,10 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
 ```
 
 - Satu worker per kamera yang punya **zona aktif**; kamera tanpa zona hanya tampil di Live View.
-- Analyzer: `intrusion`, `loitering`, `running`, `idle_zone`, `crowd`; wajah lewat `face_worker`
-  pada zona attendance (gerbang kualitas: lebar, skor, yaw, blur).
+- Analyzer: `intrusion`, `loitering`, `running`, `idle_zone`, `crowd` — semuanya patuh jadwal penuh
+  (hari, jam kerja, `breaks` istirahat) lewat `schedule_active()` di `analyzers/base.py`; `loitering`
+  dan `running` membuang state per-track saat off-window agar tidak menumpuk melewati jendela tutup;
+  wajah lewat `face_worker` pada zona attendance (gerbang kualitas: lebar, skor, yaw, blur).
 - **Face ID pada intrusion critical** (saklar `face_id` di behavior `intrusion`, default mati):
   `identity_zones` mengumpulkan zona `critical` ber-`face_id: true`; kamera itu otomatis mendapat
   `FaceGateWorker` (tanpa zona attendance pun), `CameraWorker` mengisi `IntrusionRegistry` (titik kaki track di polygon) dan mem-bind
@@ -180,6 +182,13 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   absensi, snapshot "Unknown", UI menampilkan tidak dikenal). `payload.face_margin` disimpan untuk
   pemantauan. Perubahan mode/jendela merestart worker wajah kamera terkait; track yang sedang di dalam
   jendela saat itu hilang (dicatat di runbook).
+- **Istirahat zona di gerbang absensi**: `break_active(schedule, ts)` (`analyzers/base.py`, kunci
+  `breaks` setengah terbuka `[start, end)` pada jam dinding lokal) dipakai `FaceGateWorker` per frame —
+  zona yang sedang istirahat dikeluarkan dari gerbang, state/kandidat milik zona itu dibuang sebelum
+  `_emit_due`/`_expire` (termasuk jalur frame kosong/motion-skip), deteksi wajah dilewati bila semua
+  zona gate istirahat dan kolektor identitas kos (identitas intrusion tetap jalan saat kolektor ada),
+  Mode uji tidak mengesampingkan istirahat, dan **jam kerja tidak ditegakkan** di gate (gate memakai
+  `break_active`, bukan `schedule_active`).
 - Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.
   Motion gate bangun karena gerak dan terus memproses frame diam selama wajah masih terlihat.
   Ambang cosine dan gerbang kualitas tidak berubah pada siklus face gate refine.

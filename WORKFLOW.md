@@ -96,7 +96,8 @@ menghapus riwayat event.
 
 1. Pilih kamera → gambar polygon di frame (klik titik, tutup di titik awal, drag untuk memindah).
 2. Isi nama, behavior (`intrusion`, `loitering`, `running`, `idle_zone`, `crowd`, atau attendance
-   dengan arah `entry`/`exit`), severity, jadwal (**24/7**, **Jam tertentu**, **Ikut shift**).
+   dengan arah `entry`/`exit`), severity, jadwal (**24/7**, **Jam tertentu**, **Ikut shift**; dua
+   bentuk yang terakhir dapat punya jendela **Istirahat** opsional).
 3. Per behavior: toggle **Snapshot**, **Clip**, dan radio **Tujuan event** — **Inbox + Telegram**
    (`delivery=all`), **Hanya Inbox** (`inbox`), atau **Mode uji** (`test`). Behavior aktif wajib punya
    Snapshot atau Clip (422 `needs snapshot or clip`); attendance wajib snapshot dan memakai radio yang
@@ -120,7 +121,24 @@ menghapus riwayat event.
    bukan kamera lain; stream kamera itu tersambung ulang (<10 detik terukur untuk kamera worker face).
    Snapshot tertumpuk digabung ke yang terakhir; config pertama dan perubahan setelan global
    mengulang semua kamera.
-6. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7).
+6. Menurut jadwal, analyzer di node mengevaluasi setiap track di polygon (§7). `intrusion`, `crowd`,
+   `idle_zone`, `loitering`, dan `running` menegakkan **jadwal penuh** (hari, jam kerja, istirahat):
+   di luar jendela zona tidak mengevaluasi apa pun dan state yang tertunda dibuang supaya tidak
+   menumpuk melewati jendela tutup. **Gerbang absensi menegakkan istirahatnya saja** — jam kerja dan
+   hari tidak dihitung di gate (scan datang awal, pulang telat, lembur, dan hari non-kerja tetap
+   dicatat). **Mode uji tidak mengesampingkan jadwal**: selama istirahat (atau di luar jadwal untuk
+   analyzer jadwal penuh) zona tidak dievaluasi walau sedang dalam uji.
+   - **Istirahat** (kunci `breaks` pada jadwal zona; UI satu baris, data maks 5 entri per zona) adalah
+     jendela setengah terbuka `[start, end)` pada jam dinding lokal saat zona diam total: tanpa event,
+     klip, snapshot, Telegram, crop wajah, atau baris absensi. Hanya **Jam tertentu** dan **Ikut shift**
+     yang punya istirahat; jadwal **24/7** tidak (butuh 24/7 + istirahat → pilih Jam tertentu
+     00:00–23:59 semua hari; gate mengabaikan jam kerja, jadi hasilnya setara). Mengganti mode/shift
+     atau mengubah hari/jam tidak menjatuhkan istirahat yang sudah diisi; memilih 24/7 mengosongkannya.
+     Baris tidak valid (kosong, bukan HH:MM, atau mulai ≥ selesai) memblokir Simpan di UI; server
+     menolak yang sama dengan 422.
+   - **Batas gerbang:** karyawan yang tiba saat gerbang sedang istirahat tidak tercatat (bisa tampil
+     `no_entry`/`absent` sampai dikoreksi admin). Proses rollout dan pemulihan:
+     `docs/runbooks/zone-break-rollout.md`.
 
 7. Opsional **Caption AI otomatis** per zona non-attendance: pilih **Bawaan** (instruksi per tipe)
    atau **Kustom** (maksimal 600 karakter). Lihat prompt bawaan melalui tautan di editor.
