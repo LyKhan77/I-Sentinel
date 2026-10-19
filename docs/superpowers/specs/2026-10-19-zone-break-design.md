@@ -1,7 +1,7 @@
 # Zone Break (Waktu Istirahat per Zona) — Design Spec
 
 - Tanggal: 2026-10-19
-- Branch: `feat/shift-break` (dari `main` @ `9fa6128`)
+- Branch: `feat/zone-break` (dari `main` @ `9fa6128`)
 - Status: draf, menunggu persetujuan user
 - Catatan: versi awal spec ini menaruh istirahat di Shift. User memutuskan memindahkannya ke konfigurasi Zona Deteksi karena
   jam istirahat bisa berbeda per zona dan agar berguna untuk perusahaan lain. Shift tidak berubah sama sekali.
