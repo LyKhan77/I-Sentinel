@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from .base import Analyzer
+from .base import Analyzer, schedule_active
 from .intrusion import ground_point, point_in_polygon
 
 EMA_ALPHA = 0.4
@@ -23,6 +23,7 @@ class RunningAnalyzer(Analyzer):
         self.zone_id = zone["id"]
         self.zone_name = zone.get("name", "")
         self.severity = zone.get("severity", "warning")
+        self.schedule = zone.get("schedule")
         self.speed_limit_mps = zone.get("speed_limit_mps", 0)
         self.polygon = [tuple(p) for p in zone["polygon"]]
         self.mpp = meters_per_pixel
@@ -31,6 +32,12 @@ class RunningAnalyzer(Analyzer):
         self._last_emit: dict[int, float] = {}
 
     def on_frame(self, ts: float, tracks: list, frame_w: int, frame_h: int) -> list[dict]:
+        if not schedule_active(self.schedule, ts):
+            # off-window (di luar jadwal / istirahat): buang delta & EMA pra-jendela agar
+            # kecepatan tua tidak menembak sekali di frame pertama setelah jendela buka.
+            self._last.clear()
+            self._speed.clear()
+            return []
         if self.speed_limit_mps <= 0:
             return []
         events = []

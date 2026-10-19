@@ -3,6 +3,7 @@
 Pure math + node factory, no cv2/MQTT.
 """
 import logging
+from datetime import datetime
 
 from vision.analyzers import ANALYZERS
 from vision.analyzers.running import RunningAnalyzer
@@ -14,6 +15,8 @@ SQUARE = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
 FRAME_W = 640
 FRAME_H = 480
 MPP = 0.01
+# Jadwal kerja 08:00-17:00 dengan istirahat 12:00-13:00 pada Senin 2024-01-15.
+WORK_BREAK = {"days": [1], "start": "08:00", "end": "17:00", "breaks": [{"start": "12:00", "end": "13:00"}]}
 
 
 class FakeTrack:
@@ -143,3 +146,32 @@ def test_factory_builds_running_with_calibration():
     az = node._make_analyzers(cam)
     assert [type(a).__name__ for a in az] == ["RunningAnalyzer"]
     assert az[0].mpp == 0.01
+
+
+def test_running_silent_outside_schedule_and_during_break():
+    """12:30 di dalam istirahat: gerakan cepat tanpa event; 14:00 kontrol: gerakan sama terbit."""
+    az = RunningAnalyzer(zone(schedule=WORK_BREAK, speed_limit_mps=1.0), MPP)
+    ts = datetime(2024, 1, 15, 12, 30).timestamp()
+    az.on_frame(ts, one_track((0.40, 0.5)), FRAME_W, FRAME_H)
+    assert az.on_frame(ts + 0.2, one_track((0.45, 0.5)), FRAME_W, FRAME_H) == []
+    az = RunningAnalyzer(zone(schedule=WORK_BREAK, speed_limit_mps=1.0), MPP)
+    ts = datetime(2024, 1, 15, 14, 0).timestamp()
+    az.on_frame(ts, one_track((0.40, 0.5)), FRAME_W, FRAME_H)
+    assert az.on_frame(ts + 0.2, one_track((0.45, 0.5)), FRAME_W, FRAME_H)
+
+
+def test_running_speed_does_not_carry_across_break():
+    """EMA 12,8 m/s pra-istirahat tidak bocor: off-window membuang _last/_speed (EMA 0,6x tetap di atas batas)."""
+    az = RunningAnalyzer(zone(schedule=WORK_BREAK, speed_limit_mps=1.0), MPP)
+    t0 = datetime(2024, 1, 15, 11, 59, 5).timestamp()
+    az.on_frame(t0, one_track((0.10, 0.5)), FRAME_W, FRAME_H)
+    az.on_frame(t0 + 0.2, one_track((0.50, 0.5)), FRAME_W, FRAME_H)   # 0,4*640*0,01/0,2 = 12,8 m/s
+    az.on_frame(t0 + 0.4, one_track((0.90, 0.5)), FRAME_W, FRAME_H)   # EMA 12,8 m/s
+    t_break = datetime(2024, 1, 15, 12, 0, 0).timestamp()
+    assert az.on_frame(t_break, one_track((0.90, 0.5)), FRAME_W, FRAME_H) == []
+    assert az.on_frame(t_break + 0.2, one_track((0.90, 0.5)), FRAME_W, FRAME_H) == []
+    assert az._last == {} and az._speed == {}
+    # sesudah istirahat: dua frame lambat tidak berevent dari EMA lama
+    t2 = datetime(2024, 1, 15, 13, 0, 0).timestamp()
+    az.on_frame(t2, one_track((0.50, 0.5)), FRAME_W, FRAME_H)
+    assert az.on_frame(t2 + 0.2, one_track((0.501, 0.5)), FRAME_W, FRAME_H) == []

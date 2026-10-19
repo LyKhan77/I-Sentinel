@@ -1,7 +1,7 @@
 """Loitering analyzer: accumulates dwell time for tracks inside a zone polygon."""
 from __future__ import annotations
 
-from .base import Analyzer
+from .base import Analyzer, schedule_active
 from .intrusion import ground_point, point_in_polygon
 
 # Frame-to-frame gaps above this are treated as a tracking gap, not dwell time.
@@ -15,6 +15,7 @@ class LoiteringAnalyzer(Analyzer):
         self.zone_id = zone["id"]
         self.zone_name = zone.get("name", "")
         self.severity = zone.get("severity", "warning")
+        self.schedule = zone.get("schedule")
         self.loiter_seconds = zone.get("loiter_seconds", 0)
         self.polygon = [tuple(p) for p in zone["polygon"]]
         self._dwell: dict[int, float] = {}
@@ -22,6 +23,12 @@ class LoiteringAnalyzer(Analyzer):
         self._last_ts: dict[int, float] = {}
 
     def on_frame(self, ts: float, tracks: list, frame_w: int, frame_h: int) -> list[dict]:
+        if not schedule_active(self.schedule, ts):
+            # off-window (di luar jadwal / istirahat): buang dwell pra-jendela —
+            # tidak boleh menumpuk lewat jendela tutup; _emitted dipertahankan (pola intrusion).
+            self._dwell.clear()
+            self._last_ts.clear()
+            return []
         if self.loiter_seconds <= 0:
             return []
         events = []

@@ -1,10 +1,14 @@
 """LoiteringAnalyzer tests: dwell accumulation per zone. Pure math, no cv2/MQTT."""
+from datetime import datetime
+
 from vision.analyzers import ANALYZERS
 from vision.analyzers.loitering import LoiteringAnalyzer, point_in_polygon
 
 SQUARE = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
 INSIDE = (0.5, 0.5)
 OUTSIDE = (1.5, 0.5)
+# Jadwal kerja 08:00-17:00 dengan istirahat 12:00-13:00 pada Senin 2024-01-15.
+WORK_BREAK = {"days": [1], "start": "08:00", "end": "17:00", "breaks": [{"start": "12:00", "end": "13:00"}]}
 
 
 class FakeTrack:
@@ -120,3 +124,40 @@ def test_ts_gap_resets_dwell_no_fake_accumulation():
     assert az._dwell[1] == 14.0
     # 16s -> emits
     assert len(az.on_frame(ts + 116, one_track(1, INSIDE), 640, 480)) == 1
+
+
+def test_loitering_silent_outside_schedule_and_during_break():
+    """Zona jadwal penuh: 07:00 (di luar jam) dan 12:30 (istirahat) diam; 09:00 kontrol 1 event."""
+    # 07:00 — di luar jendela kerja: tanpa event walau track menginap dwell
+    az = LoiteringAnalyzer(zone(schedule=WORK_BREAK))
+    ts = datetime(2024, 1, 15, 7, 0).timestamp()
+    for i in range(4):
+        assert az.on_frame(ts + i * 5, one_track(1, INSIDE), 640, 480) == []
+    # 12:30 — di dalam istirahat: tanpa event
+    az = LoiteringAnalyzer(zone(schedule=WORK_BREAK))
+    ts = datetime(2024, 1, 15, 12, 30).timestamp()
+    for i in range(4):
+        assert az.on_frame(ts + i * 5, one_track(1, INSIDE), 640, 480) == []
+    # 09:00 — jendela kerja: kontrol terbit (4×5 dtk dwell = 15)
+    az = LoiteringAnalyzer(zone(schedule=WORK_BREAK))
+    ts = datetime(2024, 1, 15, 9, 0).timestamp()
+    evs = [az.on_frame(ts + i * 5, one_track(1, INSIDE), 640, 480) for i in range(4)]
+    assert len(evs[-1]) == 1
+    assert len(evs[-2]) == 0
+
+
+def test_loitering_dwell_does_not_carry_across_break():
+    """Dwell pra-istirahat tidak terbawa: state dibuang di frame off-window (semua gap <= MAX_DELTA)."""
+    az = LoiteringAnalyzer(zone(schedule=WORK_BREAK))
+    t0 = datetime(2024, 1, 15, 11, 59, 45).timestamp()
+    assert az.on_frame(t0, one_track(1, INSIDE), 640, 480) == []        # dwell 0
+    assert az.on_frame(t0 + 5, one_track(1, INSIDE), 640, 480) == []    # dwell 5
+    # tepat 12:00 off-window: membuang _dwell/_last_ts, bukan menambah dwell (bug: dwell 15 emit)
+    assert az.on_frame(t0 + 10, one_track(1, INSIDE), 640, 480) == []
+    assert az.on_frame(t0 + 15, one_track(1, INSIDE), 640, 480) == []
+    assert az._dwell == {} and az._last_ts == {}
+    # sesudah istirahat: gap 3556 dtk reset; dwell segar tidak memenuhi ambang
+    t1 = datetime(2024, 1, 15, 13, 0, 1).timestamp()
+    assert az.on_frame(t1, one_track(1, INSIDE), 640, 480) == []
+    assert az.on_frame(t1 + 5, one_track(1, INSIDE), 640, 480) == []
+    assert az.on_frame(t1 + 10, one_track(1, INSIDE), 640, 480) == []
