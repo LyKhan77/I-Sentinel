@@ -13,7 +13,7 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   istirahat. Spec `docs/superpowers/specs/2026-10-19-zone-break-design.md`, plan
   `docs/superpowers/plans/2026-10-19-zone-break.md`; sesi executor native (Task 1–6, commit lokal
   tanpa push); review, cek zona ber-jadwal di DB server, deploy, uji UI/kamera masih di sesi
-  perencanaan. **Seluruh perubahan BELUM di-deploy dan BELUM diuji di kamera nyata.**
+  perencanaan. Status akhir cycle: di-review, di-deploy ke **dev** (production belum) dan editor diuji user; uji live gate di kamera ditunda ke 2026-10-20 (lihat bullet Hasil deploy dev).
 - **Perubahan:** (1) Backend: `_validate_schedule` (`ZoneIn`/`ZonePatch`) menerima opsi `breaks`
   (list 0–5 entri `{start, end}` HH:MM, `start < end`) pada bentuk Jam tertentu dan Ikut shift; bentuk
   liar (termasuk `{breaks}` tanpa jam/hari/shift) tetap 422; `_is_hhmm` dipakai ulang untuk jam kerja
@@ -76,7 +76,19 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   kontrak data dan API tidak berubah. Tes baru: `break-timeline.test.ts` (7) + 7 tes `zones.test.tsx`
   (RED → GREEN; mutasi `gate={false}` membuat tes gate merah). Cek browser (Playwright, API di-stub) pada
   390 px: enam keadaan, tanpa overflow horizontal (375/390). Suite: vitest `616 passed` (43 berkas, +16 termasuk 2 tes petunjuk gate),
-  build exit 0, lint 24 warning (set identik). BELUM di-deploy ulang ke dev.
+  build exit 0, lint 24 warning (set identik). Di-deploy ke dev (web).
+- **Hasil deploy dev dan uji (2026-10-19):** dev (`gspe-ai3`) di `feat/zone-break` @ `6faa19f`; `api`+`web`+`vision`
+  di-deploy ±12:54 WIB, lalu `web` di-deploy ulang dua kali (revisi UI N1, petunjuk gate); `setup.sh` exit 0, semua
+  container sehat, log `vision` tanpa traceback. SQL runbook (`json_typeof`, `json_array_length`) terbukti jalan di
+  Postgres dev (kolom `zone.schedule` bertipe `json`); `UPDATE` rollback belum dijalankan. Simpan zona dari UI
+  memicu `config applied: restarted [<kamera>]` per kamera (config push terbukti). Probe read-only di container
+  `vision` dengan config nyata: lima zona gate dev (Ikut shift, tanpa istirahat) tetap aktif seperti sebelum fitur;
+  dengan istirahat sintetis `_hidden_zones` benar untuk Ikut shift dan Jam tertentu (11:59 aktif, 12:00–12:59
+  diam, 13:00 aktif, 07:00 dan 20:00 aktif karena jam kerja tidak ditegakkan di gate). Editor istirahat diuji user di
+  dev tanpa masalah yang dilaporkan. **Uji live gate belum konklusif:** zona IT dan IT 2 adalah `idle_zone` dan tidak
+  punya event apa pun hari itu; istirahat zona "Absen Depan Lorong (In)" disimpan 14:22 sehingga jendela
+  12:00–13:00 hari itu sudah lewat. Atas keputusan user uji live ditunda: diamati 2026-10-20 12:00–13:00 (event
+  zona itu di jendela harus 0, sesudahnya normal). Production belum disentuh.
 - **Dampak:** zona `loitering`/`running` berjadwal yang selama ini aktif 24 jam **mulai berhenti** di
   luar jam dan saat istirahat (disengaja; tinjau dulu daftar zona ber-jadwal di runbook). Karyawan yang
   tiba di gerbang saat istirahat tidak tercatat (bisa `no_entry`/`absent` sampai dikoreksi admin).
