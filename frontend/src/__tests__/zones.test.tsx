@@ -755,3 +755,167 @@ test('zoneDelivery: test tanpa test_until = pilihan belum disimpan (tampil test)
   // badge UJI hanya untuk uji yang sudah distempel server
   expect(testUntil({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, now)).toBeNull()
 })
+
+
+// --- editor istirahat jadwal zona -------------------------------------------
+
+const ONE_BREAK = [{ start: '12:00', end: '13:00' }]
+const BREAK_INVALID_TEXT = 'Setiap istirahat wajib HH:MM dengan jam mulai sebelum jam selesai.'
+
+test('jadwal Jam tertentu mengirim istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix()])
+  fireEvent.click(screen.getByText('24/7'))
+  fireEvent.click(await screen.findByText('Jam tertentu'))
+  fireEvent.click(await screen.findByTestId('zone-break-add'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: ONE_BREAK }))
+})
+
+test('jadwal Ikut shift mengirim shift_id dan istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix()])
+  fireEvent.click(screen.getByText('24/7'))
+  fireEvent.click(await screen.findByText('Ikut shift'))
+  const select = (await screen.findByLabelText('Shift')) as HTMLSelectElement
+  expect(select.value).toBe('3')
+  fireEvent.click(await screen.findByTestId('zone-break-add'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { shift_id: 3, breaks: ONE_BREAK }))
+})
+
+test('berpindah mode mempertahankan istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: ONE_BREAK } })])
+  fireEvent.click(screen.getByText('Jam tertentu'))
+  fireEvent.click(await screen.findByText('Ikut shift'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { shift_id: 3, breaks: ONE_BREAK }))
+})
+
+test('memilih 24/7 menghapus jadwal dan istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: ONE_BREAK } })])
+  fireEvent.click(screen.getByText('Jam tertentu'))
+  fireEvent.click(await screen.findByText('24/7'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toBeNull())
+})
+
+test('istirahat tidak valid memblokir simpan', async () => {
+  await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: [{ start: '12:00', end: '13:00' }] } })])
+  fireEvent.change(screen.getByLabelText('Selesai istirahat'), { target: { value: '11:00' } })
+  expect(screen.getByTestId('zone-save')).toBeDisabled()
+  expect(screen.getByText(BREAK_INVALID_TEXT)).toBeInTheDocument()
+})
+
+test('istirahat dengan jam di luar rentang (24:00, 25:99) memblokir simpan seperti server', async () => {
+  await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: [{ start: '12:00', end: '13:00' }] } })])
+  for (const bad of ['24:00', '25:99']) {
+    fireEvent.change(screen.getByLabelText('Selesai istirahat'), { target: { value: bad } })
+    expect(screen.getByTestId('zone-save')).toBeDisabled()
+    expect(screen.getByText(BREAK_INVALID_TEXT)).toBeInTheDocument()
+  }
+})
+
+test('Jam tertentu: bagian Istirahat tampil sesudah jam kerja dan hari', async () => {
+  await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: [{ start: '12:00', end: '13:00' }] } })])
+  const workEnd = screen.getByLabelText('Selesai')
+  const breakStart = screen.getByTestId('zone-break-start-0')
+  expect(workEnd.compareDocumentPosition(breakStart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+const WORK_HOURS = { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00' }
+const BREAK_OUTSIDE_TEXT = 'Istirahat jatuh di luar jam kerja zona; bagian di luar jam kerja tidak berpengaruh.'
+
+test('istirahat nonaktif: bilah kerja penuh tanpa segmen diam dan tanpa kolom jam, hanya tombol Tambah', async () => {
+  await selectZone([zoneFix({ schedule: WORK_HOURS })])
+  expect(screen.getByTestId('zone-break-bar-work')).toBeInTheDocument()
+  expect(screen.queryByTestId('zone-break-bar-quiet-0')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Mulai istirahat')).not.toBeInTheDocument()
+  expect(screen.getByTestId('zone-break-add')).toBeInTheDocument()
+  expect(screen.getByText('Zona aktif sepanjang jam kerja. Tidak ada istirahat.')).toBeInTheDocument()
+})
+
+test('istirahat aktif: segmen diam digambar, ringkasan menyebut jam, tombol Hapus berlabel teks', async () => {
+  await selectZone([zoneFix({ schedule: { ...WORK_HOURS, breaks: [{ start: '12:00', end: '13:00' }] } })])
+  expect(screen.getByTestId('zone-break-bar-quiet-0')).toBeInTheDocument()
+  expect(screen.getByText('Zona diam 12:00–13:00.')).toBeInTheDocument()
+  expect(screen.getByTestId('zone-break-remove-0')).toHaveTextContent('Hapus istirahat')
+  expect(screen.queryByTestId('zone-break-add')).not.toBeInTheDocument()
+  // pemilih jam bawaan: tidak ada teks bebas yang bisa salah ketik
+  expect(screen.getByLabelText('Mulai istirahat')).toHaveAttribute('type', 'time')
+  expect(screen.getByLabelText('Selesai istirahat')).toHaveAttribute('type', 'time')
+})
+
+test('Tambah istirahat langsung menggambar segmen diam; Hapus mengembalikan ke nonaktif dan payload tanpa breaks', async () => {
+  const fetchMock = await selectZone([zoneFix({ schedule: WORK_HOURS })])
+  fireEvent.click(screen.getByTestId('zone-break-add'))
+  expect(await screen.findByTestId('zone-break-bar-quiet-0')).toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('zone-break-remove-0'))
+  expect(screen.queryByTestId('zone-break-bar-quiet-0')).not.toBeInTheDocument()
+  expect(screen.getByTestId('zone-break-add')).toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(WORK_HOURS))
+  expect('breaks' in patchBody(fetchMock).schedule).toBe(false)
+})
+
+test('Ikut shift: sumbu bilah mengikuti jam shift ±1 jam', async () => {
+  await selectZone([zoneFix({ schedule: { shift_id: 3, breaks: [{ start: '12:00', end: '13:00' }] } })])
+  // data shift dimuat async: sumbu 24 jam dulu, lalu menyempit ke jam shift
+  await waitFor(() => expect(screen.getByTestId('zone-break-axis-from')).toHaveTextContent('07:00'))
+  expect(screen.getByTestId('zone-break-axis-to')).toHaveTextContent('18:00')
+})
+
+test('gate absensi: sumbu 24 jam dan catatan bahwa jam kerja tidak dipakai', async () => {
+  await selectZone([zoneFix({
+    type: 'attendance', direction: 'entry', behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
+    schedule: { ...WORK_HOURS, breaks: [{ start: '12:00', end: '13:00' }] } })])
+  expect(screen.getByTestId('zone-break-axis-from')).toHaveTextContent('00:00')
+  expect(screen.getByTestId('zone-break-axis-to')).toHaveTextContent('24:00')
+  expect(screen.getByText('Gate absensi tetap aktif sepanjang hari; hanya berhenti saat istirahat.')).toBeInTheDocument()
+})
+
+const GATE_SCHED_HINT = 'Gate absensi tidak memakai jam kerja; hanya istirahat yang berlaku.'
+
+test('gate absensi: petunjuk di bawah Jadwal bahwa jam kerja/shift tidak dipakai; zona lain tanpa petunjuk', async () => {
+  await selectZone([zoneFix({
+    type: 'attendance', direction: 'entry', behaviors: [{ kind: 'attendance', trigger_seconds: 0 }],
+    schedule: { shift_id: 3 } })])
+  expect(await screen.findByText(GATE_SCHED_HINT)).toBeInTheDocument()
+})
+
+test('zona non-gate dengan jadwal tidak menampilkan petunjuk gate', async () => {
+  await selectZone([zoneFix({ schedule: WORK_HOURS })])
+  expect(screen.queryByText(GATE_SCHED_HINT)).not.toBeInTheDocument()
+})
+
+test('istirahat di luar jam kerja: peringatan lunak, Simpan tidak diblokir', async () => {
+  await selectZone([zoneFix({ schedule: { ...WORK_HOURS, breaks: [{ start: '19:00', end: '20:00' }] } })])
+  expect(screen.getByText(BREAK_OUTSIDE_TEXT)).toBeInTheDocument()
+  expect(screen.getByTestId('zone-save')).not.toBeDisabled()
+})
+
+test('jadwal 24/7: tidak ada bilah istirahat, hanya petunjuk cara memakainya', async () => {
+  await selectZone([zoneFix({ schedule: null })])
+  expect(screen.queryByTestId('zone-break-bar-work')).not.toBeInTheDocument()
+  expect(screen.getByText('Istirahat hanya tersedia untuk "Jam tertentu" dan "Ikut shift".')).toBeInTheDocument()
+})
+
+test('zona dengan dua istirahat tetap utuh saat disimpan', async () => {
+  const two = [{ start: '10:00', end: '11:00' }, { start: '15:30', end: '16:30' }]
+  const fetchMock = await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3], start: '08:00', end: '17:00', breaks: two } })])
+  fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Zona Lain' } })
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { days: [1, 2, 3], start: '08:00', end: '17:00', breaks: two }))
+})

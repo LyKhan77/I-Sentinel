@@ -26,8 +26,9 @@ export type Behavior = {
   revert_to?: 'all' | 'inbox' // tujuan setelah uji berakhir
 }
 
-export type Schedule = { days: number[]; start: string; end: string }
-export type ZoneSchedule = Schedule | { shift_id: number }
+export type Break = { start: string; end: string }
+export type Schedule = { days: number[]; start: string; end: string; breaks?: Break[] }
+export type ZoneSchedule = Schedule | { shift_id: number; breaks?: Break[] }
 
 export type Zone = {
   id: number

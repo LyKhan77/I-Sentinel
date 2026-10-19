@@ -2,6 +2,7 @@
 
 import threading
 import time
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -10,6 +11,7 @@ import pytest
 from vision.face import FaceDet
 from vision.face_quality import FaceSettings
 from vision.face_worker import FaceGateWorker
+from vision.intrusion_face import IntrusionRegistry
 from vision.pipeline.source import Frame, FrameSource
 
 FRAME = np.zeros((1080, 1920, 3), np.uint8)
@@ -713,3 +715,113 @@ def test_test_mode_attendance_releases_the_held_frame_of_a_suppressed_track():
                        attendance_zone(delivery="test", test_until=_until(3600), revert_to="all"),
                        max_age_s=30.0)
     assert w._states and all(st.best is None for st in w._states.values())
+
+
+# --- gate absensi patuh istirahat (break_active; jam kerja tidak ditegakkan di gate) ---
+
+BREAK = {"days": [1], "start": "08:00", "end": "17:00", "breaks": [{"start": "12:00", "end": "13:00"}]}
+WORK_ONLY = {"days": [1], "start": "08:00", "end": "17:00"}  # tanpa kunci breaks
+# Keputusan spec §4.4: gate memakai break_active saja — deteksi wajah di luar jam kerja tetap dinilai.
+
+
+class EpochSource:
+    """Sumber Frame(ts epoch, data) eksplisit: ts >= MONOTONIC_MAX dipakai wall_time apa adanya."""
+
+    def __init__(self, frames):
+        self.frames = list(frames)
+
+    def next_frame(self, timeout=None):
+        if self.frames:
+            return self.frames.pop(0)
+        raise StopIteration
+
+    def close(self):
+        pass
+
+
+def _times(hour, minute=0, count=5, day=15):
+    """ts epoch eksplisit berturut 0,1 dtk dari tanggal itu (15 = Senin 2024-01-15)."""
+    start = datetime(2024, 1, day, hour, minute).timestamp()
+    return [start + i * 0.1 for i in range(count)]
+
+
+def run_at(zones, times, faces_per_frame, max_age_s=0.5, registry=None, transport=None):
+    """Worker di atas sumber epoch eksplisit; mengembalikan (worker, transport, engine)."""
+    t = transport or FakeTransport()
+    eng = FakeFaces(faces_per_frame)
+    w = FaceGateWorker(363, zones, eng, t, "test-node", FaceSettings(), max_age_s=max_age_s,
+                       registry=registry)
+    w.source = EpochSource([Frame(ts, FRAME) for ts in times])
+    w.start()
+    w.join(timeout=10)
+    assert not w.is_alive()
+    w.join_ident_threads(5.0)
+    return w, t, eng
+
+
+def _seed_registry():
+    """Entri identitas terikat di kepala person (TTL 3 dtk dari jam nyata)."""
+    r = IntrusionRegistry()
+    r.bind(5, 1, "ev-x", time.monotonic())
+    r.touch(5, 1, (0.40, 0.30, 0.60, 0.90), time.monotonic())
+    return r
+
+
+def test_gate_in_break_emits_nothing_and_skips_detection():
+    """5 frame wajah bagus dalam istirahat: tanpa event, tanpa embed, deteksi wajah dilewati."""
+    zone = {**ZONE, "schedule": BREAK}
+    _, t, eng = run_at([zone], _times(12, 30), [[GOOD]] * 5)
+    assert t.events == [] and eng.embed_calls == 0
+    assert len(eng.per_frame) == 5          # detect_faces NH dijalankan selama istirahat (hemat GPU)
+    # kontrol jam sama pada hari yang sama di luar istirahat: 1 event seperti biasa
+    _, t2, eng2 = run_at([zone], _times(14, 0), [[GOOD]] * 5)
+    assert len(t2.events) == 1 and eng2.embed_calls == 3
+
+
+def test_gate_ignores_work_window():
+    """Gate tak menegakkan jam kerja: jadwal tanpa breaks, Minggu 20:00 tetap tercatat."""
+    zone = {**ZONE, "schedule": WORK_ONLY}
+    _, t, eng = run_at([zone], _times(20, 0, day=21), [[GOOD]] * 5)
+    assert len(t.events) == 1 and eng.embed_calls == 3
+
+
+def test_gate_break_drops_pending_candidate():
+    """2 frame bagus menjelang 12:00, frame pada 12:00:00 (istirahat), lalu frame kosong: tanpa event."""
+    zone = {**ZONE, "schedule": BREAK}
+    t0 = datetime(2024, 1, 15, 11, 59, 59, 800000).timestamp()
+    times = [t0, t0 + 0.1] + [datetime(2024, 1, 15, 12, 0).timestamp() + i * 0.1 for i in range(4)]
+    assert times[2] > times[1]              # frame ketiga pasti di dalam istirahat
+    _, t, eng = run_at([zone], times, [[GOOD], [GOOD], [GOOD], [], []])
+    assert t.events == []
+    assert eng.embed_calls == 2             # embed ketiga (di frame istirahat) tidak terjadi
+
+
+def test_gate_break_beats_test_mode():
+    """Zona attendance Mode uji yang sedang istirahat: tanpa embedding (istirahat menang)."""
+    zone = {**attendance_zone(delivery="test", test_until=_until(3600), revert_to="all"),
+            "schedule": BREAK}
+    _, _, eng = run_at([zone], _times(12, 30), [[GOOD]] * 5)
+    assert eng.embed_calls == 0
+
+
+def test_gate_two_zones_only_one_in_break():
+    """Dua zona satu kamera: A istirahat, B tidak. Wajah di A hening; wajah di B tercatat zona B."""
+    zone_a = {**ZONE, "schedule": BREAK}       # poligon mengapit wajah default (0.5, 0.5)
+    zone_b = {"id": 8, "direction": "entry",
+              "polygon": [[0.9, 0.2], [1.0, 0.2], [1.0, 0.8], [0.9, 0.8]]}
+    _, t, _ = run_at([zone_a, zone_b], _times(12, 30), [[GOOD]] * 5)
+    assert t.events == []
+    _, t2, _ = run_at([zone_a, zone_b], _times(14, 0), [[face(cx=1824.0)]] * 5)
+    assert [ev["zone_id"] for ev in t2.events] == [8]
+
+
+def test_gate_break_keeps_identity_collector_detecting():
+    """Kamera identitas intrusion: gate istirahat → deteksi tetap jalan (kolektor), tanpa event absensi."""
+    zone = {**ZONE, "schedule": BREAK}
+    t = FakeTransport()
+    t.faces = []
+    t.publish_face = t.faces.append         # jalur identitas butuh publish_face di transport
+    _, t, eng = run_at([zone], _times(12, 30, count=3), [[GOOD]] * 3, registry=_seed_registry(),
+                       transport=t)
+    assert t.events == []
+    assert len(eng.per_frame) == 0          # detect_faces tetap dipanggil tiap frame (kolektor hidup)

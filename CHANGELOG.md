@@ -3,6 +3,104 @@
 Format: [Keep a Changelog](https://keepachangelog.com/) ringkas — satu baris per commit.
 Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 
+### Zone Break — istirahat jadwal per zona (2026-10-19)
+
+- **Konteks:** zona berjadwal **Jam tertentu**/**Ikut shift** tidak punya konsep istirahat, dan
+  `loitering`, `running`, serta gerbang absensi bahkan tidak membaca jadwal sama sekali (aktif 24 jam
+  walau jadwal terisi). Keputusan user: istirahat per zona di `zone.schedule.breaks` (bukan di Shift),
+  semua tipe zona patuh jadwal penuh, gerbang absensi menegakkan **istirahatnya saja** (jam kerja tidak
+  ditegakkan di gate), Mode uji tidak mengesampingkan jadwal, dan kandidat wajah gerbang dibuang saat
+  istirahat. Spec `docs/superpowers/specs/2026-10-19-zone-break-design.md`, plan
+  `docs/superpowers/plans/2026-10-19-zone-break.md`; sesi executor native (Task 1–6, commit lokal
+  tanpa push); review, cek zona ber-jadwal di DB server, deploy, uji UI/kamera masih di sesi
+  perencanaan. Status akhir cycle: di-review, di-deploy ke **dev** (production belum) dan editor diuji user; uji live gate di kamera ditunda ke 2026-10-20 (lihat bullet Hasil deploy dev).
+- **Perubahan:** (1) Backend: `_validate_schedule` (`ZoneIn`/`ZonePatch`) menerima opsi `breaks`
+  (list 0–5 entri `{start, end}` HH:MM, `start < end`) pada bentuk Jam tertentu dan Ikut shift; bentuk
+  liar (termasuk `{breaks}` tanpa jam/hari/shift) tetap 422; `_is_hhmm` dipakai ulang untuk jam kerja
+  dan istirahat. `resolve_schedule` menyalin `breaks` non-kosong ke hasil Ikut shift (Jam tertentu
+  meneruskan apa adanya; shift yang hilang tetap `None` = 24/7 dengan istirahat ikut hilang). (2)
+  Vision: `break_active(schedule, ts)` baru di `analyzers/base.py`; `schedule_active` mengembalikan
+  `False` saat istirahat sehingga `intrusion`/`crowd`/`idle_zone` ikut diam; `LoiteringAnalyzer` dan
+  `RunningAnalyzer` kini membaca `zone.schedule` (jadwal penuh) dan membuang state per-track saat
+  off-window (dwell/EMA pra-jendela tidak bocor); `FaceGateWorker` memakai `break_active` per zona
+  per frame — zona istirahat dikeluarkan dari gerbang, state/kandidat zona itu dibuang sebelum
+  `_emit_due`/`_expire` (termasuk jalur frame kosong/motion-skip), deteksi wajah dilewati bila semua
+  zona istirahat dan tanpa kolektor identitas, Mode uji tunduk pada istirahat, dan kolektor identitas
+  intrusion tetap mendeteksi. (3) Frontend: bagian **Istirahat (opsional)** di editor Zona (baris per
+  entri, tombol **Tambah istirahat** saat belum ada, hapus; baris tidak valid memblokir Simpan dan
+  tidak ikut payload); semua penulisan ulang jadwal (ganti mode, ganti shift, hari/jam) membawa
+  `breaks`; memilih 24/7 mengosongkannya; tipe `Break`/`Schedule`/`ZoneSchedule` + kunci i18n
+  `zones.break*` (Indonesia + Inggris). (4) Dokumen: WORKFLOW §6, ARCHITECTURE, README, ROADMAP (`[ ]`),
+  runbook baru `docs/runbooks/zone-break-rollout.md`. Tanpa migrasi; Shift, `attendance.py`, dan
+  `docker/` tidak disentuh.
+- **Bukti:** baseline → sesudah (suite berurutan di commit terakhir): backend `1119 passed/
+  1 deselected/666 warnings` → `1135 passed/1 deselected/692 warnings` (±264 dtk; +16 tes), vision
+  `370 passed/3 deselected/2 warnings` → `384 passed/3 deselected/2 warnings` (±14 dtk; +14 tes),
+  vitest `42 berkas/592 tests` → `42 berkas/598 tests`, build exit 0, lint `24 warning/0 error`
+  (set identik baseline). RED benar tiap task: T1 `test_zone_schedule_accepts_breaks` (422 saat kunci
+  belum sah) + `test_config_push_shift_schedule_carries_breaks` (habis kunci); T2 `ImportError
+  break_active` + `test_intrusion_silent_during_break` (event terbit di istirahat); T3 keempat tes
+  loitering/running (event di luar jadwal/di istirahat; dwell & EMA terbawa); T4 lima tes gate (event
+  saat istirahat, kandidat terkirim, Mode uji menyala, wajah di zona istirahat emit, kolektor kena
+  skip); T5 empat tes UI (tanpa tombol/kolom istirahat, istirahat jatuh saat pindah mode). Mutasi
+  wajib terbukti merah lalu dikembalikan: (a) validator menerima `{"breaks": ...}` →
+  `test_zone_schedule_breaks_invalid_422[sched9]`; (b) `break_active` memakai `<=` pada `end` →
+  `test_schedule_active_break_boundaries`; (c) gerbang memakai `schedule_active` →
+  `test_gate_ignores_work_window` (+8 tes break lain ikut merah); (d) running tanpa pembuangan
+  state → `test_running_speed_does_not_carry_across_break`; (e) deteksi dilewati walau kolektor ada →
+  `test_gate_break_keeps_identity_collector_detecting`; (f) editor menjatuhkan `breaks` saat pindah
+  mode → tes "berpindah mode mempertahankan istirahat". Bonus mutasi (bukan wajib plan): validator
+  tanpa pengecekan `start < end` → `sched3`, `sched4`, `test_zone_patch_schedule_breaks_invalid_422`
+  merah. Kasus yang lulus dini (terkunci, dibuktikan fail-able lewat mutasi atau melawan anti-goal
+  spec): parametrize 422, jadwal tanpa `breaks`, `hours passthrough`, `missing shift → null`, kontrol
+  gate di luar istirahat, `24/7` mengosongkan, dan dua istirahat tetap utuh. Catatan flake: satu run
+  `vitest` penuh memuat `users.test.tsx` `Test timed out in 5000ms` (berkas tidak disentuh; lulus
+  sendiri 4/4; run ulang penuh hijau 598) — sama dengan historis timeout saat mesin berbeban.
+- **Review sesi perencanaan (2026-10-19):** suite dijalankan ulang berurutan: backend `1135 passed`, vision
+  `384 passed`, vitest `598 passed` (satu run penuh pertama: `users.test.tsx` timeout 5000 ms, berkas tidak
+  disentuh, lulus sendiri 4/4, run penuh ulang hijau), build exit 0, lint 24 warning (set identik). Cek UI
+  di browser (Playwright, `/api/v1/*` di-stub): tanpa overflow horizontal di 1280 dan 390 px. Temuan dan
+  perbaikan: (M1) SQL runbook memakai operator `jsonb` pada kolom `json` dan `IS NOT NULL` yang mencantumkan
+  semua zona (JSON `null`) → diganti `json_typeof(...)` + cast `::jsonb`, belum dijalankan di Postgres
+  sungguhan; (M2) bagian Istirahat tampil di atas jam kerja pada Jam tertentu → dipindah ke bawah hari/jam;
+  (L1) UI menerima `25:99` sementara server 422 → regex jam 00:00–23:59; (L3) typo ARCHITECTURE. Setelah
+  perbaikan: vitest `600 passed` (+2 tes RED→GREEN), build exit 0, lint 24 warning. Belum ada:
+  deploy, cek zona ber-jadwal di DB, uji di kamera nyata.
+- **Revisi UI editor istirahat (2026-10-19, setelah uji dev; pilihan user N1 dari mockup):** form teks
+  HH:MM diganti `BreakEditor` (`frontend/src/features/config/BreakEditor.tsx`) dengan bilah waktu
+  (`breakTimeline.ts`: sumbu jam kerja ±1 jam, gate 24 jam), pemilih jam bawaan perangkat
+  (`type="time"`), tombol teks **Hapus istirahat**, keadaan nonaktif ringkas (bilah biru penuh + tombol
+  Tambah), peringatan lunak istirahat di luar jam kerja, dan petunjuk pada jadwal 24/7. Zona gate absensi juga mendapat petunjuk di bawah
+  dropdown Jadwal (`zones.schedGateHint`: jam kerja/shift tidak dipakai di gate, hanya istirahat) setelah uji dev
+  menunjukkan gate tetap aktif di luar jam shift (perilaku opsi A, bukan bug). Hanya frontend;
+  kontrak data dan API tidak berubah. Tes baru: `break-timeline.test.ts` (7) + 7 tes `zones.test.tsx`
+  (RED → GREEN; mutasi `gate={false}` membuat tes gate merah). Cek browser (Playwright, API di-stub) pada
+  390 px: enam keadaan, tanpa overflow horizontal (375/390). Suite: vitest `616 passed` (43 berkas, +16 termasuk 2 tes petunjuk gate),
+  build exit 0, lint 24 warning (set identik). Di-deploy ke dev (web).
+- **Hasil deploy dev dan uji (2026-10-19):** dev (`gspe-ai3`) di `feat/zone-break` @ `6faa19f`; `api`+`web`+`vision`
+  di-deploy ±12:54 WIB, lalu `web` di-deploy ulang dua kali (revisi UI N1, petunjuk gate); `setup.sh` exit 0, semua
+  container sehat, log `vision` tanpa traceback. SQL runbook (`json_typeof`, `json_array_length`) terbukti jalan di
+  Postgres dev (kolom `zone.schedule` bertipe `json`); `UPDATE` rollback belum dijalankan. Simpan zona dari UI
+  memicu `config applied: restarted [<kamera>]` per kamera (config push terbukti). Probe read-only di container
+  `vision` dengan config nyata: lima zona gate dev (Ikut shift, tanpa istirahat) tetap aktif seperti sebelum fitur;
+  dengan istirahat sintetis `_hidden_zones` benar untuk Ikut shift dan Jam tertentu (11:59 aktif, 12:00–12:59
+  diam, 13:00 aktif, 07:00 dan 20:00 aktif karena jam kerja tidak ditegakkan di gate). Editor istirahat diuji user di
+  dev tanpa masalah yang dilaporkan. **Uji live gate belum konklusif:** zona IT dan IT 2 adalah `idle_zone` dan tidak
+  punya event apa pun hari itu; istirahat zona "Absen Depan Lorong (In)" disimpan 14:22 sehingga jendela
+  12:00–13:00 hari itu sudah lewat. Atas keputusan user uji live ditunda: diamati 2026-10-20 12:00–13:00 (event
+  zona itu di jendela harus 0, sesudahnya normal). Production belum disentuh.
+- **Dampak:** zona `loitering`/`running` berjadwal yang selama ini aktif 24 jam **mulai berhenti** di
+  luar jam dan saat istirahat (disengaja; tinjau dulu daftar zona ber-jadwal di runbook). Karyawan yang
+  tiba di gerbang saat istirahat tidak tercatat (bisa `no_entry`/`absent` sampai dikoreksi admin).
+  Kunci `breaks` diabaikan node lama; urutan deploy `api` → `vision` bebas (rollback aman terbalik).
+  Image yang berubah saat deploy: `api`, `web`, `vision`. Tanpa perubahan skema/migrasi.
+- **Rollback:** `git revert` commit fitur lalu redeploy image komponen terdampak. Kunci `breaks` yang
+  sudah tersimpan tetap terbaca oleh kode lama (jadwal tidak divalidasi saat baca); bila zona itu
+  harus disimpan ulang lewat API lama, hapus dulu kuncinya via editor atau
+  `UPDATE zone SET schedule = (schedule::jsonb - 'breaks')::json WHERE json_typeof(schedule) = 'object'
+  AND (schedule::jsonb -> 'breaks') IS NOT NULL;` (kolom `json`, bukan `jsonb`; langkah penuh di
+  runbook). Tanpa atribusi AI; semua commit lokal di `feat/zone-break` tanpa push.
+
 ### Kiosk Pi: bubble Translate dan pemeriksaan pagi pertama (2026-10-16)
 
 - **Konteks:** pemeriksaan 2026-10-16 09:00 WIB: restart 03:30 terbukti jalan di tiga Pi (umur Chromium 5 jam 30 menit), stream hidup. Bubble "Indonesian | English" Translate menutup tile teratas di Pi `.162` dan `.222`; log `/tmp/start-kiosk.log` (tmpfs) di dua Pi itu membesar (51 MB dan 32 MB) karena relaunch manual mengalihkan output ke file.

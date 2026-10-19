@@ -29,12 +29,15 @@ import {
   listZones,
   updateZone,
   type Behavior,
+  type Break,
   type Schedule,
   type BehaviorKind,
   type Zone,
   type ZoneType,
 } from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
+import BreakEditor from './BreakEditor'
+import { badBreak } from './breakTimeline'
 import DeliveryRadio from './DeliveryRadio'
 import UnknownFaceRadio from './UnknownFaceRadio'
 import { effectiveDelivery, testUntil, type Delivery } from './zoneDelivery'
@@ -58,7 +61,6 @@ const DAY_LABEL: Record<number, TKey> = {
   6: 'zones.day.6',
   7: 'zones.day.7',
 }
-
 export default function ZonesPage() {
   const { t } = useT()
   const [cams, setCams] = useState<Camera[]>([])
@@ -134,6 +136,25 @@ export default function ZonesPage() {
   const mediaMissing = selected?.type === 'behavior'
     ? selected.behaviors.filter((b) => (BEHAVIOR_KINDS as string[]).includes(b.kind) && noMedia(b))
     : []
+  const breaks = (selected?.schedule?.breaks ?? []) as Break[]
+  const breakInvalid = breaks.some(badBreak)
+  const sched = selected?.schedule
+  const shiftOfZone = sched && 'shift_id' in sched ? shifts.find((x) => x.id === sched.shift_id) : undefined
+  const workWindow = !sched ? null
+    : 'shift_id' in sched ? (shiftOfZone ? { start: shiftOfZone.start_time, end: shiftOfZone.end_time } : null)
+    : { start: sched.start, end: sched.end }
+
+  /** Tulis ulang daftar istirahat dengan membawa field jadwal lain apa adanya (two/shift variant). */
+  const setBreaks = (next: Break[]) => {
+    if (!selected?.schedule) return
+    const sched = selected.schedule
+    const carry = next.length ? next : undefined
+    if ('shift_id' in sched) {
+      patchSelected({ schedule: { shift_id: sched.shift_id, breaks: carry } })
+    } else {
+      patchSelected({ schedule: { days: sched.days, start: sched.start, end: sched.end, breaks: carry } })
+    }
+  }
 
   const patchSelected = (patch: Partial<Zone>) => {
     if (!selected) return
@@ -462,14 +483,21 @@ export default function ZonesPage() {
                   selectedItem={schedItems.find((i) => i.id === (!selected.schedule ? 'always' : 'shift_id' in selected.schedule ? 'shift' : 'hours'))}
                   onChange={({ selectedItem }) => {
                     if (!selectedItem || (selectedItem.id === 'shift' && !shifts.length)) return
+                    const carry = breaks.length ? { breaks } : {}
                     patchSelected({ schedule: selectedItem.id === 'hours'
-                      ? { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00' }
-                      : selectedItem.id === 'shift' ? { shift_id: shifts[0].id } : null })
+                      ? { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', ...carry }
+                      : selectedItem.id === 'shift' ? { shift_id: shifts[0].id, ...carry } : null })
                   }}
                 />
+                {selected.schedule && selected.type === 'attendance' && (
+                  <p data-testid="zone-sched-gate-hint" style={{ margin: 0, fontSize: 12, color: 'var(--cds-text-secondary)' }}>
+                    {t('zones.schedGateHint')}
+                  </p>
+                )}
                 {selected.schedule && 'shift_id' in selected.schedule && (
                   <Select id="zone-sched-shift" labelText={t('zones.shift')} value={selected.schedule.shift_id}
-                    onChange={(e) => patchSelected({ schedule: { shift_id: Number(e.target.value) } })}>
+                    onChange={(e) => patchSelected({
+                      schedule: { shift_id: Number(e.target.value), ...(breaks.length ? { breaks } : {}) } })}>
                     {shifts.map((s) => <SelectItem key={s.id} value={s.id} text={`${s.name} (${s.start_time}–${s.end_time})`} />)}
                   </Select>
                 )}
@@ -514,6 +542,14 @@ export default function ZonesPage() {
                       })}
                     </div>
                   </div>
+                )}
+                {/* Istirahat zona: hanya untuk Jam tertentu dan Ikut shift; 24/7 hanya petunjuk. */}
+                {selected.schedule ? (
+                  <BreakEditor breaks={breaks} work={workWindow} gate={selected.type === 'attendance'} onChange={setBreaks} />
+                ) : (
+                  <p data-testid="zone-break-hint" style={{ margin: 0, fontSize: 12, color: 'var(--cds-text-secondary)' }}>
+                    {t('zones.break247')}
+                  </p>
                 )}
 
                 {selected.type === 'attendance' ? (
@@ -715,7 +751,8 @@ export default function ZonesPage() {
                 />
 
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" disabled={busy !== null || mediaMissing.length > 0} onClick={save}>
+                  <Button kind="primary" renderIcon={Save} data-testid="zone-save"
+                    disabled={busy !== null || mediaMissing.length > 0 || breakInvalid} onClick={save}>
                     {busy === 'save' ? t('common.saving') : t('common.save')}
                   </Button>
                   <Button

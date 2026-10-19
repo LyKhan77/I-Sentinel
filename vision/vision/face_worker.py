@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass, field, replace
 from statistics import median
 
+from .analyzers.base import break_active
 from .delivery import FLASH_S, delivery_mode, zone_attendance_cfg
 from .face_quality import (BestK, FaceSettings, aggregate, blur_score, crop_box, gate_code,
                            quality, yaw_ratio)
@@ -126,6 +127,7 @@ class FaceGateWorker(threading.Thread):
                     self._tracker.update([], time.monotonic())
                     if self._tracker.lost_ids:
                         self._publish([])
+                    self._drop_hidden_states(self._hidden_zones(time.monotonic()))
                     self._emit_due(time.monotonic())
                     self._expire(time.monotonic())
                     self._ident_step(time.monotonic(), idle=True)
@@ -140,6 +142,7 @@ class FaceGateWorker(threading.Thread):
                     self._tracker.update([], frame.ts)
                     if self._tracker.lost_ids:
                         self._publish([])
+                    self._drop_hidden_states(self._hidden_zones(frame.ts))
                     self._emit_due(frame.ts)
                     self._expire(frame.ts)
                     self._ident_step(frame.ts, idle=True)
@@ -210,11 +213,41 @@ class FaceGateWorker(threading.Thread):
         return {**{key: value for key, value in counts.items() if key != "_ttfg"},
                 "ttfg_median_s": round(median(counts["_ttfg"]), 2) if counts["_ttfg"] else None}
 
+    def _hidden_zones(self, ts: float) -> list[dict]:
+        """Zona gate yang sedang istirahat pada waktu frame (break_active; jam kerja dulu tak dihitung)."""
+        if not self.zones:
+            return []
+        return [z for z in self.zones if break_active(z.get("schedule"), ts)]
+
+    def _drop_hidden_states(self, hidden: list[dict]) -> None:
+        """Buang state track pada zona istirahat SEBELUM `_emit_due`/`_expire` berjalan.
+
+        Kandidat yang sudah terkumpul dan penanda masuk zona dibuang tanpa dikirim,
+        termasuk di jalur frame kosong/motion-skip (`run`) — mereka tidak boleh
+        menerbitkan event setelah istirahat dari data pra-istirahat.
+        """
+        if not hidden:
+            return
+        for tid in [tid for tid, st in self._states.items()
+                    if any(st.zone is hidden_zone for hidden_zone in hidden)]:
+            self._states.pop(tid, None)
+            self._in_zone.pop(tid, None)
+
     def _process(self, frame) -> None:
         h, w = frame.data.shape[:2]
         self._last_frame_ts = frame.ts
         if self._flash:  # buang label Mode uji basi, juga untuk track yang sudah pergi
             self._flash = {k: v for k, v in self._flash.items() if v[1] > frame.ts}
+        # Istirahat per zona: kandidat/state zona istirahat dibuang dulu, zona itu
+        # keluar dari evaluasi frame ini; deteksi dilewati bila semua zona istirahat
+        # dan tidak ada kolektor identitas (Mode uji tidak mengesampingkan istirahat).
+        hidden = self._hidden_zones(frame.ts)
+        self._drop_hidden_states(hidden)
+        zones = self.zones if not hidden else [
+            z for z in self.zones if not any(z is hidden_zone for hidden_zone in hidden)]
+        if bool(self.zones) and not zones and self.collector is None:
+            self._publish([])  # overlay wajah bersih sekali saat seluruh zona gate istirahat
+            return
         try:
             faces = self.face.detect_faces(frame.data)
         except Exception:
@@ -247,7 +280,7 @@ class FaceGateWorker(threading.Thread):
             self._funnel["faces"] += 1
             aligned, blur = None, 0.0
             if unified:
-                code, zone = self._gate_unified(f, w, h)
+                code, zone = self._gate_unified(f, w, h, zones)
                 if code is None:
                     try:
                         aligned = self.face.align(frame.data, f.kps)
@@ -256,7 +289,7 @@ class FaceGateWorker(threading.Thread):
                         log.warning("camera %s: face align failed", self.camera_id, exc_info=True)
                         code = "blur"
             else:
-                code, zone = gate_code(f, w, h, self.zones, self.settings)
+                code, zone = gate_code(f, w, h, zones, self.settings)
                 if code is None:
                     try:
                         aligned = self.face.align(frame.data, f.kps)
@@ -287,9 +320,9 @@ class FaceGateWorker(threading.Thread):
         self._expire(frame.ts)
         self._ident_step(frame.ts)
 
-    def _gate_unified(self, f, w: int, h: int) -> tuple[str | None, dict | None]:
+    def _gate_unified(self, f, w: int, h: int, zones: list[dict]) -> tuple[str | None, dict | None]:
         """Gerbang absensi unified: zona, lebar identitas, skor, yaw, pitch — tanpa blur absolut."""
-        code, zone = gate_code(f, w, h, self.zones, self._unified_settings)
+        code, zone = gate_code(f, w, h, zones, self._unified_settings)
         if code is None and pitch_dev(f.kps) > self._unified_settings.ident.max_pitch:
             code = "pitch"
         return code, zone

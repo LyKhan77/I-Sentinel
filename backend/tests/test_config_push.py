@@ -426,6 +426,48 @@ def test_config_push_missing_shift_sends_null(db, caplog):
     assert "424242" in caplog.text
 
 
+BREAK = [{"start": "12:00", "end": "13:00"}]
+
+
+def test_config_push_shift_schedule_carries_breaks(db):
+    from app.models.shift import Shift
+    n = _node(db)
+    cam = _cam(db, n.id)
+    sh = Shift(name="Pagi", start_time="08:00", end_time="17:00", workdays=[1, 2, 3, 4, 5]); db.add(sh); db.commit()
+    db.add(Zone(camera_id=cam.id, name="Pos1", type="behavior", polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[], schedule={"shift_id": sh.id, "breaks": BREAK}))
+    db.add(Zone(camera_id=cam.id, name="Pos2", type="behavior", polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[], schedule={"shift_id": sh.id, "breaks": []}))
+    db.commit()
+    zones = config_push.build_node_config(db, n)["cameras"][0]["zones"]
+    by_name = {z["name"]: z for z in zones}
+    assert by_name["Pos1"]["schedule"] == {"days": [1, 2, 3, 4, 5], "start": "08:00", "end": "17:00",
+                                           "breaks": BREAK}
+    assert by_name["Pos2"]["schedule"] == {"days": [1, 2, 3, 4, 5], "start": "08:00", "end": "17:00"}
+
+
+def test_config_push_hours_schedule_passes_breaks_through(db):
+    n = _node(db)
+    cam = _cam(db, n.id)
+    db.add(Zone(camera_id=cam.id, name="Pos", type="behavior", polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[], schedule={"days": [1], "start": "08:00", "end": "17:00",
+                                        "breaks": BREAK}))
+    db.commit()
+    zone = config_push.build_node_config(db, n)["cameras"][0]["zones"][0]
+    assert zone["schedule"] == {"days": [1], "start": "08:00", "end": "17:00", "breaks": BREAK}
+
+
+def test_config_push_missing_shift_with_breaks_sends_null(db, caplog):
+    """Zona Ikut shift yang shift-nya hilang tetap mengirim 24/7 tanpa error walau punya istirahat."""
+    n = _node(db)
+    cam = _cam(db, n.id)
+    db.add(Zone(camera_id=cam.id, name="Pos", type="behavior", polygon=[[0, 0], [1, 0], [1, 1]],
+                behaviors=[], schedule={"shift_id": 424242, "breaks": BREAK}))
+    db.commit()
+    assert config_push.build_node_config(db, n)["cameras"][0]["zones"][0]["schedule"] is None
+    assert "424242" in caplog.text
+
+
 def test_zone_payload_excludes_ai_fields(db):
     node = _node(db)
     cam = _cam(db, node.id)
