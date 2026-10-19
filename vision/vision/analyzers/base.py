@@ -19,13 +19,28 @@ def wall_time(ts: float) -> float:
 
 
 def schedule_active(schedule: dict | None, ts: float) -> bool:
-    """Check ISO weekdays and inclusive HH:MM window; no overnight schedules."""
+    """ISO weekdays + inclusive HH:MM work window; optional `breaks` silences the
+    zone during its `[start, end)` rest windows. `schedule=None` = always active."""
     if not schedule:
         return True
     local = datetime.fromtimestamp(wall_time(ts))
     if local.isoweekday() not in schedule.get("days", []):
         return False
-    return schedule["start"] <= local.strftime("%H:%M") <= schedule["end"]
+    if not schedule["start"] <= local.strftime("%H:%M") <= schedule["end"]:
+        return False
+    return not break_active(schedule, ts)
+
+
+def break_active(schedule: dict | None, ts: float) -> bool:
+    """True during a rest window: any `breaks` item with `start <= HH:MM < end` on
+    local wall time. Ignores weekdays and the work window; gate-only helpers use it."""
+    if not isinstance(schedule, dict):
+        return False
+    breaks = schedule.get("breaks")
+    if not breaks:
+        return False
+    hhmm = datetime.fromtimestamp(wall_time(ts)).strftime("%H:%M")
+    return any(b["start"] <= hhmm < b["end"] for b in breaks)
 
 
 def point_in_polygon(pt: tuple[float, float], poly: list) -> bool:

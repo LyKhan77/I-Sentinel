@@ -86,6 +86,18 @@ def test_schedule_active_emits():
     assert len(az.on_frame(ts, one_track(1, (0.5, 0.5)), 640, 480)) == 1
 
 
+WORK_BREAK = {"days": [1], "start": "08:00", "end": "17:00", "breaks": [{"start": "12:00", "end": "13:00"}]}
+
+
+def test_intrusion_silent_during_break():
+    """Saat istirahat zona tidak mengevaluasi; event pertama baru setelah istirahat berakhir."""
+    az = IntrusionAnalyzer(zone(schedule=WORK_BREAK))
+    t_break = datetime(2024, 1, 15, 12, 30).timestamp()  # Senin 12:30 — di dalam istirahat
+    assert az.on_frame(t_break, one_track(1, (0.5, 0.5)), 640, 480) == []
+    t_after = datetime(2024, 1, 15, 14, 0).timestamp()   # Senin 14:00 — istirahat selesai
+    assert len(az.on_frame(t_after, one_track(1, (0.5, 0.5)), 640, 480)) == 1
+
+
 def test_schedule_wrong_day_no_events():
     az = IntrusionAnalyzer(zone(schedule={"days": [2], "start": "00:00", "end": "23:59"}))
     ts = datetime(2024, 1, 15, 10, 0).timestamp()  # Monday=1, days=[2]
