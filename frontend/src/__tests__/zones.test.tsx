@@ -755,3 +755,72 @@ test('zoneDelivery: test tanpa test_until = pilihan belum disimpan (tampil test)
   // badge UJI hanya untuk uji yang sudah distempel server
   expect(testUntil({ kind: 'intrusion', trigger_seconds: 0, delivery: 'test' }, now)).toBeNull()
 })
+
+
+// --- editor istirahat jadwal zona -------------------------------------------
+
+const ONE_BREAK = [{ start: '12:00', end: '13:00' }]
+const BREAK_INVALID_TEXT = 'Setiap istirahat wajib HH:MM dengan jam mulai sebelum jam selesai.'
+
+test('jadwal Jam tertentu mengirim istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix()])
+  fireEvent.click(screen.getByText('24/7'))
+  fireEvent.click(await screen.findByText('Jam tertentu'))
+  fireEvent.click(await screen.findByTestId('zone-break-add'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: ONE_BREAK }))
+})
+
+test('jadwal Ikut shift mengirim shift_id dan istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix()])
+  fireEvent.click(screen.getByText('24/7'))
+  fireEvent.click(await screen.findByText('Ikut shift'))
+  const select = (await screen.findByLabelText('Shift')) as HTMLSelectElement
+  expect(select.value).toBe('3')
+  fireEvent.click(await screen.findByTestId('zone-break-add'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { shift_id: 3, breaks: ONE_BREAK }))
+})
+
+test('berpindah mode mempertahankan istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: ONE_BREAK } })])
+  fireEvent.click(screen.getByText('Jam tertentu'))
+  fireEvent.click(await screen.findByText('Ikut shift'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { shift_id: 3, breaks: ONE_BREAK }))
+})
+
+test('memilih 24/7 menghapus jadwal dan istirahat', async () => {
+  Element.prototype.scrollIntoView = vi.fn()
+  const fetchMock = await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: ONE_BREAK } })])
+  fireEvent.click(screen.getByText('Jam tertentu'))
+  fireEvent.click(await screen.findByText('24/7'))
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toBeNull())
+})
+
+test('istirahat tidak valid memblokir simpan', async () => {
+  await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: [{ start: '12:00', end: '13:00' }] } })])
+  fireEvent.change(screen.getByLabelText('Selesai istirahat'), { target: { value: '11:00' } })
+  expect(screen.getByTestId('zone-save')).toBeDisabled()
+  expect(screen.getByText(BREAK_INVALID_TEXT)).toBeInTheDocument()
+})
+
+test('zona dengan dua istirahat tetap utuh saat disimpan', async () => {
+  const two = [{ start: '10:00', end: '11:00' }, { start: '15:30', end: '16:30' }]
+  const fetchMock = await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3], start: '08:00', end: '17:00', breaks: two } })])
+  fireEvent.change(screen.getByLabelText('Nama'), { target: { value: 'Zona Lain' } })
+  fireEvent.click(screen.getByTestId('zone-save'))
+  await waitFor(() => expect(patchBody(fetchMock).schedule).toEqual(
+    { days: [1, 2, 3], start: '08:00', end: '17:00', breaks: two }))
+})

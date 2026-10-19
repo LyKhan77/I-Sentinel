@@ -29,6 +29,7 @@ import {
   listZones,
   updateZone,
   type Behavior,
+  type Break,
   type Schedule,
   type BehaviorKind,
   type Zone,
@@ -58,6 +59,9 @@ const DAY_LABEL: Record<number, TKey> = {
   6: 'zones.day.6',
   7: 'zones.day.7',
 }
+// Istirahat jadwal: format dan bandingan sama dengan jam kerja zona (HH:MM, start < end).
+const HHMM = /^\d{2}:\d{2}$/
+const badBreak = (b: Break) => !HHMM.test(b.start) || !HHMM.test(b.end) || b.start >= b.end
 
 export default function ZonesPage() {
   const { t } = useT()
@@ -134,6 +138,24 @@ export default function ZonesPage() {
   const mediaMissing = selected?.type === 'behavior'
     ? selected.behaviors.filter((b) => (BEHAVIOR_KINDS as string[]).includes(b.kind) && noMedia(b))
     : []
+  const breaks = (selected?.schedule?.breaks ?? []) as Break[]
+  const breakInvalid = breaks.some(badBreak)
+
+  /** Tulis ulang daftar istirahat dengan membawa field jadwal lain apa adanya (two/shift variant). */
+  const setBreaks = (next: Break[]) => {
+    if (!selected?.schedule) return
+    const sched = selected.schedule
+    const carry = next.length ? next : undefined
+    if ('shift_id' in sched) {
+      patchSelected({ schedule: { shift_id: sched.shift_id, breaks: carry } })
+    } else {
+      patchSelected({ schedule: { days: sched.days, start: sched.start, end: sched.end, breaks: carry } })
+    }
+  }
+
+  /** Ubah satu baris istirahat; baris kosong/tidak valid hanya ditandai, tidak ikut payload. */
+  const setBreakAt = (i: number, patch: Partial<Break>) =>
+    setBreaks(breaks.map((b, j) => (j === i ? { ...b, ...patch } : b)))
 
   const patchSelected = (patch: Partial<Zone>) => {
     if (!selected) return
@@ -462,16 +484,63 @@ export default function ZonesPage() {
                   selectedItem={schedItems.find((i) => i.id === (!selected.schedule ? 'always' : 'shift_id' in selected.schedule ? 'shift' : 'hours'))}
                   onChange={({ selectedItem }) => {
                     if (!selectedItem || (selectedItem.id === 'shift' && !shifts.length)) return
+                    const carry = breaks.length ? { breaks } : {}
                     patchSelected({ schedule: selectedItem.id === 'hours'
-                      ? { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00' }
-                      : selectedItem.id === 'shift' ? { shift_id: shifts[0].id } : null })
+                      ? { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', ...carry }
+                      : selectedItem.id === 'shift' ? { shift_id: shifts[0].id, ...carry } : null })
                   }}
                 />
                 {selected.schedule && 'shift_id' in selected.schedule && (
                   <Select id="zone-sched-shift" labelText={t('zones.shift')} value={selected.schedule.shift_id}
-                    onChange={(e) => patchSelected({ schedule: { shift_id: Number(e.target.value) } })}>
+                    onChange={(e) => patchSelected({
+                      schedule: { shift_id: Number(e.target.value), ...(breaks.length ? { breaks } : {}) } })}>
                     {shifts.map((s) => <SelectItem key={s.id} value={s.id} text={`${s.name} (${s.start_time}–${s.end_time})`} />)}
                   </Select>
+                )}
+                {/* Istirahat (opsional): jendela [start, end) saat zona tidak mengevaluasi apa pun. */}
+                {selected.schedule && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{t('zones.breaks')}</span>
+                    {breaks.map((b, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                        <TextInput
+                          id={`zone-break-start-${i}`}
+                          data-testid={`zone-break-start-${i}`}
+                          labelText={t('zones.breakStart')}
+                          value={b.start}
+                          invalid={badBreak(b)}
+                          onChange={(e) => setBreakAt(i, { start: e.target.value })}
+                        />
+                        <TextInput
+                          id={`zone-break-end-${i}`}
+                          data-testid={`zone-break-end-${i}`}
+                          labelText={t('zones.breakEnd')}
+                          value={b.end}
+                          invalid={badBreak(b)}
+                          onChange={(e) => setBreakAt(i, { end: e.target.value })}
+                        />
+                        <Button
+                          kind="ghost" hasIconOnly renderIcon={Delete}
+                          iconDescription={t('zones.breakRemove')}
+                          data-testid={`zone-break-remove-${i}`}
+                          style={{ marginTop: 4 }}
+                          onClick={() => setBreaks(breaks.filter((_, j) => j !== i))}
+                        />
+                      </div>
+                    ))}
+                    {breaks.length === 0 && (
+                      <Button kind="ghost" size="sm" data-testid="zone-break-add"
+                        onClick={() => setBreaks([{ start: '12:00', end: '13:00' }])}>
+                        {t('zones.breakAdd')}
+                      </Button>
+                    )}
+                    {breakInvalid && (
+                      <p role="alert" data-testid="zone-breaks-invalid"
+                        style={{ margin: 0, fontSize: 12, color: 'var(--cds-text-error)' }}>
+                        {t('zones.breakInvalid')}
+                      </p>
+                    )}
+                  </div>
                 )}
                 {selected.schedule && 'days' in selected.schedule && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -715,7 +784,8 @@ export default function ZonesPage() {
                 />
 
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button kind="primary" renderIcon={Save} data-testid="zone-save" disabled={busy !== null || mediaMissing.length > 0} onClick={save}>
+                  <Button kind="primary" renderIcon={Save} data-testid="zone-save"
+                    disabled={busy !== null || mediaMissing.length > 0 || breakInvalid} onClick={save}>
                     {busy === 'save' ? t('common.saving') : t('common.save')}
                   </Button>
                   <Button
