@@ -186,7 +186,7 @@ go2rtc frame.jpeg (main) → face_worker (SCRFD + ArcFace, GPU terpisah) → eve
   `breaks` setengah terbuka `[start, end)` pada jam dinding lokal) dipakai `FaceGateWorker` per frame —
   zona yang sedang istirahat dikeluarkan dari gerbang, state/kandidat milik zona itu dibuang sebelum
   `_emit_due`/`_expire` (termasuk jalur frame kosong/motion-skip), deteksi wajah dilewati bila semua
-  zona gate istirahat dan kolektor identitas kos (identitas intrusion tetap jalan saat kolektor ada),
+  zona gate istirahat dan kolektor identitas kosong (identitas intrusion tetap jalan saat kolektor ada),
   Mode uji tidak mengesampingkan istirahat, dan **jam kerja tidak ditegakkan** di gate (gate memakai
   `break_active`, bukan `schedule_active`).
 - Deteksi/tracking wajah tetap pada seluruh frame; polygon menyaring pusat bbox, bukan ROI crop.

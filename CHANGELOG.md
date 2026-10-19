@@ -56,6 +56,16 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
   gate di luar istirahat, `24/7` mengosongkan, dan dua istirahat tetap utuh. Catatan flake: satu run
   `vitest` penuh memuat `users.test.tsx` `Test timed out in 5000ms` (berkas tidak disentuh; lulus
   sendiri 4/4; run ulang penuh hijau 598) — sama dengan historis timeout saat mesin berbeban.
+- **Review sesi perencanaan (2026-10-19):** suite dijalankan ulang berurutan: backend `1135 passed`, vision
+  `384 passed`, vitest `598 passed` (satu run penuh pertama: `users.test.tsx` timeout 5000 ms, berkas tidak
+  disentuh, lulus sendiri 4/4, run penuh ulang hijau), build exit 0, lint 24 warning (set identik). Cek UI
+  di browser (Playwright, `/api/v1/*` di-stub): tanpa overflow horizontal di 1280 dan 390 px. Temuan dan
+  perbaikan: (M1) SQL runbook memakai operator `jsonb` pada kolom `json` dan `IS NOT NULL` yang mencantumkan
+  semua zona (JSON `null`) → diganti `json_typeof(...)` + cast `::jsonb`, belum dijalankan di Postgres
+  sungguhan; (M2) bagian Istirahat tampil di atas jam kerja pada Jam tertentu → dipindah ke bawah hari/jam;
+  (L1) UI menerima `25:99` sementara server 422 → regex jam 00:00–23:59; (L3) typo ARCHITECTURE. Setelah
+  perbaikan: vitest `600 passed` (+2 tes RED→GREEN), build exit 0, lint 24 warning. Belum ada:
+  deploy, cek zona ber-jadwal di DB, uji di kamera nyata.
 - **Dampak:** zona `loitering`/`running` berjadwal yang selama ini aktif 24 jam **mulai berhenti** di
   luar jam dan saat istirahat (disengaja; tinjau dulu daftar zona ber-jadwal di runbook). Karyawan yang
   tiba di gerbang saat istirahat tidak tercatat (bisa `no_entry`/`absent` sampai dikoreksi admin).
@@ -64,7 +74,8 @@ Skema versi: [SemVer](https://semver.org/). Status proyek: pra-rilis (`0.x`).
 - **Rollback:** `git revert` commit fitur lalu redeploy image komponen terdampak. Kunci `breaks` yang
   sudah tersimpan tetap terbaca oleh kode lama (jadwal tidak divalidasi saat baca); bila zona itu
   harus disimpan ulang lewat API lama, hapus dulu kuncinya via editor atau
-  `UPDATE zone SET schedule = schedule - 'breaks' WHERE schedule ? 'breaks';` (langkah penuh di
+  `UPDATE zone SET schedule = (schedule::jsonb - 'breaks')::json WHERE json_typeof(schedule) = 'object'
+  AND (schedule::jsonb -> 'breaks') IS NOT NULL;` (kolom `json`, bukan `jsonb`; langkah penuh di
   runbook). Tanpa atribusi AI; semua commit lokal di `feat/zone-break` tanpa push.
 
 ### Kiosk Pi: bubble Translate dan pemeriksaan pagi pertama (2026-10-16)

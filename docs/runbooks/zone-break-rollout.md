@@ -14,8 +14,13 @@ menegakkan **istirahatnya saja** (jam kerja dan hari tidak ditegakkan di gate).
 1. Tinjau zona ber-jadwal yang ada. Zona Jam tertentu/Ikut shift yang selama ini berjalan 24 jam akan
    mulai berhenti di luar jam (disengaja, tetapi harus diketahui sebelum deploy):
    ```sql
-   SELECT id, name, type, schedule FROM zone WHERE schedule IS NOT NULL;
+   SELECT id, name, type, schedule FROM zone WHERE json_typeof(schedule) = 'object';
    ```
+   Kolom `zone.schedule` bertipe `json` (bukan `jsonb`), dan zona tanpa jadwal tersimpan sebagai JSON
+   `null`, bukan SQL `NULL`: `WHERE schedule IS NOT NULL` akan mencantumkan semua zona. Pakai
+   `json_typeof(...) = 'object'`. Operator `-` dan `?` hanya ada untuk `jsonb`, jadi cast dulu.
+   Sintaks SQL di runbook ini belum dijalankan di Postgres sungguhan: jalankan `SELECT` lebih dulu
+   pada dev dan baca hasilnya sebelum memakai `UPDATE`.
 2. Catat zona `loitering`, `running`, dan gate absensi dengan jadwal terisi; konfirmasi jendela
    hari/jamnya dengan user sebelum memasang kode baru.
 3. Zona `24/7` yang butuh istirahat harus dipindah dulu (atau sesudah deploy) ke **Jam tertentu
@@ -58,9 +63,13 @@ menegakkan **istirahatnya saja** (jam kerja dan hari tidak ditegakkan di gate).
   dibaca apa adanya). Bila zona itu perlu disimpan ulang lewat API lama (validator lama menolak kunci
   `breaks`), hapus kuncinya via editor UI atau SQL read-write yang disetujui admin:
   ```sql
-  UPDATE zone SET schedule = schedule - 'breaks' WHERE schedule ? 'breaks';
+  BEGIN;
+  UPDATE zone SET schedule = (schedule::jsonb - 'breaks')::json
+  WHERE json_typeof(schedule) = 'object' AND (schedule::jsonb -> 'breaks') IS NOT NULL;
+  -- periksa jumlah baris yang berubah, lalu COMMIT; (atau ROLLBACK;)
   ```
 - **Cek cepat pasca-deploy:** bandingkan jumlah zona ber-istirahat di UI dengan DB:
   ```sql
-  SELECT id, name, type FROM zone WHERE schedule ? 'breaks' AND schedule->'breaks' <> '[]'::jsonb;
+  SELECT id, name, type FROM zone
+  WHERE json_typeof(schedule) = 'object' AND json_array_length(schedule -> 'breaks') > 0;
   ```
