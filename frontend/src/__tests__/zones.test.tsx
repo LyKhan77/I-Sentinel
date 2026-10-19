@@ -815,6 +815,24 @@ test('istirahat tidak valid memblokir simpan', async () => {
   expect(screen.getByText(BREAK_INVALID_TEXT)).toBeInTheDocument()
 })
 
+test('istirahat dengan jam di luar rentang (24:00, 25:99) memblokir simpan seperti server', async () => {
+  await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: [{ start: '12:00', end: '13:00' }] } })])
+  for (const bad of ['24:00', '25:99']) {
+    fireEvent.change(screen.getByLabelText('Selesai istirahat'), { target: { value: bad } })
+    expect(screen.getByTestId('zone-save')).toBeDisabled()
+    expect(screen.getByText(BREAK_INVALID_TEXT)).toBeInTheDocument()
+  }
+})
+
+test('Jam tertentu: bagian Istirahat tampil sesudah jam kerja dan hari', async () => {
+  await selectZone([zoneFix({
+    schedule: { days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', breaks: [{ start: '12:00', end: '13:00' }] } })])
+  const workEnd = screen.getByLabelText('Selesai')
+  const breakStart = screen.getByTestId('zone-break-start-0')
+  expect(workEnd.compareDocumentPosition(breakStart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
 test('zona dengan dua istirahat tetap utuh saat disimpan', async () => {
   const two = [{ start: '10:00', end: '11:00' }, { start: '15:30', end: '16:30' }]
   const fetchMock = await selectZone([zoneFix({

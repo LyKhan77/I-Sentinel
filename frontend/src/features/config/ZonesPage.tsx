@@ -60,7 +60,7 @@ const DAY_LABEL: Record<number, TKey> = {
   7: 'zones.day.7',
 }
 // Istirahat jadwal: format dan bandingan sama dengan jam kerja zona (HH:MM, start < end).
-const HHMM = /^\d{2}:\d{2}$/
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
 const badBreak = (b: Break) => !HHMM.test(b.start) || !HHMM.test(b.end) || b.start >= b.end
 
 export default function ZonesPage() {
@@ -497,6 +497,48 @@ export default function ZonesPage() {
                     {shifts.map((s) => <SelectItem key={s.id} value={s.id} text={`${s.name} (${s.start_time}–${s.end_time})`} />)}
                   </Select>
                 )}
+                {selected.schedule && 'days' in selected.schedule && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <TextInput
+                        id="zone-sched-start"
+                        labelText={t('zones.start')}
+                        value={selected.schedule.start}
+                        onChange={(e) => patchSelected({ schedule: { ...(selected.schedule as Schedule), start: e.target.value } })}
+                      />
+                      <TextInput
+                        id="zone-sched-end"
+                        labelText={t('zones.end')}
+                        value={selected.schedule.end}
+                        onChange={(e) => patchSelected({ schedule: { ...(selected.schedule as Schedule), end: e.target.value } })}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {DAYS.map((d) => {
+                        const on = selected.schedule !== null && 'days' in selected.schedule && selected.schedule.days.includes(d)
+                        return (
+                          <Tag
+                            key={d}
+                            type={on ? 'blue' : 'gray'}
+                            filter
+                            style={{ cursor: 'pointer' }}
+                            onClick={() =>
+                              patchSelected({
+                                schedule: {
+                                  ...(selected.schedule as Schedule),
+                                  days: on ? (selected.schedule as Schedule).days.filter((x) => x !== d)
+                                    : [...(selected.schedule as Schedule).days, d],
+                                },
+                              })
+                            }
+                          >
+                            {t(DAY_LABEL[d])}
+                          </Tag>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 {/* Istirahat (opsional): jendela [start, end) saat zona tidak mengevaluasi apa pun. */}
                 {selected.schedule && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -540,48 +582,6 @@ export default function ZonesPage() {
                         {t('zones.breakInvalid')}
                       </p>
                     )}
-                  </div>
-                )}
-                {selected.schedule && 'days' in selected.schedule && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <TextInput
-                        id="zone-sched-start"
-                        labelText={t('zones.start')}
-                        value={selected.schedule.start}
-                        onChange={(e) => patchSelected({ schedule: { ...(selected.schedule as Schedule), start: e.target.value } })}
-                      />
-                      <TextInput
-                        id="zone-sched-end"
-                        labelText={t('zones.end')}
-                        value={selected.schedule.end}
-                        onChange={(e) => patchSelected({ schedule: { ...(selected.schedule as Schedule), end: e.target.value } })}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {DAYS.map((d) => {
-                        const on = selected.schedule !== null && 'days' in selected.schedule && selected.schedule.days.includes(d)
-                        return (
-                          <Tag
-                            key={d}
-                            type={on ? 'blue' : 'gray'}
-                            filter
-                            style={{ cursor: 'pointer' }}
-                            onClick={() =>
-                              patchSelected({
-                                schedule: {
-                                  ...(selected.schedule as Schedule),
-                                  days: on ? (selected.schedule as Schedule).days.filter((x) => x !== d)
-                                    : [...(selected.schedule as Schedule).days, d],
-                                },
-                              })
-                            }
-                          >
-                            {t(DAY_LABEL[d])}
-                          </Tag>
-                        )
-                      })}
-                    </div>
                   </div>
                 )}
 
