@@ -209,7 +209,7 @@ Aturan yang perlu diketahui:
   Jadwal manual dan shift memakai jam dinding lokal (termasuk frame vision bertimestamp monotonic).
   Semua tipe zona menegakkan jadwal penuh (hari, jam kerja, istirahat); **Jam tertentu** dan
   **Ikut shift** dapat punya jendela **Istirahat** opsional (`schedule.breaks`, maks 5, setengah
-  terbuka `[start, end)`; UI satu baris) — saat istirahat zona tidak menghasilkan event, klip,
+  terbuka `[start, end)`; bilah waktu + pemilih jam) — saat istirahat zona tidak menghasilkan event, klip,
   snapshot, Telegram, crop wajah, atau baris absensi. Zona 24/7 tidak punya istirahat: gunakan
   **Jam tertentu 00:00–23:59 semua hari** untuk hasil setara 24/7 + istirahat (gate mengabaikan
   jam kerja). Karyawan yang tiba saat gerbang istirahat tidak tercatat (koreksikan di rekap).

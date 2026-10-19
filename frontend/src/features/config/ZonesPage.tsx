@@ -36,6 +36,8 @@ import {
   type ZoneType,
 } from '../../api/zones'
 import ZoneEditor, { ZONE_COLOR } from '../../components/ZoneEditor'
+import BreakEditor from './BreakEditor'
+import { badBreak } from './breakTimeline'
 import DeliveryRadio from './DeliveryRadio'
 import UnknownFaceRadio from './UnknownFaceRadio'
 import { effectiveDelivery, testUntil, type Delivery } from './zoneDelivery'
@@ -59,10 +61,6 @@ const DAY_LABEL: Record<number, TKey> = {
   6: 'zones.day.6',
   7: 'zones.day.7',
 }
-// Istirahat jadwal: format dan bandingan sama dengan jam kerja zona (HH:MM, start < end).
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
-const badBreak = (b: Break) => !HHMM.test(b.start) || !HHMM.test(b.end) || b.start >= b.end
-
 export default function ZonesPage() {
   const { t } = useT()
   const [cams, setCams] = useState<Camera[]>([])
@@ -140,6 +138,11 @@ export default function ZonesPage() {
     : []
   const breaks = (selected?.schedule?.breaks ?? []) as Break[]
   const breakInvalid = breaks.some(badBreak)
+  const sched = selected?.schedule
+  const shiftOfZone = sched && 'shift_id' in sched ? shifts.find((x) => x.id === sched.shift_id) : undefined
+  const workWindow = !sched ? null
+    : 'shift_id' in sched ? (shiftOfZone ? { start: shiftOfZone.start_time, end: shiftOfZone.end_time } : null)
+    : { start: sched.start, end: sched.end }
 
   /** Tulis ulang daftar istirahat dengan membawa field jadwal lain apa adanya (two/shift variant). */
   const setBreaks = (next: Break[]) => {
@@ -152,10 +155,6 @@ export default function ZonesPage() {
       patchSelected({ schedule: { days: sched.days, start: sched.start, end: sched.end, breaks: carry } })
     }
   }
-
-  /** Ubah satu baris istirahat; baris kosong/tidak valid hanya ditandai, tidak ikut payload. */
-  const setBreakAt = (i: number, patch: Partial<Break>) =>
-    setBreaks(breaks.map((b, j) => (j === i ? { ...b, ...patch } : b)))
 
   const patchSelected = (patch: Partial<Zone>) => {
     if (!selected) return
@@ -539,50 +538,13 @@ export default function ZonesPage() {
                     </div>
                   </div>
                 )}
-                {/* Istirahat (opsional): jendela [start, end) saat zona tidak mengevaluasi apa pun. */}
-                {selected.schedule && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'var(--cds-text-secondary)' }}>{t('zones.breaks')}</span>
-                    {breaks.map((b, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                        <TextInput
-                          id={`zone-break-start-${i}`}
-                          data-testid={`zone-break-start-${i}`}
-                          labelText={t('zones.breakStart')}
-                          value={b.start}
-                          invalid={badBreak(b)}
-                          onChange={(e) => setBreakAt(i, { start: e.target.value })}
-                        />
-                        <TextInput
-                          id={`zone-break-end-${i}`}
-                          data-testid={`zone-break-end-${i}`}
-                          labelText={t('zones.breakEnd')}
-                          value={b.end}
-                          invalid={badBreak(b)}
-                          onChange={(e) => setBreakAt(i, { end: e.target.value })}
-                        />
-                        <Button
-                          kind="ghost" hasIconOnly renderIcon={Delete}
-                          iconDescription={t('zones.breakRemove')}
-                          data-testid={`zone-break-remove-${i}`}
-                          style={{ marginTop: 4 }}
-                          onClick={() => setBreaks(breaks.filter((_, j) => j !== i))}
-                        />
-                      </div>
-                    ))}
-                    {breaks.length === 0 && (
-                      <Button kind="ghost" size="sm" data-testid="zone-break-add"
-                        onClick={() => setBreaks([{ start: '12:00', end: '13:00' }])}>
-                        {t('zones.breakAdd')}
-                      </Button>
-                    )}
-                    {breakInvalid && (
-                      <p role="alert" data-testid="zone-breaks-invalid"
-                        style={{ margin: 0, fontSize: 12, color: 'var(--cds-text-error)' }}>
-                        {t('zones.breakInvalid')}
-                      </p>
-                    )}
-                  </div>
+                {/* Istirahat zona: hanya untuk Jam tertentu dan Ikut shift; 24/7 hanya petunjuk. */}
+                {selected.schedule ? (
+                  <BreakEditor breaks={breaks} work={workWindow} gate={selected.type === 'attendance'} onChange={setBreaks} />
+                ) : (
+                  <p data-testid="zone-break-hint" style={{ margin: 0, fontSize: 12, color: 'var(--cds-text-secondary)' }}>
+                    {t('zones.break247')}
+                  </p>
                 )}
 
                 {selected.type === 'attendance' ? (

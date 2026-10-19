@@ -128,7 +128,7 @@ menghapus riwayat event.
    hari tidak dihitung di gate (scan datang awal, pulang telat, lembur, dan hari non-kerja tetap
    dicatat). **Mode uji tidak mengesampingkan jadwal**: selama istirahat (atau di luar jadwal untuk
    analyzer jadwal penuh) zona tidak dievaluasi walau sedang dalam uji.
-   - **Istirahat** (kunci `breaks` pada jadwal zona; UI satu baris, data maks 5 entri per zona) adalah
+   - **Istirahat** (kunci `breaks` pada jadwal zona; UI: tombol Tambah hanya saat kosong, data maks 5 entri per zona) adalah
      jendela setengah terbuka `[start, end)` pada jam dinding lokal saat zona diam total: tanpa event,
      klip, snapshot, Telegram, crop wajah, atau baris absensi. Hanya **Jam tertentu** dan **Ikut shift**
      yang punya istirahat; jadwal **24/7** tidak (butuh 24/7 + istirahat → pilih Jam tertentu
@@ -136,6 +136,14 @@ menghapus riwayat event.
      atau mengubah hari/jam tidak menjatuhkan istirahat yang sudah diisi; memilih 24/7 mengosongkannya.
      Baris tidak valid (kosong, bukan HH:MM, atau mulai ≥ selesai) memblokir Simpan di UI; server
      menolak yang sama dengan 422.
+   - **Tampilan editor istirahat:** bagian Istirahat selalu menampilkan **bilah waktu** (biru = aktif,
+     garis kuning-hitam = diam) dengan sumbu jam kerja ±1 jam (diperluas bila ada istirahat di luar jam
+     kerja). **Nonaktif** (belum ada istirahat): bilah biru penuh, teks "Tidak ada istirahat", dan tombol
+     **Tambah istirahat** (terisi awal 12:00–13:00); tanpa kolom jam. **Aktif:** dua pemilih jam bawaan
+     perangkat (`type="time"`, tidak bisa salah ketik), tombol teks **Hapus istirahat**, segmen diam di
+     bilah, dan ringkasan "Zona diam 12:00–13:00". Istirahat di luar jam kerja hanya memberi peringatan
+     (tidak memblokir Simpan). **Gate absensi:** sumbu 00:00–24:00 penuh dan catatan bahwa jam kerja tidak
+     dipakai. **24/7:** bagian tidak tampil, hanya petunjuk cara memakainya.
    - **Batas gerbang:** karyawan yang tiba saat gerbang sedang istirahat tidak tercatat (bisa tampil
      `no_entry`/`absent` sampai dikoreksi admin). Proses rollout dan pemulihan:
      `docs/runbooks/zone-break-rollout.md`.
