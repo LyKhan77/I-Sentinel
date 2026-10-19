@@ -99,7 +99,9 @@ Syarat perilaku, cara implementasi diserahkan ke builder:
   Mengikuti pola `intrusion` (state dibekukan; track yang masih di dalam saat jendela tutup tidak mengirim ulang saat buka).
 - Untuk gate, melewati inferensi wajah selama istirahat dianjurkan (hemat GPU), asal funnel/heartbeat worker tetap normal.
 - Satu kamera gate bisa punya beberapa zona; istirahat berlaku per zona, bukan per kamera.
-- Mode uji zona (`test_until`) tidak berubah dan tidak bergantung pada jadwal.
+- Kandidat wajah yang sedang dikumpulkan gate saat istirahat mulai dibuang (tidak dikirim setelah istirahat). *(Keputusan saya.)*
+- Mode uji zona (`test_until`) tidak mengesampingkan jadwal: selama istirahat (atau di luar jadwal untuk analyzer jadwal penuh)
+  zona tidak dievaluasi walau dalam Mode uji, sama seperti `intrusion` sekarang. Catat di `WORKFLOW.md`. *(Keputusan saya.)*
 
 ## 5. Dampak ke Zona yang Sudah Ada & Rollout
 
